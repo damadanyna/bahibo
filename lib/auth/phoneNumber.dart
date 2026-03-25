@@ -1,3 +1,4 @@
+import 'package:bahibo/auth/profileInformation.dart';
 import 'package:bahibo/formatter/PhoneNumberFormatter%20extends%20TextInputFormatter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -302,7 +303,12 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
                         TextButton(
                           onPressed: () {
                             Navigator.of(context).pop();
-                            print("Continue tapped");
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => ProfileInformationPage(),
+                              ),
+                            );
                           },
                           child: const Text(
                             "Continue",
