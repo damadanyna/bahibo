@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:bahibo/component/theme_menu_button.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'dart:convert';
@@ -153,6 +154,8 @@ class _ProductlistState extends State<Productlist> {
   };
 
   Widget buildCategoryBlock() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -201,10 +204,12 @@ class _ProductlistState extends State<Productlist> {
                         width: 150,
                         margin: const EdgeInsets.symmetric(horizontal: 6),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: isDark ? theme.cardColor : Colors.white,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: const Color.fromARGB(255, 223, 223, 223),
+                            color: isDark
+                                ? Colors.grey.shade700
+                                : const Color.fromARGB(255, 223, 223, 223),
                           ),
                           boxShadow: const [
                             BoxShadow(
@@ -245,15 +250,18 @@ class _ProductlistState extends State<Productlist> {
   }
 
   Widget buildProductCardLoadig() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         border: Border.all(
           width: 1,
-          color: const Color.fromARGB(255, 223, 223, 223),
+          color: isDark
+              ? Colors.grey.shade700
+              : const Color.fromARGB(255, 223, 223, 223),
         ),
         borderRadius: BorderRadius.circular(10),
-        color: Colors.white,
+        color: isDark ? Colors.grey.shade900 : Colors.white,
       ),
       child: Padding(
         padding: const EdgeInsets.all(7),
@@ -319,7 +327,7 @@ class _ProductlistState extends State<Productlist> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      // backgroundColor: Colors.white,
       body: Column(
         children: [
           // Header
@@ -337,10 +345,10 @@ class _ProductlistState extends State<Productlist> {
                   ),
                 ),
                 Row(
-                  children: const [
-                    Icon(Icons.search, size: 30),
-                    SizedBox(width: 20),
-                    Icon(Icons.account_circle, size: 30),
+                  children: [
+                    const Icon(Icons.search, size: 30),
+                    const SizedBox(width: 20),
+                    const ThemeMenuButton(),
                   ],
                 ),
               ],

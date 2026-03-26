@@ -31,7 +31,6 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      backgroundColor: Colors.white,
       body: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: <Widget>[
@@ -279,10 +278,13 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
                       ),
                     ),
                     SizedBox(height: 10),
-                    const Text(
+                    Text(
                       "To easily send messages and photos to friends and family, "
                       "allow Bahibo to access your photos and other media.",
-                      style: TextStyle(fontSize: 14, color: Colors.black),
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Theme.of(context).textTheme.bodyMedium?.color,
+                      ),
                     ),
                     const SizedBox(height: 20),
 

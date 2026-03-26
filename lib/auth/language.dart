@@ -30,7 +30,6 @@ class _LanguagePageState extends State<LanguagePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      backgroundColor: Colors.white,
 
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 40),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import "../component/ProductCard.dart";
+import "../component/theme_menu_button.dart";
 
 class CategoryPage extends StatefulWidget {
   final String categoryName;
@@ -71,7 +72,6 @@ class _CategoryPageState extends State<CategoryPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
       appBar: AppBar(
         title: Row(
           children: [
@@ -88,6 +88,7 @@ class _CategoryPageState extends State<CategoryPage> {
             padding: EdgeInsets.only(right: 16),
             child: Icon(Icons.search),
           ),
+          ThemeMenuButton(),
         ],
       ),
       body: products.isEmpty && isLoading

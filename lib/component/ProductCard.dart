@@ -22,10 +22,14 @@ class ProductCard extends StatelessWidget {
         decoration: BoxDecoration(
           border: Border.all(
             width: 1,
-            color: const Color.fromARGB(255, 223, 223, 223),
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.grey.shade700
+                : const Color.fromARGB(255, 223, 223, 223),
           ),
           borderRadius: BorderRadius.circular(10),
-          color: Colors.white,
+          color: Theme.of(context).brightness == Brightness.dark
+              ? Colors.grey.shade900
+              : Colors.white,
         ),
         child: Padding(
           padding: const EdgeInsets.all(7),
@@ -225,11 +229,13 @@ class ProductCard extends StatelessWidget {
         height: double.infinity,
         loadingBuilder: (context, child, loadingProgress) {
           if (loadingProgress == null) return child;
+          final isDark = Theme.of(context).brightness == Brightness.dark;
           return Container(
-            color: Colors.grey.shade100,
+            color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
             child: Center(
               child: CircularProgressIndicator(
                 strokeWidth: 2,
+                color: Colors.green,
                 value: loadingProgress.expectedTotalBytes != null
                     ? loadingProgress.cumulativeBytesLoaded /
                           loadingProgress.expectedTotalBytes!
