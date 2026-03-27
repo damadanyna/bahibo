@@ -1,5 +1,7 @@
 import 'package:bahibo/component/theme_menu_button.dart';
 import 'package:flutter/material.dart';
+import 'package:bahibo/page/image_viewer_page.dart';
+import 'package:bahibo/page/seller_profile_page.dart';
 
 class ProductDetailPage extends StatefulWidget {
   final Map<String, dynamic> product;
@@ -12,6 +14,7 @@ class ProductDetailPage extends StatefulWidget {
 
 class _ProductDetailPageState extends State<ProductDetailPage> {
   late PageController _pageController;
+  final TextEditingController _availabilityController = TextEditingController();
   int _currentPage = 0;
   bool _isSaved = false;
 
@@ -23,6 +26,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
 
   @override
   void dispose() {
+    _availabilityController.dispose();
     _pageController.dispose();
     super.dispose();
   }
@@ -44,6 +48,8 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
 
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    const sellerImageUrl =
+        'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600';
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -245,121 +251,153 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                 const SizedBox(height: 12),
 
                 // ── Carte vendeur ──
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 12),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: theme.cardColor,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: isDark
-                            ? Colors.black.withOpacity(0.3)
-                            : Colors.black.withOpacity(0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const SellerProfilePage(),
                       ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      Stack(
-                        children: [
-                          CircleAvatar(
-                            radius: 28,
-                            backgroundColor: Colors.grey.shade200,
-                            child: const Icon(
-                              Icons.person,
-                              color: Colors.grey,
-                              size: 32,
-                            ),
-                          ),
-                          Positioned(
-                            bottom: 0,
-                            right: 0,
-                            child: Container(
-                              width: 14,
-                              height: 14,
-                              decoration: BoxDecoration(
-                                color: Colors.green,
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: Colors.white,
-                                  width: 2,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                    );
+                  },
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 12),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: theme.cardColor,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: isDark
+                              ? Colors.black.withOpacity(0.3)
+                              : Colors.black.withOpacity(0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Stack(
                           children: [
-                            const Text(
-                              'John Doe',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 3,
+                            GestureDetector(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => ImageViewerPage(
+                                      imageUrls: const [sellerImageUrl],
+                                      initialIndex: 0,
+                                      heroTag: 'seller-avatar-detail',
+                                    ),
                                   ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.green.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Row(
-                                    children: const [
-                                      Icon(
-                                        Icons.verified,
-                                        size: 12,
-                                        color: Colors.green,
-                                      ),
-                                      SizedBox(width: 3),
-                                      Text(
-                                        'Vendeur Vérifié',
-                                        style: TextStyle(
-                                          color: Colors.green,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
+                                );
+                              },
+                              child: Hero(
+                                tag: 'seller-avatar-detail',
+                                child: CircleAvatar(
+                                  radius: 28,
+                                  backgroundColor: Colors.grey.shade200,
+                                  backgroundImage: const NetworkImage(
+                                    sellerImageUrl,
                                   ),
                                 ),
-                              ],
+                              ),
+                            ),
+                            Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: Container(
+                                width: 14,
+                                height: 14,
+                                decoration: BoxDecoration(
+                                  color: Colors.green,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 2,
+                                  ),
+                                ),
+                              ),
                             ),
                           ],
                         ),
-                      ),
-                      // Bouton voir profil
-                      OutlinedButton(
-                        onPressed: () {},
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.green,
-                          side: const BorderSide(color: Colors.green),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'John Doe',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 3,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Row(
+                                      children: const [
+                                        Icon(
+                                          Icons.verified,
+                                          size: 12,
+                                          color: Colors.green,
+                                        ),
+                                        SizedBox(width: 3),
+                                        Text(
+                                          'Vendeur Vérifié',
+                                          style: TextStyle(
+                                            color: Colors.green,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
-                        child: const Text(
-                          'Profil',
-                          style: TextStyle(fontSize: 12),
+                        // Bouton voir profil
+                        OutlinedButton(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const SellerProfilePage(),
+                              ),
+                            );
+                          },
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.green,
+                            side: const BorderSide(color: Colors.green),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                          ),
+                          child: const Text(
+                            'Profil',
+                            style: TextStyle(fontSize: 12),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
 
@@ -454,48 +492,61 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         ),
         child: Row(
           children: [
-            // Bouton message
             Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.message_outlined, size: 18),
-                label: const Text('Message'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.green,
-                  side: const BorderSide(color: Colors.green),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
+              child: TextField(
+                controller: _availabilityController,
+                textInputAction: TextInputAction.send,
+                decoration: InputDecoration(
+                  hintText: 'Cet article est-il disponible ?',
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
+                  ),
+                  border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: isDark
+                          ? Colors.grey.shade700
+                          : Colors.grey.shade300,
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: isDark
+                          ? Colors.grey.shade700
+                          : Colors.grey.shade300,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.green),
                   ),
                 ),
               ),
             ),
             const SizedBox(width: 12),
-            // Bouton acheter
-            Expanded(
-              flex: 2,
-              child: ElevatedButton.icon(
-                onPressed: () {},
-                icon: const Icon(
-                  Icons.shopping_bag_outlined,
-                  size: 18,
-                  color: Colors.white,
-                ),
-                label: const Text(
-                  'Acheter en Sécurisé',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
+            SizedBox(
+              height: 48,
+              child: ElevatedButton(
+                onPressed: () {
+                  final message = _availabilityController.text.trim();
+                  if (message.isEmpty) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Message envoye')),
+                  );
+                  _availabilityController.clear();
+                },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
                   elevation: 0,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
                 ),
+                child: const Icon(Icons.rocket_launch, size: 20),
               ),
             ),
           ],
@@ -511,7 +562,10 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       return SizedBox(
         height: 300,
         width: double.infinity,
-        child: _imageItem(images.first),
+        child: _imageItem(
+          images.first,
+          onTap: () => _openProductGallery(images, 0),
+        ),
       );
     }
 
@@ -521,9 +575,19 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         height: 300,
         child: Row(
           children: [
-            Expanded(child: _imageItem(first)),
+            Expanded(
+              child: _imageItem(
+                first,
+                onTap: () => _openProductGallery(images, 0),
+              ),
+            ),
             const SizedBox(width: 2),
-            Expanded(child: _imageItem(second)),
+            Expanded(
+              child: _imageItem(
+                second,
+                onTap: () => _openProductGallery(images, 1),
+              ),
+            ),
           ],
         ),
       );
@@ -549,7 +613,10 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                       ? Stack(
                           fit: StackFit.expand,
                           children: [
-                            _imageItem(rest[i]),
+                            _imageItem(
+                              rest[i],
+                              onTap: () => _openProductGallery(images, i + 1),
+                            ),
                             Container(
                               color: Colors.black54,
                               child: Center(
@@ -565,7 +632,10 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                             ),
                           ],
                         )
-                      : _imageItem(rest[i]),
+                      : _imageItem(
+                          rest[i],
+                          onTap: () => _openProductGallery(images, i + 1),
+                        ),
                 ),
               );
             }),
@@ -575,34 +645,46 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     );
   }
 
-  Widget _imageItem(String url) {
-    return Image.network(
-      url,
-      fit: BoxFit.cover,
-      width: double.infinity,
-      height: double.infinity,
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) return child;
-        return Container(
-          color: Colors.grey.shade200,
-          child: Center(
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: Colors.green,
-              value: loadingProgress.expectedTotalBytes != null
-                  ? loadingProgress.cumulativeBytesLoaded /
-                        loadingProgress.expectedTotalBytes!
-                  : null,
+  void _openProductGallery(List<String> images, int index) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ImageViewerPage(imageUrls: images, initialIndex: index),
+      ),
+    );
+  }
+
+  Widget _imageItem(String url, {VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Image.network(
+        url,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return Container(
+            color: Colors.grey.shade200,
+            child: Center(
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.green,
+                value: loadingProgress.expectedTotalBytes != null
+                    ? loadingProgress.cumulativeBytesLoaded /
+                          loadingProgress.expectedTotalBytes!
+                    : null,
+              ),
             ),
+          );
+        },
+        errorBuilder: (_, __, ___) => Container(
+          color: Colors.grey.shade200,
+          child: const Icon(
+            Icons.image_not_supported,
+            color: Colors.grey,
+            size: 50,
           ),
-        );
-      },
-      errorBuilder: (_, __, ___) => Container(
-        color: Colors.grey.shade200,
-        child: const Icon(
-          Icons.image_not_supported,
-          color: Colors.grey,
-          size: 50,
         ),
       ),
     );

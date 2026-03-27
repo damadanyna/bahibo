@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../page/productDetail.dart';
+import '../page/image_viewer_page.dart';
 
 class ProductCard extends StatelessWidget {
   final Map<String, dynamic> product;
@@ -39,7 +40,7 @@ class ProductCard extends StatelessWidget {
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.all(8),
-                  child: _buildImageGrid(),
+                  child: _buildImageGrid(context),
                 ),
               ),
               const SizedBox(width: 10),
@@ -105,23 +106,40 @@ class ProductCard extends StatelessWidget {
     );
   }
 
-  Widget _buildImageGrid() {
+  Widget _buildImageGrid(BuildContext context) {
     // ✅ CORRECTION — uniquement product['images'], thumbnail en fallback
     final List<String> images =
         (product['images'] as List?)?.whereType<String>().toList() ?? [];
 
     final String placeholder =
         product['thumbnail'] as String? ?? 'https://via.placeholder.com/150';
+    final List<String> galleryImages = images.isEmpty ? [placeholder] : images;
+
+    void openGallery(int index) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) =>
+              ImageViewerPage(imageUrls: galleryImages, initialIndex: index),
+        ),
+      );
+    }
 
     // images vide → thumbnail seul
     if (images.isEmpty) {
-      return SizedBox(height: 170, child: _imageItem(placeholder));
+      return SizedBox(
+        height: 170,
+        child: _imageItem(placeholder, onTap: () => openGallery(0)),
+      );
     }
 
     // 1 image
     if (images.length == 1) {
       final [first] = images;
-      return SizedBox(height: 170, child: _imageItem(first));
+      return SizedBox(
+        height: 170,
+        child: _imageItem(first, onTap: () => openGallery(0)),
+      );
     }
 
     // 2 images
@@ -131,9 +149,9 @@ class ProductCard extends StatelessWidget {
         height: 170,
         child: Row(
           children: [
-            Expanded(child: _imageItem(first)),
+            Expanded(child: _imageItem(first, onTap: () => openGallery(0))),
             const SizedBox(width: 2),
-            Expanded(child: _imageItem(second)),
+            Expanded(child: _imageItem(second, onTap: () => openGallery(1))),
           ],
         ),
       );
@@ -146,14 +164,18 @@ class ProductCard extends StatelessWidget {
         height: 170,
         child: Row(
           children: [
-            Expanded(child: _imageItem(first)),
+            Expanded(child: _imageItem(first, onTap: () => openGallery(0))),
             const SizedBox(width: 2),
             Expanded(
               child: Column(
                 children: [
-                  Expanded(child: _imageItem(second)),
+                  Expanded(
+                    child: _imageItem(second, onTap: () => openGallery(1)),
+                  ),
                   const SizedBox(height: 2),
-                  Expanded(child: _imageItem(third)),
+                  Expanded(
+                    child: _imageItem(third, onTap: () => openGallery(2)),
+                  ),
                 ],
               ),
             ),
@@ -173,9 +195,11 @@ class ProductCard extends StatelessWidget {
           Expanded(
             child: Row(
               children: [
-                Expanded(child: _imageItem(first)),
+                Expanded(child: _imageItem(first, onTap: () => openGallery(0))),
                 const SizedBox(width: 2),
-                Expanded(child: _imageItem(second)),
+                Expanded(
+                  child: _imageItem(second, onTap: () => openGallery(1)),
+                ),
               ],
             ),
           ),
@@ -183,13 +207,13 @@ class ProductCard extends StatelessWidget {
           Expanded(
             child: Row(
               children: [
-                Expanded(child: _imageItem(third)),
+                Expanded(child: _imageItem(third, onTap: () => openGallery(2))),
                 const SizedBox(width: 2),
                 Expanded(
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      _imageItem(fourth),
+                      _imageItem(fourth, onTap: () => openGallery(3)),
                       if (extra > 0)
                         Container(
                           decoration: BoxDecoration(
@@ -219,34 +243,37 @@ class ProductCard extends StatelessWidget {
   }
 
   // ✅ _imageItem inchangé
-  Widget _imageItem(String url) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(4),
-      child: Image.network(
-        url,
-        fit: BoxFit.cover,
-        width: double.infinity,
-        height: double.infinity,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          final isDark = Theme.of(context).brightness == Brightness.dark;
-          return Container(
-            color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
-            child: Center(
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.green,
-                value: loadingProgress.expectedTotalBytes != null
-                    ? loadingProgress.cumulativeBytesLoaded /
-                          loadingProgress.expectedTotalBytes!
-                    : null,
+  Widget _imageItem(String url, {VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: Image.network(
+          url,
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            final isDark = Theme.of(context).brightness == Brightness.dark;
+            return Container(
+              color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
+              child: Center(
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.green,
+                  value: loadingProgress.expectedTotalBytes != null
+                      ? loadingProgress.cumulativeBytesLoaded /
+                            loadingProgress.expectedTotalBytes!
+                      : null,
+                ),
               ),
-            ),
-          );
-        },
-        errorBuilder: (_, __, ___) => Container(
-          color: Colors.grey.shade200,
-          child: const Icon(Icons.image_not_supported, color: Colors.grey),
+            );
+          },
+          errorBuilder: (_, __, ___) => Container(
+            color: Colors.grey.shade200,
+            child: const Icon(Icons.image_not_supported, color: Colors.grey),
+          ),
         ),
       ),
     );
