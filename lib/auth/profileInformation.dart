@@ -1,5 +1,6 @@
-import 'package:bahibo/page/productList.dart';
+import 'package:bahibo/component/main_navigation_shell.dart';
 import 'package:bahibo/component/app_text_input.dart';
+import 'package:bahibo/page/productList.dart';
 import 'package:flutter/material.dart';
 
 class ProfileInformationPage extends StatefulWidget {
@@ -91,7 +92,19 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
                   Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const Productlist(),
+                      builder: (context) => MainNavigationShell(
+                        items: bahiboMainNavigationItems,
+                        pagesBuilder: (currentIndex, items, onIndexChanged) => [
+                          Productlist(
+                            currentMenuIndex: currentIndex,
+                            navigationItems: items,
+                            onMenuSelected: onIndexChanged,
+                          ),
+                          const MainNavigationSettingsPanel(),
+                          const MainNavigationSearchPanel(),
+                          const MainNavigationCategoryHubPanel(),
+                        ],
+                      ),
                     ),
                   );
                 },

@@ -1,17 +1,25 @@
 import 'dart:async';
-import 'package:bahibo/component/theme_menu_button.dart';
+import 'package:bahibo/component/main_navigation_shell.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'category_page.dart';
-import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
 import '../component/ProductCard.dart';
 
 class Productlist extends StatefulWidget {
-  const Productlist({super.key});
+  final int currentMenuIndex;
+  final List<MainNavigationItem> navigationItems;
+  final ValueChanged<int>? onMenuSelected;
+
+  const Productlist({
+    super.key,
+    this.currentMenuIndex = 0,
+    this.navigationItems = const [],
+    this.onMenuSelected,
+  });
 
   @override
   State<Productlist> createState() => _ProductlistState();
@@ -257,96 +265,98 @@ class _ProductlistState extends State<Productlist>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // backgroundColor: Colors.white,
-      body: Column(
-        children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 30),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  "Bahibo",
-                  style: TextStyle(
-                    fontSize: 25,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.green,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 5, 16, 7),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Abaoly',
+                    style: TextStyle(
+                      fontSize: 25,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.green,
+                    ),
                   ),
-                ),
-                Row(
-                  children: [
-                    const Icon(Icons.search, size: 30),
-                    const SizedBox(width: 20),
-                    const ThemeMenuButton(),
-                  ],
-                ),
-              ],
+                  if (widget.onMenuSelected != null &&
+                      widget.navigationItems.isNotEmpty)
+                    MainNavigationMenuButton(
+                      currentIndex: widget.currentMenuIndex,
+                      items: widget.navigationItems,
+                      onSelected: widget.onMenuSelected!,
+                    ),
+                ],
+              ),
             ),
-          ),
-          // Liste principale
-          Expanded(
-            child: Stack(
-              children: [
-                RefreshIndicator(
-                  onRefresh: refreshPageWithDialog,
-                  child: products.isEmpty && isLoading
-                      ? ListView(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          children: [
-                            const CategoryBlockSkeleton(),
-                            ...List.generate(
-                              8,
-                              (_) => buildProductCardLoadig(),
-                            ),
-                          ],
-                        )
-                      : ListView.builder(
-                          controller: _scrollController,
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          itemCount: mixedItems.length + 1,
-                          itemBuilder: (context, index) {
-                            if (index == mixedItems.length) {
-                              if (isLoading) {
-                                return Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 8,
-                                  ),
-                                  child: Column(
-                                    children: List.generate(
-                                      2,
-                                      (_) => buildProductCardLoadig(),
+            Expanded(
+              child: Stack(
+                children: [
+                  RefreshIndicator(
+                    onRefresh: refreshPageWithDialog,
+                    child: products.isEmpty && isLoading
+                        ? ListView(
+                            padding: const EdgeInsets.only(bottom: 132),
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            children: [
+                              const CategoryBlockSkeleton(),
+                              ...List.generate(
+                                8,
+                                (_) => buildProductCardLoadig(),
+                              ),
+                            ],
+                          )
+                        : ListView.builder(
+                            controller: _scrollController,
+                            padding: const EdgeInsets.only(bottom: 132),
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            itemCount: mixedItems.length + 1,
+                            itemBuilder: (context, index) {
+                              if (index == mixedItems.length) {
+                                if (isLoading) {
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 8,
                                     ),
-                                  ),
-                                );
+                                    child: Column(
+                                      children: List.generate(
+                                        2,
+                                        (_) => buildProductCardLoadig(),
+                                      ),
+                                    ),
+                                  );
+                                }
+                                if (!hasMore) {
+                                  return const Center(
+                                    child: Padding(
+                                      padding: EdgeInsets.all(16),
+                                      child: Text('Plus de produits 😊'),
+                                    ),
+                                  );
+                                }
+                                return const SizedBox.shrink();
                               }
-                              if (!hasMore) {
-                                return const Center(
-                                  child: Padding(
-                                    padding: EdgeInsets.all(16),
-                                    child: Text('Plus de produits 😊'),
-                                  ),
-                                );
+
+                              final item = mixedItems[index];
+
+                              if (item['type'] == 'category_block') {
+                                return buildCategoryBlock();
                               }
-                              return const SizedBox.shrink();
-                            }
-
-                            final item = mixedItems[index];
-
-                            if (item['type'] == 'category_block') {
-                              return buildCategoryBlock();
-                            }
-                            return ProductCard(
-                              product: item['data'] as Map<String, dynamic>,
-                            );
-                          },
-                        ),
-                ),
-                if (isOffline) const AppOfflineBanner(),
-              ],
+                              return ProductCard(
+                                product: item['data'] as Map<String, dynamic>,
+                              );
+                            },
+                          ),
+                  ),
+                  if (isOffline) const AppOfflineBanner(bottomOffset: 108),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
