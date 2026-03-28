@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:bahibo/component/app_back_button.dart';
+import 'package:bahibo/component/app_comments_sheet.dart';
 import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
+import 'package:bahibo/component/profile_models.dart';
+import 'package:bahibo/component/seller_profile_page.dart';
 
 class ImageViewerOverlayData {
   final String? title;
@@ -50,6 +55,7 @@ class ImageViewerPage extends StatefulWidget {
   final String? heroTag;
   final ImageViewerOverlayData? overlay;
   final VoidCallback? onSellerTap;
+  final VoidCallback? onSellerMessageTap;
 
   const ImageViewerPage({
     super.key,
@@ -58,6 +64,7 @@ class ImageViewerPage extends StatefulWidget {
     this.heroTag,
     this.overlay,
     this.onSellerTap,
+    this.onSellerMessageTap,
   });
 
   @override
@@ -68,7 +75,34 @@ class _ImageViewerPageState extends State<ImageViewerPage>
     with AppPageRefreshMixin<ImageViewerPage> {
   late final PageController _pageController;
   late int _currentIndex;
+  int _baseCommentCount = 64;
   bool _showEntrySkeleton = true;
+  bool _showChrome = true;
+  bool _isDescriptionExpanded = false;
+  int _commentAddedCount = 0;
+  final List<dynamic> _comments = [
+    AppCommentData(
+      authorName: 'Miora Andrianiaina',
+      avatarUrl:
+          'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=600',
+      timeLabel: 'il y a 5 min',
+      message: 'Très beau produit, il est toujours disponible ?',
+    ),
+    AppCommentData(
+      authorName: 'Aina Ravelona',
+      avatarUrl:
+          'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=600',
+      timeLabel: 'il y a 19 min',
+      message: 'La finition a l’air propre, j’aime beaucoup.',
+    ),
+    AppCommentData(
+      authorName: 'Toky Rajaonarison',
+      avatarUrl:
+          'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600',
+      timeLabel: 'il y a 1 h',
+      message: 'Possible d’avoir plus de détails sur la livraison ?',
+    ),
+  ];
 
   @override
   void initState() {
@@ -78,11 +112,21 @@ class _ImageViewerPageState extends State<ImageViewerPage>
       0,
       widget.imageUrls.isEmpty ? 0 : widget.imageUrls.length - 1,
     );
+    _baseCommentCount = _parseCompactCount(widget.overlay?.commentsCount) ?? 64;
     _pageController = PageController(initialPage: _currentIndex);
     Future.delayed(const Duration(milliseconds: 180), () {
       if (!mounted) return;
       setState(() => _showEntrySkeleton = false);
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant ImageViewerPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final updatedCount = _parseCompactCount(widget.overlay?.commentsCount);
+    if (updatedCount != null && updatedCount != _baseCommentCount) {
+      _baseCommentCount = updatedCount;
+    }
   }
 
   @override
@@ -145,104 +189,80 @@ class _ImageViewerPageState extends State<ImageViewerPage>
                   image = Hero(tag: widget.heroTag!, child: image);
                 }
 
-                return _ZoomableViewer(child: Center(child: image));
+                return _ZoomableViewer(
+                  onTap: () {
+                    setState(() => _showChrome = !_showChrome);
+                  },
+                  child: Center(child: image),
+                );
               },
             ),
           Positioned.fill(
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withOpacity(0.36),
-                      Colors.transparent,
-                      Colors.transparent,
-                      Colors.black.withOpacity(0.84),
-                    ],
-                    stops: const [0, 0.18, 0.52, 1],
+            child: AnimatedOpacity(
+              opacity: _showChrome ? 1 : 0,
+              duration: const Duration(milliseconds: 180),
+              child: IgnorePointer(
+                ignoring: !_showChrome,
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withOpacity(0.36),
+                          Colors.transparent,
+                          Colors.transparent,
+                          Colors.black.withOpacity(0.84),
+                        ],
+                        stops: const [0, 0.18, 0.52, 1],
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
-              child: Row(
-                children: [
-                  Material(
-                    color: Colors.black.withOpacity(0.34),
-                    shape: const CircleBorder(),
-                    child: InkWell(
-                      customBorder: const CircleBorder(),
-                      onTap: () => Navigator.of(context).maybePop(),
-                      child: const Padding(
-                        padding: EdgeInsets.all(10),
-                        child: Icon(
-                          Icons.arrow_back_ios_new_rounded,
-                          color: Colors.white,
-                          size: 18,
+          AnimatedOpacity(
+            opacity: _showChrome ? 1 : 0,
+            duration: const Duration(milliseconds: 180),
+            child: IgnorePointer(
+              ignoring: !_showChrome,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+                  child: Row(
+                    children: [
+                      const AppBackButton(),
+                      const Spacer(),
+
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 7,
                         ),
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.20),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: Colors.white.withOpacity(0.08)),
-                    ),
-                    child: RichText(
-                      text: TextSpan(
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                        children: [
-                          const TextSpan(text: 'Following'),
-                          TextSpan(
-                            text: '  |  ',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.55),
-                              fontWeight: FontWeight.w500,
-                            ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.34),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.14),
                           ),
-                          const TextSpan(text: 'For You'),
-                        ],
+                        ),
+                        child: Text(
+                          images.isEmpty
+                              ? 'Image'
+                              : '${_currentIndex + 1}/${images.length}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 7,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.34),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: Colors.white.withOpacity(0.14)),
-                    ),
-                    child: Text(
-                      images.isEmpty
-                          ? 'Image'
-                          : '${_currentIndex + 1}/${images.length}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
@@ -251,12 +271,26 @@ class _ImageViewerPageState extends State<ImageViewerPage>
               left: 16,
               right: 16,
               bottom: bottomOverlayOffset,
-              child: _ImageViewerOverlay(
-                overlay: overlay,
-                onSellerTap: widget.onSellerTap,
-                indexLabel: images.isEmpty
-                    ? 'Image'
-                    : '${_currentIndex + 1}/${images.length}',
+              child: AnimatedOpacity(
+                opacity: _showChrome ? 1 : 0,
+                duration: const Duration(milliseconds: 180),
+                child: IgnorePointer(
+                  ignoring: !_showChrome,
+                  child: _ImageViewerOverlay(
+                    overlay: overlay,
+                    onSellerTap: widget.onSellerTap,
+                    onSellerMessageTap: widget.onSellerMessageTap,
+                    onDescriptionTap: _toggleDescription,
+                    onCommentTap: _showCommentsSheet,
+                    onShareTap: _showShareSuggestions,
+                    isDescriptionExpanded: _isDescriptionExpanded,
+                    commentCountLabel: (_baseCommentCount + _commentAddedCount)
+                        .toString(),
+                    indexLabel: images.isEmpty
+                        ? 'Image'
+                        : '${_currentIndex + 1}/${images.length}',
+                  ),
+                ),
               ),
             ),
           if (isOffline) const AppOfflineBanner(bottomOffset: 18),
@@ -264,12 +298,152 @@ class _ImageViewerPageState extends State<ImageViewerPage>
       ),
     );
   }
+
+  void _toggleDescription() {
+    setState(() => _isDescriptionExpanded = !_isDescriptionExpanded);
+  }
+
+  void _openCommentAuthorProfile(AppCommentData comment) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SellerProfilePage(
+          profile: buildProfileFromUser(
+            name: comment.authorName,
+            avatarUrl: comment.avatarUrl,
+            subtitle: 'Membre de la communaute Bahibo',
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showCommentsSheet() {
+    showAppCommentsSheet(
+      context,
+      comments: _comments,
+      totalCount: _baseCommentCount + _commentAddedCount,
+      onAuthorTap: _openCommentAuthorProfile,
+      onCountChanged: (nextCount) {
+        if (!mounted) return;
+        setState(() {
+          _commentAddedCount = nextCount - _baseCommentCount;
+        });
+      },
+    );
+  }
+
+  int? _parseCompactCount(String? rawValue) {
+    if (rawValue == null) return null;
+    final digits = rawValue.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return null;
+    return int.tryParse(digits);
+  }
+
+  void _showShareSuggestions() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF111111),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (context) {
+        final suggestions =
+            <({IconData icon, String title, Color backgroundColor})>[
+              (
+                icon: FontAwesomeIcons.facebookF,
+                title: 'Facebook',
+                backgroundColor: const Color(0xFF4267B2),
+              ),
+              (
+                icon: FontAwesomeIcons.whatsapp,
+                title: 'WhatsApp',
+                backgroundColor: const Color(0xFF25D366),
+              ),
+            ];
+
+        return SafeArea(
+          child: FractionallySizedBox(
+            heightFactor: 0.34,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 46,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.16),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: suggestions
+                        .map(
+                          (item) => Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: () {
+                                  Navigator.of(context).pop();
+                                  ScaffoldMessenger.of(
+                                    this.context,
+                                  ).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        '${item.title} indisponible pour le moment',
+                                      ),
+                                    ),
+                                  );
+                                },
+                                customBorder: const CircleBorder(),
+                                child: Ink(
+                                  width: 56,
+                                  height: 56,
+                                  decoration: BoxDecoration(
+                                    color: item.backgroundColor,
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.18),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Icon(
+                                    item.icon,
+                                    color: Colors.white,
+                                    size: 24,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _ZoomableViewer extends StatefulWidget {
   final Widget child;
+  final VoidCallback? onTap;
 
-  const _ZoomableViewer({required this.child});
+  const _ZoomableViewer({required this.child, this.onTap});
 
   @override
   State<_ZoomableViewer> createState() => _ZoomableViewerState();
@@ -313,6 +487,7 @@ class _ZoomableViewerState extends State<_ZoomableViewer> {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
+      onTap: widget.onTap,
       onDoubleTapDown: (details) => _doubleTapDetails = details,
       onDoubleTap: _handleDoubleTap,
       child: InteractiveViewer(
@@ -337,12 +512,24 @@ class _ZoomableViewerState extends State<_ZoomableViewer> {
 class _ImageViewerOverlay extends StatelessWidget {
   final ImageViewerOverlayData overlay;
   final String indexLabel;
+  final String commentCountLabel;
+  final bool isDescriptionExpanded;
   final VoidCallback? onSellerTap;
+  final VoidCallback? onSellerMessageTap;
+  final VoidCallback? onDescriptionTap;
+  final VoidCallback? onCommentTap;
+  final VoidCallback? onShareTap;
 
   const _ImageViewerOverlay({
     required this.overlay,
     required this.indexLabel,
+    required this.commentCountLabel,
+    required this.isDescriptionExpanded,
     this.onSellerTap,
+    this.onSellerMessageTap,
+    this.onDescriptionTap,
+    this.onCommentTap,
+    this.onShareTap,
   });
 
   @override
@@ -352,230 +539,239 @@ class _ImageViewerOverlay extends StatelessWidget {
         (overlay.sellerAvatarUrl?.trim().isNotEmpty ?? false);
     final showTitle = overlay.title?.trim().isNotEmpty ?? false;
     final showDescription = overlay.description?.trim().isNotEmpty ?? false;
-    final showBadge = overlay.sellerBadge?.trim().isNotEmpty ?? false;
     final sellerAvatarUrl = overlay.sellerAvatarUrl?.trim();
-    final sellerName = overlay.sellerName?.trim();
-    final sellerBadge = overlay.sellerBadge?.trim();
     final title = overlay.title?.trim();
     final description = overlay.description?.trim();
-    final sellerHandle = overlay.sellerHandle?.trim();
-    final musicLabel = overlay.musicLabel?.trim();
     final postedAtLabel = overlay.postedAtLabel?.trim();
-    final likesCount = overlay.likesCount?.trim() ?? '6 374';
-    final commentsCount = overlay.commentsCount?.trim() ?? '64';
-    final sharesCount = overlay.sharesCount?.trim() ?? 'Partager';
-    final handle = sellerHandle?.isNotEmpty == true
-        ? sellerHandle!
-        : '@${(sellerName?.isNotEmpty == true ? sellerName! : 'bahibo').toLowerCase().replaceAll(' ', '')}';
-    final infoLine = postedAtLabel?.isNotEmpty == true
-        ? '$handle · $postedAtLabel'
-        : '$handle · 1-25';
-    final musicText = musicLabel?.isNotEmpty == true
-        ? musicLabel!
-        : 'Music name here - Artist Name';
+    final likesCount = overlay.likesCount?.trim();
+    final sharesCount = overlay.sharesCount?.trim();
+    final isSellerOnline = _isOnlineStatus(overlay.sellerBadge, postedAtLabel);
+    final actionLikes = likesCount?.isNotEmpty == true ? likesCount! : '6 374';
+    final actionComments = commentCountLabel;
+    final actionShares = sharesCount?.isNotEmpty == true
+        ? sharesCount!
+        : 'Partager';
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Expanded(
-          child: IgnorePointer(
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.18),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: Colors.white.withOpacity(0.08)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    infoLine,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 17,
-                    ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onDescriptionTap,
+              borderRadius: BorderRadius.circular(22),
+              child: Ink(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(
+                    isDescriptionExpanded ? 0.50 : 0.18,
                   ),
-                  const SizedBox(height: 8),
-                  if (showTitle)
-                    Text(
-                      title ?? '',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        height: 1.18,
-                      ),
-                    ),
-                  if (showTitle && showDescription) const SizedBox(height: 8),
-                  if (showDescription)
-                    Text(
-                      description ?? '',
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.88),
-                        fontSize: 13.5,
-                        height: 1.35,
-                      ),
-                    ),
-                  if (showBadge) const SizedBox(height: 10),
-                  if (showBadge)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1D8E4B).withOpacity(0.82),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        sellerBadge ?? '',
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: Colors.white.withOpacity(0.08)),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (showTitle)
+                      Text(
+                        title ?? '',
+                        maxLines: isDescriptionExpanded ? null : 2,
+                        overflow: isDescriptionExpanded
+                            ? TextOverflow.visible
+                            : TextOverflow.ellipsis,
                         style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
+                          color: Colors.green,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          height: 1.18,
+                        ),
+                      ),
+                    if (showTitle && showDescription) const SizedBox(height: 8),
+                    if (showDescription)
+                      Text(
+                        description ?? '',
+                        maxLines: isDescriptionExpanded ? null : 3,
+                        overflow: isDescriptionExpanded
+                            ? TextOverflow.visible
+                            : TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.88),
+                          fontSize: 13.5,
+                          height: 1.35,
+                        ),
+                      ),
+                    if (showDescription) const SizedBox(height: 6),
+                    if (showDescription)
+                      Text(
+                        isDescriptionExpanded ? 'Voir moins' : 'Voir plus',
+                        style: const TextStyle(
+                          color: Color(0xFF7CE3A0),
+                          fontSize: 11.5,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                    ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.music_note_rounded,
-                        color: Colors.white,
-                        size: 16,
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          musicText,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.92),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
         ),
-        const SizedBox(width: 14),
-        Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (showSeller)
-              GestureDetector(
-                onTap: onSellerTap,
-                child: _ProfileActionCluster(
-                  sellerAvatarUrl: sellerAvatarUrl,
-                  sellerName: sellerName,
+        if (showSeller) ...[
+          const SizedBox(width: 10),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              SizedBox(
+                width: 82,
+                child: Center(
+                  child: GestureDetector(
+                    onTap: onSellerTap,
+                    child: _SellerStatusAvatar(
+                      sellerAvatarUrl: sellerAvatarUrl,
+                      isOnline: isSellerOnline,
+                    ),
+                  ),
                 ),
               ),
-            if (showSeller) const SizedBox(height: 12),
-            IgnorePointer(
-              child: _OverlayActionBadge(
+              const SizedBox(height: 8),
+              _ViewerSocialActionCard(
                 icon: Icons.favorite,
-                label: likesCount,
-                accentColor: const Color(0xFFFF4D6D),
+                label: actionLikes,
+                iconColor: const Color(0xFFFF4D6D),
               ),
-            ),
-            const SizedBox(height: 10),
-            IgnorePointer(
-              child: _OverlayActionBadge(
+              const SizedBox(height: 8),
+              _ViewerSocialActionCard(
                 icon: Icons.chat_bubble,
-                label: commentsCount,
+                label: actionComments,
+                iconColor: Colors.white,
+                onTap: onCommentTap,
               ),
-            ),
-            const SizedBox(height: 10),
-            IgnorePointer(
-              child: _OverlayActionBadge(
+              const SizedBox(height: 8),
+              _ViewerSocialActionCard(
                 icon: Icons.reply_rounded,
-                label: sharesCount,
+                label: actionShares,
+                iconColor: Colors.white,
+                onTap: onShareTap,
               ),
-            ),
-          ],
-        ),
+              const SizedBox(height: 8),
+              _MessageActionCard(onTap: onSellerMessageTap),
+            ],
+          ),
+        ],
       ],
     );
   }
+
+  bool _isOnlineStatus(String? badge, String? postedAtLabel) {
+    final badgeText = (badge ?? '').toLowerCase();
+    final postedText = (postedAtLabel ?? '').toLowerCase();
+    return badgeText.contains('ligne') ||
+        badgeText.contains('online') ||
+        badgeText.contains('actif') ||
+        postedText.contains('ligne');
+  }
 }
 
-class _ProfileActionCluster extends StatelessWidget {
-  final String? sellerAvatarUrl;
-  final String? sellerName;
+class _ViewerSocialActionCard extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color iconColor;
+  final VoidCallback? onTap;
 
-  const _ProfileActionCluster({
-    required this.sellerAvatarUrl,
-    required this.sellerName,
+  const _ViewerSocialActionCard({
+    required this.icon,
+    required this.label,
+    required this.iconColor,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(3),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Ink(
+          width: 82,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 11),
           decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withOpacity(0.24)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.22),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+            color: Colors.black.withOpacity(0.52),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withOpacity(0.08)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 20, color: iconColor),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ],
           ),
-          child: sellerAvatarUrl?.isNotEmpty == true
-              ? AppCircleNetworkAvatar(radius: 22, imageUrl: sellerAvatarUrl!)
-              : Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.14),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.person, color: Colors.white),
-                ),
         ),
-        Positioned(
-          right: -4,
-          bottom: -4,
-          child: Container(
-            width: 20,
-            height: 20,
-            decoration: BoxDecoration(
-              color: const Color(0xFFFF2851),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 1.6),
-            ),
-            child: const Icon(Icons.add, color: Colors.white, size: 14),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
 
-class _SellerPresenceAvatar extends StatelessWidget {
-  final String? sellerAvatarUrl;
+class _MessageActionCard extends StatelessWidget {
+  final VoidCallback? onTap;
 
-  const _SellerPresenceAvatar({this.sellerAvatarUrl});
+  const _MessageActionCard({this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Ink(
+          width: 82,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 11),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.52),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withOpacity(0.08)),
+          ),
+          child: const Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.send_rounded, size: 20, color: Colors.white),
+              SizedBox(height: 4),
+              Text(
+                'Message',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SellerStatusAvatar extends StatelessWidget {
+  final String? sellerAvatarUrl;
+  final bool isOnline;
+
+  const _SellerStatusAvatar({this.sellerAvatarUrl, required this.isOnline});
 
   @override
   Widget build(BuildContext context) {
@@ -583,8 +779,8 @@ class _SellerPresenceAvatar extends StatelessWidget {
       clipBehavior: Clip.none,
       children: [
         Container(
-          width: 54,
-          height: 54,
+          width: 50,
+          height: 50,
           padding: const EdgeInsets.all(2),
           decoration: BoxDecoration(
             shape: BoxShape.circle,
@@ -599,7 +795,7 @@ class _SellerPresenceAvatar extends StatelessWidget {
             ],
           ),
           child: sellerAvatarUrl?.isNotEmpty == true
-              ? AppCircleNetworkAvatar(radius: 25, imageUrl: sellerAvatarUrl!)
+              ? AppCircleNetworkAvatar(radius: 23, imageUrl: sellerAvatarUrl!)
               : Container(
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.14),
@@ -612,57 +808,16 @@ class _SellerPresenceAvatar extends StatelessWidget {
           right: -1,
           bottom: -1,
           child: Container(
-            width: 16,
-            height: 16,
+            width: 14,
+            height: 14,
             decoration: BoxDecoration(
-              color: const Color(0xFF57D163),
+              color: isOnline ? const Color(0xFF57D163) : Colors.grey,
               shape: BoxShape.circle,
               border: Border.all(color: Colors.white, width: 2),
             ),
           ),
         ),
       ],
-    );
-  }
-}
-
-class _OverlayActionBadge extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color? accentColor;
-
-  const _OverlayActionBadge({
-    required this.icon,
-    required this.label,
-    this.accentColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 74,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.3),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: accentColor ?? Colors.white, size: 20),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

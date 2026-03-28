@@ -1,4 +1,5 @@
 import 'package:bahibo/component/theme_menu_button.dart';
+import 'package:bahibo/component/app_comments_sheet.dart';
 import 'package:bahibo/component/profile_models.dart';
 import 'package:bahibo/component/seller_profile_page.dart';
 import 'package:bahibo/component/app_page_skeletons.dart';
@@ -7,6 +8,7 @@ import 'package:bahibo/component/app_text_input.dart';
 import 'package:flutter/material.dart';
 import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/page/image_viewer_page.dart';
+import 'package:bahibo/page/seller_chat_page.dart';
 
 class ProductDetailPage extends StatefulWidget {
   final Map<String, dynamic> product;
@@ -27,8 +29,32 @@ class _ProductDetailPageState extends State<ProductDetailPage>
   late PageController _pageController;
   final TextEditingController _availabilityController = TextEditingController();
   int _currentPage = 0;
-  bool _isSaved = false;
   bool _showEntrySkeleton = true;
+  int _commentBaseCount = 64;
+  int _commentAddedCount = 0;
+  final List<dynamic> _comments = [
+    const AppCommentData(
+      authorName: 'Miora Andrianiaina',
+      avatarUrl:
+          'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=600',
+      timeLabel: 'il y a 5 min',
+      message: 'Très beau produit, il est toujours disponible ?',
+    ),
+    const AppCommentData(
+      authorName: 'Aina Ravelona',
+      avatarUrl:
+          'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=600',
+      timeLabel: 'il y a 19 min',
+      message: 'La finition a l’air propre, j’aime beaucoup.',
+    ),
+    const AppCommentData(
+      authorName: 'Toky Rajaonarison',
+      avatarUrl:
+          'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600',
+      timeLabel: 'il y a 1 h',
+      message: 'Possible d’avoir plus de détails sur la livraison ?',
+    ),
+  ];
 
   @override
   void initState() {
@@ -124,16 +150,6 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                             ),
                             onPressed: () {},
                           ),
-                          IconButton(
-                            icon: Icon(
-                              _isSaved
-                                  ? Icons.bookmark
-                                  : Icons.bookmark_outline,
-                              color: _isSaved ? Colors.green : Colors.black,
-                            ),
-                            onPressed: () =>
-                                setState(() => _isSaved = !_isSaved),
-                          ),
                           const ThemeMenuButton(),
                         ],
                       ),
@@ -144,6 +160,38 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                           children: [
                             // ── Grille d'images ──
                             _buildImageGrid(images),
+
+                            // ── Actions ──
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 12,
+                              ),
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceAround,
+                                children: [
+                                  _socialActionCard(
+                                    icon: Icons.favorite,
+                                    label: '6 374',
+                                    iconColor: const Color(0xFFFF4D6D),
+                                  ),
+                                  _socialActionCard(
+                                    icon: Icons.chat_bubble,
+                                    label:
+                                        (_commentBaseCount + _commentAddedCount)
+                                            .toString(),
+                                    iconColor: Colors.white,
+                                    onTap: _showProductCommentsSheet,
+                                  ),
+                                  _socialActionCard(
+                                    icon: Icons.reply_rounded,
+                                    label: 'Partager',
+                                    iconColor: Colors.white,
+                                  ),
+                                ],
+                              ),
+                            ),
 
                             // ── Carte principale ──
                             Container(
@@ -358,6 +406,15 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                                       ),
                                                     );
                                                   },
+                                                  onSellerMessageTap: () {
+                                                    Navigator.push(
+                                                      context,
+                                                      MaterialPageRoute(
+                                                        builder: (_) =>
+                                                            const SellerChatPage(),
+                                                      ),
+                                                    );
+                                                  },
                                                   overlay: ImageViewerOverlayData(
                                                     title: 'Profil vendeur',
                                                     description:
@@ -533,34 +590,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                               ),
                             ),
 
-                            // ── Actions ──
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 12,
-                              ),
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceAround,
-                                children: [
-                                  _actionButton(
-                                    Icons.notifications_outlined,
-                                    'Alerte',
-                                    Colors.orange,
-                                  ),
-                                  _actionButton(
-                                    Icons.reply_outlined,
-                                    'Partager',
-                                    Colors.blue,
-                                  ),
-                                  _actionButton(
-                                    Icons.more_horiz,
-                                    'Plus',
-                                    Colors.grey,
-                                  ),
-                                ],
-                              ),
-                            ),
+                            const SizedBox(height: 12),
 
                             const SizedBox(
                               height: 100,
@@ -684,7 +714,11 @@ class _ProductDetailPageState extends State<ProductDetailPage>
 
     return Column(
       children: [
-        SizedBox(height: 220, width: double.infinity, child: _imageItem(first)),
+        SizedBox(
+          height: 220,
+          width: double.infinity,
+          child: _imageItem(first, onTap: () => _openProductGallery(images, 0)),
+        ),
         const SizedBox(height: 2),
         SizedBox(
           height: 140,
@@ -746,6 +780,12 @@ class _ProductDetailPageState extends State<ProductDetailPage>
               ),
             );
           },
+          onSellerMessageTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SellerChatPage()),
+            );
+          },
           overlay: ImageViewerOverlayData(
             title: widget.product['title'] as String? ?? 'Produit',
             description:
@@ -754,6 +794,36 @@ class _ProductDetailPageState extends State<ProductDetailPage>
             sellerName: _sellerName,
             sellerAvatarUrl: _sellerImageUrl,
             sellerBadge: _sellerBadge,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showProductCommentsSheet() {
+    showAppCommentsSheet(
+      context,
+      comments: _comments,
+      totalCount: _commentBaseCount + _commentAddedCount,
+      onAuthorTap: _openCommentAuthorProfile,
+      onCountChanged: (nextCount) {
+        if (!mounted) return;
+        setState(() {
+          _commentAddedCount = nextCount - _commentBaseCount;
+        });
+      },
+    );
+  }
+
+  void _openCommentAuthorProfile(AppCommentData comment) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SellerProfilePage(
+          profile: buildProfileFromUser(
+            name: comment.authorName,
+            avatarUrl: comment.avatarUrl,
+            subtitle: 'Membre de la communaute Bahibo',
           ),
         ),
       ),
@@ -816,24 +886,46 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     );
   }
 
-  Widget _actionButton(IconData icon, String label, Color color) {
-    return Column(
-      children: [
-        Container(
-          width: 48,
-          height: 48,
+  Widget _socialActionCard({
+    required IconData icon,
+    required String label,
+    required Color iconColor,
+    VoidCallback? onTap,
+  }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Ink(
+          width: 88,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            shape: BoxShape.circle,
+            color: isDark ? const Color(0xFF121212) : const Color(0xFF1C1C1C),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: Colors.white.withOpacity(0.08)),
           ),
-          child: Icon(icon, size: 22, color: color),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 22, color: iconColor),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
-        ),
-      ],
+      ),
     );
   }
 }

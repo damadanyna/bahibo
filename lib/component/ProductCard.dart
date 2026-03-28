@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:bahibo/component/app_network_image.dart';
 import '../page/productDetail.dart';
-import '../page/image_viewer_page.dart';
 
 class ProductCard extends StatelessWidget {
   final Map<String, dynamic> product;
@@ -114,21 +113,11 @@ class ProductCard extends StatelessWidget {
 
     final String placeholder =
         product['thumbnail'] as String? ?? 'https://via.placeholder.com/150';
-    final List<String> galleryImages = images.isEmpty ? [placeholder] : images;
 
-    void openGallery(int index) {
+    void openProductDetail() {
       Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (_) => ImageViewerPage(
-            imageUrls: galleryImages,
-            initialIndex: index,
-            overlay: ImageViewerOverlayData(
-              title: product['title'] as String? ?? 'Produit',
-              description: product['category'] as String? ?? 'Annonce Bahibo',
-            ),
-          ),
-        ),
+        MaterialPageRoute(builder: (_) => ProductDetailPage(product: product)),
       );
     }
 
@@ -136,7 +125,7 @@ class ProductCard extends StatelessWidget {
     if (images.isEmpty) {
       return SizedBox(
         height: 170,
-        child: _imageItem(placeholder, onTap: () => openGallery(0)),
+        child: _imageItem(placeholder, onTap: openProductDetail),
       );
     }
 
@@ -145,7 +134,7 @@ class ProductCard extends StatelessWidget {
       final [first] = images;
       return SizedBox(
         height: 170,
-        child: _imageItem(first, onTap: () => openGallery(0)),
+        child: _imageItem(first, onTap: openProductDetail),
       );
     }
 
@@ -156,9 +145,9 @@ class ProductCard extends StatelessWidget {
         height: 170,
         child: Row(
           children: [
-            Expanded(child: _imageItem(first, onTap: () => openGallery(0))),
+            Expanded(child: _imageItem(first, onTap: openProductDetail)),
             const SizedBox(width: 2),
-            Expanded(child: _imageItem(second, onTap: () => openGallery(1))),
+            Expanded(child: _imageItem(second, onTap: openProductDetail)),
           ],
         ),
       );
@@ -171,18 +160,14 @@ class ProductCard extends StatelessWidget {
         height: 170,
         child: Row(
           children: [
-            Expanded(child: _imageItem(first, onTap: () => openGallery(0))),
+            Expanded(child: _imageItem(first, onTap: openProductDetail)),
             const SizedBox(width: 2),
             Expanded(
               child: Column(
                 children: [
-                  Expanded(
-                    child: _imageItem(second, onTap: () => openGallery(1)),
-                  ),
+                  Expanded(child: _imageItem(second, onTap: openProductDetail)),
                   const SizedBox(height: 2),
-                  Expanded(
-                    child: _imageItem(third, onTap: () => openGallery(2)),
-                  ),
+                  Expanded(child: _imageItem(third, onTap: openProductDetail)),
                 ],
               ),
             ),
@@ -202,11 +187,9 @@ class ProductCard extends StatelessWidget {
           Expanded(
             child: Row(
               children: [
-                Expanded(child: _imageItem(first, onTap: () => openGallery(0))),
+                Expanded(child: _imageItem(first, onTap: openProductDetail)),
                 const SizedBox(width: 2),
-                Expanded(
-                  child: _imageItem(second, onTap: () => openGallery(1)),
-                ),
+                Expanded(child: _imageItem(second, onTap: openProductDetail)),
               ],
             ),
           ),
@@ -214,13 +197,13 @@ class ProductCard extends StatelessWidget {
           Expanded(
             child: Row(
               children: [
-                Expanded(child: _imageItem(third, onTap: () => openGallery(2))),
+                Expanded(child: _imageItem(third, onTap: openProductDetail)),
                 const SizedBox(width: 2),
                 Expanded(
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      _imageItem(fourth, onTap: () => openGallery(3)),
+                      _imageItem(fourth, onTap: openProductDetail),
                       if (extra > 0)
                         Container(
                           decoration: BoxDecoration(

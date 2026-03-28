@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:bahibo/component/app_back_button.dart';
 import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
@@ -262,23 +263,7 @@ class _UserListPageState extends State<UserListPage>
           Positioned(
             top: MediaQuery.of(context).padding.top + 16,
             left: 24,
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () => Navigator.of(context).pop(),
-                borderRadius: BorderRadius.circular(999),
-                child: Ink(
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.28),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white24),
-                  ),
-                  child: const Icon(Icons.arrow_back, color: Colors.white),
-                ),
-              ),
-            ),
+            child: const AppBackButton(),
           ),
           if (isOffline) const AppOfflineBanner(),
         ],

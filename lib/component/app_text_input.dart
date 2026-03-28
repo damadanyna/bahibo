@@ -29,13 +29,6 @@ class AppInputContainer extends StatelessWidget {
         border: Border.all(
           color: isDark ? Colors.white10 : const Color(0xFFDFEAE2),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.14 : 0.05),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
       ),
       child: child,
     );

@@ -1,4 +1,5 @@
 import 'package:bahibo/component/ProductCard.dart';
+import 'package:bahibo/component/app_back_button.dart';
 import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
@@ -117,23 +118,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
           Positioned(
             top: MediaQuery.of(context).padding.top + 16,
             left: 24,
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () => _showExitDialog(context),
-                borderRadius: BorderRadius.circular(999),
-                child: Ink(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.28),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white24),
-                  ),
-                  child: const Icon(Icons.arrow_back, color: Colors.white),
-                ),
-              ),
-            ),
+            child: AppBackButton(onTap: () => _showExitDialog(context)),
           ),
           if (isOffline) const AppOfflineBanner(),
         ],
@@ -412,6 +397,14 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                                   imageUrls: [profile.avatarUrl],
                                   initialIndex: 0,
                                   heroTag: 'profile-avatar-${profile.name}',
+                                  onSellerMessageTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => const SellerChatPage(),
+                                      ),
+                                    );
+                                  },
                                   overlay: ImageViewerOverlayData(
                                     title: profile.name,
                                     description: profile.headline,
