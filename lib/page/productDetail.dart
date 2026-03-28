@@ -177,15 +177,6 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                               decoration: BoxDecoration(
                                 color: theme.cardColor,
                                 borderRadius: BorderRadius.circular(16),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: isDark
-                                        ? Colors.black.withOpacity(0.3)
-                                        : Colors.black.withOpacity(0.05),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -283,15 +274,6 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                               decoration: BoxDecoration(
                                 color: theme.cardColor,
                                 borderRadius: BorderRadius.circular(16),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: isDark
-                                        ? Colors.black.withOpacity(0.3)
-                                        : Colors.black.withOpacity(0.05),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -345,15 +327,6 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                 decoration: BoxDecoration(
                                   color: theme.cardColor,
                                   borderRadius: BorderRadius.circular(16),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: isDark
-                                          ? Colors.black.withOpacity(0.3)
-                                          : Colors.black.withOpacity(0.05),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
                                 ),
                                 child: Row(
                                   children: [
@@ -533,15 +506,6 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                               decoration: BoxDecoration(
                                 color: theme.cardColor,
                                 borderRadius: BorderRadius.circular(16),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: isDark
-                                        ? Colors.black.withOpacity(0.3)
-                                        : Colors.black.withOpacity(0.05),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -587,15 +551,6 @@ class _ProductDetailPageState extends State<ProductDetailPage>
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
         decoration: BoxDecoration(
           color: theme.bottomAppBarTheme.color ?? theme.cardColor,
-          boxShadow: [
-            BoxShadow(
-              color: isDark
-                  ? Colors.black.withOpacity(0.5)
-                  : Colors.black.withOpacity(0.08),
-              blurRadius: 10,
-              offset: const Offset(0, -3),
-            ),
-          ],
         ),
         child: Row(
           children: [

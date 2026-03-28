@@ -648,13 +648,6 @@ class _SellerStatusAvatar extends StatelessWidget {
             shape: BoxShape.circle,
             color: Colors.white.withOpacity(0.10),
             border: Border.all(color: Colors.white.withOpacity(0.22)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.28),
-                blurRadius: 14,
-                offset: const Offset(0, 5),
-              ),
-            ],
           ),
           child: sellerAvatarUrl?.isNotEmpty == true
               ? AppCircleNetworkAvatar(radius: 23, imageUrl: sellerAvatarUrl!)

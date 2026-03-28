@@ -333,18 +333,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: isDark
-                ? Colors.black.withOpacity(0.25)
-                : const Color(0x14000000),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
-          ),
-        ],
-      ),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(24)),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
         child: Stack(

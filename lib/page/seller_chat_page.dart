@@ -381,13 +381,6 @@ class _ChatHeader extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [primary.withOpacity(0.92), const Color(0xFF123C2E)],
         ),
-        boxShadow: [
-          BoxShadow(
-            color: primary.withOpacity(0.18),
-            blurRadius: 28,
-            offset: const Offset(0, 14),
-          ),
-        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -669,13 +662,6 @@ class _ChatBubble extends StatelessWidget {
                       ? Colors.white10
                       : (isDark ? Colors.white10 : const Color(0xFFE3ECE6)),
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(isDark ? 0.14 : 0.05),
-                    blurRadius: 16,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

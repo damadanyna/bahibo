@@ -91,13 +91,6 @@ class AppMessageComposer extends StatelessWidget {
                     colors: [primary, primary.withOpacity(0.78)],
                   ),
                   shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: primary.withOpacity(0.30),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
                 ),
                 child: const Icon(
                   Icons.north_east_rounded,

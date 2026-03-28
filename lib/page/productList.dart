@@ -219,13 +219,6 @@ class _ProductlistState extends State<Productlist>
                                 ? Colors.grey.shade700
                                 : const Color.fromARGB(255, 223, 223, 223),
                           ),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Colors.black12,
-                              blurRadius: 4,
-                              offset: Offset(0, 0),
-                            ),
-                          ],
                         ),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,

@@ -71,13 +71,6 @@ Future<void> showAppShareSheet(BuildContext context) {
                                 decoration: BoxDecoration(
                                   color: item.backgroundColor,
                                   shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.18),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
                                 ),
                                 child: Icon(
                                   item.icon,

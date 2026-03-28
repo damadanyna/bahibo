@@ -125,15 +125,6 @@ class _UserListPageState extends State<UserListPage>
                               ],
                             ),
                             borderRadius: BorderRadius.circular(28),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(
-                                  isDark ? 0.22 : 0.08,
-                                ),
-                                blurRadius: 24,
-                                offset: const Offset(0, 10),
-                              ),
-                            ],
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -302,13 +293,6 @@ class _UserListPageState extends State<UserListPage>
           decoration: BoxDecoration(
             color: surfaceColor,
             borderRadius: BorderRadius.circular(22),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(isDark ? 0.18 : 0.06),
-                blurRadius: 14,
-                offset: const Offset(0, 6),
-              ),
-            ],
           ),
           child: Row(
             children: [

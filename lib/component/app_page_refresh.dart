@@ -27,13 +27,6 @@ class AppOfflineBanner extends StatelessWidget {
             decoration: BoxDecoration(
               color: const Color(0xFFD32F2F),
               borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.18),
-                  blurRadius: 14,
-                  offset: const Offset(0, 6),
-                ),
-              ],
             ),
             child: const Text(
               'Vous n\'etes pas connecté a internet',
