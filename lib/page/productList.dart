@@ -5,11 +5,10 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'category_page.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:bahibo/component/app_network_image.dart';
+import 'package:bahibo/component/app_page_skeletons.dart';
+import 'package:bahibo/component/app_page_refresh.dart';
 import '../component/ProductCard.dart';
-
-// Dans votre State :
-late StreamSubscription<List<ConnectivityResult>> _connectivitySubscription;
 
 class Productlist extends StatefulWidget {
   const Productlist({super.key});
@@ -18,7 +17,8 @@ class Productlist extends StatefulWidget {
   State<Productlist> createState() => _ProductlistState();
 }
 
-class _ProductlistState extends State<Productlist> {
+class _ProductlistState extends State<Productlist>
+    with AppPageRefreshMixin<Productlist> {
   List<dynamic> products = [];
   List<String> categories = [];
 
@@ -36,22 +36,11 @@ class _ProductlistState extends State<Productlist> {
   @override
   void initState() {
     super.initState();
+    initializePageRefresh();
     fetchCategories();
     fetchProducts();
 
     _scrollController.addListener(_onScroll);
-    // ← écouter les changements de connexion
-    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
-      List<ConnectivityResult> results,
-    ) {
-      final isConnected = results.any((r) => r != ConnectivityResult.none);
-
-      if (isConnected && products.isEmpty) {
-        // ← relancer uniquement si pas encore chargé
-        fetchCategories();
-        fetchProducts();
-      }
-    });
   }
 
   void _onScroll() {
@@ -64,10 +53,29 @@ class _ProductlistState extends State<Productlist> {
 
   @override
   void dispose() {
-    _connectivitySubscription.cancel();
+    disposePageRefresh();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  @override
+  Future<void> onPageReload() async {
+    setState(() {
+      products = [];
+      categories = [];
+      mixedItems = [];
+      skip = 0;
+      hasMore = true;
+      isLoading = false;
+    });
+
+    await fetchCategories();
+    await fetchProducts();
+
+    if (_scrollController.hasClients) {
+      _scrollController.jumpTo(0);
+    }
   }
 
   Future<void> fetchCategories() async {
@@ -170,7 +178,7 @@ class _ProductlistState extends State<Productlist> {
         SizedBox(
           height: 200,
           child: categories.isEmpty
-              ? const Center(child: CircularProgressIndicator())
+              ? const CategoryBlockSkeleton()
               : ListView.builder(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -250,78 +258,7 @@ class _ProductlistState extends State<Productlist> {
   }
 
   Widget buildProductCardLoadig() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        border: Border.all(
-          width: 1,
-          color: isDark
-              ? Colors.grey.shade700
-              : const Color.fromARGB(255, 223, 223, 223),
-        ),
-        borderRadius: BorderRadius.circular(10),
-        color: isDark ? Colors.grey.shade900 : Colors.white,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(7),
-        child: Row(
-          children: [
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Container(
-                  color: const Color.fromARGB(75, 158, 158, 158),
-                  width: 70,
-                  height: 170,
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    color: const Color.fromARGB(75, 158, 158, 158),
-                    width: 170,
-                    height: 20,
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Container(
-                        color: const Color.fromARGB(75, 158, 158, 158),
-                        width: 15,
-                        height: 15,
-                      ),
-                      const SizedBox(width: 4),
-                      Container(
-                        color: const Color.fromARGB(75, 158, 158, 158),
-                        width: 120,
-                        height: 15,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Container(
-                    color: const Color.fromARGB(75, 158, 158, 158),
-                    width: 120,
-                    height: 15,
-                  ),
-                  const SizedBox(height: 30),
-                  Container(
-                    color: const Color.fromARGB(75, 158, 158, 158),
-                    width: 120,
-                    height: 30,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    return const ProductCardSkeleton();
   }
 
   @override
@@ -356,50 +293,65 @@ class _ProductlistState extends State<Productlist> {
           ),
           // Liste principale
           Expanded(
-            child: products.isEmpty && isLoading
-                ? ListView.builder(
-                    itemCount: 15,
-                    itemBuilder: (context, index) {
-                      return buildProductCardLoadig();
-                    },
-                  ) // const Center(child: CircularProgressIndicator())
-                : ListView.builder(
-                    controller: _scrollController,
-                    // ← physics important pour que le scroll fonctionne bien
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    itemCount: mixedItems.length + 1, // +1 loader
-                    itemBuilder: (context, index) {
-                      // Loader / fin de liste
-                      if (index == mixedItems.length) {
-                        if (isLoading) {
-                          return const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(16),
-                              child: CircularProgressIndicator(),
+            child: Stack(
+              children: [
+                RefreshIndicator(
+                  onRefresh: refreshPageWithDialog,
+                  child: products.isEmpty && isLoading
+                      ? ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          children: [
+                            const CategoryBlockSkeleton(),
+                            ...List.generate(
+                              8,
+                              (_) => buildProductCardLoadig(),
                             ),
-                          );
-                        }
-                        if (!hasMore) {
-                          return const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(16),
-                              child: Text('Plus de produits 😊'),
-                            ),
-                          );
-                        }
-                        return const SizedBox.shrink();
-                      }
+                          ],
+                        )
+                      : ListView.builder(
+                          controller: _scrollController,
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          itemCount: mixedItems.length + 1,
+                          itemBuilder: (context, index) {
+                            if (index == mixedItems.length) {
+                              if (isLoading) {
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 8,
+                                  ),
+                                  child: Column(
+                                    children: List.generate(
+                                      2,
+                                      (_) => buildProductCardLoadig(),
+                                    ),
+                                  ),
+                                );
+                              }
+                              if (!hasMore) {
+                                return const Center(
+                                  child: Padding(
+                                    padding: EdgeInsets.all(16),
+                                    child: Text('Plus de produits 😊'),
+                                  ),
+                                );
+                              }
+                              return const SizedBox.shrink();
+                            }
 
-                      final item = mixedItems[index];
+                            final item = mixedItems[index];
 
-                      if (item['type'] == 'category_block') {
-                        return buildCategoryBlock();
-                      }
-                      return ProductCard(
-                        product: item['data'] as Map<String, dynamic>,
-                      );
-                    },
-                  ),
+                            if (item['type'] == 'category_block') {
+                              return buildCategoryBlock();
+                            }
+                            return ProductCard(
+                              product: item['data'] as Map<String, dynamic>,
+                            );
+                          },
+                        ),
+                ),
+                if (isOffline) const AppOfflineBanner(),
+              ],
+            ),
           ),
         ],
       ),

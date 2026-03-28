@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:bahibo/component/app_network_image.dart';
 import '../page/productDetail.dart';
 import '../page/image_viewer_page.dart';
 
 class ProductCard extends StatelessWidget {
   final Map<String, dynamic> product;
+  static const Color _cardBackgroundColor = Color(0xFF222120);
+  static const Color _cardBorderColor = Color(0x1FFFFFFF);
+  static const Color _titleColor = Colors.white;
+  static const Color _metaTextColor = Color(0xFFD4D7DC);
 
   const ProductCard({super.key, required this.product});
 
@@ -21,16 +26,9 @@ class ProductCard extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
-          border: Border.all(
-            width: 1,
-            color: Theme.of(context).brightness == Brightness.dark
-                ? Colors.grey.shade700
-                : const Color.fromARGB(255, 223, 223, 223),
-          ),
+          border: Border.all(width: 1, color: _cardBorderColor),
           borderRadius: BorderRadius.circular(10),
-          color: Theme.of(context).brightness == Brightness.dark
-              ? Colors.grey.shade900
-              : Colors.white,
+          color: _cardBackgroundColor,
         ),
         child: Padding(
           padding: const EdgeInsets.all(7),
@@ -53,7 +51,10 @@ class ProductCard extends StatelessWidget {
                       product['title'] ?? 'Sans titre',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: _titleColor,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Row(
@@ -119,8 +120,14 @@ class ProductCard extends StatelessWidget {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) =>
-              ImageViewerPage(imageUrls: galleryImages, initialIndex: index),
+          builder: (_) => ImageViewerPage(
+            imageUrls: galleryImages,
+            initialIndex: index,
+            overlay: ImageViewerOverlayData(
+              title: product['title'] as String? ?? 'Produit',
+              description: product['category'] as String? ?? 'Annonce Bahibo',
+            ),
+          ),
         ),
       );
     }
@@ -246,34 +253,15 @@ class ProductCard extends StatelessWidget {
   Widget _imageItem(String url, {VoidCallback? onTap}) {
     return GestureDetector(
       onTap: onTap,
-      child: ClipRRect(
+      child: AppNetworkImage(
+        imageUrl: url,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
         borderRadius: BorderRadius.circular(4),
-        child: Image.network(
-          url,
-          fit: BoxFit.cover,
-          width: double.infinity,
-          height: double.infinity,
-          loadingBuilder: (context, child, loadingProgress) {
-            if (loadingProgress == null) return child;
-            final isDark = Theme.of(context).brightness == Brightness.dark;
-            return Container(
-              color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
-              child: Center(
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.green,
-                  value: loadingProgress.expectedTotalBytes != null
-                      ? loadingProgress.cumulativeBytesLoaded /
-                            loadingProgress.expectedTotalBytes!
-                      : null,
-                ),
-              ),
-            );
-          },
-          errorBuilder: (_, __, ___) => Container(
-            color: Colors.grey.shade200,
-            child: const Icon(Icons.image_not_supported, color: Colors.grey),
-          ),
+        errorChild: const Icon(
+          Icons.image_not_supported,
+          color: _metaTextColor,
         ),
       ),
     );

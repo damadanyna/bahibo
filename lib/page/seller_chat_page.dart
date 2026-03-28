@@ -1,4 +1,12 @@
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:bahibo/component/app_network_image.dart';
+import 'package:bahibo/component/app_page_skeletons.dart';
+import 'package:bahibo/component/app_page_refresh.dart';
+import 'package:bahibo/component/app_text_input.dart';
+import 'package:image_picker/image_picker.dart';
 
 class SellerChatPage extends StatefulWidget {
   const SellerChatPage({super.key});
@@ -7,9 +15,12 @@ class SellerChatPage extends StatefulWidget {
   State<SellerChatPage> createState() => _SellerChatPageState();
 }
 
-class _SellerChatPageState extends State<SellerChatPage> {
+class _SellerChatPageState extends State<SellerChatPage>
+    with AppPageRefreshMixin<SellerChatPage> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final ImagePicker _imagePicker = ImagePicker();
+  bool _showEntrySkeleton = true;
   final List<_ChatMessage> _messages = [
     const _ChatMessage(
       message: 'Bonjour, le Samsung S20 est-il toujours disponible ?',
@@ -18,21 +29,53 @@ class _SellerChatPageState extends State<SellerChatPage> {
     ),
     const _ChatMessage(
       message: 'Oui, il est toujours disponible. Interesse ?',
-      time: '15:00',
+      time: '13:02',
       isMine: true,
     ),
     const _ChatMessage(
-      message: 'Oui, je souhaite l\'acheter.',
-      time: '15:00',
+      message: 'Oui, je souhaite l\'acheter. Je peux passer aujourd\'hui ?',
+      time: '13:04',
       isMine: false,
+    ),
+    const _ChatMessage(
+      message: 'Pas de souci. Je suis disponible a partir de 16h.',
+      time: '13:06',
+      isMine: true,
     ),
   ];
 
   @override
+  void initState() {
+    super.initState();
+    initializePageRefresh();
+    Future.delayed(const Duration(milliseconds: 260), () {
+      if (!mounted) return;
+      setState(() => _showEntrySkeleton = false);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _jumpToBottom();
+    });
+  }
+
+  @override
   void dispose() {
+    disposePageRefresh();
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  @override
+  Future<void> onPageReload() async {
+    if (mounted) {
+      setState(() => _showEntrySkeleton = true);
+    }
+    await Future.delayed(const Duration(milliseconds: 400));
+    if (!mounted) return;
+    setState(() => _showEntrySkeleton = false);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _jumpToBottom();
+    });
   }
 
   void _sendMessage() {
@@ -52,14 +95,207 @@ class _SellerChatPageState extends State<SellerChatPage> {
     _messageController.clear();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent + 80,
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
-        );
-      }
+      _animateToBottom();
     });
+  }
+
+  void _openAttachmentSheet() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final primary = theme.colorScheme.primary;
+    final sheetColor = isDark ? const Color(0xFF102522) : Colors.white;
+    final mutedColor = isDark ? Colors.white70 : const Color(0xFF5D6C66);
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return Container(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 26),
+          decoration: BoxDecoration(
+            color: sheetColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 46,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white24 : Colors.black12,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                'Ajouter un contenu',
+                style: TextStyle(
+                  color: isDark ? Colors.white : const Color(0xFF12201B),
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Photo, document ou texte rapide.',
+                style: TextStyle(
+                  color: mutedColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 18),
+              _AttachmentActionTile(
+                icon: Icons.photo_library_outlined,
+                title: 'Photo',
+                subtitle: 'Ajouter une image dans la discussion',
+                primary: primary,
+                isDark: isDark,
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _pickImageFromGallery();
+                },
+              ),
+              const SizedBox(height: 10),
+              _AttachmentActionTile(
+                icon: Icons.description_outlined,
+                title: 'Document',
+                subtitle: 'Joindre un document ou un PDF',
+                primary: primary,
+                isDark: isDark,
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _pickDocumentFromFiles();
+                },
+              ),
+              const SizedBox(height: 10),
+              _AttachmentActionTile(
+                icon: Icons.notes_outlined,
+                title: 'Texte rapide',
+                subtitle: 'Inserer un texte pre-rempli',
+                primary: primary,
+                isDark: isDark,
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _insertQuickText();
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _insertQuickText() {
+    const template =
+        'Bonjour, je vous contacte pour confirmer la disponibilite du produit.';
+    _messageController
+      ..text = template
+      ..selection = TextSelection.collapsed(offset: template.length);
+    setState(() {});
+  }
+
+  Future<void> _pickImageFromGallery() async {
+    final file = await _imagePicker.pickImage(source: ImageSource.gallery);
+    if (file == null) return;
+
+    final bytes = await file.readAsBytes();
+    _addAttachmentMessage(
+      _AttachmentType.photo,
+      label: file.name,
+      bytes: bytes,
+      messageText: 'Photo importee depuis la galerie',
+    );
+  }
+
+  Future<void> _pickDocumentFromFiles() async {
+    final result = await FilePicker.platform.pickFiles(
+      withData: true,
+      allowMultiple: false,
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'doc', 'docx', 'txt'],
+    );
+
+    if (result == null || result.files.isEmpty) return;
+
+    final file = result.files.single;
+    _addAttachmentMessage(
+      _AttachmentType.document,
+      label: file.name,
+      bytes: file.bytes,
+      messageText: 'Document ajoute depuis le gestionnaire de fichiers',
+    );
+  }
+
+  void _addAttachmentMessage(
+    _AttachmentType type, {
+    String? label,
+    Uint8List? bytes,
+    String? messageText,
+  }) {
+    final now = TimeOfDay.now();
+    final formattedTime =
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+
+    late final _ChatMessage message;
+    switch (type) {
+      case _AttachmentType.photo:
+        message = _ChatMessage(
+          message: messageText ?? 'Photo importee',
+          time: formattedTime,
+          isMine: true,
+          attachmentType: _AttachmentType.photo,
+          attachmentLabel: label ?? 'Image_produit.jpg',
+          attachmentBytes: bytes,
+        );
+        break;
+      case _AttachmentType.document:
+        message = _ChatMessage(
+          message: messageText ?? 'Document ajoute',
+          time: formattedTime,
+          isMine: true,
+          attachmentType: _AttachmentType.document,
+          attachmentLabel: label ?? 'Facture_bahibo.pdf',
+          attachmentBytes: bytes,
+        );
+        break;
+      case _AttachmentType.text:
+        message = _ChatMessage(
+          message: messageText ?? 'Texte ajoute',
+          time: formattedTime,
+          isMine: true,
+          attachmentType: _AttachmentType.text,
+          attachmentLabel: label ?? 'Message rapide',
+          attachmentBytes: bytes,
+        );
+        break;
+    }
+
+    setState(() {
+      _messages.add(message);
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _animateToBottom();
+    });
+  }
+
+  void _jumpToBottom() {
+    if (!_scrollController.hasClients) return;
+    _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+  }
+
+  void _animateToBottom() {
+    if (!_scrollController.hasClients) return;
+    _scrollController.animateTo(
+      _scrollController.position.maxScrollExtent + 120,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   @override
@@ -68,170 +304,489 @@ class _SellerChatPageState extends State<SellerChatPage> {
     final isDark = theme.brightness == Brightness.dark;
     final primary = theme.colorScheme.primary;
     final background = isDark
-        ? const Color(0xFF0F1412)
-        : const Color(0xFFF3F5F7);
-    final panel = isDark ? const Color(0xFF171C1A) : Colors.white;
+        ? const Color(0xFF031C19)
+        : const Color(0xFFEAF5EE);
+    final cardColor = isDark ? const Color(0xFF0F2320) : Colors.white;
+    final panelColor = isDark
+        ? const Color(0xFF142B27)
+        : const Color(0xFFF6FBF7);
+    final subtleText = isDark ? Colors.white70 : const Color(0xFF5D6C66);
+    const sellerName = 'John Rakoto';
+    const sellerRole = 'Vendeur certifie';
     const avatarUrl =
         'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200';
 
     return Scaffold(
       backgroundColor: background,
-      body: SafeArea(
-        child: Container(
-          margin: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: background,
-            borderRadius: BorderRadius.circular(26),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(isDark ? 0.22 : 0.12),
-                blurRadius: 28,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(26),
-            child: Column(
-              children: [
-                Container(
-                  color: primary,
-                  padding: const EdgeInsets.fromLTRB(5, 12, 5, 14),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.arrow_back, color: Colors.white),
-                      ),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
-                            Text(
-                              'Chat avec John',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            SizedBox(height: 2),
-                            Text(
-                              'Vendeur certifie',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
+      body: _showEntrySkeleton
+          ? const SafeArea(child: SellerChatSkeleton())
+          : SafeArea(
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            primary.withOpacity(isDark ? 0.12 : 0.08),
+                            background,
+                            background,
                           ],
                         ),
                       ),
-                      CircleAvatar(
-                        radius: 18,
-                        backgroundImage: const NetworkImage(avatarUrl),
-                        backgroundColor: Colors.white,
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-                Expanded(
-                  child: ListView.separated(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.fromLTRB(5, 10, 5, 8),
-                    itemCount: _messages.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 14),
-                    itemBuilder: (context, index) {
-                      final chat = _messages[index];
-                      return _ChatBubble(
-                        message: chat.message,
-                        time: chat.time,
-                        isMine: chat.isMine,
-                        primaryColor: primary,
-                        panelColor: panel,
-                        isDark: isDark,
-                      );
-                    },
-                  ),
-                ),
-                Container(
-                  color: panel,
-                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
-                  child: Row(
+                  Column(
                     children: [
                       Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          decoration: BoxDecoration(
-                            color: isDark
-                                ? const Color(0xFF222826)
-                                : Colors.white,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: isDark
-                                  ? Colors.white10
-                                  : const Color(0xFFE2E6EA),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: TextField(
-                                  controller: _messageController,
-                                  textInputAction: TextInputAction.send,
-                                  onSubmitted: (_) => _sendMessage(),
-                                  decoration: InputDecoration(
-                                    hintText: 'Ecrire un message...',
-                                    hintStyle: TextStyle(
+                        child: RefreshIndicator(
+                          onRefresh: refreshPageWithDialog,
+                          child: SingleChildScrollView(
+                            controller: _scrollController,
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+                            child: Column(
+                              children: [
+                                _ChatHeader(
+                                  primary: primary,
+                                  cardColor: cardColor,
+                                  subtleText: subtleText,
+                                  sellerName: sellerName,
+                                  sellerRole: sellerRole,
+                                  avatarUrl: avatarUrl,
+                                ),
+                                const SizedBox(height: 10),
+                                _ProductContextCard(
+                                  primary: primary,
+                                  cardColor: cardColor,
+                                  subtleText: subtleText,
+                                  isDark: isDark,
+                                ),
+                                const SizedBox(height: 18),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: panelColor,
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(
                                       color: isDark
-                                          ? Colors.white54
-                                          : const Color(0xFF8A96A3),
+                                          ? Colors.white10
+                                          : const Color(0xFFE0EAE4),
                                     ),
-                                    border: InputBorder.none,
+                                  ),
+                                  child: Text(
+                                    'Aujourd\'hui',
+                                    style: TextStyle(
+                                      color: subtleText,
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              Icon(
-                                Icons.add_photo_alternate_outlined,
-                                color: isDark
-                                    ? Colors.white54
-                                    : const Color(0xFF7B8794),
-                              ),
-                            ],
+                                const SizedBox(height: 18),
+                                ..._messages.map(
+                                  (chat) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 14),
+                                    child: _ChatBubble(
+                                      message: chat.message,
+                                      time: chat.time,
+                                      isMine: chat.isMine,
+                                      attachmentType: chat.attachmentType,
+                                      attachmentLabel: chat.attachmentLabel,
+                                      attachmentBytes: chat.attachmentBytes,
+                                      avatarUrl: avatarUrl,
+                                      isDark: isDark,
+                                      primary: primary,
+                                      cardColor: cardColor,
+                                      subtleText: subtleText,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      GestureDetector(
-                        onTap: _sendMessage,
-                        child: Container(
-                          width: 52,
-                          height: 52,
-                          decoration: BoxDecoration(
-                            color: primary,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: primary.withOpacity(0.28),
-                                blurRadius: 18,
-                                offset: const Offset(0, 8),
-                              ),
-                            ],
-                          ),
-                          child: const Icon(
-                            Icons.send_rounded,
-                            color: Colors.white,
-                            size: 24,
-                          ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
+                        child: _Composer(
+                          controller: _messageController,
+                          onAttachmentTap: _openAttachmentSheet,
+                          onSend: _sendMessage,
+                          primary: primary,
+                          isDark: isDark,
+                          panelColor: panelColor,
+                          subtleText: subtleText,
                         ),
                       ),
                     ],
+                  ),
+                  Positioned(
+                    top: 18,
+                    left: 18,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () => Navigator.of(context).pop(),
+                        borderRadius: BorderRadius.circular(999),
+                        child: Ink(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.28),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white24),
+                          ),
+                          child: const Icon(
+                            Icons.arrow_back,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (isOffline) const AppOfflineBanner(bottomOffset: 78),
+                ],
+              ),
+            ),
+    );
+  }
+}
+
+class _ChatHeader extends StatelessWidget {
+  final Color primary;
+  final Color cardColor;
+  final Color subtleText;
+  final String sellerName;
+  final String sellerRole;
+  final String avatarUrl;
+
+  const _ChatHeader({
+    required this.primary,
+    required this.cardColor,
+    required this.subtleText,
+    required this.sellerName,
+    required this.sellerRole,
+    required this.avatarUrl,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 32, 18, 20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(34),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [primary.withOpacity(0.92), const Color(0xFF123C2E)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: primary.withOpacity(0.18),
+            blurRadius: 28,
+            offset: const Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: AppCircleNetworkAvatar(radius: 26, imageUrl: avatarUrl),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      sellerName,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF7DFFB0),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '$sellerRole • En ligne maintenant',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.82),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: const Text(
+                  'Actif',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 7,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: cardColor.withOpacity(0.22),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white12),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.shield_outlined,
+                  color: Colors.white,
+                  size: 18,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Discutez en toute securite avant de confirmer la transaction.',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.86),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProductContextCard extends StatelessWidget {
+  final Color primary;
+  final Color cardColor;
+  final Color subtleText;
+  final bool isDark;
+
+  const _ProductContextCard({
+    required this.primary,
+    required this.cardColor,
+    required this.subtleText,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isDark ? Colors.white10 : const Color(0xFFE1EBE4),
         ),
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: AppNetworkImage(
+              imageUrl:
+                  'https://images.unsplash.com/photo-1598327105666-5b89351aff97?w=600',
+              width: 72,
+              height: 72,
+              fit: BoxFit.cover,
+              borderRadius: BorderRadius.circular(18),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Samsung Galaxy S20',
+                  style: TextStyle(
+                    color: isDark ? Colors.white : const Color(0xFF12201B),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Produit verifie • Disponible',
+                  style: TextStyle(
+                    color: subtleText,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: primary.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '2 375 000 MGA',
+                    style: TextStyle(
+                      color: primary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Composer extends StatelessWidget {
+  final TextEditingController controller;
+  final VoidCallback onAttachmentTap;
+  final VoidCallback onSend;
+  final Color primary;
+  final bool isDark;
+  final Color panelColor;
+  final Color subtleText;
+
+  const _Composer({
+    required this.controller,
+    required this.onAttachmentTap,
+    required this.onSend,
+    required this.primary,
+    required this.isDark,
+    required this.panelColor,
+    required this.subtleText,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
+      decoration: BoxDecoration(
+        color: panelColor,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isDark ? Colors.white10 : const Color(0xFFDFEAE2),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.16 : 0.06),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onAttachmentTap,
+              borderRadius: BorderRadius.circular(999),
+              child: Ink(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: primary.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.add, color: primary, size: 20),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) => onSend(),
+              decoration: appInputDecoration(
+                context,
+                hintText: 'Ecrire votre message...',
+                contentPadding: const EdgeInsets.symmetric(vertical: 8),
+              ),
+              style: appInputTextStyle(context),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onSend,
+              borderRadius: BorderRadius.circular(999),
+              child: Ink(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [primary, primary.withOpacity(0.78)],
+                  ),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: primary.withOpacity(0.30),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.north_east_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -241,86 +796,365 @@ class _ChatMessage {
   final String message;
   final String time;
   final bool isMine;
+  final _AttachmentType? attachmentType;
+  final String? attachmentLabel;
+  final Uint8List? attachmentBytes;
 
   const _ChatMessage({
     required this.message,
     required this.time,
     required this.isMine,
+    this.attachmentType,
+    this.attachmentLabel,
+    this.attachmentBytes,
   });
 }
+
+enum _AttachmentType { photo, document, text }
 
 class _ChatBubble extends StatelessWidget {
   final String message;
   final String time;
   final bool isMine;
-  final Color primaryColor;
-  final Color panelColor;
+  final _AttachmentType? attachmentType;
+  final String? attachmentLabel;
+  final Uint8List? attachmentBytes;
+  final String avatarUrl;
   final bool isDark;
+  final Color primary;
+  final Color cardColor;
+  final Color subtleText;
 
   const _ChatBubble({
     required this.message,
     required this.time,
     required this.isMine,
-    required this.primaryColor,
-    required this.panelColor,
+    this.attachmentType,
+    this.attachmentLabel,
+    this.attachmentBytes,
+    required this.avatarUrl,
     required this.isDark,
+    required this.primary,
+    required this.cardColor,
+    required this.subtleText,
   });
 
   @override
   Widget build(BuildContext context) {
-    final bubbleColor = isMine ? primaryColor : panelColor;
+    final bubbleColor = isMine
+        ? primary.withOpacity(isDark ? 0.90 : 0.96)
+        : cardColor;
     final textColor = isMine
         ? Colors.white
-        : (isDark ? Colors.white : const Color(0xFF2F3A45));
-    final timeColor = isMine
-        ? Colors.white70
-        : (isDark ? Colors.white54 : const Color(0xFF8A96A3));
+        : (isDark ? Colors.white : const Color(0xFF15211C));
+    final metaColor = isMine ? Colors.white70 : subtleText;
 
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 270),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-          decoration: BoxDecoration(
-            color: bubbleColor,
-            borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(16),
-              topRight: const Radius.circular(16),
-              bottomLeft: Radius.circular(isMine ? 16 : 4),
-              bottomRight: Radius.circular(isMine ? 4 : 16),
+      child: Row(
+        mainAxisAlignment: isMine
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (!isMine) ...[
+            Padding(
+              padding: const EdgeInsets.only(top: 2, right: 10),
+              child: AppCircleNetworkAvatar(radius: 16, imageUrl: avatarUrl),
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(isDark ? 0.18 : 0.06),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
+          ],
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: isMine ? 290 : 248),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+              decoration: BoxDecoration(
+                color: bubbleColor,
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(22),
+                  topRight: const Radius.circular(22),
+                  bottomLeft: Radius.circular(isMine ? 22 : 8),
+                  bottomRight: Radius.circular(isMine ? 8 : 22),
+                ),
+                border: Border.all(
+                  color: isMine
+                      ? Colors.white10
+                      : (isDark ? Colors.white10 : const Color(0xFFE3ECE6)),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(isDark ? 0.14 : 0.05),
+                    blurRadius: 16,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
               ),
-            ],
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (attachmentType != null) ...[
+                    _AttachmentPreview(
+                      type: attachmentType!,
+                      label: attachmentLabel ?? message,
+                      bytes: attachmentBytes,
+                      isMine: isMine,
+                      isDark: isDark,
+                      primary: primary,
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                  Text(
+                    message,
+                    style: TextStyle(
+                      color: textColor,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      height: 1.45,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        time,
+                        style: TextStyle(
+                          color: metaColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (isMine) ...[
+                        const SizedBox(width: 6),
+                        const Icon(
+                          Icons.done_all_rounded,
+                          size: 15,
+                          color: Colors.white70,
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                message,
-                style: TextStyle(
-                  color: textColor,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  height: 1.35,
+        ],
+      ),
+    );
+  }
+}
+
+class _AttachmentPreview extends StatelessWidget {
+  final _AttachmentType type;
+  final String label;
+  final Uint8List? bytes;
+  final bool isMine;
+  final bool isDark;
+  final Color primary;
+
+  const _AttachmentPreview({
+    required this.type,
+    required this.label,
+    this.bytes,
+    required this.isMine,
+    required this.isDark,
+    required this.primary,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final backgroundColor = isMine
+        ? Colors.white.withOpacity(0.14)
+        : (isDark ? Colors.white10 : primary.withOpacity(0.08));
+    final textColor = isMine
+        ? Colors.white
+        : (isDark ? Colors.white : const Color(0xFF15211C));
+
+    IconData icon;
+    String title;
+    switch (type) {
+      case _AttachmentType.photo:
+        icon = Icons.photo_outlined;
+        title = 'Photo';
+        break;
+      case _AttachmentType.document:
+        icon = Icons.insert_drive_file_outlined;
+        title = 'Document';
+        break;
+      case _AttachmentType.text:
+        icon = Icons.notes_outlined;
+        title = 'Texte';
+        break;
+    }
+
+    if (type == _AttachmentType.photo && bytes != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Stack(
+          children: [
+            Image.memory(
+              bytes!,
+              height: 164,
+              width: double.infinity,
+              fit: BoxFit.cover,
+            ),
+            Positioned(
+              left: 10,
+              right: 10,
+              bottom: 10,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.42),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.photo_outlined,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        label,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 6),
-              Align(
-                alignment: Alignment.centerRight,
-                child: Text(
-                  time,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: isMine ? Colors.white24 : primary.withOpacity(0.14),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: textColor, size: 20),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
                   style: TextStyle(
-                    color: timeColor,
-                    fontSize: 12,
+                    color: textColor,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: textColor.withOpacity(0.82),
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AttachmentActionTile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color primary;
+  final bool isDark;
+  final VoidCallback onTap;
+
+  const _AttachmentActionTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.primary,
+    required this.isDark,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Ink(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF152D29) : const Color(0xFFF4FBF6),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isDark ? Colors.white10 : const Color(0xFFE1EBE4),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: primary.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: primary),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: isDark ? Colors.white : const Color(0xFF12201B),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: isDark
+                            ? Colors.white70
+                            : const Color(0xFF5D6C66),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: isDark ? Colors.white54 : Colors.black45,
               ),
             ],
           ),

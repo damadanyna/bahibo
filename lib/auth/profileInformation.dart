@@ -1,4 +1,5 @@
 import 'package:bahibo/page/productList.dart';
+import 'package:bahibo/component/app_text_input.dart';
 import 'package:flutter/material.dart';
 
 class ProfileInformationPage extends StatefulWidget {
@@ -72,10 +73,14 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
                 ],
               ),
             ),
-            TextField(
-              decoration: InputDecoration(
-                labelText: 'Your Name',
-                border: OutlineInputBorder(),
+            AppInputContainer(
+              child: TextField(
+                decoration: appInputDecoration(
+                  context,
+                  hintText: 'Your Name',
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                style: appInputTextStyle(context),
               ),
             ),
             SizedBox(height: 20),

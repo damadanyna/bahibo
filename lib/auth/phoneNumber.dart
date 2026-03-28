@@ -1,4 +1,5 @@
 import 'package:bahibo/auth/profileInformation.dart';
+import 'package:bahibo/component/app_text_input.dart';
 import 'package:bahibo/formatter/PhoneNumberFormatter%20extends%20TextInputFormatter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -101,13 +102,19 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
 
                   fieldViewBuilder:
                       (context, controller, focusNode, onEditingComplete) {
-                        return TextField(
-                          controller: controller,
-                          focusNode: focusNode,
-                          decoration: const InputDecoration(
-                            labelText: "Country",
-                            border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.public),
+                        return AppInputContainer(
+                          child: TextField(
+                            controller: controller,
+                            focusNode: focusNode,
+                            decoration: appInputDecoration(
+                              context,
+                              hintText: 'Country',
+                              prefixIcon: const Icon(Icons.public),
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 12,
+                              ),
+                            ),
+                            style: appInputTextStyle(context),
                           ),
                         );
                       },
@@ -115,15 +122,18 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
 
                 const SizedBox(height: 20),
 
-                TextField(
-                  controller: phoneController,
-
-                  keyboardType: TextInputType.phone,
-                  inputFormatters: [PhoneNumberFormatter()],
-                  decoration: const InputDecoration(
-                    labelText: 'Phone Number',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.phone),
+                AppInputContainer(
+                  child: TextField(
+                    controller: phoneController,
+                    keyboardType: TextInputType.phone,
+                    inputFormatters: [PhoneNumberFormatter()],
+                    decoration: appInputDecoration(
+                      context,
+                      hintText: 'Phone Number',
+                      prefixIcon: const Icon(Icons.phone),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    style: appInputTextStyle(context),
                   ),
                 ),
 
