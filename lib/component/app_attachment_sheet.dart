@@ -26,79 +26,74 @@ Future<void> showAppAttachmentSheet(
         await action();
       }
 
-      return SafeArea(
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 26),
-          decoration: BoxDecoration(
-            color: sheetColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 46,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.white24 : Colors.black12,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
+      return Container(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 26),
+        decoration: BoxDecoration(
+          color: sheetColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 46,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white24 : Colors.black12,
+                  borderRadius: BorderRadius.circular(999),
                 ),
               ),
-              const SizedBox(height: 18),
-              Text(
-                'Ajouter un contenu',
-                style: TextStyle(
-                  color: isDark ? Colors.white : const Color(0xFF12201B),
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                ),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              'Ajouter un contenu',
+              style: TextStyle(
+                color: isDark ? Colors.white : const Color(0xFF12201B),
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
               ),
-              const SizedBox(height: 6),
-              Text(
-                'Photo, document ou texte rapide.',
-                style: TextStyle(
-                  color: mutedColor,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 18),
-              _AttachmentActionTile(
-                icon: Icons.photo_library_outlined,
-                title: 'Photo',
-                subtitle: 'Ajouter une image dans la discussion',
-                primary: primary,
-                isDark: isDark,
-                onTap: () {
-                  unawaited(handleTap(onPhotoTap));
-                },
-              ),
-              const SizedBox(height: 10),
-              _AttachmentActionTile(
-                icon: Icons.description_outlined,
-                title: 'Document',
-                subtitle: 'Joindre un document ou un PDF',
-                primary: primary,
-                isDark: isDark,
-                onTap: () {
-                  unawaited(handleTap(onDocumentTap));
-                },
-              ),
-              const SizedBox(height: 10),
-              _AttachmentActionTile(
-                icon: Icons.notes_outlined,
-                title: 'Texte rapide',
-                subtitle: 'Inserer un texte pre-rempli',
-                primary: primary,
-                isDark: isDark,
-                onTap: () {
-                  unawaited(handleTap(onQuickTextTap));
-                },
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Photo, document ou texte rapide.',
+              style: TextStyle(color: mutedColor, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 18),
+            _AttachmentActionTile(
+              icon: Icons.photo_library_outlined,
+              title: 'Photo',
+              subtitle: 'Ajouter une image dans la discussion',
+              primary: primary,
+              isDark: isDark,
+              onTap: () {
+                unawaited(handleTap(onPhotoTap));
+              },
+            ),
+            const SizedBox(height: 10),
+            _AttachmentActionTile(
+              icon: Icons.description_outlined,
+              title: 'Document',
+              subtitle: 'Joindre un document ou un PDF',
+              primary: primary,
+              isDark: isDark,
+              onTap: () {
+                unawaited(handleTap(onDocumentTap));
+              },
+            ),
+            const SizedBox(height: 10),
+            _AttachmentActionTile(
+              icon: Icons.notes_outlined,
+              title: 'Texte rapide',
+              subtitle: 'Inserer un texte pre-rempli',
+              primary: primary,
+              isDark: isDark,
+              onTap: () {
+                unawaited(handleTap(onQuickTextTap));
+              },
+            ),
+          ],
         ),
       );
     },

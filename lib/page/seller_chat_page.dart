@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:bahibo/component/app_attachment_sheet.dart';
 import 'package:bahibo/component/app_back_button.dart';
+import 'package:bahibo/component/app_message_composer.dart';
 import 'package:flutter/material.dart';
 import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/component/app_page_skeletons.dart';
@@ -333,14 +334,12 @@ class _SellerChatPageState extends State<SellerChatPage>
                       ),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
-                        child: _Composer(
+                        child: AppMessageComposer(
                           controller: _messageController,
                           onAttachmentTap: _openAttachmentSheet,
                           onSend: _sendMessage,
                           primary: primary,
-                          isDark: isDark,
                           panelColor: panelColor,
-                          subtleText: subtleText,
                         ),
                       ),
                     ],
@@ -574,106 +573,6 @@ class _ProductContextCard extends StatelessWidget {
                   ),
                 ),
               ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Composer extends StatelessWidget {
-  final TextEditingController controller;
-  final VoidCallback onAttachmentTap;
-  final VoidCallback onSend;
-  final Color primary;
-  final bool isDark;
-  final Color panelColor;
-  final Color subtleText;
-
-  const _Composer({
-    required this.controller,
-    required this.onAttachmentTap,
-    required this.onSend,
-    required this.primary,
-    required this.isDark,
-    required this.panelColor,
-    required this.subtleText,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
-      decoration: BoxDecoration(
-        color: panelColor,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isDark ? Colors.white10 : const Color(0xFFDFEAE2),
-        ),
-      ),
-      child: Row(
-        children: [
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: onAttachmentTap,
-              borderRadius: BorderRadius.circular(999),
-              child: Ink(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: primary.withOpacity(0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.add, color: primary, size: 20),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              controller: controller,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => onSend(),
-              decoration: appInputDecoration(
-                context,
-                hintText: 'Ecrire votre message...',
-                contentPadding: const EdgeInsets.symmetric(vertical: 8),
-              ),
-              style: appInputTextStyle(context),
-            ),
-          ),
-          const SizedBox(width: 6),
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: onSend,
-              borderRadius: BorderRadius.circular(999),
-              child: Ink(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [primary, primary.withOpacity(0.78)],
-                  ),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: primary.withOpacity(0.30),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.north_east_rounded,
-                  color: Colors.white,
-                  size: 20,
-                ),
-              ),
             ),
           ),
         ],

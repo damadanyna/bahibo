@@ -2,6 +2,7 @@ import 'package:bahibo/component/theme_menu_button.dart';
 import 'package:bahibo/component/app_comments_sheet.dart';
 import 'package:bahibo/component/profile_models.dart';
 import 'package:bahibo/component/seller_profile_page.dart';
+import 'package:bahibo/component/app_share_sheet.dart';
 import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
 import 'package:bahibo/component/app_text_input.dart';
@@ -29,32 +30,9 @@ class _ProductDetailPageState extends State<ProductDetailPage>
   late PageController _pageController;
   final TextEditingController _availabilityController = TextEditingController();
   int _currentPage = 0;
+  int _commentCount = 64;
   bool _showEntrySkeleton = true;
-  int _commentBaseCount = 64;
-  int _commentAddedCount = 0;
-  final List<dynamic> _comments = [
-    const AppCommentData(
-      authorName: 'Miora Andrianiaina',
-      avatarUrl:
-          'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=600',
-      timeLabel: 'il y a 5 min',
-      message: 'Très beau produit, il est toujours disponible ?',
-    ),
-    const AppCommentData(
-      authorName: 'Aina Ravelona',
-      avatarUrl:
-          'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=600',
-      timeLabel: 'il y a 19 min',
-      message: 'La finition a l’air propre, j’aime beaucoup.',
-    ),
-    const AppCommentData(
-      authorName: 'Toky Rajaonarison',
-      avatarUrl:
-          'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600',
-      timeLabel: 'il y a 1 h',
-      message: 'Possible d’avoir plus de détails sur la livraison ?',
-    ),
-  ];
+  final List<AppCommentItem> _comments = defaultAppComments();
 
   @override
   void initState() {
@@ -178,16 +156,15 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                   ),
                                   _socialActionCard(
                                     icon: Icons.chat_bubble,
-                                    label:
-                                        (_commentBaseCount + _commentAddedCount)
-                                            .toString(),
+                                    label: _commentCount.toString(),
                                     iconColor: Colors.white,
-                                    onTap: _showProductCommentsSheet,
+                                    onTap: _showCommentsSheet,
                                   ),
                                   _socialActionCard(
                                     icon: Icons.reply_rounded,
                                     label: 'Partager',
                                     iconColor: Colors.white,
+                                    onTap: _showShareSuggestions,
                                   ),
                                 ],
                               ),
@@ -800,33 +777,19 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     );
   }
 
-  void _showProductCommentsSheet() {
-    showAppCommentsSheet(
-      context,
-      comments: _comments,
-      totalCount: _commentBaseCount + _commentAddedCount,
-      onAuthorTap: _openCommentAuthorProfile,
-      onCountChanged: (nextCount) {
-        if (!mounted) return;
-        setState(() {
-          _commentAddedCount = nextCount - _commentBaseCount;
-        });
-      },
-    );
+  void _showShareSuggestions() {
+    showAppShareSheet(context);
   }
 
-  void _openCommentAuthorProfile(AppCommentData comment) {
-    Navigator.push(
+  void _showCommentsSheet() {
+    showAppCommentsSheet(
       context,
-      MaterialPageRoute(
-        builder: (_) => SellerProfilePage(
-          profile: buildProfileFromUser(
-            name: comment.authorName,
-            avatarUrl: comment.avatarUrl,
-            subtitle: 'Membre de la communaute Bahibo',
-          ),
-        ),
-      ),
+      currentCommentCount: _commentCount,
+      comments: _comments,
+      onCommentCountChanged: (value) {
+        if (!mounted) return;
+        setState(() => _commentCount = value);
+      },
     );
   }
 

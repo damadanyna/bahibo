@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:bahibo/component/app_back_button.dart';
 import 'package:bahibo/component/app_comments_sheet.dart';
 import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
-import 'package:bahibo/component/profile_models.dart';
-import 'package:bahibo/component/seller_profile_page.dart';
+import 'package:bahibo/component/app_share_sheet.dart';
 
 class ImageViewerOverlayData {
   final String? title;
@@ -75,34 +73,11 @@ class _ImageViewerPageState extends State<ImageViewerPage>
     with AppPageRefreshMixin<ImageViewerPage> {
   late final PageController _pageController;
   late int _currentIndex;
-  int _baseCommentCount = 64;
+  int _commentCount = 64;
   bool _showEntrySkeleton = true;
   bool _showChrome = true;
   bool _isDescriptionExpanded = false;
-  int _commentAddedCount = 0;
-  final List<dynamic> _comments = [
-    AppCommentData(
-      authorName: 'Miora Andrianiaina',
-      avatarUrl:
-          'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=600',
-      timeLabel: 'il y a 5 min',
-      message: 'Très beau produit, il est toujours disponible ?',
-    ),
-    AppCommentData(
-      authorName: 'Aina Ravelona',
-      avatarUrl:
-          'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=600',
-      timeLabel: 'il y a 19 min',
-      message: 'La finition a l’air propre, j’aime beaucoup.',
-    ),
-    AppCommentData(
-      authorName: 'Toky Rajaonarison',
-      avatarUrl:
-          'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600',
-      timeLabel: 'il y a 1 h',
-      message: 'Possible d’avoir plus de détails sur la livraison ?',
-    ),
-  ];
+  final List<AppCommentItem> _comments = defaultAppComments();
 
   @override
   void initState() {
@@ -112,7 +87,7 @@ class _ImageViewerPageState extends State<ImageViewerPage>
       0,
       widget.imageUrls.isEmpty ? 0 : widget.imageUrls.length - 1,
     );
-    _baseCommentCount = _parseCompactCount(widget.overlay?.commentsCount) ?? 64;
+    _commentCount = _parseCompactCount(widget.overlay?.commentsCount) ?? 64;
     _pageController = PageController(initialPage: _currentIndex);
     Future.delayed(const Duration(milliseconds: 180), () {
       if (!mounted) return;
@@ -124,8 +99,8 @@ class _ImageViewerPageState extends State<ImageViewerPage>
   void didUpdateWidget(covariant ImageViewerPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     final updatedCount = _parseCompactCount(widget.overlay?.commentsCount);
-    if (updatedCount != null && updatedCount != _baseCommentCount) {
-      _baseCommentCount = updatedCount;
+    if (updatedCount != null && updatedCount != _commentCount) {
+      _commentCount = updatedCount;
     }
   }
 
@@ -284,8 +259,7 @@ class _ImageViewerPageState extends State<ImageViewerPage>
                     onCommentTap: _showCommentsSheet,
                     onShareTap: _showShareSuggestions,
                     isDescriptionExpanded: _isDescriptionExpanded,
-                    commentCountLabel: (_baseCommentCount + _commentAddedCount)
-                        .toString(),
+                    commentCountLabel: _commentCount.toString(),
                     indexLabel: images.isEmpty
                         ? 'Image'
                         : '${_currentIndex + 1}/${images.length}',
@@ -303,31 +277,14 @@ class _ImageViewerPageState extends State<ImageViewerPage>
     setState(() => _isDescriptionExpanded = !_isDescriptionExpanded);
   }
 
-  void _openCommentAuthorProfile(AppCommentData comment) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => SellerProfilePage(
-          profile: buildProfileFromUser(
-            name: comment.authorName,
-            avatarUrl: comment.avatarUrl,
-            subtitle: 'Membre de la communaute Bahibo',
-          ),
-        ),
-      ),
-    );
-  }
-
   void _showCommentsSheet() {
     showAppCommentsSheet(
       context,
+      currentCommentCount: _commentCount,
       comments: _comments,
-      totalCount: _baseCommentCount + _commentAddedCount,
-      onAuthorTap: _openCommentAuthorProfile,
-      onCountChanged: (nextCount) {
+      onCommentCountChanged: (value) {
         if (!mounted) return;
-        setState(() {
-          _commentAddedCount = nextCount - _baseCommentCount;
-        });
+        setState(() => _commentCount = value);
       },
     );
   }
@@ -340,102 +297,7 @@ class _ImageViewerPageState extends State<ImageViewerPage>
   }
 
   void _showShareSuggestions() {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: const Color(0xFF111111),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      builder: (context) {
-        final suggestions =
-            <({IconData icon, String title, Color backgroundColor})>[
-              (
-                icon: FontAwesomeIcons.facebookF,
-                title: 'Facebook',
-                backgroundColor: const Color(0xFF4267B2),
-              ),
-              (
-                icon: FontAwesomeIcons.whatsapp,
-                title: 'WhatsApp',
-                backgroundColor: const Color(0xFF25D366),
-              ),
-            ];
-
-        return SafeArea(
-          child: FractionallySizedBox(
-            heightFactor: 0.34,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 46,
-                      height: 5,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.16),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: suggestions
-                        .map(
-                          (item) => Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: () {
-                                  Navigator.of(context).pop();
-                                  ScaffoldMessenger.of(
-                                    this.context,
-                                  ).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        '${item.title} indisponible pour le moment',
-                                      ),
-                                    ),
-                                  );
-                                },
-                                customBorder: const CircleBorder(),
-                                child: Ink(
-                                  width: 56,
-                                  height: 56,
-                                  decoration: BoxDecoration(
-                                    color: item.backgroundColor,
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.18),
-                                        blurRadius: 10,
-                                        offset: const Offset(0, 4),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Icon(
-                                    item.icon,
-                                    color: Colors.white,
-                                    size: 24,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
+    showAppShareSheet(context);
   }
 }
 
