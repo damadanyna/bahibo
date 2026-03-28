@@ -151,67 +151,6 @@ IconData _navigationDisplayIcon(int index, IconData fallback) {
   }
 }
 
-class MainNavigationMenuButton extends StatelessWidget {
-  final int currentIndex;
-  final List<MainNavigationItem> items;
-  final ValueChanged<int> onSelected;
-
-  const MainNavigationMenuButton({
-    super.key,
-    required this.currentIndex,
-    required this.items,
-    required this.onSelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return PopupMenuButton<int>(
-      tooltip: 'Navigation',
-      icon: Container(
-        width: 38,
-        height: 38,
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: Theme.of(context).brightness == Brightness.dark
-                ? Colors.white10
-                : const Color(0xFFD6E4DA),
-          ),
-        ),
-        child: const Icon(Icons.menu_rounded),
-      ),
-      onSelected: onSelected,
-      itemBuilder: (context) => List.generate(items.length, (index) {
-        final item = items[index];
-        final isSelected = index == currentIndex;
-        return PopupMenuItem<int>(
-          value: index,
-          child: Row(
-            children: [
-              Icon(
-                item.icon,
-                size: 20,
-                color: isSelected ? const Color(0xFF1E56E6) : null,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  item.label,
-                  style: TextStyle(
-                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                    color: isSelected ? const Color(0xFF1E56E6) : null,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      }),
-    );
-  }
-}
-
 class MainNavigationSettingsPanel extends StatelessWidget {
   const MainNavigationSettingsPanel({super.key});
 

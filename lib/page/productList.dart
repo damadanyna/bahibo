@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:bahibo/component/main_navigation_shell.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'dart:convert';
@@ -10,16 +9,7 @@ import 'package:bahibo/component/app_page_refresh.dart';
 import '../component/ProductCard.dart';
 
 class Productlist extends StatefulWidget {
-  final int currentMenuIndex;
-  final List<MainNavigationItem> navigationItems;
-  final ValueChanged<int>? onMenuSelected;
-
-  const Productlist({
-    super.key,
-    this.currentMenuIndex = 0,
-    this.navigationItems = const [],
-    this.onMenuSelected,
-  });
+  const Productlist({super.key});
 
   @override
   State<Productlist> createState() => _ProductlistState();
@@ -282,13 +272,6 @@ class _ProductlistState extends State<Productlist>
                       color: Colors.green,
                     ),
                   ),
-                  if (widget.onMenuSelected != null &&
-                      widget.navigationItems.isNotEmpty)
-                    MainNavigationMenuButton(
-                      currentIndex: widget.currentMenuIndex,
-                      items: widget.navigationItems,
-                      onSelected: widget.onMenuSelected!,
-                    ),
                 ],
               ),
             ),

@@ -9,7 +9,6 @@ class LanguagePage extends StatefulWidget {
 }
 
 class _LanguagePageState extends State<LanguagePage> {
-  @override
   String? _selectedLanguage = 'English';
 
   // Liste dynamique des langues

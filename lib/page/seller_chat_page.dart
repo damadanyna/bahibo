@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
-import 'package:bahibo/component/app_text_input.dart';
 import 'package:image_picker/image_picker.dart';
 
 class SellerChatPage extends StatefulWidget {

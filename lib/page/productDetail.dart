@@ -29,7 +29,6 @@ class _ProductDetailPageState extends State<ProductDetailPage>
 
   late PageController _pageController;
   final TextEditingController _availabilityController = TextEditingController();
-  int _currentPage = 0;
   int _commentCount = 64;
   bool _showEntrySkeleton = true;
   final List<AppCommentItem> _comments = defaultAppComments();

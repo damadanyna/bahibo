@@ -95,11 +95,7 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
                       builder: (context) => MainNavigationShell(
                         items: bahiboMainNavigationItems,
                         pagesBuilder: (currentIndex, items, onIndexChanged) => [
-                          Productlist(
-                            currentMenuIndex: currentIndex,
-                            navigationItems: items,
-                            onMenuSelected: onIndexChanged,
-                          ),
+                          const Productlist(),
                           const MainNavigationSettingsPanel(),
                           const MainNavigationSearchPanel(),
                           const MainNavigationCategoryHubPanel(),
