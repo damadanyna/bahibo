@@ -1,5 +1,6 @@
 import 'package:bahibo/component/navigation/navigation_message_components.dart';
 import 'package:bahibo/page/chat_page.dart';
+import 'package:bahibo/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
 class MainNavigationMessagesPanel extends StatefulWidget {
@@ -137,18 +138,15 @@ class _MainNavigationMessagesPanelState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final appColors = theme.appColors;
     final primary = theme.colorScheme.primary;
-    final heroColor = isDark
-        ? const Color(0xFF0C2C26)
-        : const Color(0xFFDDF2E2);
-    final searchFillColor = isDark ? const Color(0xFF17342E) : Colors.white;
+    final heroColor = appColors.panelMuted;
+    final searchFillColor = appColors.panelBackground;
     final quickActionColor = isDark
-        ? Colors.white.withValues(alpha: 0.1)
+        ? appColors.heroSurface
         : primary.withValues(alpha: 0.12);
-    final titleColor = isDark ? Colors.white : const Color(0xFF0E2018);
-    final mutedColor = isDark
-        ? Colors.white.withValues(alpha: 0.74)
-        : const Color(0xFF53665C);
+    final titleColor = theme.colorScheme.onSurface;
+    final mutedColor = appColors.mutedText;
     final normalizedQuery = _searchQuery.trim().toLowerCase();
     final filteredConversations = normalizedQuery.isEmpty
         ? _conversations
@@ -199,7 +197,7 @@ class _MainNavigationMessagesPanelState
                     ),
                     border: Border.all(
                       color: isDark
-                          ? Colors.white.withValues(alpha: 0.06)
+                          ? appColors.overlayBorder
                           : primary.withValues(alpha: 0.08),
                     ),
                   ),
@@ -236,9 +234,7 @@ class _MainNavigationMessagesPanelState
                               onChanged: (value) {
                                 setState(() => _searchQuery = value);
                               },
-                              borderColor: isDark
-                                  ? Colors.white.withValues(alpha: 0.06)
-                                  : const Color(0xFFD7E8DC),
+                              borderColor: appColors.inputBorder,
                             ),
                           ),
                         ),
@@ -284,11 +280,7 @@ class _MainNavigationMessagesPanelState
                       decoration: BoxDecoration(
                         color: theme.cardColor,
                         borderRadius: BorderRadius.circular(24),
-                        border: Border.all(
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.06)
-                              : const Color(0xFFDCE9DF),
-                        ),
+                        border: Border.all(color: appColors.inputBorder),
                       ),
                       child: Text(
                         'Aucun message ne correspond a votre recherche.',
@@ -341,9 +333,7 @@ class _MainNavigationMessagesPanelState
                   onChanged: (value) {
                     setState(() => _searchQuery = value);
                   },
-                  borderColor: isDark
-                      ? Colors.white.withValues(alpha: 0.06)
-                      : const Color(0xFFD7E8DC),
+                  borderColor: appColors.inputBorder,
                 ),
               ),
           ],

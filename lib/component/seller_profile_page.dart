@@ -9,6 +9,8 @@ import 'package:bahibo/page/chat_page.dart';
 import 'package:bahibo/page/image_viewer_page.dart';
 import 'package:flutter/material.dart';
 
+import 'package:bahibo/theme/app_theme_extensions.dart';
+
 class SellerProfilePage extends StatefulWidget {
   final UserProfileData profile;
 
@@ -53,27 +55,14 @@ class _SellerProfilePageState extends State<SellerProfilePage>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final appColors = theme.appColors;
     final primaryGreen = theme.colorScheme.primary;
-    final softGreen = isDark
-        ? const Color(0xFF173328)
-        : const Color(0xFFE8F5EC);
-    final deepGreen = isDark
-        ? const Color(0xFF7DFFB0)
-        : const Color(0xFF1E8E3E);
-    final backgroundColor = isDark
-        ? const Color(0xFF0E1712)
-        : const Color(0xFFF2F8F3);
-    final surfaceColor = isDark ? const Color(0xFF222120) : Colors.white;
-    final elevatedSurfaceColor = isDark
-        ? const Color(0xFF111E1A)
-        : const Color(0xFFF7FBF8);
-    final mutedColor = isDark
-        ? Colors.white70
-        : const Color.fromARGB(255, 125, 92, 93);
+    final surfaceColor = theme.cardColor;
+    final elevatedSurfaceColor = theme.colorScheme.surfaceContainer;
+    final mutedColor = appColors.mutedText;
 
     return Scaffold(
-      backgroundColor: backgroundColor,
+      backgroundColor: appColors.backgroundBase,
       body: Stack(
         children: [
           RefreshIndicator(
@@ -93,8 +82,6 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                         elevatedSurfaceColor: elevatedSurfaceColor,
                         mutedColor: mutedColor,
                         primaryGreen: primaryGreen,
-                        softGreen: softGreen,
-                        deepGreen: deepGreen,
                       ),
                       const SizedBox(height: 16),
                       _buildQuickStats(
@@ -109,7 +96,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                         '${profile.products.length} annonces',
                       ),
                       const SizedBox(height: 10),
-                      _buildFilterRow(isDark),
+                      _buildFilterRow(context),
                       const SizedBox(height: 8),
                       ..._buildProductCards(),
                     ],
@@ -127,29 +114,27 @@ class _SellerProfilePageState extends State<SellerProfilePage>
   }
 
   Future<void> _showExitDialog(BuildContext context) async {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
 
     await showDialog<void>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: isDark ? const Color(0xFF222120) : Colors.white,
+          backgroundColor: theme.cardColor,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24),
           ),
           title: Text(
             'Quitter ce profil ?',
             style: TextStyle(
-              color: isDark ? Colors.white : const Color(0xFF12201B),
+              color: theme.colorScheme.onSurface,
               fontWeight: FontWeight.w800,
             ),
           ),
           content: Text(
             'Vous allez revenir a la page precedente.',
-            style: TextStyle(
-              color: isDark ? Colors.white70 : const Color(0xFF5D6C66),
-              height: 1.4,
-            ),
+            style: TextStyle(color: appColors.mutedText, height: 1.4),
           ),
           actions: [
             TextButton(
@@ -175,20 +160,21 @@ class _SellerProfilePageState extends State<SellerProfilePage>
   }
 
   Future<void> _showAboutDialog(BuildContext context) async {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
 
     await showDialog<void>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: isDark ? const Color(0xFF222120) : Colors.white,
+          backgroundColor: theme.cardColor,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24),
           ),
           title: Text(
             'A propos',
             style: TextStyle(
-              color: isDark ? Colors.white : const Color(0xFF12201B),
+              color: theme.colorScheme.onSurface,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -198,28 +184,25 @@ class _SellerProfilePageState extends State<SellerProfilePage>
             children: [
               Text(
                 profile.about,
-                style: TextStyle(
-                  color: isDark ? Colors.white70 : const Color(0xFF5D6C66),
-                  height: 1.45,
-                ),
+                style: TextStyle(color: appColors.mutedText, height: 1.45),
               ),
               const SizedBox(height: 16),
               _dialogInfoRow(
                 Icons.location_on_outlined,
                 'Antananarivo, Madagascar',
-                isDark,
+                context,
               ),
               const SizedBox(height: 10),
               _dialogInfoRow(
                 Icons.schedule_outlined,
                 'Repond generalement en moins de 15 min',
-                isDark,
+                context,
               ),
               const SizedBox(height: 10),
               _dialogInfoRow(
                 Icons.verified_user_outlined,
                 'Profil actif depuis 2022',
-                isDark,
+                context,
               ),
             ],
           ),
@@ -239,19 +222,19 @@ class _SellerProfilePageState extends State<SellerProfilePage>
     );
   }
 
-  Widget _dialogInfoRow(IconData icon, String text, bool isDark) {
+  Widget _dialogInfoRow(IconData icon, String text, BuildContext context) {
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 18, color: isDark ? Colors.white70 : Colors.black54),
+        Icon(icon, size: 18, color: appColors.mutedText),
         const SizedBox(width: 10),
         Expanded(
           child: Text(
             text,
-            style: TextStyle(
-              color: isDark ? Colors.white70 : const Color(0xFF5D6C66),
-              height: 1.35,
-            ),
+            style: TextStyle(color: appColors.mutedText, height: 1.35),
           ),
         ),
       ],
@@ -269,34 +252,35 @@ class _SellerProfilePageState extends State<SellerProfilePage>
     return widgets;
   }
 
-  Widget _buildFilterRow(bool isDark) {
+  Widget _buildFilterRow(BuildContext context) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          _filterChip('Madagascar', hasArrow: true, isDark: isDark),
+          _filterChip(context, 'Madagascar', hasArrow: true),
           const SizedBox(width: 8),
-          _filterChip('Disponible', isDark: isDark),
+          _filterChip(context, 'Disponible'),
           const SizedBox(width: 8),
-          _filterChip('Recents', isDark: isDark),
+          _filterChip(context, 'Recents'),
         ],
       ),
     );
   }
 
   Widget _filterChip(
+    BuildContext context,
     String text, {
     bool hasArrow = false,
-    required bool isDark,
   }) {
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF222120) : Colors.white,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
-        ),
+        border: Border.all(color: appColors.inputBorder),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -305,7 +289,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
             text,
             style: TextStyle(
               fontWeight: FontWeight.w700,
-              color: isDark ? const Color(0xFFB7F5CA) : const Color(0xFF256B3C),
+              color: theme.colorScheme.primary,
             ),
           ),
           if (hasArrow) ...[
@@ -313,7 +297,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
             Icon(
               Icons.keyboard_arrow_down,
               size: 18,
-              color: isDark ? const Color(0xFFB7F5CA) : const Color(0xFF256B3C),
+              color: theme.colorScheme.primary,
             ),
           ],
         ],
@@ -327,11 +311,9 @@ class _SellerProfilePageState extends State<SellerProfilePage>
     required Color elevatedSurfaceColor,
     required Color mutedColor,
     required Color primaryGreen,
-    required Color softGreen,
-    required Color deepGreen,
   }) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final appColors = theme.appColors;
 
     return Container(
       decoration: BoxDecoration(borderRadius: BorderRadius.circular(24)),
@@ -351,10 +333,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [
-                    const Color(0xFF091A14).withOpacity(isDark ? 0.38 : 0.28),
-                    const Color(0xFF0E241B).withOpacity(isDark ? 0.82 : 0.68),
-                  ],
+                  colors: [appColors.scrimSoft, appColors.scrimStrong],
                 ),
               ),
               child: Column(
@@ -369,10 +348,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                       gradient: LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
-                        colors: [
-                          Colors.white.withOpacity(0.08),
-                          Colors.transparent,
-                        ],
+                        colors: [appColors.heroSurface, Colors.transparent],
                       ),
                     ),
                     child: Row(
@@ -411,9 +387,9 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                             child: Container(
                               padding: const EdgeInsets.all(3),
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.16),
+                                color: appColors.heroSurface,
                                 shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white24),
+                                border: Border.all(color: appColors.heroBorder),
                               ),
                               child: AppCircleNetworkAvatar(
                                 radius: 34,
@@ -432,8 +408,8 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                                   Expanded(
                                     child: Text(
                                       profile.name,
-                                      style: const TextStyle(
-                                        color: Colors.white,
+                                      style: TextStyle(
+                                        color: appColors.heroForeground,
                                         fontSize: 24,
                                         fontWeight: FontWeight.w800,
                                       ),
@@ -445,23 +421,25 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                                       vertical: 6,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: Colors.white.withOpacity(0.12),
+                                      color: appColors.heroSurface,
                                       borderRadius: BorderRadius.circular(999),
-                                      border: Border.all(color: Colors.white24),
+                                      border: Border.all(
+                                        color: appColors.heroBorder,
+                                      ),
                                     ),
-                                    child: const Row(
+                                    child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Icon(
                                           Icons.circle,
                                           size: 10,
-                                          color: Color(0xFF7DFFB0),
+                                          color: appColors.onlineStatus,
                                         ),
-                                        SizedBox(width: 8),
+                                        const SizedBox(width: 8),
                                         Text(
                                           'En ligne',
                                           style: TextStyle(
-                                            color: Colors.white,
+                                            color: appColors.heroForeground,
                                             fontWeight: FontWeight.w700,
                                           ),
                                         ),
@@ -474,7 +452,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                               Text(
                                 profile.headline,
                                 style: TextStyle(
-                                  color: Colors.white.withOpacity(0.82),
+                                  color: appColors.heroForegroundMuted,
                                   height: 1.35,
                                   fontWeight: FontWeight.w500,
                                 ),
@@ -512,14 +490,10 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
                             color: elevatedSurfaceColor.withOpacity(
-                              isDark ? 0.92 : 0.88,
+                              theme.brightness == Brightness.dark ? 0.92 : 0.88,
                             ),
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: isDark
-                                  ? Colors.white10
-                                  : const Color(0x1A000000),
-                            ),
+                            border: Border.all(color: appColors.overlayBorder),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -531,9 +505,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                                       icon: Icons.location_on_outlined,
                                       label: 'Zone',
                                       value: 'Antananarivo',
-                                      valueColor: isDark
-                                          ? Colors.white
-                                          : theme.colorScheme.onSurface,
+                                      valueColor: appColors.heroForeground,
                                     ),
                                   ),
                                   const SizedBox(width: 10),
@@ -542,7 +514,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                                       icon: Icons.workspace_premium_outlined,
                                       label: 'Fiabilite',
                                       value: profile.rating,
-                                      valueColor: const Color(0xFF7DFFB0),
+                                      valueColor: appColors.onlineStatus,
                                     ),
                                   ),
                                 ],
@@ -553,8 +525,8 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                                 maxLines: 3,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  color: isDark
-                                      ? Colors.white.withOpacity(0.80)
+                                  color: theme.brightness == Brightness.dark
+                                      ? appColors.heroForegroundMuted
                                       : theme.colorScheme.onSurfaceVariant,
                                   height: 1.45,
                                   fontWeight: FontWeight.w500,
@@ -583,8 +555,8 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                             icon: const Icon(Icons.message_outlined, size: 18),
                             label: const Text('Message'),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              foregroundColor: const Color(0xFF184B33),
+                              backgroundColor: appColors.heroForeground,
+                              foregroundColor: theme.colorScheme.primary,
                               elevation: 0,
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(
@@ -600,10 +572,8 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                             icon: const Icon(Icons.person_add_alt_1, size: 18),
                             label: const Text("S'abonner"),
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.white,
-                              side: BorderSide(
-                                color: Colors.white.withOpacity(0.26),
-                              ),
+                              foregroundColor: appColors.heroForeground,
+                              side: BorderSide(color: appColors.heroBorder),
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(16),
@@ -624,22 +594,25 @@ class _SellerProfilePageState extends State<SellerProfilePage>
   }
 
   Widget _buildHeaderPill({required IconData icon, required String label}) {
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.12),
+        color: appColors.heroSurface,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white24),
+        border: Border.all(color: appColors.heroBorder),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: Colors.white),
+          Icon(icon, size: 16, color: appColors.heroForeground),
           const SizedBox(width: 6),
           Text(
             label,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: appColors.heroForeground,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -655,18 +628,19 @@ class _SellerProfilePageState extends State<SellerProfilePage>
     required Color valueColor,
   }) {
     final theme = Theme.of(context);
+    final appColors = theme.appColors;
     final isDark = theme.brightness == Brightness.dark;
     final tileColor = isDark
-        ? Colors.white.withOpacity(0.04)
+        ? appColors.heroSurface
         : theme.colorScheme.surface.withOpacity(0.72);
     final iconBoxColor = isDark
-        ? Colors.white.withOpacity(0.08)
+        ? appColors.heroBorder
         : theme.colorScheme.surfaceContainerHighest.withOpacity(0.9);
     final iconColor = isDark
-        ? Colors.white
+        ? appColors.heroForeground
         : theme.colorScheme.onSurfaceVariant;
     final labelColor = isDark
-        ? Colors.white.withOpacity(0.66)
+        ? appColors.heroForegroundMuted
         : theme.colorScheme.onSurfaceVariant;
 
     return Container(
@@ -816,7 +790,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
             label: 'Visiteurs',
             value: profile.visitorCount,
             icon: Icons.visibility_outlined,
-            accent: const Color(0xFF2ECC71),
+            accent: Theme.of(context).appColors.success,
             mutedColor: mutedColor,
             pageTitle: 'Visiteurs',
             users: visitors,
@@ -830,7 +804,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
             label: 'Note',
             value: profile.rating,
             icon: Icons.star_outline,
-            accent: const Color(0xFF66BB6A),
+            accent: Theme.of(context).colorScheme.tertiary,
             mutedColor: mutedColor,
             pageTitle: 'Avis et notes',
             users: ratings,
@@ -925,9 +899,9 @@ class _SellerProfilePageState extends State<SellerProfilePage>
         const Spacer(),
         Text(
           meta,
-          style: const TextStyle(
+          style: TextStyle(
             fontWeight: FontWeight.w600,
-            color: Colors.green,
+            color: Theme.of(context).colorScheme.primary,
           ),
         ),
       ],

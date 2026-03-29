@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:bahibo/theme/app_theme_extensions.dart';
 
 enum UiChatAttachmentType { photo, document, quickText }
 
@@ -72,9 +73,9 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
 
   Future<void> _openAttachmentSheet() async {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final sheetColor = isDark ? const Color(0xFF102522) : Colors.white;
-    final mutedColor = isDark ? Colors.white70 : const Color(0xFF5D6C66);
+    final appColors = theme.appColors;
+    final sheetColor = theme.cardColor;
+    final mutedColor = appColors.mutedText;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -101,7 +102,7 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
                   width: 46,
                   height: 5,
                   decoration: BoxDecoration(
-                    color: isDark ? Colors.white24 : Colors.black12,
+                    color: appColors.inputBorder,
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
@@ -110,7 +111,7 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
               Text(
                 'Ajouter un contenu',
                 style: TextStyle(
-                  color: isDark ? Colors.white : const Color(0xFF12201B),
+                  color: theme.colorScheme.onSurface,
                   fontSize: 20,
                   fontWeight: FontWeight.w800,
                 ),
@@ -129,7 +130,7 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
                 title: 'Photo',
                 subtitle: 'Ajouter une image dans la discussion',
                 primary: widget.primary,
-                isDark: isDark,
+                isDark: theme.brightness == Brightness.dark,
                 onTap: () {
                   unawaited(handleAction(_pickPhoto));
                 },
@@ -140,7 +141,7 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
                 title: 'Document',
                 subtitle: 'Joindre un document ou un PDF',
                 primary: widget.primary,
-                isDark: isDark,
+                isDark: theme.brightness == Brightness.dark,
                 onTap: () {
                   unawaited(handleAction(_pickDocument));
                 },
@@ -152,7 +153,7 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
                   title: 'Texte rapide',
                   subtitle: 'Inserer un texte pre-rempli',
                   primary: widget.primary,
-                  isDark: isDark,
+                  isDark: theme.brightness == Brightness.dark,
                   onTap: () {
                     unawaited(handleAction(_insertQuickText));
                   },
@@ -218,23 +219,16 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final hintColor = isDark
-        ? Colors.white.withValues(alpha: 0.58)
-        : const Color(0xFF697B71);
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
+    final hintColor = appColors.mutedText;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(7, 3, 5, 3),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF163228) : widget.panelColor,
+        color: widget.panelColor,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color:
-              widget.borderColor ??
-              (isDark
-                  ? Colors.white.withValues(alpha: 0.12)
-                  : const Color(0xFFE1EBE4)),
-        ),
+        border: Border.all(color: widget.borderColor ?? appColors.inputBorder),
       ),
       child: Row(
         children: [
@@ -262,7 +256,7 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => _handleSend(),
               style: TextStyle(
-                color: isDark ? Colors.white : const Color(0xFF14201A),
+                color: theme.colorScheme.onSurface,
                 fontWeight: FontWeight.w600,
               ),
               decoration: InputDecoration(
@@ -291,7 +285,7 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
                 width: 50,
                 height: 50,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF56C04E),
+                  color: widget.primary,
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
@@ -301,9 +295,9 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
                     ),
                   ],
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.north_east_rounded,
-                  color: Colors.white,
+                  color: theme.colorScheme.onPrimary,
                   size: 23,
                 ),
               ),
@@ -334,6 +328,9 @@ class _UiAttachmentActionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -342,11 +339,9 @@ class _UiAttachmentActionTile extends StatelessWidget {
         child: Ink(
           padding: const EdgeInsets.all(7),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF152D29) : const Color(0xFFF4FBF6),
+            color: isDark ? appColors.inputFill : appColors.inputFill,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: isDark ? Colors.white10 : const Color(0xFFE1EBE4),
-            ),
+            border: Border.all(color: appColors.inputBorder),
           ),
           child: Row(
             children: [
@@ -367,7 +362,7 @@ class _UiAttachmentActionTile extends StatelessWidget {
                     Text(
                       title,
                       style: TextStyle(
-                        color: isDark ? Colors.white : const Color(0xFF12201B),
+                        color: theme.colorScheme.onSurface,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -375,19 +370,14 @@ class _UiAttachmentActionTile extends StatelessWidget {
                     Text(
                       subtitle,
                       style: TextStyle(
-                        color: isDark
-                            ? Colors.white70
-                            : const Color(0xFF5D6C66),
+                        color: appColors.mutedText,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
                 ),
               ),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: isDark ? Colors.white54 : Colors.black45,
-              ),
+              Icon(Icons.chevron_right_rounded, color: appColors.mutedText),
             ],
           ),
         ),

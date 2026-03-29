@@ -1,5 +1,6 @@
 import 'package:bahibo/component/navigation/navigation_search_chip.dart';
 import 'package:bahibo/component/ui/dinamic_icon_input.dart';
+import 'package:bahibo/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
 class MainNavigationSearchPanel extends StatefulWidget {
@@ -22,10 +23,10 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final appColors = theme.appColors;
 
     return Scaffold(
-      backgroundColor: theme.cardColor,
+      backgroundColor: appColors.backgroundBase,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(18, 20, 18, 120),
@@ -47,13 +48,11 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
                 decoration: BoxDecoration(
                   color: theme.cardColor,
                   borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: isDark ? Colors.white10 : const Color(0xFFD6E4DA),
-                  ),
+                  border: Border.all(color: appColors.inputBorder),
                 ),
                 child: DynamicIconInput(
                   controller: _searchController,
-                  primary: isDark ? Colors.white70 : const Color(0xFF4A5B52),
+                  primary: theme.colorScheme.primary,
                   panelColor: theme.cardColor,
                   borderColor: Colors.transparent,
                   showBorder: false,
@@ -62,7 +61,7 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
                   leadingSize: 24,
                   leadingIcon: Icon(
                     Icons.search_rounded,
-                    color: isDark ? Colors.white70 : const Color(0xFF4A5B52),
+                    color: theme.colorScheme.primary,
                     size: 22,
                   ),
                 ),

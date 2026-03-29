@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 
+import 'package:bahibo/theme/app_theme_extensions.dart';
+
 class AppOfflineBanner extends StatelessWidget {
   final String message;
   final double bottomOffset;
@@ -15,6 +17,8 @@ class AppOfflineBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Positioned(
       left: 16,
       right: 16,
@@ -25,14 +29,14 @@ class AppOfflineBanner extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              color: const Color(0xFFD32F2F),
+              color: theme.colorScheme.error,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Text(
-              'Vous n\'etes pas connecté a internet',
+            child: Text(
+              message,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.white,
+                color: theme.colorScheme.onError,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -77,19 +81,29 @@ mixin AppPageRefreshMixin<T extends StatefulWidget> on State<T> {
       context: context,
       barrierDismissible: false,
       builder: (_) {
-        return const AlertDialog(
+        final theme = Theme.of(context);
+        final appColors = theme.appColors;
+
+        return AlertDialog(
+          backgroundColor: theme.cardColor,
           content: Row(
             children: [
               SizedBox(
                 width: 22,
                 height: 22,
-                child: CircularProgressIndicator(strokeWidth: 2.5),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: theme.colorScheme.primary,
+                ),
               ),
-              SizedBox(width: 14),
+              const SizedBox(width: 14),
               Expanded(
                 child: Text(
                   'Chargement en cours...',
-                  style: TextStyle(fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: appColors.mutedText,
+                  ),
                 ),
               ),
             ],

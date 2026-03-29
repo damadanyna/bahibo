@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:bahibo/theme/app_theme_extensions.dart';
 
 typedef AppAttachmentAction = FutureOr<void> Function();
 
@@ -12,9 +13,10 @@ Future<void> showAppAttachmentSheet(
 }) {
   final theme = Theme.of(context);
   final isDark = theme.brightness == Brightness.dark;
+  final appColors = theme.appColors;
   final primary = theme.colorScheme.primary;
-  final sheetColor = isDark ? const Color(0xFF102522) : Colors.white;
-  final mutedColor = isDark ? Colors.white70 : const Color(0xFF5D6C66);
+  final sheetColor = theme.cardColor;
+  final mutedColor = appColors.mutedText;
 
   return showModalBottomSheet<void>(
     context: context,
@@ -41,7 +43,7 @@ Future<void> showAppAttachmentSheet(
                 width: 46,
                 height: 5,
                 decoration: BoxDecoration(
-                  color: isDark ? Colors.white24 : Colors.black12,
+                  color: appColors.inputBorder,
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
@@ -50,7 +52,7 @@ Future<void> showAppAttachmentSheet(
             Text(
               'Ajouter un contenu',
               style: TextStyle(
-                color: isDark ? Colors.white : const Color(0xFF12201B),
+                color: theme.colorScheme.onSurface,
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
               ),
@@ -119,6 +121,8 @@ class _AttachmentActionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appColors = Theme.of(context).appColors;
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -127,11 +131,9 @@ class _AttachmentActionTile extends StatelessWidget {
         child: Ink(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF152D29) : const Color(0xFFF4FBF6),
+            color: appColors.inputFill,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: isDark ? Colors.white10 : const Color(0xFFE1EBE4),
-            ),
+            border: Border.all(color: appColors.inputBorder),
           ),
           child: Row(
             children: [
@@ -152,7 +154,7 @@ class _AttachmentActionTile extends StatelessWidget {
                     Text(
                       title,
                       style: TextStyle(
-                        color: isDark ? Colors.white : const Color(0xFF12201B),
+                        color: Theme.of(context).colorScheme.onSurface,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -160,19 +162,14 @@ class _AttachmentActionTile extends StatelessWidget {
                     Text(
                       subtitle,
                       style: TextStyle(
-                        color: isDark
-                            ? Colors.white70
-                            : const Color(0xFF5D6C66),
+                        color: Theme.of(context).appColors.mutedText,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
                 ),
               ),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: isDark ? Colors.white54 : Colors.black45,
-              ),
+              Icon(Icons.chevron_right_rounded, color: appColors.mutedText),
             ],
           ),
         ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:bahibo/theme/app_theme_extensions.dart';
 
 class AppInputContainer extends StatelessWidget {
   final Widget child;
@@ -17,18 +18,16 @@ class AppInputContainer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final appColors = theme.appColors;
 
     return Container(
       height: height,
       alignment: Alignment.center,
       padding: padding,
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF142B27) : const Color(0xFFF6FBF7),
+        color: appColors.inputFill,
         borderRadius: borderRadius,
-        border: Border.all(
-          color: isDark ? Colors.white10 : const Color(0xFFDFEAE2),
-        ),
+        border: Border.all(color: appColors.inputBorder),
       ),
       child: child,
     );
@@ -45,8 +44,7 @@ InputDecoration appInputDecoration(
   bool isDense = true,
 }) {
   final theme = Theme.of(context);
-  final isDark = theme.brightness == Brightness.dark;
-  final subtleText = isDark ? Colors.white70 : const Color(0xFF5D6C66);
+  final subtleText = theme.appColors.mutedText;
 
   return InputDecoration(
     hintText: hintText,
@@ -67,9 +65,9 @@ InputDecoration appInputDecoration(
 }
 
 TextStyle appInputTextStyle(BuildContext context) {
-  final isDark = Theme.of(context).brightness == Brightness.dark;
+  final theme = Theme.of(context);
   return TextStyle(
-    color: isDark ? Colors.white : const Color(0xFF12201B),
+    color: theme.colorScheme.onSurface,
     fontWeight: FontWeight.w600,
     fontSize: 14,
   );

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:bahibo/theme/app_theme_extensions.dart';
 
 class AppBackButton extends StatelessWidget {
   final VoidCallback? onTap;
@@ -14,6 +15,8 @@ class AppBackButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appColors = Theme.of(context).appColors;
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -23,15 +26,15 @@ class AppBackButton extends StatelessWidget {
           width: size,
           height: size,
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.28),
+            color: appColors.backButtonFill,
             shape: BoxShape.circle,
-            border: Border.all(color: Colors.white24),
+            border: Border.all(color: appColors.backButtonBorder),
           ),
           child: Padding(
             padding: padding,
-            child: const FittedBox(
+            child: FittedBox(
               fit: BoxFit.scaleDown,
-              child: Icon(Icons.arrow_back, color: Colors.white),
+              child: Icon(Icons.arrow_back, color: appColors.heroForeground),
             ),
           ),
         ),

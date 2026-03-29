@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/page/chat_page.dart';
 import 'package:bahibo/page/image_viewer_page.dart';
+import 'package:bahibo/theme/app_theme_extensions.dart';
 
 class ProductDetailPage extends StatefulWidget {
   final Map<String, dynamic> product;
@@ -79,15 +80,12 @@ class _ProductDetailPageState extends State<ProductDetailPage>
 
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final pageBackgroundColor = isDark
-        ? theme.scaffoldBackgroundColor
-        : const Color(0xFFF7F7F4);
-    final topBarColor = isDark
-        ? theme.scaffoldBackgroundColor
-        : const Color(0xFFEFF4EC);
+    final appColors = theme.appColors;
+    final pageBackgroundColor = appColors.backgroundBase;
+    final topBarColor = appColors.panelMuted;
     final topBarForegroundColor = isDark
-        ? (theme.appBarTheme.foregroundColor ?? Colors.white)
-        : const Color(0xFF101010);
+        ? (theme.appBarTheme.foregroundColor ?? appColors.heroForeground)
+        : theme.colorScheme.onSurface;
     final bottomBarColor = isDark ? theme.scaffoldBackgroundColor : topBarColor;
     final detailCardColor = theme.cardColor;
     final detailPrimaryTextColor =
@@ -96,7 +94,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
         theme.textTheme.bodyMedium?.color ?? theme.colorScheme.onSurfaceVariant;
     final actionIconColor =
         theme.iconTheme.color ??
-        (isDark ? Colors.white : theme.colorScheme.onSurface);
+        (isDark ? appColors.heroForeground : theme.colorScheme.onSurface);
 
     return Scaffold(
       backgroundColor: pageBackgroundColor,
@@ -161,7 +159,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                   _socialActionCard(
                                     icon: Icons.favorite,
                                     label: '6 374',
-                                    iconColor: const Color(0xFFFF4D6D),
+                                    iconColor: appColors.favoriteAccent,
                                   ),
                                   _socialActionCard(
                                     icon: Icons.chat_bubble,
@@ -197,13 +195,14 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                       vertical: 4,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: Colors.green.withOpacity(0.1),
+                                      color: theme.colorScheme.primary
+                                          .withOpacity(0.12),
                                       borderRadius: BorderRadius.circular(20),
                                     ),
                                     child: Text(
                                       widget.product['category'] ?? 'Produit',
-                                      style: const TextStyle(
-                                        color: Colors.green,
+                                      style: TextStyle(
+                                        color: theme.colorScheme.primary,
                                         fontSize: 12,
                                         fontWeight: FontWeight.w600,
                                       ),
@@ -227,21 +226,23 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                     children: [
                                       Text(
                                         '$priceFormatted',
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 28,
                                           fontWeight: FontWeight.bold,
-                                          color: Colors.green,
+                                          color: theme.colorScheme.primary,
                                         ),
                                       ),
                                       const SizedBox(width: 4),
-                                      const Padding(
-                                        padding: EdgeInsets.only(bottom: 4),
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                          bottom: 4,
+                                        ),
                                         child: Text(
                                           'MGA',
                                           style: TextStyle(
                                             fontSize: 14,
                                             fontWeight: FontWeight.w600,
-                                            color: Colors.green,
+                                            color: theme.colorScheme.primary,
                                           ),
                                         ),
                                       ),
@@ -400,7 +401,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                             width: 14,
                                             height: 14,
                                             decoration: BoxDecoration(
-                                              color: Colors.green,
+                                              color: appColors.success,
                                               shape: BoxShape.circle,
                                               border: Border.all(
                                                 color: detailCardColor,
@@ -435,23 +436,29 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                                       vertical: 3,
                                                     ),
                                                 decoration: BoxDecoration(
-                                                  color: Colors.green
+                                                  color: theme
+                                                      .colorScheme
+                                                      .primary
                                                       .withOpacity(0.1),
                                                   borderRadius:
                                                       BorderRadius.circular(20),
                                                 ),
                                                 child: Row(
-                                                  children: const [
+                                                  children: [
                                                     Icon(
                                                       Icons.verified,
                                                       size: 12,
-                                                      color: Colors.green,
+                                                      color: theme
+                                                          .colorScheme
+                                                          .primary,
                                                     ),
-                                                    SizedBox(width: 3),
+                                                    const SizedBox(width: 3),
                                                     Text(
                                                       'Vendeur Vérifié',
                                                       style: TextStyle(
-                                                        color: Colors.green,
+                                                        color: theme
+                                                            .colorScheme
+                                                            .primary,
                                                         fontSize: 11,
                                                         fontWeight:
                                                             FontWeight.w600,
@@ -479,9 +486,10 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                         );
                                       },
                                       style: OutlinedButton.styleFrom(
-                                        foregroundColor: Colors.green,
-                                        side: const BorderSide(
-                                          color: Colors.green,
+                                        foregroundColor:
+                                            theme.colorScheme.primary,
+                                        side: BorderSide(
+                                          color: theme.colorScheme.primary,
                                         ),
                                         shape: RoundedRectangleBorder(
                                           borderRadius: BorderRadius.circular(
@@ -578,6 +586,8 @@ class _ProductDetailPageState extends State<ProductDetailPage>
   }
 
   Widget _buildImageGrid(List<String> images) {
+    final appColors = Theme.of(context).appColors;
+
     if (images.isEmpty) return const SizedBox.shrink();
 
     if (images.length == 1) {
@@ -644,12 +654,12 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                               onTap: () => _openProductGallery(images, i + 1),
                             ),
                             Container(
-                              color: Colors.black54,
+                              color: appColors.scrimSoft,
                               child: Center(
                                 child: Text(
                                   '+$extra',
-                                  style: const TextStyle(
-                                    color: Colors.white,
+                                  style: TextStyle(
+                                    color: appColors.heroForeground,
                                     fontSize: 26,
                                     fontWeight: FontWeight.bold,
                                   ),
@@ -724,6 +734,8 @@ class _ProductDetailPageState extends State<ProductDetailPage>
   }
 
   Widget _imageItem(String url, {VoidCallback? onTap}) {
+    final appColors = Theme.of(context).appColors;
+
     return GestureDetector(
       onTap: onTap,
       child: AppNetworkImage(
@@ -731,9 +743,9 @@ class _ProductDetailPageState extends State<ProductDetailPage>
         fit: BoxFit.cover,
         width: double.infinity,
         height: double.infinity,
-        errorChild: const Icon(
+        errorChild: Icon(
           Icons.image_not_supported,
-          color: Colors.grey,
+          color: appColors.placeholderIcon,
           size: 50,
         ),
       ),
@@ -755,10 +767,10 @@ class _ProductDetailPageState extends State<ProductDetailPage>
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: Colors.green.withOpacity(0.1),
+              color: theme.colorScheme.primary.withOpacity(0.12),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(icon, color: Colors.green, size: 18),
+            child: Icon(icon, color: theme.colorScheme.primary, size: 18),
           ),
           const SizedBox(width: 12),
           Text(label, style: TextStyle(fontSize: 13, color: detailLabelColor)),
@@ -783,14 +795,17 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     VoidCallback? onTap,
   }) {
     final theme = Theme.of(context);
+    final appColors = theme.appColors;
     final isDark = theme.brightness == Brightness.dark;
     final actionCardColor = isDark
         ? theme.scaffoldBackgroundColor
         : theme.colorScheme.surfaceContainer;
     final actionBorderColor = isDark
-        ? Colors.white.withValues(alpha: 0.08)
+        ? appColors.heroBorder
         : theme.colorScheme.outlineVariant.withValues(alpha: 0.55);
-    final actionTextColor = isDark ? Colors.white : theme.colorScheme.onSurface;
+    final actionTextColor = isDark
+        ? appColors.heroForeground
+        : theme.colorScheme.onSurface;
 
     return Material(
       color: Colors.transparent,

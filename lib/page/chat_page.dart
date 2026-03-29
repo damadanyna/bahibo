@@ -6,6 +6,7 @@ import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
 import 'package:bahibo/component/ui/chat_message_input.dart';
+import 'package:bahibo/theme/app_theme_extensions.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key});
@@ -197,15 +198,12 @@ class _ChatPageState extends State<ChatPage>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final appColors = theme.appColors;
     final primary = theme.colorScheme.primary;
-    final background = isDark
-        ? theme.scaffoldBackgroundColor
-        : const Color(0xFFEAF5EE);
-    final cardColor = isDark ? theme.scaffoldBackgroundColor : Colors.white;
-    final panelColor = isDark
-        ? theme.scaffoldBackgroundColor
-        : const Color(0xFFF6FBF7);
-    final subtleText = isDark ? Colors.white70 : const Color(0xFF5D6C66);
+    final background = appColors.backgroundBase;
+    final cardColor = appColors.panelBackground;
+    final panelColor = appColors.inputFill;
+    final subtleText = appColors.mutedText;
     const sellerName = 'John Rakoto';
     const sellerRole = 'Vendeur certifie';
     const avatarUrl =
@@ -269,9 +267,9 @@ class _ChatPageState extends State<ChatPage>
                                     color: panelColor,
                                     borderRadius: BorderRadius.circular(999),
                                     border: Border.all(
-                                      color: isDark
-                                          ? Colors.white10
-                                          : const Color(0xFFE0EAE4),
+                                      color: Theme.of(
+                                        context,
+                                      ).appColors.inputBorder,
                                     ),
                                   ),
                                   child: Text(
@@ -346,6 +344,8 @@ class _ChatHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appColors = Theme.of(context).appColors;
+
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 32, 18, 20),
       decoration: BoxDecoration(
@@ -353,7 +353,7 @@ class _ChatHeader extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [primary.withOpacity(0.92), const Color(0xFF123C2E)],
+          colors: [primary.withOpacity(0.92), appColors.heroAccent],
         ),
       ),
       child: Column(
@@ -365,7 +365,7 @@ class _ChatHeader extends StatelessWidget {
                 padding: const EdgeInsets.all(3),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white24),
+                  border: Border.all(color: appColors.heroBorder),
                 ),
                 child: AppCircleNetworkAvatar(radius: 26, imageUrl: avatarUrl),
               ),
@@ -376,8 +376,8 @@ class _ChatHeader extends StatelessWidget {
                   children: [
                     Text(
                       sellerName,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: appColors.heroForeground,
                         fontSize: 24,
                         fontWeight: FontWeight.w800,
                       ),
@@ -388,8 +388,8 @@ class _ChatHeader extends StatelessWidget {
                         Container(
                           width: 10,
                           height: 10,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF7DFFB0),
+                          decoration: BoxDecoration(
+                            color: appColors.success,
                             shape: BoxShape.circle,
                           ),
                         ),
@@ -398,7 +398,7 @@ class _ChatHeader extends StatelessWidget {
                           child: Text(
                             '$sellerRole • En ligne maintenant',
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.82),
+                              color: appColors.heroForegroundMuted,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -414,14 +414,14 @@ class _ChatHeader extends StatelessWidget {
                   vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.10),
+                  color: appColors.heroSurface,
                   borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: Colors.white24),
+                  border: Border.all(color: appColors.heroBorder),
                 ),
-                child: const Text(
+                child: Text(
                   'Actif',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: appColors.heroForeground,
                     fontSize: 7,
                     fontWeight: FontWeight.w700,
                   ),
@@ -433,23 +433,24 @@ class _ChatHeader extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
-              color: cardColor.withOpacity(0.22),
+              color: appColors.heroSurface,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white12),
+              border: Border.all(color: appColors.overlayBorder),
             ),
             child: Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.shield_outlined,
-                  color: Colors.white,
+                  color: appColors.heroForeground,
                   size: 18,
                 ),
                 const SizedBox(width: 10),
-                Expanded(
+                Padding(
+                  padding: EdgeInsets.zero,
                   child: Text(
                     'Discutez en toute securite avant de confirmer la transaction.',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.86),
+                      color: appColors.heroForegroundMuted,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -483,9 +484,7 @@ class _ProductContextCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: cardColor,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isDark ? Colors.white10 : const Color(0xFFE1EBE4),
-        ),
+        border: Border.all(color: Theme.of(context).appColors.inputBorder),
       ),
       child: Row(
         children: [
@@ -508,7 +507,7 @@ class _ProductContextCard extends StatelessWidget {
                 Text(
                   'Samsung Galaxy S20',
                   style: TextStyle(
-                    color: isDark ? Colors.white : const Color(0xFF12201B),
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
                   ),
@@ -597,13 +596,14 @@ class _ChatBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appColors = Theme.of(context).appColors;
     final bubbleColor = isMine
         ? primary.withOpacity(isDark ? 0.90 : 0.96)
         : cardColor;
     final textColor = isMine
-        ? Colors.white
-        : (isDark ? Colors.white : const Color(0xFF15211C));
-    final metaColor = isMine ? Colors.white70 : subtleText;
+        ? appColors.heroForeground
+        : Theme.of(context).colorScheme.onSurface;
+    final metaColor = isMine ? appColors.heroForegroundMuted : subtleText;
 
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
@@ -633,8 +633,8 @@ class _ChatBubble extends StatelessWidget {
                 ),
                 border: Border.all(
                   color: isMine
-                      ? Colors.white10
-                      : (isDark ? Colors.white10 : const Color(0xFFE3ECE6)),
+                      ? appColors.heroBorder
+                      : Theme.of(context).appColors.inputBorder,
                 ),
               ),
               child: Column(
@@ -677,7 +677,7 @@ class _ChatBubble extends StatelessWidget {
                         const Icon(
                           Icons.done_all_rounded,
                           size: 15,
-                          color: Colors.white70,
+                          color: Colors.white,
                         ),
                       ],
                     ],
@@ -711,12 +711,13 @@ class _AttachmentPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appColors = Theme.of(context).appColors;
     final backgroundColor = isMine
-        ? Colors.white.withOpacity(0.14)
-        : (isDark ? Colors.white10 : primary.withOpacity(0.08));
+        ? appColors.heroSurface
+        : (isDark ? appColors.heroSurface : primary.withOpacity(0.08));
     final textColor = isMine
-        ? Colors.white
-        : (isDark ? Colors.white : const Color(0xFF15211C));
+        ? appColors.heroForeground
+        : Theme.of(context).colorScheme.onSurface;
 
     IconData icon;
     String title;
@@ -756,14 +757,14 @@ class _AttachmentPreview extends StatelessWidget {
                   vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.42),
+                  color: appColors.scrimSoft,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.photo_outlined,
-                      color: Colors.white,
+                      color: appColors.heroForeground,
                       size: 18,
                     ),
                     const SizedBox(width: 8),
@@ -771,8 +772,8 @@ class _AttachmentPreview extends StatelessWidget {
                       child: Text(
                         label,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: appColors.heroForeground,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -798,7 +799,7 @@ class _AttachmentPreview extends StatelessWidget {
             width: 38,
             height: 38,
             decoration: BoxDecoration(
-              color: isMine ? Colors.white24 : primary.withOpacity(0.14),
+              color: isMine ? appColors.heroBorder : primary.withOpacity(0.14),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(icon, color: textColor, size: 20),

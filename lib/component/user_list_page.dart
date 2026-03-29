@@ -5,6 +5,7 @@ import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
 import 'package:bahibo/component/app_text_input.dart';
 import 'package:bahibo/component/profile_models.dart';
+import 'package:bahibo/theme/app_theme_extensions.dart';
 
 class UserListItemData {
   final String name;
@@ -77,15 +78,13 @@ class _UserListPageState extends State<UserListPage>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final appColors = theme.appColors;
     final primary = theme.colorScheme.primary;
-    final backgroundColor = isDark
-        ? const Color(0xFF0E1712)
-        : const Color(0xFFF2F8F3);
-    final surfaceColor = isDark ? const Color(0xFF222120) : Colors.white;
-    final mutedColor = isDark ? Colors.white70 : const Color(0xFF6B7280);
+    final backgroundColor = appColors.backgroundBase;
+    final surfaceColor = appColors.panelBackground;
+    final mutedColor = appColors.mutedText;
     final titleColor =
-        theme.textTheme.headlineSmall?.color ??
-        (isDark ? Colors.white : Colors.black87);
+        theme.textTheme.headlineSmall?.color ?? theme.colorScheme.onSurface;
     final filteredUsers = widget.users.where((user) {
       final normalizedQuery = _searchQuery.trim().toLowerCase();
       if (normalizedQuery.isEmpty) return true;
@@ -186,18 +185,11 @@ class _UserListPageState extends State<UserListPage>
                                         },
                                         child: Icon(
                                           Icons.close,
-                                          color: isDark
-                                              ? Colors.white70
-                                              : Colors.black54,
+                                          color: mutedColor,
                                         ),
                                       )
                                     else
-                                      Icon(
-                                        Icons.tune,
-                                        color: isDark
-                                            ? Colors.white70
-                                            : Colors.black54,
-                                      ),
+                                      Icon(Icons.tune, color: mutedColor),
                                   ],
                                 ),
                               ),
@@ -226,7 +218,7 @@ class _UserListPageState extends State<UserListPage>
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w700,
-                                  color: isDark ? Colors.white : Colors.black87,
+                                  color: theme.colorScheme.onSurface,
                                 ),
                               ),
                               const SizedBox(height: 6),

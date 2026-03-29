@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:bahibo/component/app_network_image.dart';
+import 'package:bahibo/theme/app_theme_extensions.dart';
 import '../page/productDetail.dart';
 
 class ProductCard extends StatelessWidget {
@@ -10,10 +11,8 @@ class ProductCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final borderColor = theme.brightness == Brightness.dark
-        ? const Color(0xFF132926)
-        : theme.colorScheme.onSurface.withValues(alpha: 0.1);
+    final appColors = theme.appColors;
+    final borderColor = theme.appColors.inputBorder;
     final cardColor = theme.cardColor;
     final titleColor =
         theme.textTheme.titleMedium?.color ?? theme.colorScheme.onSurface;
@@ -88,12 +87,32 @@ class ProductCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Row(
-                      children: const [
-                        Icon(Icons.star, color: Colors.amber, size: 16),
-                        Icon(Icons.star, color: Colors.amber, size: 16),
-                        Icon(Icons.star, color: Colors.amber, size: 16),
-                        Icon(Icons.star, color: Colors.amber, size: 16),
-                        Icon(Icons.star, color: Colors.amber, size: 16),
+                      children: [
+                        Icon(
+                          Icons.star,
+                          color: theme.colorScheme.secondary,
+                          size: 16,
+                        ),
+                        Icon(
+                          Icons.star,
+                          color: theme.colorScheme.secondary,
+                          size: 16,
+                        ),
+                        Icon(
+                          Icons.star,
+                          color: theme.colorScheme.secondary,
+                          size: 16,
+                        ),
+                        Icon(
+                          Icons.star,
+                          color: theme.colorScheme.secondary,
+                          size: 16,
+                        ),
+                        Icon(
+                          Icons.star,
+                          color: theme.colorScheme.secondary,
+                          size: 16,
+                        ),
                       ],
                     ),
                     const SizedBox(height: 30),
@@ -116,6 +135,9 @@ class ProductCard extends StatelessWidget {
   }
 
   Widget _buildImageGrid(BuildContext context) {
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
+
     // ✅ CORRECTION — uniquement product['images'], thumbnail en fallback
     final List<String> images =
         (product['images'] as List?)?.whereType<String>().toList() ?? [];
@@ -236,14 +258,14 @@ class ProductCard extends StatelessWidget {
                       if (extra > 0)
                         Container(
                           decoration: BoxDecoration(
-                            color: Colors.black54,
+                            color: appColors.scrimSoft,
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Center(
                             child: Text(
                               '+$extra',
-                              style: const TextStyle(
-                                color: Colors.white,
+                              style: TextStyle(
+                                color: appColors.heroForeground,
                                 fontSize: 22,
                                 fontWeight: FontWeight.bold,
                               ),

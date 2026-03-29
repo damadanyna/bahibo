@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:bahibo/theme/app_theme_extensions.dart';
+
 class AppImagePlaceholder extends StatelessWidget {
   final double? width;
   final double? height;
@@ -16,15 +18,15 @@ class AppImagePlaceholder extends StatelessWidget {
     this.child,
   });
 
-  static const Color backgroundColor = Color.fromARGB(75, 158, 158, 158);
-
   @override
   Widget build(BuildContext context) {
+    final appColors = Theme.of(context).appColors;
+
     return Container(
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: backgroundColor,
+        color: appColors.placeholderFill,
         shape: shape,
         borderRadius: shape == BoxShape.circle ? null : borderRadius,
       ),
@@ -55,6 +57,8 @@ class AppNetworkImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appColors = Theme.of(context).appColors;
+
     final image = Image.network(
       imageUrl,
       fit: fit,
@@ -78,9 +82,9 @@ class AppNetworkImage extends StatelessWidget {
           child: Center(
             child:
                 errorChild ??
-                const Icon(
+                Icon(
                   Icons.image_not_supported,
-                  color: Colors.grey,
+                  color: appColors.placeholderIcon,
                   size: 28,
                 ),
           ),

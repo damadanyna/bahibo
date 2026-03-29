@@ -3,6 +3,8 @@ import 'package:bahibo/component/app_text_input.dart';
 import 'package:bahibo/page/productList.dart';
 import 'package:flutter/material.dart';
 
+import 'package:bahibo/theme/app_theme_extensions.dart';
+
 class ProfileInformationPage extends StatefulWidget {
   const ProfileInformationPage({super.key});
 
@@ -13,7 +15,11 @@ class ProfileInformationPage extends StatefulWidget {
 class _ProfileInformationPageState extends State<ProfileInformationPage> {
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
+
     return Scaffold(
+      backgroundColor: appColors.backgroundBase,
       resizeToAvoidBottomInset: false,
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 40),
@@ -34,19 +40,23 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
                 style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w400,
-                  color: Colors.grey,
+                  color: appColors.mutedText,
                 ),
               ),
             ),
-            SizedBox(height: 40),
+            const SizedBox(height: 40),
             SizedBox(
               height: MediaQuery.of(context).size.height / 4,
               child: Stack(
                 children: [
                   CircleAvatar(
                     radius: 60,
-                    backgroundColor: Colors.grey[300],
-                    child: Icon(Icons.person, size: 110, color: Colors.white),
+                    backgroundColor: appColors.inputFill,
+                    child: Icon(
+                      Icons.person,
+                      size: 110,
+                      color: appColors.heroForeground,
+                    ),
                   ),
                   Positioned(
                     bottom: 170,
@@ -59,13 +69,16 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
                         width: 100 * 0.30,
                         height: 100 * 0.30,
                         decoration: BoxDecoration(
-                          color: Colors.green, // vert WhatsApp
+                          color: theme.colorScheme.primary,
                           shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
+                          border: Border.all(
+                            color: appColors.heroForeground,
+                            width: 2,
+                          ),
                         ),
                         child: Icon(
                           Icons.add,
-                          color: Colors.white,
+                          color: theme.colorScheme.onPrimary,
                           size: 100 * 0.25,
                         ),
                       ),
@@ -84,7 +97,7 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
                 style: appInputTextStyle(context),
               ),
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(

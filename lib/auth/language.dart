@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'phoneNumber.dart';
 
+import 'package:bahibo/theme/app_theme_extensions.dart';
+
 class LanguagePage extends StatefulWidget {
   const LanguagePage({super.key});
 
@@ -27,7 +29,11 @@ class _LanguagePageState extends State<LanguagePage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
+
     return Scaffold(
+      backgroundColor: appColors.backgroundBase,
       resizeToAvoidBottomInset: false,
 
       body: Padding(
@@ -49,11 +55,11 @@ class _LanguagePageState extends State<LanguagePage> {
                 style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w400,
-                  color: Colors.grey,
+                  color: appColors.mutedText,
                 ),
               ),
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             SizedBox(
               height: MediaQuery.of(context).size.height / 2,
               child: ListView.builder(
@@ -61,10 +67,15 @@ class _LanguagePageState extends State<LanguagePage> {
                 itemBuilder: (context, index) {
                   final language = languages[index];
                   return RadioListTile<String>(
+                    activeColor: theme.colorScheme.primary,
+                    tileColor: theme.cardColor,
                     title: Text(language['name']!),
                     // ignore: deprecated_member_use
                     groupValue: _selectedLanguage,
-                    subtitle: Text(language['native']!),
+                    subtitle: Text(
+                      language['native']!,
+                      style: TextStyle(color: appColors.mutedText),
+                    ),
                     value: language['name']!,
                     // ignore: deprecated_member_use
                     onChanged: (value) {
@@ -88,10 +99,10 @@ class _LanguagePageState extends State<LanguagePage> {
         onPressed: () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => PhoneNumberPage()),
+            MaterialPageRoute(builder: (context) => const PhoneNumberPage()),
           );
         },
-        child: Icon(Icons.arrow_forward),
+        child: const Icon(Icons.arrow_forward),
       ),
 
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,

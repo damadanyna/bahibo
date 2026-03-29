@@ -5,6 +5,7 @@ import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
 import 'package:bahibo/component/app_share_sheet.dart';
+import 'package:bahibo/theme/app_theme_extensions.dart';
 
 class ImageViewerOverlayData {
   final String? title;
@@ -126,14 +127,19 @@ class _ImageViewerPageState extends State<ImageViewerPage>
     final images = widget.imageUrls;
     final overlay = widget.overlay;
     final bottomOverlayOffset = isOffline ? 74.0 : 28.0;
+    final appColors = Theme.of(context).appColors;
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: appColors.viewerBackground,
       body: Stack(
         children: [
           if (images.isEmpty)
-            const Center(
-              child: Icon(Icons.broken_image, color: Colors.white54, size: 80),
+            Center(
+              child: Icon(
+                Icons.broken_image,
+                color: appColors.heroForegroundMuted,
+                size: 80,
+              ),
             )
           else if (_showEntrySkeleton)
             const Center(
@@ -153,9 +159,9 @@ class _ImageViewerPageState extends State<ImageViewerPage>
                 Widget image = AppNetworkImage(
                   imageUrl: images[index],
                   fit: BoxFit.contain,
-                  errorChild: const Icon(
+                  errorChild: Icon(
                     Icons.broken_image,
-                    color: Colors.white54,
+                    color: appColors.heroForegroundMuted,
                     size: 80,
                   ),
                 );
@@ -185,10 +191,10 @@ class _ImageViewerPageState extends State<ImageViewerPage>
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          Colors.black.withOpacity(0.36),
+                          appColors.scrimSoft,
                           Colors.transparent,
                           Colors.transparent,
-                          Colors.black.withOpacity(0.84),
+                          appColors.scrimStrong,
                         ],
                         stops: const [0, 0.18, 0.52, 1],
                       ),
@@ -218,18 +224,16 @@ class _ImageViewerPageState extends State<ImageViewerPage>
                           vertical: 7,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.34),
+                          color: appColors.overlaySurface,
                           borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: Colors.white.withOpacity(0.14),
-                          ),
+                          border: Border.all(color: appColors.overlayBorder),
                         ),
                         child: Text(
                           images.isEmpty
                               ? 'Image'
                               : '${_currentIndex + 1}/${images.length}',
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: appColors.heroForeground,
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
                           ),
@@ -396,6 +400,7 @@ class _ImageViewerOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appColors = Theme.of(context).appColors;
     final showSeller =
         (overlay.sellerName?.trim().isNotEmpty ?? false) ||
         (overlay.sellerAvatarUrl?.trim().isNotEmpty ?? false);
@@ -426,11 +431,11 @@ class _ImageViewerOverlay extends StatelessWidget {
               child: Ink(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(
-                    isDescriptionExpanded ? 0.50 : 0.18,
-                  ),
+                  color: isDescriptionExpanded
+                      ? appColors.scrimSoft
+                      : appColors.overlaySurface,
                   borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: Colors.white.withOpacity(0.08)),
+                  border: Border.all(color: appColors.overlayBorder),
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -443,8 +448,8 @@ class _ImageViewerOverlay extends StatelessWidget {
                         overflow: isDescriptionExpanded
                             ? TextOverflow.visible
                             : TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.green,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.primary,
                           fontSize: 18,
                           fontWeight: FontWeight.w800,
                           height: 1.18,
@@ -459,7 +464,7 @@ class _ImageViewerOverlay extends StatelessWidget {
                             ? TextOverflow.visible
                             : TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.88),
+                          color: appColors.heroForegroundMuted,
                           fontSize: 13.5,
                           height: 1.35,
                         ),
@@ -468,8 +473,8 @@ class _ImageViewerOverlay extends StatelessWidget {
                     if (showDescription)
                       Text(
                         isDescriptionExpanded ? 'Voir moins' : 'Voir plus',
-                        style: const TextStyle(
-                          color: Color(0xFF7CE3A0),
+                        style: TextStyle(
+                          color: appColors.onlineStatus,
                           fontSize: 11.5,
                           fontWeight: FontWeight.w700,
                         ),
@@ -502,20 +507,20 @@ class _ImageViewerOverlay extends StatelessWidget {
               _ViewerSocialActionCard(
                 icon: Icons.favorite,
                 label: actionLikes,
-                iconColor: const Color(0xFFFF4D6D),
+                iconColor: appColors.favoriteAccent,
               ),
               const SizedBox(height: 8),
               _ViewerSocialActionCard(
                 icon: Icons.chat_bubble,
                 label: actionComments,
-                iconColor: Colors.white,
+                iconColor: appColors.heroForeground,
                 onTap: onCommentTap,
               ),
               const SizedBox(height: 8),
               _ViewerSocialActionCard(
                 icon: Icons.reply_rounded,
                 label: actionShares,
-                iconColor: Colors.white,
+                iconColor: appColors.heroForeground,
                 onTap: onShareTap,
               ),
               const SizedBox(height: 8),
@@ -552,6 +557,7 @@ class _ViewerSocialActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appColors = Theme.of(context).appColors;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -561,9 +567,9 @@ class _ViewerSocialActionCard extends StatelessWidget {
           width: 82,
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 11),
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.52),
+            color: appColors.overlaySurface,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withOpacity(0.08)),
+            border: Border.all(color: appColors.overlayBorder),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -573,8 +579,8 @@ class _ViewerSocialActionCard extends StatelessWidget {
               Text(
                 label,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: appColors.heroForeground,
                   fontSize: 9,
                   fontWeight: FontWeight.w800,
                 ),
@@ -594,6 +600,7 @@ class _MessageActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appColors = Theme.of(context).appColors;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -603,20 +610,24 @@ class _MessageActionCard extends StatelessWidget {
           width: 82,
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 11),
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.52),
+            color: appColors.overlaySurface,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withOpacity(0.08)),
+            border: Border.all(color: appColors.overlayBorder),
           ),
-          child: const Column(
+          child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.send_rounded, size: 20, color: Colors.white),
-              SizedBox(height: 4),
+              Icon(
+                Icons.send_rounded,
+                size: 20,
+                color: appColors.heroForeground,
+              ),
+              const SizedBox(height: 4),
               Text(
                 'Message',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.white,
+                  color: appColors.heroForeground,
                   fontSize: 9,
                   fontWeight: FontWeight.w800,
                 ),
@@ -637,6 +648,7 @@ class _SellerStatusAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appColors = Theme.of(context).appColors;
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -646,17 +658,17 @@ class _SellerStatusAvatar extends StatelessWidget {
           padding: const EdgeInsets.all(2),
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Colors.white.withOpacity(0.10),
-            border: Border.all(color: Colors.white.withOpacity(0.22)),
+            color: appColors.heroSurface,
+            border: Border.all(color: appColors.heroBorder),
           ),
           child: sellerAvatarUrl?.isNotEmpty == true
               ? AppCircleNetworkAvatar(radius: 23, imageUrl: sellerAvatarUrl!)
               : Container(
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.14),
+                    color: appColors.heroSurface,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.person, color: Colors.white),
+                  child: Icon(Icons.person, color: appColors.heroForeground),
                 ),
         ),
         Positioned(
@@ -666,9 +678,9 @@ class _SellerStatusAvatar extends StatelessWidget {
             width: 14,
             height: 14,
             decoration: BoxDecoration(
-              color: isOnline ? const Color(0xFF57D163) : Colors.grey,
+              color: isOnline ? appColors.onlineStatus : appColors.mutedText,
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 2),
+              border: Border.all(color: appColors.heroForeground, width: 2),
             ),
           ),
         ),

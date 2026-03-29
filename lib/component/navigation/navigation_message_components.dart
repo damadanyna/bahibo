@@ -1,6 +1,7 @@
 import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/component/ui/dinamic_icon_input.dart';
 import 'package:flutter/material.dart';
+import 'package:bahibo/theme/app_theme_extensions.dart';
 
 class NavigationMessageSearchBar extends StatefulWidget {
   final Color fillColor;
@@ -103,6 +104,8 @@ class NavigationMessageStoryAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final successColor = Theme.of(context).appColors.success;
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -143,7 +146,7 @@ class NavigationMessageStoryAvatar extends StatelessWidget {
                         width: 14,
                         height: 14,
                         decoration: BoxDecoration(
-                          color: const Color(0xFF61D86A),
+                          color: successColor,
                           shape: BoxShape.circle,
                           border: Border.all(color: haloColor, width: 2),
                         ),
@@ -195,13 +198,17 @@ class NavigationConversationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
     final surfaceColor = unread
-        ? (isDark ? const Color(0xFF0A2824) : Colors.white)
-        : (isDark ? const Color(0xFF061E1A) : const Color(0xFFF5FBF6));
-    final titleColor = isDark ? Colors.white : const Color(0xFF11221A);
+        ? (isDark ? theme.cardColor : theme.cardColor)
+        : appColors.inputFill;
+    final titleColor = isDark
+        ? appColors.heroForeground
+        : theme.colorScheme.onSurface;
     final previewColor = isDark
-        ? Colors.white.withValues(alpha: unread ? 0.86 : 0.68)
-        : const Color(0xFF56685F);
+        ? appColors.heroForeground.withValues(alpha: unread ? 0.86 : 0.68)
+        : appColors.mutedText;
 
     return Material(
       color: Colors.transparent,
@@ -216,14 +223,12 @@ class NavigationConversationTile extends StatelessWidget {
             border: Border.all(
               color: unread
                   ? primary.withValues(alpha: isDark ? 0.22 : 0.16)
-                  : (isDark
-                        ? Colors.white.withValues(alpha: 0.05)
-                        : const Color(0xFFDCE9DF)),
+                  : (isDark ? appColors.heroSurface : appColors.inputBorder),
             ),
             boxShadow: unread
                 ? [
                     BoxShadow(
-                      color: Colors.black.withValues(
+                      color: appColors.scrimSoft.withValues(
                         alpha: isDark ? 0.18 : 0.05,
                       ),
                       blurRadius: 18,
@@ -257,7 +262,7 @@ class NavigationConversationTile extends StatelessWidget {
                       width: 14,
                       height: 14,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF61D86A),
+                        color: appColors.success,
                         shape: BoxShape.circle,
                         border: Border.all(color: surfaceColor, width: 2),
                       ),
@@ -320,8 +325,8 @@ class NavigationConversationTile extends StatelessWidget {
                           Container(
                             width: 10,
                             height: 10,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF56C04E),
+                            decoration: BoxDecoration(
+                              color: appColors.success,
                               shape: BoxShape.circle,
                             ),
                           ),

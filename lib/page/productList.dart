@@ -6,6 +6,8 @@ import 'package:http/http.dart' as http;
 import 'category_page.dart';
 import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
+import 'package:bahibo/component/theme_menu_button.dart';
+import 'package:bahibo/theme/app_theme_extensions.dart';
 import '../component/ProductCard.dart';
 
 class Productlist extends StatefulWidget {
@@ -164,6 +166,7 @@ class _ProductlistState extends State<Productlist>
 
   Widget buildCategoryBlock() {
     final theme = Theme.of(context);
+    final appColors = theme.appColors;
     final isDark = theme.brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -213,13 +216,9 @@ class _ProductlistState extends State<Productlist>
                         width: 150,
                         margin: const EdgeInsets.symmetric(horizontal: 6),
                         decoration: BoxDecoration(
-                          color: isDark ? theme.cardColor : Colors.white,
+                          color: theme.cardColor,
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isDark
-                                ? const Color(0xFF132926).withOpacity(0.8)
-                                : const Color.fromARGB(255, 223, 223, 223),
-                          ),
+                          border: Border.all(color: appColors.inputBorder),
                         ),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -269,12 +268,18 @@ class _ProductlistState extends State<Productlist>
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
+                  Text(
                     'Abaoly',
                     style: TextStyle(
                       fontSize: 25,
                       fontWeight: FontWeight.w900,
-                      color: Colors.green,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                  ThemeMenuButton.icon(
+                    icon: Icon(
+                      Icons.light_mode_rounded,
+                      color: theme.colorScheme.primary,
                     ),
                   ),
                 ],

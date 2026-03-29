@@ -4,6 +4,8 @@ import 'package:bahibo/formatter/PhoneNumberFormatter%20extends%20TextInputForma
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:bahibo/theme/app_theme_extensions.dart';
+
 class PhoneNumberPage extends StatefulWidget {
   const PhoneNumberPage({super.key});
 
@@ -30,7 +32,11 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
+
     return Scaffold(
+      backgroundColor: appColors.backgroundBase,
       resizeToAvoidBottomInset: false,
       body: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -42,7 +48,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
               style: TextStyle(fontSize: 25, fontWeight: FontWeight.w400),
             ),
           ),
-          SizedBox(height: 10),
+          const SizedBox(height: 10),
           Container(
             alignment: Alignment.center,
             child: Text(
@@ -50,7 +56,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w400,
-                color: Colors.grey,
+                color: appColors.mutedText,
               ),
             ),
           ),
@@ -61,7 +67,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w400,
-                color: Colors.grey,
+                color: appColors.mutedText,
               ),
             ),
           ),
@@ -228,11 +234,15 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
   }
 
   void _showContactsAndMediaDialog(BuildContext context) {
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext context) {
         return Dialog(
+          backgroundColor: theme.cardColor,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
@@ -245,33 +255,40 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
                 width: double.infinity,
                 height: 100,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF25D366),
-                  borderRadius: BorderRadius.only(
+                  color: appColors.socialWhatsApp,
+                  borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(10),
                     topRight: Radius.circular(10),
                   ),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
+                  children: [
                     Icon(
                       Icons.perm_contact_cal_outlined,
-                      color: Colors.white,
+                      color: appColors.heroForeground,
                       size: 40,
                     ),
-                    SizedBox(width: 50),
+                    const SizedBox(width: 50),
                     Text(
                       "+",
-                      style: TextStyle(color: Colors.white, fontSize: 24),
+                      style: TextStyle(
+                        color: appColors.heroForeground,
+                        fontSize: 24,
+                      ),
                     ),
-                    SizedBox(width: 50),
-                    Icon(Icons.folder_outlined, color: Colors.white, size: 40),
+                    const SizedBox(width: 50),
+                    Icon(
+                      Icons.folder_outlined,
+                      color: appColors.heroForeground,
+                      size: 40,
+                    ),
                   ],
                 ),
               ),
               const SizedBox(height: 16),
               Padding(
-                padding: EdgeInsets.all(12),
+                padding: const EdgeInsets.all(12),
 
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.end,
@@ -287,7 +304,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
                         ),
                       ),
                     ),
-                    SizedBox(height: 10),
+                    const SizedBox(height: 10),
                     Text(
                       "To easily send messages and photos to friends and family, "
                       "allow Bahibo to access your photos and other media.",
@@ -307,9 +324,9 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
                             Navigator.of(context).pop();
                             print("Not now tapped");
                           },
-                          child: const Text(
+                          child: Text(
                             "Not now",
-                            style: TextStyle(color: Color(0xFF25D366)),
+                            style: TextStyle(color: appColors.socialWhatsApp),
                           ),
                         ),
                         TextButton(
@@ -318,13 +335,14 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => ProfileInformationPage(),
+                                builder: (context) =>
+                                    const ProfileInformationPage(),
                               ),
                             );
                           },
-                          child: const Text(
+                          child: Text(
                             "Continue",
-                            style: TextStyle(color: Color(0xFF25D366)),
+                            style: TextStyle(color: appColors.socialWhatsApp),
                           ),
                         ),
                       ],

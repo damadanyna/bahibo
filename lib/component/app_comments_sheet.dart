@@ -7,6 +7,7 @@ import 'package:bahibo/component/app_message_composer.dart';
 import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/component/profile_models.dart';
 import 'package:bahibo/component/seller_profile_page.dart';
+import 'package:bahibo/theme/app_theme_extensions.dart';
 
 class AppCommentItem {
   final String authorName;
@@ -54,10 +55,12 @@ Future<void> showAppCommentsSheet(
   required List<AppCommentItem> comments,
   required ValueChanged<int> onCommentCountChanged,
 }) {
+  final appColors = Theme.of(context).appColors;
+
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: const Color(0xFF111111),
+    backgroundColor: appColors.overlaySurface,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
     ),
@@ -184,6 +187,9 @@ class _AppCommentsSheetContentState extends State<_AppCommentsSheetContent> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
+
     return SafeArea(
       child: FractionallySizedBox(
         heightFactor: 0.72,
@@ -202,16 +208,16 @@ class _AppCommentsSheetContentState extends State<_AppCommentsSheetContent> {
                   width: 46,
                   height: 5,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.16),
+                    color: appColors.heroBorder,
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
               ),
               const SizedBox(height: 18),
-              const Text(
+              Text(
                 'Commentaires',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: appColors.heroForeground,
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
                 ),
@@ -220,7 +226,7 @@ class _AppCommentsSheetContentState extends State<_AppCommentsSheetContent> {
               Text(
                 '$_commentCount reactions de la communaute',
                 style: TextStyle(
-                  color: Colors.green.withOpacity(0.66),
+                  color: theme.colorScheme.primary.withOpacity(0.72),
                   fontSize: 12.5,
                   fontWeight: FontWeight.w500,
                 ),
@@ -235,11 +241,9 @@ class _AppCommentsSheetContentState extends State<_AppCommentsSheetContent> {
                     return Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.05),
+                        color: appColors.heroSurface,
                         borderRadius: BorderRadius.circular(18),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.08),
-                        ),
+                        border: Border.all(color: appColors.heroBorder),
                       ),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -254,9 +258,7 @@ class _AppCommentsSheetContentState extends State<_AppCommentsSheetContent> {
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   border: Border.all(
-                                    color: const Color(
-                                      0xFF2DA56A,
-                                    ).withOpacity(0.32),
+                                    color: appColors.success.withOpacity(0.32),
                                     width: 1.5,
                                   ),
                                 ),
@@ -291,8 +293,9 @@ class _AppCommentsSheetContentState extends State<_AppCommentsSheetContent> {
                                             ),
                                             child: Text(
                                               comment.authorName,
-                                              style: const TextStyle(
-                                                color: Colors.green,
+                                              style: TextStyle(
+                                                color:
+                                                    theme.colorScheme.primary,
                                                 fontSize: 13.5,
                                                 fontWeight: FontWeight.w700,
                                               ),
@@ -304,7 +307,8 @@ class _AppCommentsSheetContentState extends State<_AppCommentsSheetContent> {
                                     Text(
                                       comment.timeLabel,
                                       style: TextStyle(
-                                        color: Colors.green.withOpacity(0.46),
+                                        color: theme.colorScheme.primary
+                                            .withOpacity(0.52),
                                         fontSize: 11,
                                         fontWeight: FontWeight.w600,
                                       ),
@@ -315,7 +319,7 @@ class _AppCommentsSheetContentState extends State<_AppCommentsSheetContent> {
                                 Text(
                                   comment.message,
                                   style: TextStyle(
-                                    color: Colors.white.withOpacity(0.88),
+                                    color: appColors.heroForeground,
                                     fontSize: 13,
                                     height: 1.35,
                                   ),
@@ -335,9 +339,9 @@ class _AppCommentsSheetContentState extends State<_AppCommentsSheetContent> {
                 controller: _commentController,
                 onAttachmentTap: _openCommentAttachmentSheet,
                 onSend: _submitComment,
-                primary: const Color(0xFF57C84D),
-                panelColor: const Color(0xFF142B27),
-                borderColor: const Color(0xFF23493D),
+                primary: theme.colorScheme.primary,
+                panelColor: appColors.inputFill,
+                borderColor: appColors.inputBorder,
                 minLines: 1,
                 maxLines: 3,
               ),

@@ -1,8 +1,10 @@
 import 'package:bahibo/page/productList.dart';
 import 'package:bahibo/page/navigation/main_navigation_messages_panel.dart';
 import 'package:bahibo/page/navigation/main_navigation_search_panel.dart';
-import 'package:bahibo/page/navigation/main_navigation_settings_panel.dart';
+import 'package:bahibo/page/navigation/main_navigation_account_panel.dart';
 import 'package:flutter/material.dart';
+
+import 'package:bahibo/theme/app_theme_extensions.dart';
 
 class MainNavigationItem {
   final IconData icon;
@@ -42,7 +44,7 @@ class _MainNavigationShellState extends State<BahiboNavigationShell> {
       Productlist(),
       MainNavigationSearchPanel(),
       MainNavigationMessagesPanel(),
-      MainNavigationSettingsPanel(),
+      MainNavigationAccountPanel(),
     ];
 
     return Scaffold(
@@ -84,6 +86,7 @@ class MainNavigationBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     final theme = Theme.of(context);
+    final appColors = theme.appColors;
     final barColor = theme.cardColor;
     final activeColor = theme.cardColor;
     final borderColor = theme.brightness == Brightness.dark
@@ -91,8 +94,8 @@ class MainNavigationBar extends StatelessWidget {
         : theme.colorScheme.onSurface.withValues(alpha: 0.12);
     final accentGreen = theme.colorScheme.primary;
     final inactiveIconColor = theme.brightness == Brightness.dark
-        ? Colors.white
-        : Colors.grey.shade600;
+        ? appColors.heroForeground
+        : appColors.mutedText;
     final activeIconColor = accentGreen;
     const innerHorizontalPadding = 16.0;
     const barHeight = 38.0;

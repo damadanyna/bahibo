@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:bahibo/theme/app_theme_extensions.dart';
 
 typedef UiChatSendCallback = FutureOr<void> Function(String text);
 
@@ -40,23 +41,16 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final hintColor = isDark
-        ? Colors.white.withValues(alpha: 0.58)
-        : const Color(0xFF697B71);
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
+    final hintColor = appColors.mutedText;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(7, 3, 5, 3),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF163228) : widget.panelColor,
+        color: widget.panelColor,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color:
-              widget.borderColor ??
-              (isDark
-                  ? Colors.white.withValues(alpha: 0.12)
-                  : const Color(0xFFE1EBE4)),
-        ),
+        border: Border.all(color: widget.borderColor ?? appColors.inputBorder),
       ),
       child: Row(
         children: [
@@ -67,7 +61,7 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => _handleSend(),
               style: TextStyle(
-                color: isDark ? Colors.white : const Color(0xFF14201A),
+                color: theme.colorScheme.onSurface,
                 fontWeight: FontWeight.w600,
               ),
               decoration: InputDecoration(
@@ -96,7 +90,7 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
                 width: 50,
                 height: 50,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF56C04E),
+                  color: widget.primary,
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(

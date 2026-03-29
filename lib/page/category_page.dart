@@ -5,6 +5,7 @@ import "../component/ProductCard.dart";
 import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
 import "../component/theme_menu_button.dart";
+import 'package:bahibo/theme/app_theme_extensions.dart';
 
 class CategoryPage extends StatefulWidget {
   final String categoryName;
@@ -94,16 +95,17 @@ class _CategoryPageState extends State<CategoryPage>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final appColors = theme.appColors;
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF001C1C) : null,
+      backgroundColor: isDark ? appColors.backgroundBase : null,
       appBar: AppBar(
-        backgroundColor: isDark ? const Color(0xFF001C1C) : null,
+        backgroundColor: isDark ? appColors.backgroundBase : null,
         elevation: 0,
         shape: Border(
           bottom: BorderSide(
             color: isDark
-                ? const Color(0xFF132926)
+                ? appColors.inputBorder
                 : theme.colorScheme.onSurface.withValues(alpha: 0.08),
           ),
         ),

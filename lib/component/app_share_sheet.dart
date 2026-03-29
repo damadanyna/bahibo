@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
+import 'package:bahibo/theme/app_theme_extensions.dart';
+
 Future<void> showAppShareSheet(BuildContext context) {
   final messenger = ScaffoldMessenger.of(context);
+  final theme = Theme.of(context);
+  final appColors = theme.appColors;
 
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: const Color(0xFF111111),
+    backgroundColor: appColors.overlaySurface,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
     ),
@@ -17,12 +21,12 @@ Future<void> showAppShareSheet(BuildContext context) {
             (
               icon: FontAwesomeIcons.facebookF,
               title: 'Facebook',
-              backgroundColor: const Color(0xFF4267B2),
+              backgroundColor: appColors.socialFacebook,
             ),
             (
               icon: FontAwesomeIcons.whatsapp,
               title: 'WhatsApp',
-              backgroundColor: const Color(0xFF25D366),
+              backgroundColor: appColors.socialWhatsApp,
             ),
           ];
 
@@ -39,7 +43,7 @@ Future<void> showAppShareSheet(BuildContext context) {
                     width: 46,
                     height: 5,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.16),
+                      color: appColors.heroBorder,
                       borderRadius: BorderRadius.circular(999),
                     ),
                   ),
@@ -74,7 +78,7 @@ Future<void> showAppShareSheet(BuildContext context) {
                                 ),
                                 child: Icon(
                                   item.icon,
-                                  color: Colors.white,
+                                  color: theme.colorScheme.onPrimary,
                                   size: 24,
                                 ),
                               ),

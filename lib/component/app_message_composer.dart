@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:bahibo/component/app_text_input.dart';
+import 'package:bahibo/theme/app_theme_extensions.dart';
 
 class AppMessageComposer extends StatelessWidget {
   final TextEditingController controller;
@@ -28,7 +29,9 @@ class AppMessageComposer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final appColors = theme.appColors;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
@@ -38,7 +41,7 @@ class AppMessageComposer extends StatelessWidget {
         border: Border.all(
           color:
               borderColor ??
-              (isDark ? Colors.white10 : const Color(0xFFDFEAE2)),
+              (isDark ? appColors.inputBorder : appColors.inputBorder),
         ),
       ),
       child: Row(
@@ -92,9 +95,9 @@ class AppMessageComposer extends StatelessWidget {
                   ),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.north_east_rounded,
-                  color: Colors.white,
+                  color: theme.appColors.heroForeground,
                   size: 20,
                 ),
               ),

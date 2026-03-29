@@ -1,6 +1,8 @@
 import 'package:bahibo/page/category_page.dart';
 import 'package:flutter/material.dart';
 
+import 'package:bahibo/theme/app_theme_extensions.dart';
+
 class NavigationCategoryEntry {
   final String icon;
   final String label;
@@ -45,7 +47,7 @@ class NavigationCategoryGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final appColors = theme.appColors;
 
     return GridView.builder(
       shrinkWrap: shrinkWrap,
@@ -79,9 +81,7 @@ class NavigationCategoryGrid extends StatelessWidget {
               decoration: BoxDecoration(
                 color: theme.cardColor,
                 borderRadius: BorderRadius.circular(24),
-                border: Border.all(
-                  color: isDark ? Colors.white10 : const Color(0xFFD6E4DA),
-                ),
+                border: Border.all(color: appColors.inputBorder),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -99,7 +99,7 @@ class NavigationCategoryGrid extends StatelessWidget {
                   Text(
                     'Voir les produits',
                     style: TextStyle(
-                      color: isDark ? Colors.white70 : const Color(0xFF64756B),
+                      color: appColors.mutedText,
                       fontWeight: FontWeight.w600,
                     ),
                   ),

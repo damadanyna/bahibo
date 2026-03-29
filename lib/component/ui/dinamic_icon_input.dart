@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:bahibo/theme/app_theme_extensions.dart';
 
 typedef DynamicInputSubmitCallback = FutureOr<void> Function(String text);
 
@@ -58,23 +59,23 @@ class _DynamicIconInputState extends State<DynamicIconInput> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final appColors = theme.appColors;
     final hintColor = isDark
-        ? Colors.white.withValues(alpha: 0.58)
-        : const Color(0xFF697B71);
+        ? appColors.heroForegroundMuted
+        : appColors.mutedText;
 
     return Container(
       padding: widget.contentPadding,
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF163228) : widget.panelColor,
+        color: isDark ? appColors.inputFill : widget.panelColor,
         borderRadius: BorderRadius.circular(999),
         border: widget.showBorder
             ? Border.all(
                 color:
                     widget.borderColor ??
-                    (isDark
-                        ? Colors.white.withValues(alpha: 0.12)
-                        : const Color(0xFFE1EBE4)),
+                    (isDark ? appColors.inputBorder : appColors.inputBorder),
               )
             : null,
       ),
@@ -102,7 +103,9 @@ class _DynamicIconInputState extends State<DynamicIconInput> {
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => _handleSubmit(),
               style: TextStyle(
-                color: isDark ? Colors.white : const Color(0xFF14201A),
+                color: isDark
+                    ? theme.appColors.heroForeground
+                    : theme.colorScheme.onSurface,
                 fontWeight: FontWeight.w600,
               ),
               decoration: InputDecoration(
