@@ -17,6 +17,9 @@ class Productlist extends StatefulWidget {
 
 class _ProductlistState extends State<Productlist>
     with AppPageRefreshMixin<Productlist> {
+  static const double _bottomContentPadding = 84;
+  static const double _offlineBannerBottomOffset = 64;
+
   List<dynamic> products = [];
   List<String> categories = [];
 
@@ -214,7 +217,7 @@ class _ProductlistState extends State<Productlist>
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
                             color: isDark
-                                ? Colors.grey.shade700
+                                ? const Color(0xFF132926).withOpacity(0.8)
                                 : const Color.fromARGB(255, 223, 223, 223),
                           ),
                         ),
@@ -254,7 +257,9 @@ class _ProductlistState extends State<Productlist>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -282,7 +287,9 @@ class _ProductlistState extends State<Productlist>
                     onRefresh: refreshPageWithDialog,
                     child: products.isEmpty && isLoading
                         ? ListView(
-                            padding: const EdgeInsets.only(bottom: 132),
+                            padding: const EdgeInsets.only(
+                              bottom: _bottomContentPadding,
+                            ),
                             physics: const AlwaysScrollableScrollPhysics(),
                             children: [
                               const CategoryBlockSkeleton(),
@@ -294,7 +301,9 @@ class _ProductlistState extends State<Productlist>
                           )
                         : ListView.builder(
                             controller: _scrollController,
-                            padding: const EdgeInsets.only(bottom: 132),
+                            padding: const EdgeInsets.only(
+                              bottom: _bottomContentPadding,
+                            ),
                             physics: const AlwaysScrollableScrollPhysics(),
                             itemCount: mixedItems.length + 1,
                             itemBuilder: (context, index) {
@@ -334,7 +343,10 @@ class _ProductlistState extends State<Productlist>
                             },
                           ),
                   ),
-                  if (isOffline) const AppOfflineBanner(bottomOffset: 108),
+                  if (isOffline)
+                    const AppOfflineBanner(
+                      bottomOffset: _offlineBannerBottomOffset,
+                    ),
                 ],
               ),
             ),

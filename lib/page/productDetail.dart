@@ -5,7 +5,7 @@ import 'package:bahibo/component/seller_profile_page.dart';
 import 'package:bahibo/component/app_share_sheet.dart';
 import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
-import 'package:bahibo/component/app_text_input.dart';
+import 'package:bahibo/component/ui/chat_message_input_not_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/page/image_viewer_page.dart';
@@ -79,9 +79,27 @@ class _ProductDetailPageState extends State<ProductDetailPage>
 
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final pageBackgroundColor = isDark
+        ? theme.scaffoldBackgroundColor
+        : const Color(0xFFF7F7F4);
+    final topBarColor = isDark
+        ? theme.scaffoldBackgroundColor
+        : const Color(0xFFEFF4EC);
+    final topBarForegroundColor = isDark
+        ? (theme.appBarTheme.foregroundColor ?? Colors.white)
+        : const Color(0xFF101010);
+    final bottomBarColor = isDark ? theme.scaffoldBackgroundColor : topBarColor;
+    final detailCardColor = theme.cardColor;
+    final detailPrimaryTextColor =
+        theme.textTheme.bodyLarge?.color ?? theme.colorScheme.onSurface;
+    final detailSecondaryTextColor =
+        theme.textTheme.bodyMedium?.color ?? theme.colorScheme.onSurfaceVariant;
+    final actionIconColor =
+        theme.iconTheme.color ??
+        (isDark ? Colors.white : theme.colorScheme.onSurface);
 
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
+      backgroundColor: pageBackgroundColor,
       body: Stack(
         children: [
           RefreshIndicator(
@@ -99,21 +117,15 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                         expandedHeight: 0,
                         floating: true,
                         pinned: true,
-                        backgroundColor:
-                            theme.appBarTheme.backgroundColor ??
-                            theme.primaryColor,
-                        foregroundColor:
-                            theme.appBarTheme.foregroundColor ??
-                            (isDark ? Colors.white : Colors.black),
+                        backgroundColor: topBarColor,
+                        foregroundColor: topBarForegroundColor,
                         elevation: 0,
                         title: Text(
                           title,
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 15,
-                            color:
-                                theme.appBarTheme.foregroundColor ??
-                                (isDark ? Colors.white : Colors.black),
+                            color: topBarForegroundColor,
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -121,9 +133,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                           IconButton(
                             icon: Icon(
                               Icons.search,
-                              color:
-                                  theme.iconTheme.color ??
-                                  (isDark ? Colors.white : Colors.black),
+                              color: topBarForegroundColor,
                             ),
                             onPressed: () {},
                           ),
@@ -156,13 +166,13 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                   _socialActionCard(
                                     icon: Icons.chat_bubble,
                                     label: _commentCount.toString(),
-                                    iconColor: Colors.white,
+                                    iconColor: actionIconColor,
                                     onTap: _showCommentsSheet,
                                   ),
                                   _socialActionCard(
                                     icon: Icons.reply_rounded,
                                     label: 'Partager',
-                                    iconColor: Colors.white,
+                                    iconColor: actionIconColor,
                                     onTap: _showShareSuggestions,
                                   ),
                                 ],
@@ -174,7 +184,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                               margin: const EdgeInsets.all(12),
                               padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
-                                color: theme.cardColor,
+                                color: detailCardColor,
                                 borderRadius: BorderRadius.circular(16),
                               ),
                               child: Column(
@@ -206,6 +216,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                     title,
                                     style: theme.textTheme.titleLarge?.copyWith(
                                       fontWeight: FontWeight.bold,
+                                      color: detailPrimaryTextColor,
                                     ),
                                   ),
                                   const SizedBox(height: 8),
@@ -244,18 +255,14 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                       Icon(
                                         Icons.access_time,
                                         size: 13,
-                                        color: isDark
-                                            ? Colors.grey.shade200
-                                            : Colors.grey.shade500,
+                                        color: detailSecondaryTextColor,
                                       ),
                                       const SizedBox(width: 4),
                                       Text(
                                         'Publié il y a plus d\'une semaine · Antananarivo',
                                         style: TextStyle(
                                           fontSize: 12,
-                                          color: isDark
-                                              ? Colors.grey.shade300
-                                              : Colors.grey.shade500,
+                                          color: detailSecondaryTextColor,
                                         ),
                                       ),
                                     ],
@@ -271,17 +278,18 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                               ),
                               padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
-                                color: theme.cardColor,
+                                color: detailCardColor,
                                 borderRadius: BorderRadius.circular(16),
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text(
+                                  Text(
                                     'Détails du Produit',
                                     style: TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.bold,
+                                      color: detailPrimaryTextColor,
                                     ),
                                   ),
                                   const SizedBox(height: 12),
@@ -324,7 +332,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                 ),
                                 padding: const EdgeInsets.all(16),
                                 decoration: BoxDecoration(
-                                  color: theme.cardColor,
+                                  color: detailCardColor,
                                   borderRadius: BorderRadius.circular(16),
                                 ),
                                 child: Row(
@@ -395,7 +403,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                               color: Colors.green,
                                               shape: BoxShape.circle,
                                               border: Border.all(
-                                                color: Colors.white,
+                                                color: detailCardColor,
                                                 width: 2,
                                               ),
                                             ),
@@ -409,11 +417,12 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
                                         children: [
-                                          const Text(
+                                          Text(
                                             _sellerName,
                                             style: TextStyle(
                                               fontWeight: FontWeight.bold,
                                               fontSize: 15,
+                                              color: detailPrimaryTextColor,
                                             ),
                                           ),
                                           const SizedBox(height: 2),
@@ -503,17 +512,18 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                               ),
                               padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
-                                color: theme.cardColor,
+                                color: detailCardColor,
                                 borderRadius: BorderRadius.circular(16),
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text(
+                                  Text(
                                     'Description',
                                     style: TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.bold,
+                                      color: detailPrimaryTextColor,
                                     ),
                                   ),
                                   const SizedBox(height: 8),
@@ -522,7 +532,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                         'Aucune description disponible.',
                                     style: TextStyle(
                                       fontSize: 14,
-                                      color: Colors.grey.shade700,
+                                      color: detailSecondaryTextColor,
                                       height: 1.6,
                                     ),
                                   ),
@@ -548,54 +558,20 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       // ── Bouton fixe en bas ──
       bottomNavigationBar: Container(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-        decoration: BoxDecoration(
-          color: theme.bottomAppBarTheme.color ?? theme.cardColor,
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: AppInputContainer(
-                borderRadius: BorderRadius.circular(14),
-                child: TextField(
-                  controller: _availabilityController,
-                  textInputAction: TextInputAction.send,
-                  decoration: appInputDecoration(
-                    context,
-                    hintText: 'Cet article est-il disponible ?',
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                      vertical: 10,
-                    ),
-                  ),
-                  style: appInputTextStyle(context),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            SizedBox(
-              height: 48,
-              child: ElevatedButton(
-                onPressed: () {
-                  final message = _availabilityController.text.trim();
-                  if (message.isEmpty) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Message envoye')),
-                  );
-                  _availabilityController.clear();
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                ),
-                child: const Icon(Icons.rocket_launch, size: 20),
-              ),
-            ),
-          ],
+        decoration: BoxDecoration(color: bottomBarColor),
+        child: UiChatMessageInput(
+          controller: _availabilityController,
+          primary: theme.colorScheme.primary,
+          panelColor: theme.brightness == Brightness.dark
+              ? theme.scaffoldBackgroundColor
+              : theme.cardColor,
+          hintText: 'Cet article est-il disponible ?',
+          onSend: (text) {
+            if (text.trim().isEmpty) return;
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('Message envoye')));
+          },
         ),
       ),
     );
@@ -766,7 +742,10 @@ class _ProductDetailPageState extends State<ProductDetailPage>
 
   Widget _detailRow(IconData icon, String label, String value) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final detailLabelColor =
+        theme.textTheme.bodyMedium?.color ?? theme.colorScheme.onSurfaceVariant;
+    final detailValueColor =
+        theme.textTheme.bodyLarge?.color ?? theme.colorScheme.onSurface;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -782,20 +761,14 @@ class _ProductDetailPageState extends State<ProductDetailPage>
             child: Icon(icon, color: Colors.green, size: 18),
           ),
           const SizedBox(width: 12),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              color: isDark ? Colors.white70 : Colors.grey.shade700,
-            ),
-          ),
+          Text(label, style: TextStyle(fontSize: 13, color: detailLabelColor)),
           const Spacer(),
           Text(
             value,
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: isDark ? Colors.white : Colors.black,
+              color: detailValueColor,
             ),
           ),
         ],
@@ -811,6 +784,13 @@ class _ProductDetailPageState extends State<ProductDetailPage>
   }) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final actionCardColor = isDark
+        ? theme.scaffoldBackgroundColor
+        : theme.colorScheme.surfaceContainer;
+    final actionBorderColor = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : theme.colorScheme.outlineVariant.withValues(alpha: 0.55);
+    final actionTextColor = isDark ? Colors.white : theme.colorScheme.onSurface;
 
     return Material(
       color: Colors.transparent,
@@ -821,9 +801,9 @@ class _ProductDetailPageState extends State<ProductDetailPage>
           width: 88,
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF121212) : const Color(0xFF1C1C1C),
+            color: actionCardColor,
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: Colors.white.withOpacity(0.08)),
+            border: Border.all(color: actionBorderColor),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -833,8 +813,8 @@ class _ProductDetailPageState extends State<ProductDetailPage>
               Text(
                 label,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: actionTextColor,
                   fontSize: 10,
                   fontWeight: FontWeight.w800,
                 ),

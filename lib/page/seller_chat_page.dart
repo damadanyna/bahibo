@@ -1,14 +1,11 @@
 import 'dart:typed_data';
 
-import 'package:file_picker/file_picker.dart';
-import 'package:bahibo/component/app_attachment_sheet.dart';
 import 'package:bahibo/component/app_back_button.dart';
-import 'package:bahibo/component/app_message_composer.dart';
 import 'package:flutter/material.dart';
 import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:bahibo/component/ui/chat_message_input.dart';
 
 class SellerChatPage extends StatefulWidget {
   const SellerChatPage({super.key});
@@ -21,7 +18,6 @@ class _SellerChatPageState extends State<SellerChatPage>
     with AppPageRefreshMixin<SellerChatPage> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final ImagePicker _imagePicker = ImagePicker();
   bool _showEntrySkeleton = true;
   final List<_ChatMessage> _messages = [
     const _ChatMessage(
@@ -80,10 +76,7 @@ class _SellerChatPageState extends State<SellerChatPage>
     });
   }
 
-  void _sendMessage() {
-    final text = _messageController.text.trim();
-    if (text.isEmpty) return;
-
+  void _sendMessage(String text) {
     final now = TimeOfDay.now();
     final formattedTime =
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
@@ -94,61 +87,33 @@ class _SellerChatPageState extends State<SellerChatPage>
       );
     });
 
-    _messageController.clear();
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _animateToBottom();
     });
   }
 
-  void _openAttachmentSheet() {
-    showAppAttachmentSheet(
-      context,
-      onPhotoTap: _pickImageFromGallery,
-      onDocumentTap: _pickDocumentFromFiles,
-      onQuickTextTap: _insertQuickText,
-    );
-  }
-
-  void _insertQuickText() {
-    const template =
-        'Bonjour, je vous contacte pour confirmer la disponibilite du produit.';
-    _messageController
-      ..text = template
-      ..selection = TextSelection.collapsed(offset: template.length);
-    setState(() {});
-  }
-
-  Future<void> _pickImageFromGallery() async {
-    final file = await _imagePicker.pickImage(source: ImageSource.gallery);
-    if (file == null) return;
-
-    final bytes = await file.readAsBytes();
-    _addAttachmentMessage(
-      _AttachmentType.photo,
-      label: file.name,
-      bytes: bytes,
-      messageText: 'Photo importee depuis la galerie',
-    );
-  }
-
-  Future<void> _pickDocumentFromFiles() async {
-    final result = await FilePicker.platform.pickFiles(
-      withData: true,
-      allowMultiple: false,
-      type: FileType.custom,
-      allowedExtensions: ['pdf', 'doc', 'docx', 'txt'],
-    );
-
-    if (result == null || result.files.isEmpty) return;
-
-    final file = result.files.single;
-    _addAttachmentMessage(
-      _AttachmentType.document,
-      label: file.name,
-      bytes: file.bytes,
-      messageText: 'Document ajoute depuis le gestionnaire de fichiers',
-    );
+  void _handleAttachment(UiChatAttachment attachment) {
+    switch (attachment.type) {
+      case UiChatAttachmentType.photo:
+        _addAttachmentMessage(
+          _AttachmentType.photo,
+          label: attachment.label,
+          bytes: attachment.bytes,
+          messageText: attachment.messageText,
+        );
+        break;
+      case UiChatAttachmentType.document:
+        _addAttachmentMessage(
+          _AttachmentType.document,
+          label: attachment.label,
+          bytes: attachment.bytes,
+          messageText: attachment.messageText,
+        );
+        break;
+      case UiChatAttachmentType.quickText:
+        setState(() {});
+        break;
+    }
   }
 
   void _addAttachmentMessage(
@@ -224,11 +189,11 @@ class _SellerChatPageState extends State<SellerChatPage>
     final isDark = theme.brightness == Brightness.dark;
     final primary = theme.colorScheme.primary;
     final background = isDark
-        ? const Color(0xFF031C19)
+        ? theme.scaffoldBackgroundColor
         : const Color(0xFFEAF5EE);
-    final cardColor = isDark ? const Color(0xFF0F2320) : Colors.white;
+    final cardColor = isDark ? theme.scaffoldBackgroundColor : Colors.white;
     final panelColor = isDark
-        ? const Color(0xFF142B27)
+        ? theme.scaffoldBackgroundColor
         : const Color(0xFFF6FBF7);
     final subtleText = isDark ? Colors.white70 : const Color(0xFF5D6C66);
     const sellerName = 'John Rakoto';
@@ -333,9 +298,9 @@ class _SellerChatPageState extends State<SellerChatPage>
                       ),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
-                        child: AppMessageComposer(
+                        child: UiChatMessageInput(
                           controller: _messageController,
-                          onAttachmentTap: _openAttachmentSheet,
+                          onAttachmentSelected: _handleAttachment,
                           onSend: _sendMessage,
                           primary: primary,
                           panelColor: panelColor,

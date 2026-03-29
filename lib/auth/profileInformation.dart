@@ -92,15 +92,7 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
                   Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => MainNavigationShell(
-                        items: bahiboMainNavigationItems,
-                        pagesBuilder: (currentIndex, items, onIndexChanged) => [
-                          const Productlist(),
-                          const MainNavigationSettingsPanel(),
-                          const MainNavigationSearchPanel(),
-                          const MainNavigationCategoryHubPanel(),
-                        ],
-                      ),
+                      builder: (context) => const BahiboNavigationShell(),
                     ),
                   );
                 },

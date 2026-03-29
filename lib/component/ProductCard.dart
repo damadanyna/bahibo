@@ -4,15 +4,24 @@ import '../page/productDetail.dart';
 
 class ProductCard extends StatelessWidget {
   final Map<String, dynamic> product;
-  static const Color _cardBackgroundColor = Color(0xFF222120);
-  static const Color _cardBorderColor = Color(0x1FFFFFFF);
-  static const Color _titleColor = Colors.white;
-  static const Color _metaTextColor = Color(0xFFD4D7DC);
 
   const ProductCard({super.key, required this.product});
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final borderColor = theme.brightness == Brightness.dark
+        ? const Color(0xFF132926)
+        : theme.colorScheme.onSurface.withValues(alpha: 0.1);
+    final cardColor = theme.cardColor;
+    final titleColor =
+        theme.textTheme.titleMedium?.color ?? theme.colorScheme.onSurface;
+    final metaTextColor =
+        theme.textTheme.bodyMedium?.color ?? theme.colorScheme.onSurfaceVariant;
+    final categoryColor = theme.colorScheme.primary;
+    final priceColor = theme.colorScheme.error;
+
     return GestureDetector(
       onTap: () {
         Navigator.push(
@@ -25,9 +34,9 @@ class ProductCard extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
-          border: Border.all(width: 1, color: _cardBorderColor),
+          border: Border.all(width: 1, color: borderColor),
           borderRadius: BorderRadius.circular(10),
-          color: _cardBackgroundColor,
+          color: cardColor,
         ),
         child: Padding(
           padding: const EdgeInsets.all(7),
@@ -50,27 +59,27 @@ class ProductCard extends StatelessWidget {
                       product['title'] ?? 'Sans titre',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w700,
-                        color: _titleColor,
+                        color: titleColor,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.account_circle,
                           size: 18,
-                          color: Colors.green,
+                          color: categoryColor,
                         ),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
                             product['category'] ?? '',
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              color: Colors.green,
+                              color: categoryColor,
                               fontSize: 12,
                             ),
                           ),
@@ -90,10 +99,10 @@ class ProductCard extends StatelessWidget {
                     const SizedBox(height: 30),
                     Text(
                       '${((product['price'] as num).toDouble() * 400).toStringAsFixed(0)} MGA',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 18,
-                        color: Colors.red,
+                        color: priceColor,
                       ),
                     ),
                   ],
@@ -125,7 +134,7 @@ class ProductCard extends StatelessWidget {
     if (images.isEmpty) {
       return SizedBox(
         height: 170,
-        child: _imageItem(placeholder, onTap: openProductDetail),
+        child: _imageItem(context, placeholder, onTap: openProductDetail),
       );
     }
 
@@ -134,7 +143,7 @@ class ProductCard extends StatelessWidget {
       final [first] = images;
       return SizedBox(
         height: 170,
-        child: _imageItem(first, onTap: openProductDetail),
+        child: _imageItem(context, first, onTap: openProductDetail),
       );
     }
 
@@ -145,9 +154,13 @@ class ProductCard extends StatelessWidget {
         height: 170,
         child: Row(
           children: [
-            Expanded(child: _imageItem(first, onTap: openProductDetail)),
+            Expanded(
+              child: _imageItem(context, first, onTap: openProductDetail),
+            ),
             const SizedBox(width: 2),
-            Expanded(child: _imageItem(second, onTap: openProductDetail)),
+            Expanded(
+              child: _imageItem(context, second, onTap: openProductDetail),
+            ),
           ],
         ),
       );
@@ -160,14 +173,24 @@ class ProductCard extends StatelessWidget {
         height: 170,
         child: Row(
           children: [
-            Expanded(child: _imageItem(first, onTap: openProductDetail)),
+            Expanded(
+              child: _imageItem(context, first, onTap: openProductDetail),
+            ),
             const SizedBox(width: 2),
             Expanded(
               child: Column(
                 children: [
-                  Expanded(child: _imageItem(second, onTap: openProductDetail)),
+                  Expanded(
+                    child: _imageItem(
+                      context,
+                      second,
+                      onTap: openProductDetail,
+                    ),
+                  ),
                   const SizedBox(height: 2),
-                  Expanded(child: _imageItem(third, onTap: openProductDetail)),
+                  Expanded(
+                    child: _imageItem(context, third, onTap: openProductDetail),
+                  ),
                 ],
               ),
             ),
@@ -187,9 +210,13 @@ class ProductCard extends StatelessWidget {
           Expanded(
             child: Row(
               children: [
-                Expanded(child: _imageItem(first, onTap: openProductDetail)),
+                Expanded(
+                  child: _imageItem(context, first, onTap: openProductDetail),
+                ),
                 const SizedBox(width: 2),
-                Expanded(child: _imageItem(second, onTap: openProductDetail)),
+                Expanded(
+                  child: _imageItem(context, second, onTap: openProductDetail),
+                ),
               ],
             ),
           ),
@@ -197,13 +224,15 @@ class ProductCard extends StatelessWidget {
           Expanded(
             child: Row(
               children: [
-                Expanded(child: _imageItem(third, onTap: openProductDetail)),
+                Expanded(
+                  child: _imageItem(context, third, onTap: openProductDetail),
+                ),
                 const SizedBox(width: 2),
                 Expanded(
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      _imageItem(fourth, onTap: openProductDetail),
+                      _imageItem(context, fourth, onTap: openProductDetail),
                       if (extra > 0)
                         Container(
                           decoration: BoxDecoration(
@@ -233,7 +262,11 @@ class ProductCard extends StatelessWidget {
   }
 
   // ✅ _imageItem inchangé
-  Widget _imageItem(String url, {VoidCallback? onTap}) {
+  Widget _imageItem(BuildContext context, String url, {VoidCallback? onTap}) {
+    final theme = Theme.of(context);
+    final fallbackIconColor =
+        theme.iconTheme.color ?? theme.colorScheme.onSurfaceVariant;
+
     return GestureDetector(
       onTap: onTap,
       child: AppNetworkImage(
@@ -242,10 +275,7 @@ class ProductCard extends StatelessWidget {
         width: double.infinity,
         height: double.infinity,
         borderRadius: BorderRadius.circular(4),
-        errorChild: const Icon(
-          Icons.image_not_supported,
-          color: _metaTextColor,
-        ),
+        errorChild: Icon(Icons.image_not_supported, color: fallbackIconColor),
       ),
     );
   }

@@ -32,18 +32,17 @@ class ProductCardSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final borderColor = theme.brightness == Brightness.dark
+        ? theme.colorScheme.outlineVariant.withValues(alpha: 0.24)
+        : theme.colorScheme.onSurface.withValues(alpha: 0.08);
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        border: Border.all(
-          width: 1,
-          color: isDark
-              ? Colors.grey.shade700
-              : const Color.fromARGB(255, 223, 223, 223),
-        ),
+        border: Border.all(width: 1, color: borderColor),
         borderRadius: BorderRadius.circular(10),
-        color: isDark ? Colors.grey.shade900 : Colors.white,
+        color: theme.cardColor,
       ),
       child: Padding(
         padding: const EdgeInsets.all(7),

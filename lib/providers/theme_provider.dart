@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ThemeProvider extends ChangeNotifier {
   static const String _themeKey = 'theme_mode';
+  static const Color _darkBackgroundColor = Color(0xFF001414);
   ThemeMode _themeMode = ThemeMode.system;
 
   ThemeMode get themeMode => _themeMode;
@@ -129,12 +130,12 @@ class ThemeProvider extends ChangeNotifier {
       brightness: Brightness.dark,
       primarySwatch: Colors.green,
       primaryColor: Colors.green,
-      scaffoldBackgroundColor: const Color(0xFF121212),
-      cardColor: const Color(0xFF1E1E1E),
-      canvasColor: const Color(0xFF121212),
+      scaffoldBackgroundColor: _darkBackgroundColor,
+      cardColor: const Color(0xFF001C1C),
+      canvasColor: _darkBackgroundColor,
       dialogBackgroundColor: const Color(0xFF1E1E1E),
       appBarTheme: const AppBarTheme(
-        backgroundColor: Color(0xFF121212),
+        backgroundColor: _darkBackgroundColor,
         foregroundColor: Colors.white,
         elevation: 0,
         titleTextStyle: TextStyle(

@@ -330,7 +330,8 @@ class _SellerProfilePageState extends State<SellerProfilePage>
     required Color softGreen,
     required Color deepGreen,
   }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Container(
       decoration: BoxDecoration(borderRadius: BorderRadius.circular(24)),
@@ -530,7 +531,9 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                                       icon: Icons.location_on_outlined,
                                       label: 'Zone',
                                       value: 'Antananarivo',
-                                      valueColor: Colors.white,
+                                      valueColor: isDark
+                                          ? Colors.white
+                                          : theme.colorScheme.onSurface,
                                     ),
                                   ),
                                   const SizedBox(width: 10),
@@ -550,7 +553,9 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                                 maxLines: 3,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  color: Colors.white.withOpacity(0.80),
+                                  color: isDark
+                                      ? Colors.white.withOpacity(0.80)
+                                      : theme.colorScheme.onSurfaceVariant,
                                   height: 1.45,
                                   fontWeight: FontWeight.w500,
                                 ),
@@ -649,10 +654,25 @@ class _SellerProfilePageState extends State<SellerProfilePage>
     required String value,
     required Color valueColor,
   }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final tileColor = isDark
+        ? Colors.white.withOpacity(0.04)
+        : theme.colorScheme.surface.withOpacity(0.72);
+    final iconBoxColor = isDark
+        ? Colors.white.withOpacity(0.08)
+        : theme.colorScheme.surfaceContainerHighest.withOpacity(0.9);
+    final iconColor = isDark
+        ? Colors.white
+        : theme.colorScheme.onSurfaceVariant;
+    final labelColor = isDark
+        ? Colors.white.withOpacity(0.66)
+        : theme.colorScheme.onSurfaceVariant;
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.04),
+        color: tileColor,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -661,10 +681,10 @@ class _SellerProfilePageState extends State<SellerProfilePage>
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.08),
+              color: iconBoxColor,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icon, color: Colors.white, size: 18),
+            child: Icon(icon, color: iconColor, size: 18),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -674,7 +694,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                 Text(
                   label,
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.66),
+                    color: labelColor,
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),

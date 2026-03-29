@@ -92,8 +92,21 @@ class _CategoryPageState extends State<CategoryPage>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF001C1C) : null,
       appBar: AppBar(
+        backgroundColor: isDark ? const Color(0xFF001C1C) : null,
+        elevation: 0,
+        shape: Border(
+          bottom: BorderSide(
+            color: isDark
+                ? const Color(0xFF132926)
+                : theme.colorScheme.onSurface.withValues(alpha: 0.08),
+          ),
+        ),
         title: Row(
           children: [
             Text(widget.categoryIcon),
