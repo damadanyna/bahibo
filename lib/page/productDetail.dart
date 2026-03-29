@@ -8,8 +8,8 @@ import 'package:bahibo/component/app_page_refresh.dart';
 import 'package:bahibo/component/ui/chat_message_input_not_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:bahibo/component/app_network_image.dart';
+import 'package:bahibo/page/chat_page.dart';
 import 'package:bahibo/page/image_viewer_page.dart';
-import 'package:bahibo/page/seller_chat_page.dart';
 
 class ProductDetailPage extends StatefulWidget {
   final Map<String, dynamic> product;
@@ -368,7 +368,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                                       context,
                                                       MaterialPageRoute(
                                                         builder: (_) =>
-                                                            const SellerChatPage(),
+                                                            const ChatPage(),
                                                       ),
                                                     );
                                                   },
@@ -690,7 +690,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
           onSellerMessageTap: () {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const SellerChatPage()),
+              MaterialPageRoute(builder: (_) => const ChatPage()),
             );
           },
           overlay: ImageViewerOverlayData(

@@ -5,8 +5,8 @@ import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
 import 'package:bahibo/component/profile_models.dart';
 import 'package:bahibo/component/user_list_page.dart';
+import 'package:bahibo/page/chat_page.dart';
 import 'package:bahibo/page/image_viewer_page.dart';
-import 'package:bahibo/page/seller_chat_page.dart';
 import 'package:flutter/material.dart';
 
 class SellerProfilePage extends StatefulWidget {
@@ -391,7 +391,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
-                                        builder: (_) => const SellerChatPage(),
+                                        builder: (_) => const ChatPage(),
                                       ),
                                     );
                                   },
@@ -576,7 +576,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) => const SellerChatPage(),
+                                  builder: (_) => const ChatPage(),
                                 ),
                               );
                             },

@@ -7,17 +7,18 @@ import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
 import 'package:bahibo/component/ui/chat_message_input.dart';
 
-class SellerChatPage extends StatefulWidget {
-  const SellerChatPage({super.key});
+class ChatPage extends StatefulWidget {
+  const ChatPage({super.key});
 
   @override
-  State<SellerChatPage> createState() => _SellerChatPageState();
+  State<ChatPage> createState() => _ChatPageState();
 }
 
-class _SellerChatPageState extends State<SellerChatPage>
-    with AppPageRefreshMixin<SellerChatPage> {
+class _ChatPageState extends State<ChatPage>
+    with AppPageRefreshMixin<ChatPage> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  static const int _scrollRetryCount = 4;
   bool _showEntrySkeleton = true;
   final List<_ChatMessage> _messages = [
     const _ChatMessage(
@@ -49,9 +50,7 @@ class _SellerChatPageState extends State<SellerChatPage>
     Future.delayed(const Duration(milliseconds: 260), () {
       if (!mounted) return;
       setState(() => _showEntrySkeleton = false);
-    });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _jumpToBottom();
+      _scheduleScrollToBottom();
     });
   }
 
@@ -71,9 +70,7 @@ class _SellerChatPageState extends State<SellerChatPage>
     await Future.delayed(const Duration(milliseconds: 400));
     if (!mounted) return;
     setState(() => _showEntrySkeleton = false);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _jumpToBottom();
-    });
+    _scheduleScrollToBottom();
   }
 
   void _sendMessage(String text) {
@@ -169,9 +166,22 @@ class _SellerChatPageState extends State<SellerChatPage>
     });
   }
 
+  void _scheduleScrollToBottom({int remaining = _scrollRetryCount}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+
+      _jumpToBottom();
+
+      if (remaining > 0) {
+        _scheduleScrollToBottom(remaining: remaining - 1);
+      }
+    });
+  }
+
   void _jumpToBottom() {
     if (!_scrollController.hasClients) return;
-    _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+    final maxExtent = _scrollController.position.maxScrollExtent;
+    _scrollController.jumpTo(maxExtent);
   }
 
   void _animateToBottom() {
