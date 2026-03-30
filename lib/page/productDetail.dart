@@ -4,6 +4,7 @@ import 'package:bahibo/component/seller_profile_page.dart';
 import 'package:bahibo/component/app_share_sheet.dart';
 import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
+import 'package:bahibo/component/app_back_button.dart';
 import 'package:bahibo/component/ui/chat_message_input_not_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:bahibo/component/app_network_image.dart';
@@ -150,7 +151,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                       iconColor: appColors.favoriteAccent,
                                     ),
                                     _socialActionCard(
-                                      icon: Icons.chat_bubble,
+                                      icon: Icons.chat,
                                       label: _commentCount.toString(),
                                       iconColor: actionIconColor,
                                       onTap: _showCommentsSheet,
@@ -583,8 +584,10 @@ class _ProductDetailPageState extends State<ProductDetailPage>
 
     if (images.isEmpty) return const SizedBox.shrink();
 
+    late final Widget galleryContent;
+
     if (images.length == 1) {
-      return SizedBox(
+      galleryContent = SizedBox(
         height: 300,
         width: double.infinity,
         child: _imageItem(
@@ -592,11 +595,9 @@ class _ProductDetailPageState extends State<ProductDetailPage>
           onTap: () => _openProductGallery(images, 0),
         ),
       );
-    }
-
-    if (images.length == 2) {
+    } else if (images.length == 2) {
       final [first, second] = images;
-      return SizedBox(
+      galleryContent = SizedBox(
         height: 300,
         child: Row(
           children: [
@@ -616,60 +617,70 @@ class _ProductDetailPageState extends State<ProductDetailPage>
           ],
         ),
       );
-    }
+    } else {
+      final String first = images.first;
+      final List<String> rest = images.skip(1).take(3).toList();
+      final int extra = images.length - 4;
 
-    final String first = images.first;
-    final List<String> rest = images.skip(1).take(3).toList();
-    final int extra = images.length - 4;
-
-    return Column(
-      children: [
-        SizedBox(
-          height: 220,
-          width: double.infinity,
-          child: _imageItem(first, onTap: () => _openProductGallery(images, 0)),
-        ),
-        const SizedBox(height: 2),
-        SizedBox(
-          height: 140,
-          child: Row(
-            children: List.generate(rest.length, (i) {
-              final bool isLast = i == rest.length - 1 && extra > 0;
-              return Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(left: i == 0 ? 0 : 2),
-                  child: isLast
-                      ? Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            _imageItem(
-                              rest[i],
-                              onTap: () => _openProductGallery(images, i + 1),
-                            ),
-                            Container(
-                              color: appColors.scrimSoft,
-                              child: Center(
-                                child: Text(
-                                  '+$extra',
-                                  style: TextStyle(
-                                    color: appColors.heroForeground,
-                                    fontSize: 26,
-                                    fontWeight: FontWeight.bold,
+      galleryContent = Column(
+        children: [
+          SizedBox(
+            height: 220,
+            width: double.infinity,
+            child: _imageItem(
+              first,
+              onTap: () => _openProductGallery(images, 0),
+            ),
+          ),
+          const SizedBox(height: 2),
+          SizedBox(
+            height: 140,
+            child: Row(
+              children: List.generate(rest.length, (i) {
+                final bool isLast = i == rest.length - 1 && extra > 0;
+                return Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(left: i == 0 ? 0 : 2),
+                    child: isLast
+                        ? Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              _imageItem(
+                                rest[i],
+                                onTap: () => _openProductGallery(images, i + 1),
+                              ),
+                              Container(
+                                color: appColors.scrimSoft,
+                                child: Center(
+                                  child: Text(
+                                    '+$extra',
+                                    style: TextStyle(
+                                      color: appColors.heroForeground,
+                                      fontSize: 26,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
-                        )
-                      : _imageItem(
-                          rest[i],
-                          onTap: () => _openProductGallery(images, i + 1),
-                        ),
-                ),
-              );
-            }),
+                            ],
+                          )
+                        : _imageItem(
+                            rest[i],
+                            onTap: () => _openProductGallery(images, i + 1),
+                          ),
+                  ),
+                );
+              }),
+            ),
           ),
-        ),
+        ],
+      );
+    }
+
+    return Stack(
+      children: [
+        galleryContent,
+        const Positioned(top: 12, left: 12, child: AppBackButton()),
       ],
     );
   }

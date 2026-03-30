@@ -6,6 +6,7 @@ import 'package:bahibo/component/app_page_refresh.dart';
 import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/profile_models.dart';
 import 'package:bahibo/component/ui/dinamic_icon_input.dart';
+import 'package:bahibo/page/live/live_preview_page.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -86,6 +87,9 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   String _studioName = '';
   String _studioAddress = 'Antananarivo, Madagascar';
   String _studioDescription = '';
+  String? _activeLiveTitle;
+  String? _activeLiveCategory;
+  String? _activeLiveStartedLabel;
 
   UserProfileData get profile => widget.profile ?? defaultSellerProfileData();
 
@@ -227,10 +231,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
             bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 16,
           ),
           child: Container(
-            decoration: BoxDecoration(
-              color: theme.cardColor,
-              borderRadius: BorderRadius.circular(28),
-            ),
+            decoration: _surfaceDecoration(theme, radius: 28, tinted: true),
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -322,6 +323,190 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     ).showSnackBar(SnackBar(content: Text('$label sera branche ensuite.')));
   }
 
+  Future<void> _openLivePreview(String title, String category) async {
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => LivePreviewPage(title: title, category: category),
+      ),
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _activeLiveTitle = null;
+      _activeLiveCategory = null;
+      _activeLiveStartedLabel = null;
+    });
+  }
+
+  Future<void> _showLaunchLiveSheet() async {
+    final titleController = TextEditingController(
+      text: '${_studioName.isEmpty ? profile.name : _studioName} en direct',
+    );
+    final categoryController = TextEditingController(
+      text: 'Presentation produit',
+    );
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        final theme = Theme.of(sheetContext);
+        final accentColor = _accentColor(theme);
+        final panelColor = _backgroundColor(theme);
+        final liveColor = const Color(0xFFE53935);
+
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 16,
+          ),
+          child: Container(
+            decoration: _surfaceDecoration(theme, radius: 28, tinted: true),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: theme.dividerColor,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: liveColor.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Icon(Icons.live_tv_rounded, color: liveColor),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Creer un live',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Prepare ton direct et rends-le visible tout de suite.',
+                            style: TextStyle(color: theme.appColors.mutedText),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                DynamicIconInput(
+                  controller: titleController,
+                  primary: accentColor,
+                  panelColor: panelColor,
+                  borderColor: accentColor.withOpacity(0.12),
+                  hintText: 'Titre du live',
+                  leadingIcon: Icon(
+                    Icons.mic_external_on_outlined,
+                    color: accentColor,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DynamicIconInput(
+                  controller: categoryController,
+                  primary: accentColor,
+                  panelColor: panelColor,
+                  borderColor: accentColor.withOpacity(0.12),
+                  hintText: 'Theme ou categorie',
+                  leadingIcon: Icon(Icons.sell_outlined, color: accentColor),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: liveColor.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: liveColor.withValues(alpha: 0.18),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFE53935),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Le live sera lance immediatement apres validation.',
+                          style: TextStyle(
+                            color: theme.textTheme.bodyMedium?.color,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      final liveTitle = titleController.text.trim();
+                      final liveCategory = categoryController.text.trim();
+
+                      if (liveTitle.isEmpty) {
+                        ScaffoldMessenger.of(sheetContext).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Ajoute un titre pour lancer le live.',
+                            ),
+                          ),
+                        );
+                        return;
+                      }
+
+                      final resolvedCategory = liveCategory.isEmpty
+                          ? 'Live boutique'
+                          : liveCategory;
+
+                      Navigator.of(sheetContext).pop();
+                      _openLivePreview(liveTitle, resolvedCategory);
+                    },
+                    icon: const Icon(Icons.wifi_tethering_rounded),
+                    label: const Text('Demarrer le live'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Color _backgroundColor(ThemeData theme) {
     return theme.appColors.backgroundBase;
   }
@@ -335,11 +520,106 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   }
 
   Color _accentColor(ThemeData theme) {
+    if (theme.brightness == Brightness.dark) {
+      return Color.lerp(
+        theme.colorScheme.primary,
+        theme.colorScheme.onSurfaceVariant,
+        0.28,
+      )!;
+    }
+
     return theme.colorScheme.primary;
   }
 
   Color _accentSurfaceColor(ThemeData theme) {
+    if (theme.brightness == Brightness.dark) {
+      return theme.colorScheme.primary.withValues(alpha: 0.14);
+    }
+
     return theme.appColors.panelMuted;
+  }
+
+  Color _supportAccentColor(ThemeData theme) {
+    if (theme.brightness == Brightness.dark) {
+      return theme.colorScheme.tertiary;
+    }
+
+    return theme.colorScheme.primary;
+  }
+
+  Color _panelBorderColor(ThemeData theme) {
+    final base = theme.appColors.borderColor;
+    return theme.brightness == Brightness.dark
+        ? base.withValues(alpha: 0.74)
+        : base.withValues(alpha: 0.9);
+  }
+
+  List<BoxShadow> _panelShadow(ThemeData theme) {
+    if (theme.brightness == Brightness.dark) {
+      return const [
+        BoxShadow(
+          color: Color(0x33000000),
+          blurRadius: 22,
+          offset: Offset(0, 12),
+        ),
+      ];
+    }
+
+    return const [
+      BoxShadow(
+        color: Color(0x0D101828),
+        blurRadius: 18,
+        offset: Offset(0, 10),
+      ),
+    ];
+  }
+
+  BoxDecoration _surfaceDecoration(
+    ThemeData theme, {
+    double radius = 24,
+    bool tinted = false,
+  }) {
+    final panelColor = _panelColor(theme);
+    final backgroundColor = _backgroundColor(theme);
+    final accentColor = _accentColor(theme);
+    final topColor = tinted
+        ? Color.lerp(
+            panelColor,
+            accentColor,
+            theme.brightness == Brightness.dark ? 0.08 : 0.05,
+          )!
+        : Color.lerp(panelColor, backgroundColor, 0.18)!;
+
+    return BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [topColor, panelColor],
+      ),
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(color: _panelBorderColor(theme)),
+      boxShadow: _panelShadow(theme),
+    );
+  }
+
+  Widget _buildBackgroundAccent({
+    required Alignment alignment,
+    required List<Color> colors,
+    required double size,
+  }) {
+    return Align(
+      alignment: alignment,
+      child: IgnorePointer(
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: RadialGradient(colors: colors),
+          ),
+        ),
+      ),
+    );
   }
 
   List<_RankedProductEntry> _buildTopProducts() {
@@ -390,6 +670,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     final panelColor = _panelColor(theme);
     final mutedColor = _mutedColor(theme);
     final accentColor = _accentColor(theme);
+    final supportAccentColor = _supportAccentColor(theme);
     final filteredProducts = _filteredProducts;
     final topProducts = _buildTopProducts();
 
@@ -397,6 +678,22 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
       backgroundColor: backgroundColor,
       body: Stack(
         children: [
+          _buildBackgroundAccent(
+            alignment: const Alignment(-1.1, -0.92),
+            size: 240,
+            colors: [
+              accentColor.withValues(alpha: isDark ? 0.12 : 0.1),
+              Colors.transparent,
+            ],
+          ),
+          _buildBackgroundAccent(
+            alignment: const Alignment(1.05, -0.2),
+            size: 220,
+            colors: [
+              supportAccentColor.withValues(alpha: isDark ? 0.08 : 0.06),
+              Colors.transparent,
+            ],
+          ),
           RefreshIndicator(
             onRefresh: refreshPageWithDialog,
             child: _showEntrySkeleton
@@ -413,9 +710,19 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: _buildMetricsGrid(
+                          theme,
                           panelColor,
                           mutedColor,
                           accentColor,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: _buildLaunchLiveButton(
+                          theme,
+                          accentColor,
+                          supportAccentColor,
                         ),
                       ),
                       const SizedBox(height: 18),
@@ -426,6 +733,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                           panelColor,
                           mutedColor,
                           accentColor,
+                          supportAccentColor,
                         ),
                       ),
                       const SizedBox(height: 18),
@@ -482,6 +790,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     final heroMinHeight = compact ? 372.0 : 344.0;
     final accentColor = _accentColor(theme);
     final accentSurfaceColor = _accentSurfaceColor(theme);
+    final supportAccentColor = _supportAccentColor(theme);
 
     return Container(
       decoration: BoxDecoration(borderRadius: BorderRadius.circular(28)),
@@ -494,14 +803,6 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
               child: SizedBox(
                 width: double.infinity,
                 child: _buildEditableCoverImage(),
-              ),
-            ),
-            Positioned(
-              top: 16,
-              right: 16,
-              child: _buildImageEditButton(
-                onTap: () =>
-                    _showImageSourceSheet(_EditableProfileImageTarget.cover),
               ),
             ),
             Container(
@@ -656,7 +957,10 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                           ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: theme.appColors.heroForeground,
-                            foregroundColor: accentColor,
+                            foregroundColor: Colors.black,
+                            textStyle: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                            ),
                             padding: EdgeInsets.symmetric(
                               vertical: compact ? 10 : 12,
                             ),
@@ -678,10 +982,18 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                           ),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: theme.appColors.heroForeground,
-                            backgroundColor: accentSurfaceColor.withOpacity(
-                              0.22,
+                            backgroundColor: supportAccentColor.withValues(
+                              alpha: theme.brightness == Brightness.dark
+                                  ? 0.22
+                                  : 0.14,
                             ),
-                            side: BorderSide(color: theme.appColors.heroBorder),
+                            side: BorderSide(
+                              color: supportAccentColor.withValues(
+                                alpha: theme.brightness == Brightness.dark
+                                    ? 0.42
+                                    : 0.24,
+                              ),
+                            ),
                             padding: EdgeInsets.symmetric(
                               vertical: compact ? 10 : 12,
                             ),
@@ -696,6 +1008,14 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                 ],
               ),
             ),
+            Positioned(
+              top: 16,
+              right: 16,
+              child: _buildImageEditButton(
+                onTap: () =>
+                    _showImageSourceSheet(_EditableProfileImageTarget.cover),
+              ),
+            ),
           ],
         ),
       ),
@@ -703,10 +1023,12 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   }
 
   Widget _buildMetricsGrid(
+    ThemeData theme,
     Color panelColor,
     Color mutedColor,
     Color accentColor,
   ) {
+    final supportAccentColor = _supportAccentColor(theme);
     final metrics = [
       _StudioMetric('Abonnes', profile.followerCount, Icons.groups_2_outlined),
       _StudioMetric('Vues profil', '3.8k', Icons.visibility_outlined),
@@ -722,24 +1044,45 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
         crossAxisCount: 2,
         mainAxisSpacing: 12,
         crossAxisSpacing: 12,
-        mainAxisExtent: 126,
+        mainAxisExtent: 138,
       ),
       itemBuilder: (context, index) {
         final metric = metrics[index];
+        final iconBackground = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            accentColor.withValues(alpha: 0.22),
+            supportAccentColor.withValues(alpha: 0.12),
+          ],
+        );
         return Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: panelColor,
-            borderRadius: BorderRadius.circular(22),
+          padding: const EdgeInsets.all(12),
+          decoration: _surfaceDecoration(
+            theme,
+            radius: 22,
+            tinted: index.isEven,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Align(
+                alignment: Alignment.topRight,
+                child: Container(
+                  width: 38,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(999),
+                    color: accentColor.withValues(alpha: 0.2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
               Container(
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: accentColor.withOpacity(0.14),
+                  gradient: iconBackground,
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(metric.icon, color: accentColor),
@@ -778,16 +1121,18 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     Color panelColor,
     Color mutedColor,
     Color accentColor,
+    Color supportAccentColor,
   ) {
     final bars = const [0.35, 0.58, 0.47, 0.74, 0.62, 0.85, 0.68];
+
     final accentSurfaceColor = _accentSurfaceColor(theme);
+    final chartBaseColor = theme.brightness == Brightness.dark
+        ? supportAccentColor.withValues(alpha: 0.34)
+        : accentColor.withValues(alpha: 0.24);
 
     return Container(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: panelColor,
-        borderRadius: BorderRadius.circular(24),
-      ),
+      decoration: _surfaceDecoration(theme, tinted: true),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -817,7 +1162,12 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                   vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  color: accentSurfaceColor,
+                  gradient: LinearGradient(
+                    colors: [
+                      accentSurfaceColor,
+                      supportAccentColor.withValues(alpha: 0.18),
+                    ],
+                  ),
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
@@ -854,7 +1204,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                                   end: Alignment.bottomCenter,
                                   colors: [
                                     accentColor.withOpacity(0.92),
-                                    accentColor.withOpacity(0.26),
+                                    chartBaseColor,
                                   ],
                                 ),
                                 borderRadius: BorderRadius.circular(999),
@@ -882,6 +1232,39 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     );
   }
 
+  Widget _buildLaunchLiveButton(
+    ThemeData theme,
+    Color accentColor,
+    Color supportAccentColor,
+  ) {
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Container(
+      decoration: _surfaceDecoration(theme, radius: 22, tinted: true),
+      child: ElevatedButton.icon(
+        onPressed: _showLaunchLiveSheet,
+        icon: const Icon(Icons.live_tv_rounded, size: 20),
+        label: const Text(
+          'Lancer un live',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+        style: ElevatedButton.styleFrom(
+          elevation: 0,
+          foregroundColor: Colors.white,
+          backgroundColor: accentColor,
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+          minimumSize: const Size(double.infinity, 58),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+            side: BorderSide(
+              color: supportAccentColor.withValues(alpha: isDark ? 0.4 : 0.22),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildSearchSection(
     ThemeData theme,
     Color panelColor,
@@ -890,13 +1273,26 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   ) {
     return Container(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: panelColor,
-        borderRadius: BorderRadius.circular(24),
-      ),
+      decoration: _surfaceDecoration(theme),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: accentColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              'Recherche rapide',
+              style: TextStyle(
+                color: accentColor,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
           Text(
             'Recherche produit',
             style: theme.textTheme.titleLarge?.copyWith(
@@ -939,10 +1335,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   ) {
     return Container(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: panelColor,
-        borderRadius: BorderRadius.circular(24),
-      ),
+      decoration: _surfaceDecoration(theme),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1038,10 +1431,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   ) {
     return Container(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: panelColor,
-        borderRadius: BorderRadius.circular(24),
-      ),
+      decoration: _surfaceDecoration(theme),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1075,10 +1465,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   ) {
     return Container(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: panelColor,
-        borderRadius: BorderRadius.circular(24),
-      ),
+      decoration: _surfaceDecoration(theme),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1121,21 +1508,29 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: TextStyle(color: mutedColor, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            maxLines: multiline ? 3 : 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w700, height: 1.35),
-          ),
-        ],
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Theme.of(context).appColors.inputFill.withValues(alpha: 0.58),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: _panelBorderColor(Theme.of(context))),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: TextStyle(color: mutedColor, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              value,
+              maxLines: multiline ? 3 : 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w700, height: 1.35),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1238,9 +1633,16 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
             ),
           ),
         ),
-        Text(
-          meta,
-          style: TextStyle(color: accentColor, fontWeight: FontWeight.w700),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: accentColor.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            meta,
+            style: TextStyle(color: accentColor, fontWeight: FontWeight.w700),
+          ),
         ),
       ],
     );

@@ -175,7 +175,7 @@ class _MainNavigationMessagesPanelState
     });
 
     return Scaffold(
-      backgroundColor: theme.cardColor,
+      backgroundColor: appColors.backgroundBase,
       body: SafeArea(
         child: Stack(
           key: _stackKey,

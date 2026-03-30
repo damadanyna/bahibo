@@ -16,8 +16,6 @@ class ProductCard extends StatelessWidget {
     final cardColor = theme.cardColor;
     final titleColor =
         theme.textTheme.titleMedium?.color ?? theme.colorScheme.onSurface;
-    final metaTextColor =
-        theme.textTheme.bodyMedium?.color ?? theme.colorScheme.onSurfaceVariant;
     final categoryColor = theme.colorScheme.primary;
     final priceColor = theme.colorScheme.error;
 
@@ -41,7 +39,6 @@ class ProductCard extends StatelessWidget {
           padding: const EdgeInsets.all(7),
           child: Row(
             children: [
-              // Images
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.all(8),
@@ -49,7 +46,6 @@ class ProductCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              // Infos
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -87,41 +83,37 @@ class ProductCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Row(
-                      children: [
-                        Icon(
-                          Icons.star,
-                          color: theme.colorScheme.secondary,
-                          size: 16,
-                        ),
-                        Icon(
-                          Icons.star,
-                          color: theme.colorScheme.secondary,
-                          size: 16,
-                        ),
-                        Icon(
-                          Icons.star,
-                          color: theme.colorScheme.secondary,
-                          size: 16,
-                        ),
-                        Icon(
-                          Icons.star,
-                          color: theme.colorScheme.secondary,
-                          size: 16,
-                        ),
-                        Icon(
-                          Icons.star,
-                          color: theme.colorScheme.secondary,
-                          size: 16,
-                        ),
+                      children: const [
+                        Icon(Icons.star, color: Colors.white, size: 16),
+                        Icon(Icons.star, color: Colors.white, size: 16),
+                        Icon(Icons.star, color: Colors.white, size: 16),
+                        Icon(Icons.star, color: Colors.white, size: 16),
+                        Icon(Icons.star, color: Colors.white, size: 16),
                       ],
                     ),
                     const SizedBox(height: 30),
-                    Text(
-                      '${((product['price'] as num).toDouble() * 400).toStringAsFixed(0)} MGA',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                        color: priceColor,
+                    Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: ((product['price'] as num).toDouble() * 400)
+                                .toStringAsFixed(0),
+                          ),
+                          const TextSpan(text: ' '),
+                          TextSpan(
+                            text: 'MGA',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: priceColor.withValues(alpha: 0.82),
+                            ),
+                          ),
+                        ],
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                          color: priceColor,
+                        ),
                       ),
                     ),
                   ],
