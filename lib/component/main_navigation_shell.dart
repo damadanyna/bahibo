@@ -40,6 +40,7 @@ class _MainNavigationShellState extends State<BahiboNavigationShell> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final unreadMessageCount = mainNavigationUnreadMessageCount;
     const pages = [
       Productlist(),
       MainNavigationSearchPanel(),
@@ -61,6 +62,7 @@ class _MainNavigationShellState extends State<BahiboNavigationShell> {
             child: MainNavigationBar(
               currentIndex: _currentIndex,
               items: bahiboMainNavigationItems,
+              unreadMessageCount: unreadMessageCount,
               onTap: _handleNavigationSelection,
             ),
           ),
@@ -73,12 +75,14 @@ class _MainNavigationShellState extends State<BahiboNavigationShell> {
 class MainNavigationBar extends StatelessWidget {
   final int currentIndex;
   final List<MainNavigationItem> items;
+  final int unreadMessageCount;
   final ValueChanged<int> onTap;
 
   const MainNavigationBar({
     super.key,
     required this.currentIndex,
     required this.items,
+    required this.unreadMessageCount,
     required this.onTap,
   });
 
@@ -158,6 +162,10 @@ class MainNavigationBar extends StatelessWidget {
                                       index,
                                       items[index].icon,
                                     ),
+                                    badgeLabel: _navigationBadgeLabel(
+                                      index,
+                                      unreadMessageCount,
+                                    ),
                                     isSelected: false,
                                     activeColor: activeColor,
                                     iconColor: inactiveIconColor,
@@ -197,6 +205,10 @@ class MainNavigationBar extends StatelessWidget {
                     currentIndex,
                     items[currentIndex].icon,
                   ),
+                  badgeLabel: _navigationBadgeLabel(
+                    currentIndex,
+                    unreadMessageCount,
+                  ),
                   isSelected: true,
                   activeColor: activeColor,
                   iconColor: activeIconColor,
@@ -210,6 +222,18 @@ class MainNavigationBar extends StatelessWidget {
       ),
     );
   }
+}
+
+String? _navigationBadgeLabel(int index, int unreadMessageCount) {
+  if (index != 2 || unreadMessageCount <= 0) {
+    return null;
+  }
+
+  if (unreadMessageCount > 9) {
+    return '9+';
+  }
+
+  return unreadMessageCount.toString();
 }
 
 IconData _navigationDisplayIcon(int index, IconData fallback) {
@@ -229,6 +253,7 @@ IconData _navigationDisplayIcon(int index, IconData fallback) {
 
 class _CapsuleNavigationButton extends StatelessWidget {
   final IconData icon;
+  final String? badgeLabel;
   final bool isSelected;
   final Color activeColor;
   final Color iconColor;
@@ -237,6 +262,7 @@ class _CapsuleNavigationButton extends StatelessWidget {
 
   const _CapsuleNavigationButton({
     required this.icon,
+    this.badgeLabel,
     required this.isSelected,
     required this.activeColor,
     required this.iconColor,
@@ -246,6 +272,9 @@ class _CapsuleNavigationButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final badgeColor = theme.appColors.favoriteAccent;
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -256,11 +285,41 @@ class _CapsuleNavigationButton extends StatelessWidget {
           curve: Curves.easeOutCubic,
           width: size,
           height: size,
-          // decoration: BoxDecoration(
-          //   color: isSelected ? activeColor : Colors.transparent,
-          //   shape: BoxShape.circle,
-          // ),
-          child: Icon(icon, size: isSelected ? 35 : 23, color: iconColor),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Center(
+                child: Icon(icon, size: isSelected ? 35 : 23, color: iconColor),
+              ),
+              if (badgeLabel != null)
+                Positioned(
+                  top: isSelected ? -4 : -2,
+                  right: isSelected ? -6 : -8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: badgeColor,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: theme.cardColor, width: 1.5),
+                    ),
+                    constraints: const BoxConstraints(minWidth: 20),
+                    child: Text(
+                      badgeLabel!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        height: 1.1,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

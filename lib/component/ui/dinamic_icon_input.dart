@@ -122,6 +122,8 @@ class _DynamicIconInputState extends State<DynamicIconInput> {
               ),
               decoration: InputDecoration(
                 isCollapsed: true,
+                filled: false,
+                fillColor: Colors.transparent,
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,

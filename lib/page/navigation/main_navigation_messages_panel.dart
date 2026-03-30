@@ -3,6 +3,85 @@ import 'package:bahibo/page/chat_page.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
+typedef NavigationMessageConversation = ({
+  String name,
+  String preview,
+  String time,
+  String avatarUrl,
+  bool unread,
+});
+
+const List<NavigationMessageConversation> mainNavigationMessageConversations = [
+  (
+    name: 'John Rakoto',
+    preview: 'Bonjour, le Samsung S20 est-il toujours disponible ?',
+    time: '13:06',
+    avatarUrl:
+        'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600',
+    unread: true,
+  ),
+  (
+    name: 'Miora Andrianiaina',
+    preview: 'Je peux vous envoyer les photos cet apres-midi.',
+    time: '11:24',
+    avatarUrl:
+        'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=300',
+    unread: false,
+  ),
+  (
+    name: 'Kevin R.',
+    preview: 'Merci, je passe demain matin vers 9h.',
+    time: 'Hier',
+    avatarUrl:
+        'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=300',
+    unread: false,
+  ),
+  (
+    name: 'Aina Shop',
+    preview: 'Le produit est reserve jusqu a ce soir.',
+    time: 'Lun',
+    avatarUrl:
+        'https://images.unsplash.com/photo-1544723795-3fb6469f5b39?w=300',
+    unread: true,
+  ),
+  (
+    name: 'Tiana Market',
+    preview: 'Le prix est negociable si vous venez aujourd hui.',
+    time: 'Dim',
+    avatarUrl:
+        'https://images.unsplash.com/photo-1504257432389-52343af06ae3?w=300',
+    unread: false,
+  ),
+  (
+    name: 'Sarah Boutique',
+    preview: 'Bonsoir, la robe est encore disponible en taille M.',
+    time: 'Sam',
+    avatarUrl:
+        'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=300',
+    unread: true,
+  ),
+  (
+    name: 'Nomena Tech',
+    preview: 'Je peux livrer le laptop demain matin si besoin.',
+    time: 'Ven',
+    avatarUrl:
+        'https://images.unsplash.com/photo-1504593811423-6dd665756598?w=300',
+    unread: false,
+  ),
+  (
+    name: 'Lova Deco',
+    preview: 'Les photos supplementaires ont ete envoyees.',
+    time: 'Jeu',
+    avatarUrl:
+        'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=300',
+    unread: true,
+  ),
+];
+
+int get mainNavigationUnreadMessageCount => mainNavigationMessageConversations
+    .where((message) => message.unread)
+    .length;
+
 class MainNavigationMessagesPanel extends StatefulWidget {
   const MainNavigationMessagesPanel({super.key});
 
@@ -20,82 +99,6 @@ class _MainNavigationMessagesPanelState
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   double? _searchAnchorTop;
-
-  static const _conversations =
-      <
-        ({
-          String name,
-          String preview,
-          String time,
-          String avatarUrl,
-          bool unread,
-        })
-      >[
-        (
-          name: 'John Rakoto',
-          preview: 'Bonjour, le Samsung S20 est-il toujours disponible ?',
-          time: '13:06',
-          avatarUrl:
-              'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600',
-          unread: true,
-        ),
-        (
-          name: 'Miora Andrianiaina',
-          preview: 'Je peux vous envoyer les photos cet apres-midi.',
-          time: '11:24',
-          avatarUrl:
-              'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=300',
-          unread: false,
-        ),
-        (
-          name: 'Kevin R.',
-          preview: 'Merci, je passe demain matin vers 9h.',
-          time: 'Hier',
-          avatarUrl:
-              'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=300',
-          unread: false,
-        ),
-        (
-          name: 'Aina Shop',
-          preview: 'Le produit est reserve jusqu a ce soir.',
-          time: 'Lun',
-          avatarUrl:
-              'https://images.unsplash.com/photo-1544723795-3fb6469f5b39?w=300',
-          unread: true,
-        ),
-        (
-          name: 'Tiana Market',
-          preview: 'Le prix est negociable si vous venez aujourd hui.',
-          time: 'Dim',
-          avatarUrl:
-              'https://images.unsplash.com/photo-1504257432389-52343af06ae3?w=300',
-          unread: false,
-        ),
-        (
-          name: 'Sarah Boutique',
-          preview: 'Bonsoir, la robe est encore disponible en taille M.',
-          time: 'Sam',
-          avatarUrl:
-              'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=300',
-          unread: true,
-        ),
-        (
-          name: 'Nomena Tech',
-          preview: 'Je peux livrer le laptop demain matin si besoin.',
-          time: 'Ven',
-          avatarUrl:
-              'https://images.unsplash.com/photo-1504593811423-6dd665756598?w=300',
-          unread: false,
-        ),
-        (
-          name: 'Lova Deco',
-          preview: 'Les photos supplementaires ont ete envoyees.',
-          time: 'Jeu',
-          avatarUrl:
-              'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=300',
-          unread: true,
-        ),
-      ];
 
   @override
   void initState() {
@@ -149,8 +152,8 @@ class _MainNavigationMessagesPanelState
     final mutedColor = appColors.mutedText;
     final normalizedQuery = _searchQuery.trim().toLowerCase();
     final filteredConversations = normalizedQuery.isEmpty
-        ? _conversations
-        : _conversations.where((conversation) {
+        ? mainNavigationMessageConversations
+        : mainNavigationMessageConversations.where((conversation) {
             final name = conversation.name.toLowerCase();
             final preview = conversation.preview.toLowerCase();
             return name.contains(normalizedQuery) ||

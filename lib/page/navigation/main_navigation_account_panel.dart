@@ -406,42 +406,68 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                   )
                 : ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(16, 18, 16, 120),
+                    padding: const EdgeInsets.only(bottom: 120),
                     children: [
                       _buildStudioHero(theme),
                       const SizedBox(height: 18),
-                      _buildMetricsGrid(panelColor, mutedColor, accentColor),
-                      const SizedBox(height: 18),
-                      _buildDashboardCard(
-                        theme,
-                        panelColor,
-                        mutedColor,
-                        accentColor,
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: _buildMetricsGrid(
+                          panelColor,
+                          mutedColor,
+                          accentColor,
+                        ),
                       ),
                       const SizedBox(height: 18),
-                      _buildSearchSection(
-                        theme,
-                        panelColor,
-                        mutedColor,
-                        accentColor,
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: _buildDashboardCard(
+                          theme,
+                          panelColor,
+                          mutedColor,
+                          accentColor,
+                        ),
                       ),
                       const SizedBox(height: 18),
-                      _buildTopProductsSection(
-                        theme,
-                        panelColor,
-                        mutedColor,
-                        accentColor,
-                        topProducts,
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: _buildSearchSection(
+                          theme,
+                          panelColor,
+                          mutedColor,
+                          accentColor,
+                        ),
                       ),
                       const SizedBox(height: 18),
-                      _buildCatalogSection(
-                        theme,
-                        panelColor,
-                        mutedColor,
-                        filteredProducts,
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: _buildTopProductsSection(
+                          theme,
+                          panelColor,
+                          mutedColor,
+                          accentColor,
+                          topProducts,
+                        ),
                       ),
                       const SizedBox(height: 18),
-                      _buildAccountInfoSection(theme, panelColor, mutedColor),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: _buildCatalogSection(
+                          theme,
+                          panelColor,
+                          mutedColor,
+                          filteredProducts,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: _buildAccountInfoSection(
+                          theme,
+                          panelColor,
+                          mutedColor,
+                        ),
+                      ),
                     ],
                   ),
           ),

@@ -67,7 +67,7 @@ class ThemeProvider extends ChangeNotifier {
             surfaceContainerHighest: const Color(0xFFF1E4D8),
           ),
       appColors: const AppThemeColors(
-        backgroundBase: Color(0xFFF7F2EA),
+        backgroundBase: Color(0xFFFFFCF7),
         authBackground: Color(0xFFFFFCF7),
         panelBackground: Color(0xFFFFFCF7),
         panelMuted: Color(0xFFF4E0D1),
