@@ -23,6 +23,7 @@ class SellerProfilePage extends StatefulWidget {
 class _SellerProfilePageState extends State<SellerProfilePage>
     with AppPageRefreshMixin<SellerProfilePage> {
   bool _showEntrySkeleton = true;
+  bool _isSubscribed = false;
 
   UserProfileData get profile => widget.profile;
 
@@ -222,6 +223,67 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                 ),
               ),
               child: const Text('Fermer'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _showSubscribeConfirmation(BuildContext context) async {
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: theme.cardColor,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          title: Text(
+            _isSubscribed
+                ? 'Se desabonner de cette chaine ?'
+                : 'S\'abonner a la chaine de ${profile.name} ?',
+            style: TextStyle(
+              color: theme.colorScheme.onSurface,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          content: Text(
+            _isSubscribed
+                ? 'Vous ne recevrez plus les nouveautes de la chaine de ${profile.name}.'
+                : 'Vous recevrez les nouveautes et actualites de la chaine de ${profile.name}.',
+            style: TextStyle(color: appColors.mutedText, height: 1.4),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Annuler'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                setState(() {
+                  _isSubscribed = !_isSubscribed;
+                });
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      _isSubscribed
+                          ? 'Vous etes abonne a la chaine de ${profile.name}.'
+                          : 'Vous etes desabonne de la chaine de ${profile.name}.',
+                    ),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text(_isSubscribed ? 'Confirmer' : 'S\'abonner'),
             ),
           ],
         );
@@ -575,9 +637,15 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                         const SizedBox(width: 10),
                         Expanded(
                           child: OutlinedButton.icon(
-                            onPressed: () {},
-                            icon: const Icon(Icons.person_add_alt_1, size: 18),
-                            label: const Text("S'abonner"),
+                            onPressed: () =>
+                                _showSubscribeConfirmation(context),
+                            icon: Icon(
+                              _isSubscribed
+                                  ? Icons.how_to_reg_rounded
+                                  : Icons.person_add_alt_1,
+                              size: 18,
+                            ),
+                            label: Text(_isSubscribed ? 'Abonne' : "S'abonner"),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: appColors.heroForeground,
                               side: BorderSide(color: appColors.heroBorder),
