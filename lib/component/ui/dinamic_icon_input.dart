@@ -1,18 +1,23 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 
 typedef DynamicInputSubmitCallback = FutureOr<void> Function(String text);
 
 class DynamicIconInput extends StatefulWidget {
   final TextEditingController controller;
+  final FocusNode? focusNode;
   final DynamicInputSubmitCallback? onSubmitted;
   final Color primary;
   final Color panelColor;
   final Color? borderColor;
   final String hintText;
   final bool autoClearOnSubmit;
+  final TextInputType keyboardType;
+  final List<TextInputFormatter>? inputFormatters;
+  final TextInputAction textInputAction;
   final Widget? leadingIcon;
   final VoidCallback? onLeadingTap;
   final double leadingSize;
@@ -25,12 +30,16 @@ class DynamicIconInput extends StatefulWidget {
   const DynamicIconInput({
     super.key,
     required this.controller,
+    this.focusNode,
     this.onSubmitted,
     required this.primary,
     required this.panelColor,
     this.borderColor,
     this.hintText = 'Ecrire votre message...',
     this.autoClearOnSubmit = false,
+    this.keyboardType = TextInputType.text,
+    this.inputFormatters,
+    this.textInputAction = TextInputAction.send,
     this.leadingIcon,
     this.onLeadingTap,
     this.leadingSize = 42,
@@ -99,8 +108,11 @@ class _DynamicIconInputState extends State<DynamicIconInput> {
           Expanded(
             child: TextField(
               controller: widget.controller,
+              focusNode: widget.focusNode,
               maxLines: 1,
-              textInputAction: TextInputAction.send,
+              keyboardType: widget.keyboardType,
+              inputFormatters: widget.inputFormatters,
+              textInputAction: widget.textInputAction,
               onSubmitted: (_) => _handleSubmit(),
               style: TextStyle(
                 color: isDark

@@ -74,7 +74,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                   )
                 : ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
+                    padding: const EdgeInsets.only(bottom: 24),
                     children: [
                       _buildProfileHeader(
                         context,
@@ -83,22 +83,29 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                         mutedColor: mutedColor,
                         primaryGreen: primaryGreen,
                       ),
-                      const SizedBox(height: 16),
-                      _buildQuickStats(
-                        context,
-                        surfaceColor,
-                        mutedColor,
-                        primaryGreen,
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildQuickStats(
+                              context,
+                              surfaceColor,
+                              mutedColor,
+                              primaryGreen,
+                            ),
+                            const SizedBox(height: 18),
+                            _buildSectionHeader(
+                              'Annonces publiees',
+                              '${profile.products.length} annonces',
+                            ),
+                            const SizedBox(height: 10),
+                            _buildFilterRow(context),
+                            const SizedBox(height: 8),
+                            ..._buildProductCards(),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 18),
-                      _buildSectionHeader(
-                        'Annonces publiees',
-                        '${profile.products.length} annonces',
-                      ),
-                      const SizedBox(height: 10),
-                      _buildFilterRow(context),
-                      const SizedBox(height: 8),
-                      ..._buildProductCards(),
                     ],
                   ),
           ),

@@ -68,8 +68,12 @@ class _LanguagePageState extends State<LanguagePage> {
                   final language = languages[index];
                   return RadioListTile<String>(
                     activeColor: theme.colorScheme.primary,
-                    tileColor: theme.cardColor,
-                    title: Text(language['name']!),
+                    tileColor: appColors.backgroundBase,
+                    selectedTileColor: appColors.backgroundBase,
+                    title: Text(
+                      language['name']!,
+                      style: TextStyle(color: appColors.heroForeground),
+                    ),
                     // ignore: deprecated_member_use
                     groupValue: _selectedLanguage,
                     subtitle: Text(

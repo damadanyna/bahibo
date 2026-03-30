@@ -167,7 +167,6 @@ class _ProductlistState extends State<Productlist>
   Widget buildCategoryBlock() {
     final theme = Theme.of(context);
     final appColors = theme.appColors;
-    final isDark = theme.brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -218,7 +217,7 @@ class _ProductlistState extends State<Productlist>
                         decoration: BoxDecoration(
                           color: theme.cardColor,
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: appColors.inputBorder),
+                          border: Border.all(color: appColors.borderColor),
                         ),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -257,8 +256,10 @@ class _ProductlistState extends State<Productlist>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final appColors = theme.appColors;
+
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
+      backgroundColor: appColors.authBackground,
       body: SafeArea(
         bottom: false,
         child: Column(

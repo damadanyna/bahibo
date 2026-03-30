@@ -1,4 +1,3 @@
-import 'package:bahibo/component/theme_menu_button.dart';
 import 'package:bahibo/component/app_comments_sheet.dart';
 import 'package:bahibo/component/profile_models.dart';
 import 'package:bahibo/component/seller_profile_page.dart';
@@ -98,236 +97,173 @@ class _ProductDetailPageState extends State<ProductDetailPage>
 
     return Scaffold(
       backgroundColor: pageBackgroundColor,
-      body: Stack(
-        children: [
-          RefreshIndicator(
-            onRefresh: refreshPageWithDialog,
-            child: _showEntrySkeleton
-                ? ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    children: const [ProductDetailSkeleton()],
-                  )
-                : CustomScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    slivers: [
-                      // ── AppBar transparente qui disparaît au scroll ──
-                      SliverAppBar(
-                        expandedHeight: 0,
-                        floating: true,
-                        pinned: true,
-                        backgroundColor: topBarColor,
-                        foregroundColor: topBarForegroundColor,
-                        elevation: 0,
-                        title: Text(
-                          title,
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
-                            color: topBarForegroundColor,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        actions: [
-                          IconButton(
-                            icon: Icon(
-                              Icons.search,
-                              color: topBarForegroundColor,
-                            ),
-                            onPressed: () {},
-                          ),
-                          const ThemeMenuButton(),
-                        ],
-                      ),
-
-                      SliverToBoxAdapter(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // ── Grille d'images ──
-                            _buildImageGrid(images),
-
-                            // ── Actions ──
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 12,
-                              ),
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceAround,
-                                children: [
-                                  _socialActionCard(
-                                    icon: Icons.favorite,
-                                    label: '6 374',
-                                    iconColor: appColors.favoriteAccent,
+      body: SafeArea(
+        bottom: false,
+        child: Stack(
+          children: [
+            RefreshIndicator(
+              onRefresh: refreshPageWithDialog,
+              child: _showEntrySkeleton
+                  ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: const [ProductDetailSkeleton()],
+                    )
+                  : CustomScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      slivers: [
+                        SliverToBoxAdapter(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  5,
+                                  16,
+                                  7,
+                                ),
+                                child: Text(
+                                  'Abaoly',
+                                  style: TextStyle(
+                                    fontSize: 25,
+                                    fontWeight: FontWeight.w900,
+                                    color: theme.colorScheme.primary,
                                   ),
-                                  _socialActionCard(
-                                    icon: Icons.chat_bubble,
-                                    label: _commentCount.toString(),
-                                    iconColor: actionIconColor,
-                                    onTap: _showCommentsSheet,
-                                  ),
-                                  _socialActionCard(
-                                    icon: Icons.reply_rounded,
-                                    label: 'Partager',
-                                    iconColor: actionIconColor,
-                                    onTap: _showShareSuggestions,
-                                  ),
-                                ],
+                                ),
                               ),
-                            ),
+                              // ── Grille d'images ──
+                              _buildImageGrid(images),
 
-                            // ── Carte principale ──
-                            Container(
-                              margin: const EdgeInsets.all(12),
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: detailCardColor,
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  // Badge catégorie
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 4,
+                              // ── Actions ──
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 12,
+                                ),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceAround,
+                                  children: [
+                                    _socialActionCard(
+                                      icon: Icons.favorite,
+                                      label: '6 374',
+                                      iconColor: appColors.favoriteAccent,
                                     ),
-                                    decoration: BoxDecoration(
-                                      color: theme.colorScheme.primary
-                                          .withOpacity(0.12),
-                                      borderRadius: BorderRadius.circular(20),
+                                    _socialActionCard(
+                                      icon: Icons.chat_bubble,
+                                      label: _commentCount.toString(),
+                                      iconColor: actionIconColor,
+                                      onTap: _showCommentsSheet,
                                     ),
-                                    child: Text(
-                                      widget.product['category'] ?? 'Produit',
-                                      style: TextStyle(
-                                        color: theme.colorScheme.primary,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
+                                    _socialActionCard(
+                                      icon: Icons.reply_rounded,
+                                      label: 'Partager',
+                                      iconColor: actionIconColor,
+                                      onTap: _showShareSuggestions,
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              // ── Carte principale ──
+                              Container(
+                                margin: const EdgeInsets.all(12),
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: detailCardColor,
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // Badge catégorie
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 4,
                                       ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-
-                                  // Titre
-                                  Text(
-                                    title,
-                                    style: theme.textTheme.titleLarge?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                      color: detailPrimaryTextColor,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-
-                                  // Prix
-                                  Row(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      Text(
-                                        '$priceFormatted',
+                                      decoration: BoxDecoration(
+                                        color: theme.colorScheme.primary
+                                            .withOpacity(0.12),
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      child: Text(
+                                        widget.product['category'] ?? 'Produit',
                                         style: TextStyle(
-                                          fontSize: 28,
-                                          fontWeight: FontWeight.bold,
                                           color: theme.colorScheme.primary,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
                                         ),
                                       ),
-                                      const SizedBox(width: 4),
-                                      Padding(
-                                        padding: const EdgeInsets.only(
-                                          bottom: 4,
-                                        ),
-                                        child: Text(
-                                          'MGA',
+                                    ),
+                                    const SizedBox(height: 8),
+
+                                    // Titre
+                                    Text(
+                                      title,
+                                      style: theme.textTheme.titleLarge
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.bold,
+                                            color: detailPrimaryTextColor,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 8),
+
+                                    // Prix
+                                    Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.end,
+                                      children: [
+                                        Text(
+                                          '$priceFormatted',
                                           style: TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w600,
+                                            fontSize: 28,
+                                            fontWeight: FontWeight.bold,
                                             color: theme.colorScheme.primary,
                                           ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 4),
+                                        const SizedBox(width: 4),
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            bottom: 4,
+                                          ),
+                                          child: Text(
+                                            'MGA',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                              color: theme.colorScheme.primary,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
 
-                                  // Date publication
-                                  Row(
-                                    children: [
-                                      Icon(
-                                        Icons.access_time,
-                                        size: 13,
-                                        color: detailSecondaryTextColor,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        'Publié il y a plus d\'une semaine · Antananarivo',
-                                        style: TextStyle(
-                                          fontSize: 12,
+                                    // Date publication
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.access_time,
+                                          size: 13,
                                           color: detailSecondaryTextColor,
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            // ── Carte détails produit ──
-                            Container(
-                              margin: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                              ),
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: detailCardColor,
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Détails du Produit',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: detailPrimaryTextColor,
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Publié il y a plus d\'une semaine · Antananarivo',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: detailSecondaryTextColor,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  _detailRow(
-                                    Icons.star_outline,
-                                    'État',
-                                    'Comme Neuf',
-                                  ),
-                                  _detailRow(
-                                    Icons.verified_outlined,
-                                    'Garantie',
-                                    '3 Mois',
-                                  ),
-                                  _detailRow(
-                                    Icons.check_circle_outline,
-                                    'Contrôle',
-                                    'Testé et Vérifié',
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
 
-                            const SizedBox(height: 12),
-
-                            // ── Carte vendeur ──
-                            GestureDetector(
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => SellerProfilePage(
-                                      profile: defaultSellerProfileData(),
-                                    ),
-                                  ),
-                                );
-                              },
-                              child: Container(
+                              // ── Carte détails produit ──
+                              Container(
                                 margin: const EdgeInsets.symmetric(
                                   horizontal: 12,
                                 ),
@@ -336,231 +272,288 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                   color: detailCardColor,
                                   borderRadius: BorderRadius.circular(16),
                                 ),
-                                child: Row(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Stack(
-                                      children: [
-                                        GestureDetector(
-                                          onTap: () {
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (_) => ImageViewerPage(
-                                                  imageUrls: const [
-                                                    _sellerImageUrl,
-                                                  ],
-                                                  initialIndex: 0,
-                                                  heroTag:
-                                                      'seller-avatar-detail',
-                                                  onSellerTap: () {
-                                                    Navigator.push(
-                                                      context,
-                                                      MaterialPageRoute(
-                                                        builder: (_) =>
-                                                            SellerProfilePage(
-                                                              profile:
-                                                                  defaultSellerProfileData(),
-                                                            ),
-                                                      ),
-                                                    );
-                                                  },
-                                                  onSellerMessageTap: () {
-                                                    Navigator.push(
-                                                      context,
-                                                      MaterialPageRoute(
-                                                        builder: (_) =>
-                                                            const ChatPage(),
-                                                      ),
-                                                    );
-                                                  },
-                                                  overlay: ImageViewerOverlayData(
-                                                    title: 'Profil vendeur',
-                                                    description:
-                                                        'Vendeur actif sur Bahibo, disponible pour des photos et details supplementaires.',
-                                                    sellerName: _sellerName,
-                                                    sellerAvatarUrl:
-                                                        _sellerImageUrl,
-                                                    sellerBadge: _sellerBadge,
+                                    Text(
+                                      'Détails du Produit',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: detailPrimaryTextColor,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    _detailRow(
+                                      Icons.star_outline,
+                                      'État',
+                                      'Comme Neuf',
+                                    ),
+                                    _detailRow(
+                                      Icons.verified_outlined,
+                                      'Garantie',
+                                      '3 Mois',
+                                    ),
+                                    _detailRow(
+                                      Icons.check_circle_outline,
+                                      'Contrôle',
+                                      'Testé et Vérifié',
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              const SizedBox(height: 12),
+
+                              // ── Carte vendeur ──
+                              GestureDetector(
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => SellerProfilePage(
+                                        profile: defaultSellerProfileData(),
+                                      ),
+                                    ),
+                                  );
+                                },
+                                child: Container(
+                                  margin: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                  ),
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: detailCardColor,
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Stack(
+                                        children: [
+                                          GestureDetector(
+                                            onTap: () {
+                                              Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (_) => ImageViewerPage(
+                                                    imageUrls: const [
+                                                      _sellerImageUrl,
+                                                    ],
+                                                    initialIndex: 0,
+                                                    heroTag:
+                                                        'seller-avatar-detail',
+                                                    onSellerTap: () {
+                                                      Navigator.push(
+                                                        context,
+                                                        MaterialPageRoute(
+                                                          builder: (_) =>
+                                                              SellerProfilePage(
+                                                                profile:
+                                                                    defaultSellerProfileData(),
+                                                              ),
+                                                        ),
+                                                      );
+                                                    },
+                                                    onSellerMessageTap: () {
+                                                      Navigator.push(
+                                                        context,
+                                                        MaterialPageRoute(
+                                                          builder: (_) =>
+                                                              const ChatPage(),
+                                                        ),
+                                                      );
+                                                    },
+                                                    overlay: ImageViewerOverlayData(
+                                                      title: 'Profil vendeur',
+                                                      description:
+                                                          'Vendeur actif sur Bahibo, disponible pour des photos et details supplementaires.',
+                                                      sellerName: _sellerName,
+                                                      sellerAvatarUrl:
+                                                          _sellerImageUrl,
+                                                      sellerBadge: _sellerBadge,
+                                                    ),
                                                   ),
                                                 ),
-                                              ),
-                                            );
-                                          },
-                                          child: Hero(
-                                            tag: 'seller-avatar-detail',
-                                            child: AppCircleNetworkAvatar(
-                                              radius: 28,
-                                              imageUrl: _sellerImageUrl,
-                                            ),
-                                          ),
-                                        ),
-                                        Positioned(
-                                          bottom: 0,
-                                          right: 0,
-                                          child: Container(
-                                            width: 14,
-                                            height: 14,
-                                            decoration: BoxDecoration(
-                                              color: appColors.success,
-                                              shape: BoxShape.circle,
-                                              border: Border.all(
-                                                color: detailCardColor,
-                                                width: 2,
+                                              );
+                                            },
+                                            child: Hero(
+                                              tag: 'seller-avatar-detail',
+                                              child: AppCircleNetworkAvatar(
+                                                radius: 28,
+                                                imageUrl: _sellerImageUrl,
                                               ),
                                             ),
                                           ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            _sellerName,
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 15,
-                                              color: detailPrimaryTextColor,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Row(
-                                            children: [
-                                              Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 8,
-                                                      vertical: 3,
-                                                    ),
-                                                decoration: BoxDecoration(
-                                                  color: theme
-                                                      .colorScheme
-                                                      .primary
-                                                      .withOpacity(0.1),
-                                                  borderRadius:
-                                                      BorderRadius.circular(20),
-                                                ),
-                                                child: Row(
-                                                  children: [
-                                                    Icon(
-                                                      Icons.verified,
-                                                      size: 12,
-                                                      color: theme
-                                                          .colorScheme
-                                                          .primary,
-                                                    ),
-                                                    const SizedBox(width: 3),
-                                                    Text(
-                                                      'Vendeur Vérifié',
-                                                      style: TextStyle(
-                                                        color: theme
-                                                            .colorScheme
-                                                            .primary,
-                                                        fontSize: 11,
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                      ),
-                                                    ),
-                                                  ],
+                                          Positioned(
+                                            bottom: 0,
+                                            right: 0,
+                                            child: Container(
+                                              width: 14,
+                                              height: 14,
+                                              decoration: BoxDecoration(
+                                                color: appColors.success,
+                                                shape: BoxShape.circle,
+                                                border: Border.all(
+                                                  color: detailCardColor,
+                                                  width: 2,
                                                 ),
                                               ),
-                                            ],
+                                            ),
                                           ),
                                         ],
                                       ),
-                                    ),
-                                    // Bouton voir profil
-                                    OutlinedButton(
-                                      onPressed: () {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) => SellerProfilePage(
-                                              profile:
-                                                  defaultSellerProfileData(),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              _sellerName,
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 15,
+                                                color: detailPrimaryTextColor,
+                                              ),
                                             ),
-                                          ),
-                                        );
-                                      },
-                                      style: OutlinedButton.styleFrom(
-                                        foregroundColor:
-                                            theme.colorScheme.primary,
-                                        side: BorderSide(
-                                          color: theme.colorScheme.primary,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            20,
-                                          ),
-                                        ),
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 8,
+                                            const SizedBox(height: 2),
+                                            Row(
+                                              children: [
+                                                Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 3,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: theme
+                                                        .colorScheme
+                                                        .primary
+                                                        .withOpacity(0.1),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          20,
+                                                        ),
+                                                  ),
+                                                  child: Row(
+                                                    children: [
+                                                      Icon(
+                                                        Icons.verified,
+                                                        size: 12,
+                                                        color: theme
+                                                            .colorScheme
+                                                            .primary,
+                                                      ),
+                                                      const SizedBox(width: 3),
+                                                      Text(
+                                                        'Vendeur Vérifié',
+                                                        style: TextStyle(
+                                                          color: theme
+                                                              .colorScheme
+                                                              .primary,
+                                                          fontSize: 11,
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
                                         ),
                                       ),
-                                      child: const Text(
-                                        'Profil',
-                                        style: TextStyle(fontSize: 12),
+                                      // Bouton voir profil
+                                      OutlinedButton(
+                                        onPressed: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) => SellerProfilePage(
+                                                profile:
+                                                    defaultSellerProfileData(),
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                        style: OutlinedButton.styleFrom(
+                                          foregroundColor:
+                                              theme.colorScheme.primary,
+                                          side: BorderSide(
+                                            color: theme.colorScheme.primary,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              20,
+                                            ),
+                                          ),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 8,
+                                          ),
+                                        ),
+                                        child: const Text(
+                                          'Profil',
+                                          style: TextStyle(fontSize: 12),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+
+                              const SizedBox(height: 12),
+
+                              // ── Description ──
+                              Container(
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: detailCardColor,
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Description',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: detailPrimaryTextColor,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      widget.product['description'] ??
+                                          'Aucune description disponible.',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: detailSecondaryTextColor,
+                                        height: 1.6,
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
-                            ),
 
-                            const SizedBox(height: 12),
+                              const SizedBox(height: 12),
 
-                            // ── Description ──
-                            Container(
-                              margin: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                              ),
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: detailCardColor,
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Description',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: detailPrimaryTextColor,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    widget.product['description'] ??
-                                        'Aucune description disponible.',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: detailSecondaryTextColor,
-                                      height: 1.6,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            const SizedBox(height: 12),
-
-                            const SizedBox(
-                              height: 100,
-                            ), // espace pour le bouton fixe
-                          ],
+                              const SizedBox(
+                                height: 100,
+                              ), // espace pour le bouton fixe
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-          ),
-          if (isOffline) const AppOfflineBanner(bottomOffset: 20),
-        ],
+                      ],
+                    ),
+            ),
+            if (isOffline) const AppOfflineBanner(bottomOffset: 20),
+          ],
+        ),
       ),
 
       // ── Bouton fixe en bas ──

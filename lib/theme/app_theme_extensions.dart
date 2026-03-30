@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 @immutable
 class AppThemeColors extends ThemeExtension<AppThemeColors> {
   final Color backgroundBase;
+  final Color authBackground;
   final Color panelBackground;
   final Color panelMuted;
+  final Color borderColor;
   final Color inputFill;
   final Color inputBorder;
   final Color mutedText;
@@ -30,8 +32,10 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
 
   const AppThemeColors({
     required this.backgroundBase,
+    required this.authBackground,
     required this.panelBackground,
     required this.panelMuted,
+    required this.borderColor,
     required this.inputFill,
     required this.inputBorder,
     required this.mutedText,
@@ -59,8 +63,10 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
   @override
   AppThemeColors copyWith({
     Color? backgroundBase,
+    Color? authBackground,
     Color? panelBackground,
     Color? panelMuted,
+    Color? borderColor,
     Color? inputFill,
     Color? inputBorder,
     Color? mutedText,
@@ -86,8 +92,10 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
   }) {
     return AppThemeColors(
       backgroundBase: backgroundBase ?? this.backgroundBase,
+      authBackground: authBackground ?? this.authBackground,
       panelBackground: panelBackground ?? this.panelBackground,
       panelMuted: panelMuted ?? this.panelMuted,
+      borderColor: borderColor ?? this.borderColor,
       inputFill: inputFill ?? this.inputFill,
       inputBorder: inputBorder ?? this.inputBorder,
       mutedText: mutedText ?? this.mutedText,
@@ -121,8 +129,10 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
 
     return AppThemeColors(
       backgroundBase: Color.lerp(backgroundBase, other.backgroundBase, t)!,
+      authBackground: Color.lerp(authBackground, other.authBackground, t)!,
       panelBackground: Color.lerp(panelBackground, other.panelBackground, t)!,
       panelMuted: Color.lerp(panelMuted, other.panelMuted, t)!,
+      borderColor: Color.lerp(borderColor, other.borderColor, t)!,
       inputFill: Color.lerp(inputFill, other.inputFill, t)!,
       inputBorder: Color.lerp(inputBorder, other.inputBorder, t)!,
       mutedText: Color.lerp(mutedText, other.mutedText, t)!,

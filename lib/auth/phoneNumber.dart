@@ -1,5 +1,5 @@
 import 'package:bahibo/auth/profileInformation.dart';
-import 'package:bahibo/component/app_text_input.dart';
+import 'package:bahibo/component/ui/dinamic_icon_input.dart';
 import 'package:bahibo/formatter/PhoneNumberFormatter%20extends%20TextInputFormatter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -45,7 +45,11 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
             alignment: Alignment.center,
             child: Text(
               'Welcome to Bahibo',
-              style: TextStyle(fontSize: 25, fontWeight: FontWeight.w400),
+              style: TextStyle(
+                fontSize: 25,
+                fontWeight: FontWeight.w400,
+                color: appColors.heroForeground,
+              ),
             ),
           ),
           const SizedBox(height: 10),
@@ -108,19 +112,22 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
 
                   fieldViewBuilder:
                       (context, controller, focusNode, onEditingComplete) {
-                        return AppInputContainer(
-                          child: TextField(
-                            controller: controller,
-                            focusNode: focusNode,
-                            decoration: appInputDecoration(
-                              context,
-                              hintText: 'Country',
-                              prefixIcon: const Icon(Icons.public),
-                              contentPadding: const EdgeInsets.symmetric(
-                                vertical: 12,
-                              ),
-                            ),
-                            style: appInputTextStyle(context),
+                        return DynamicIconInput(
+                          controller: controller,
+                          focusNode: focusNode,
+                          primary: theme.colorScheme.primary,
+                          panelColor: appColors.inputFill,
+                          borderColor: appColors.inputBorder,
+                          hintText: 'Country',
+                          textInputAction: TextInputAction.next,
+                          leadingIcon: Icon(
+                            Icons.public,
+                            color: appColors.mutedText,
+                          ),
+                          leadingSize: 38,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
                           ),
                         );
                       },
@@ -128,18 +135,20 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
 
                 const SizedBox(height: 20),
 
-                AppInputContainer(
-                  child: TextField(
-                    controller: phoneController,
-                    keyboardType: TextInputType.phone,
-                    inputFormatters: [PhoneNumberFormatter()],
-                    decoration: appInputDecoration(
-                      context,
-                      hintText: 'Phone Number',
-                      prefixIcon: const Icon(Icons.phone),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    style: appInputTextStyle(context),
+                DynamicIconInput(
+                  controller: phoneController,
+                  primary: theme.colorScheme.primary,
+                  panelColor: appColors.inputFill,
+                  borderColor: appColors.inputBorder,
+                  hintText: 'Phone Number',
+                  keyboardType: TextInputType.phone,
+                  inputFormatters: [PhoneNumberFormatter()],
+                  textInputAction: TextInputAction.done,
+                  leadingIcon: Icon(Icons.phone, color: appColors.mutedText),
+                  leadingSize: 38,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
                   ),
                 ),
 

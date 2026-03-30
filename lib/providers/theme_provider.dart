@@ -68,8 +68,10 @@ class ThemeProvider extends ChangeNotifier {
           ),
       appColors: const AppThemeColors(
         backgroundBase: Color(0xFFF7F2EA),
+        authBackground: Color(0xFFFFFCF7),
         panelBackground: Color(0xFFFFFCF7),
         panelMuted: Color(0xFFF4E0D1),
+        borderColor: Color(0xFFE4D9CC),
         inputFill: Color(0xFFF8F1E9),
         inputBorder: Color(0xFFE4D9CC),
         mutedText: Color(0xFF6E6A67),
@@ -118,9 +120,11 @@ class ThemeProvider extends ChangeNotifier {
             surfaceContainerHighest: const Color(0xFF2B303A),
           ),
       appColors: const AppThemeColors(
-        backgroundBase: Color(0xFF131419),
+        backgroundBase: Color(0xFF0C1015),
+        authBackground: Color(0xFF0C1015),
         panelBackground: Color(0xFF1D2027),
         panelMuted: Color(0xFF3B3128),
+        borderColor: Color(0xFF3E434D),
         inputFill: Color(0xFF232730),
         inputBorder: Color(0xFF3E434D),
         mutedText: Color(0xFFD1D4DD),

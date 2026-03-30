@@ -12,7 +12,7 @@ class ProductCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final appColors = theme.appColors;
-    final borderColor = theme.appColors.inputBorder;
+    final borderColor = appColors.borderColor;
     final cardColor = theme.cardColor;
     final titleColor =
         theme.textTheme.titleMedium?.color ?? theme.colorScheme.onSurface;

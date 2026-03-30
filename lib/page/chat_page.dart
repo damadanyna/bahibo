@@ -674,10 +674,10 @@ class _ChatBubble extends StatelessWidget {
                       ),
                       if (isMine) ...[
                         const SizedBox(width: 6),
-                        const Icon(
+                        Icon(
                           Icons.done_all_rounded,
                           size: 15,
-                          color: Colors.white,
+                          color: Theme.of(context).appColors.heroForeground,
                         ),
                       ],
                     ],

@@ -100,9 +100,9 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
                     ),
                   ],
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.north_east_rounded,
-                  color: Colors.white,
+                  color: theme.colorScheme.onPrimary,
                   size: 23,
                 ),
               ),
