@@ -91,6 +91,11 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
   }
 
   void _handleFocusChanged() {
+    if (_searchFocusNode.hasFocus && _searchController.text.trim().isNotEmpty) {
+      _searchDebounce?.cancel();
+      unawaited(_refreshSearchResults());
+    }
+
     if (mounted) {
       setState(() {});
     }

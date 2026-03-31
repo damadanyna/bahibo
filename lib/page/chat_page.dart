@@ -376,6 +376,8 @@ class _ChatHeader extends StatelessWidget {
                   children: [
                     Text(
                       sellerName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: appColors.heroForeground,
                         fontSize: 24,
@@ -445,13 +447,17 @@ class _ChatHeader extends StatelessWidget {
                   size: 18,
                 ),
                 const SizedBox(width: 10),
-                Padding(
-                  padding: EdgeInsets.zero,
-                  child: Text(
-                    'Discutez en toute securite avant de confirmer la transaction.',
-                    style: TextStyle(
-                      color: appColors.heroForegroundMuted,
-                      fontWeight: FontWeight.w600,
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.zero,
+                    child: Text(
+                      'Discutez en toute securite avant de confirmer la transaction.',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: appColors.heroForegroundMuted,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ),
