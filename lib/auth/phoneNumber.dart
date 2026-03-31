@@ -1,4 +1,5 @@
 import 'package:bahibo/auth/profileInformation.dart';
+import 'package:bahibo/component/ui/dinamic_icon_button.dart';
 import 'package:bahibo/component/ui/dinamic_icon_input.dart';
 import 'package:bahibo/formatter/PhoneNumberFormatter%20extends%20TextInputFormatter.dart';
 import 'package:flutter/material.dart';
@@ -155,7 +156,9 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
                 const SizedBox(height: 30),
                 SizedBox(
                   width: double.infinity,
-                  child: ElevatedButton(
+                  child: DynamicIconButton(
+                    text: 'Continue',
+                    icon: const Icon(Icons.arrow_forward, size: 20),
                     onPressed: () {
                       String phoneNumber = phoneController.text;
                       // Affiche le dialog quand on appuie
@@ -201,36 +204,9 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
                         ),
                       );
                     },
-
-                    style: ButtonStyle(
-                      elevation: WidgetStateProperty.all(0),
-                      shape: MaterialStateProperty.all(
-                        RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(
-                            7,
-                          ), // <- pas de coins arrondis
-                        ),
-                      ),
-                      padding: MaterialStateProperty.all(
-                        const EdgeInsets.symmetric(
-                          vertical: 16,
-                          horizontal: 24,
-                        ),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: const [
-                        Text(
-                          'Continue',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        SizedBox(width: 12),
-                        Icon(Icons.arrow_forward, size: 20),
-                      ],
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 16,
+                      horizontal: 24,
                     ),
                   ),
                 ),

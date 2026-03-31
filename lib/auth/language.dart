@@ -106,9 +106,8 @@ class _LanguagePageState extends State<LanguagePage> {
             MaterialPageRoute(builder: (context) => const PhoneNumberPage()),
           );
         },
-        child: const Icon(Icons.arrow_forward),
+        child: const Icon(Icons.arrow_forward, color: Colors.white),
       ),
-
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }

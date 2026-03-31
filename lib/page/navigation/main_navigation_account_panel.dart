@@ -7,6 +7,7 @@ import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/product_list_page.dart';
 import 'package:bahibo/component/profile_models.dart';
 import 'package:bahibo/component/seller_profile_page.dart';
+import 'package:bahibo/component/ui/dinamic_icon_button.dart';
 import 'package:bahibo/component/ui/dinamic_icon_combobox.dart';
 import 'package:bahibo/component/ui/dinamic_icon_input.dart';
 import 'package:bahibo/component/ui/dinamic_icon_textarea.dart';
@@ -15,6 +16,7 @@ import 'package:bahibo/page/dashboard_page.dart';
 import 'package:bahibo/page/live/live_preview_page.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 enum _EditableProfileImageTarget { avatar, cover }
@@ -203,6 +205,145 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
         ),
       ),
     );
+  }
+
+  Future<void> _showMissingProductFieldsDialog(BuildContext dialogContext) {
+    final theme = Theme.of(dialogContext);
+
+    return showDialog<void>(
+      context: dialogContext,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 10),
+          contentPadding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          title: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.errorContainer,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.error_outline_rounded,
+                  color: theme.colorScheme.onErrorContainer,
+                  size: 30,
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text('Champs incomplets', textAlign: TextAlign.center),
+            ],
+          ),
+          content: const Text(
+            'Tous les champs doivent etre remplis et le prix doit etre superieur a 0 avant de publier le produit.',
+            textAlign: TextAlign.center,
+          ),
+          actions: [
+            SizedBox(
+              width: double.infinity,
+              child: DynamicIconButton(
+                text: 'Compris',
+                icon: const Icon(Icons.check_rounded, size: 18),
+                onPressed: () => Navigator.of(context).pop(),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 14,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<bool> _showPublishProductConfirmationDialog(
+    BuildContext dialogContext, {
+    required String productName,
+  }) async {
+    final theme = Theme.of(dialogContext);
+
+    final confirmed = await showDialog<bool>(
+      context: dialogContext,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 10),
+          contentPadding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          title: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.14),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.inventory_2_rounded,
+                  color: theme.colorScheme.primary,
+                  size: 30,
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text('Publier ce produit ?', textAlign: TextAlign.center),
+            ],
+          ),
+          content: Text(
+            'Le produit "$productName" sera ajoute au catalogue.',
+            textAlign: TextAlign.center,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Annuler'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Publier'),
+            ),
+          ],
+        );
+      },
+    );
+
+    return confirmed ?? false;
+  }
+
+  int? _parseProductPrice(String rawValue) {
+    final digits = rawValue.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) {
+      return null;
+    }
+
+    return int.tryParse(digits);
+  }
+
+  String _formatPriceDigits(String digits) {
+    if (digits.isEmpty) {
+      return '';
+    }
+
+    final buffer = StringBuffer();
+    for (var index = 0; index < digits.length; index++) {
+      buffer.write(digits[index]);
+      final remaining = digits.length - index - 1;
+      if (remaining > 0 && remaining % 3 == 0) {
+        buffer.write(' ');
+      }
+    }
+
+    return buffer.toString();
   }
 
   String get _resolvedStudioName {
@@ -445,6 +586,28 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     String availability = 'Disponible';
     String productCondition = 'Neuf';
     final productImageFiles = <File>[];
+    var isFormattingPrice = false;
+
+    void formatPriceInput() {
+      if (isFormattingPrice) {
+        return;
+      }
+
+      final digits = priceController.text.replaceAll(RegExp(r'\D'), '');
+      final formatted = _formatPriceDigits(digits);
+      if (formatted == priceController.text) {
+        return;
+      }
+
+      isFormattingPrice = true;
+      priceController.value = TextEditingValue(
+        text: formatted,
+        selection: TextSelection.collapsed(offset: formatted.length),
+      );
+      isFormattingPrice = false;
+    }
+
+    priceController.addListener(formatPriceInput);
 
     await showModalBottomSheet<void>(
       context: context,
@@ -598,19 +761,39 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                         panelColor: panelColor,
                         borderColor: accentColor.withValues(alpha: 0.12),
                         hintText: 'Prix',
-                        keyboardType: TextInputType.number,
+                        keyboardType: const TextInputType.numberWithOptions(),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
                         leadingIcon: Icon(
                           Icons.payments_outlined,
                           color: accentColor,
                         ),
+                        trailingIcon: Text(
+                          'MGA',
+                          style: TextStyle(
+                            color: accentColor,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        trailingSize: 34,
                       ),
                       const SizedBox(height: 12),
                       DynamicIconComboBox<String>(
                         value: availability,
                         items: const [
-                          DropdownMenuItem(value: 'Disponible', child: Text('Disponible')),
-                          DropdownMenuItem(value: 'Rupture', child: Text('Rupture')),
-                          DropdownMenuItem(value: 'Precommande', child: Text('Precommande')),
+                          DropdownMenuItem(
+                            value: 'Disponible',
+                            child: Text('Disponible'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Rupture',
+                            child: Text('Rupture'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Precommande',
+                            child: Text('Precommande'),
+                          ),
                         ],
                         onChanged: (value) {
                           if (value == null) return;
@@ -622,15 +805,24 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                         panelColor: panelColor,
                         borderColor: accentColor.withValues(alpha: 0.12),
                         hintText: 'Etat',
-                        leadingIcon: Icon(Icons.sell_outlined, color: accentColor),
+                        leadingIcon: Icon(
+                          Icons.sell_outlined,
+                          color: accentColor,
+                        ),
                       ),
                       const SizedBox(height: 12),
                       DynamicIconComboBox<String>(
                         value: productCondition,
                         items: const [
                           DropdownMenuItem(value: 'Neuf', child: Text('Neuf')),
-                          DropdownMenuItem(value: 'Occasion', child: Text('Occasion')),
-                          DropdownMenuItem(value: 'Reconditionne', child: Text('Reconditionne')),
+                          DropdownMenuItem(
+                            value: 'Occasion',
+                            child: Text('Occasion'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Reconditionne',
+                            child: Text('Reconditionne'),
+                          ),
                         ],
                         onChanged: (value) {
                           if (value == null) return;
@@ -642,7 +834,10 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                         panelColor: panelColor,
                         borderColor: accentColor.withValues(alpha: 0.12),
                         hintText: 'Etat du produit',
-                        leadingIcon: Icon(Icons.verified_outlined, color: accentColor),
+                        leadingIcon: Icon(
+                          Icons.verified_outlined,
+                          color: accentColor,
+                        ),
                       ),
                       const SizedBox(height: 12),
                       DynamicIconTextArea(
@@ -652,7 +847,10 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                         borderColor: accentColor.withValues(alpha: 0.12),
                         labelText: 'Description',
                         hintText: 'Description du produit',
-                        leadingIcon: Icon(Icons.notes_rounded, color: accentColor),
+                        leadingIcon: Icon(
+                          Icons.notes_rounded,
+                          color: accentColor,
+                        ),
                       ),
                       const SizedBox(height: 16),
                       Text(
@@ -685,7 +883,8 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                                   child: SizedBox(
                                     height: 144,
                                     child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
                                       children: [
                                         Icon(
                                           Icons.add_photo_alternate_outlined,
@@ -724,8 +923,12 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                                           vertical: 6,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: accentColor.withValues(alpha: 0.14),
-                                          borderRadius: BorderRadius.circular(999),
+                                          color: accentColor.withValues(
+                                            alpha: 0.14,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
                                         ),
                                         child: Text(
                                           '${productImageFiles.length} photo${productImageFiles.length > 1 ? 's' : ''}',
@@ -738,7 +941,9 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                                       const Spacer(),
                                       TextButton.icon(
                                         onPressed: chooseProductImage,
-                                        icon: const Icon(Icons.add_photo_alternate_outlined),
+                                        icon: const Icon(
+                                          Icons.add_photo_alternate_outlined,
+                                        ),
                                         label: const Text('Ajouter'),
                                       ),
                                     ],
@@ -749,16 +954,19 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                                     child: ListView.separated(
                                       scrollDirection: Axis.horizontal,
                                       itemCount: productImageFiles.length,
-                                      separatorBuilder: (_, _) => const SizedBox(width: 10),
+                                      separatorBuilder: (_, _) =>
+                                          const SizedBox(width: 10),
                                       itemBuilder: (context, index) {
-                                        final imageFile = productImageFiles[index];
+                                        final imageFile =
+                                            productImageFiles[index];
                                         return SizedBox(
                                           width: 108,
                                           child: Stack(
                                             fit: StackFit.expand,
                                             children: [
                                               ClipRRect(
-                                                borderRadius: BorderRadius.circular(16),
+                                                borderRadius:
+                                                    BorderRadius.circular(16),
                                                 child: Image.file(
                                                   imageFile,
                                                   fit: BoxFit.cover,
@@ -771,14 +979,19 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                                                   children: [
                                                     _buildProductImageAction(
                                                       icon: Icons.edit_rounded,
-                                                      onTap: () => replaceProductImage(index),
+                                                      onTap: () =>
+                                                          replaceProductImage(
+                                                            index,
+                                                          ),
                                                     ),
                                                     const SizedBox(width: 6),
                                                     _buildProductImageAction(
-                                                      icon: Icons.delete_outline_rounded,
+                                                      icon: Icons
+                                                          .delete_outline_rounded,
                                                       onTap: () {
                                                         setModalState(() {
-                                                          productImageFiles.removeAt(index);
+                                                          productImageFiles
+                                                              .removeAt(index);
                                                         });
                                                       },
                                                     ),
@@ -797,26 +1010,44 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                       const SizedBox(height: 18),
                       SizedBox(
                         width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: () {
+                        child: DynamicIconButton(
+                          text: 'Publier le produit',
+                          icon: const Icon(
+                            Icons.check_circle_outline,
+                            color: Colors.white,
+                          ),
+                          onPressed: () async {
                             final productName = nameController.text.trim();
-                            final productCategory = categoryController.text.trim();
-                            final parsedPrice = double.tryParse(
-                              priceController.text.trim().replaceAll(',', '.'),
+                            final productCategory = categoryController.text
+                                .trim();
+                            final productDescription = descriptionController
+                                .text
+                                .trim();
+                            final parsedPrice = _parseProductPrice(
+                              priceController.text,
                             );
 
                             if (productName.isEmpty ||
                                 productCategory.isEmpty ||
                                 parsedPrice == null ||
-                                descriptionController.text.trim().isEmpty ||
+                                parsedPrice <= 0 ||
+                                productDescription.isEmpty ||
                                 productImageFiles.isEmpty) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Complete le nom, la categorie, le prix, la description et la photo.',
-                                  ),
-                                ),
+                              await _showMissingProductFieldsDialog(
+                                sheetContext,
                               );
+                              return;
+                            }
+
+                            final shouldPublish =
+                                await _showPublishProductConfirmationDialog(
+                                  sheetContext,
+                                  productName: productName,
+                                );
+
+                            if (!shouldPublish ||
+                                !mounted ||
+                                !sheetContext.mounted) {
                               return;
                             }
 
@@ -824,8 +1055,8 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                               _customStudioProducts.insert(0, {
                                 'title': productName,
                                 'category': productCategory,
-                                'price': parsedPrice.round(),
-                                'description': descriptionController.text.trim(),
+                                'price': parsedPrice,
+                                'description': productDescription,
                                 'status': availability,
                                 'condition': productCondition,
                                 'thumbnail': productImageFiles.first.path,
@@ -839,12 +1070,12 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                             Navigator.of(sheetContext).pop();
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('$productName ajoute au catalogue.'),
+                                content: Text(
+                                  '$productName ajoute au catalogue.',
+                                ),
                               ),
                             );
                           },
-                          icon: const Icon(Icons.check_circle_outline),
-                          label: const Text('Publier le produit'),
                         ),
                       ),
                     ],
@@ -856,6 +1087,8 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
         );
       },
     );
+
+    priceController.removeListener(formatPriceInput);
   }
 
   void _showStubAction(String label) {
@@ -1299,16 +1532,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                           supportAccentColor,
                         ),
                       ),
-                      const SizedBox(height: 18),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: _buildSearchSection(
-                          theme,
-                          panelColor,
-                          mutedColor,
-                          accentColor,
-                        ),
-                      ),
+
                       const SizedBox(height: 18),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1844,67 +2068,6 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildSearchSection(
-    ThemeData theme,
-    Color panelColor,
-    Color mutedColor,
-    Color accentColor,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: _surfaceDecoration(theme),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: accentColor.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              'Recherche rapide',
-              style: TextStyle(
-                color: accentColor,
-                fontWeight: FontWeight.w700,
-                fontSize: 12,
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Recherche produit',
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Cherche rapidement un produit et inspecte son statut.',
-            style: TextStyle(color: mutedColor),
-          ),
-          const SizedBox(height: 14),
-          DynamicIconInput(
-            controller: _searchController,
-            primary: accentColor,
-            panelColor: _backgroundColor(theme),
-            hintText: 'iPhone, Samsung, accessoire...',
-            borderColor: accentColor.withOpacity(0.12),
-            leadingIcon: Icon(Icons.search_rounded, color: accentColor),
-            trailingIcon: _searchQuery.isEmpty
-                ? null
-                : Icon(Icons.close_rounded, color: accentColor),
-            onTrailingTap: _searchQuery.isEmpty
-                ? null
-                : () {
-                    _searchController.clear();
-                  },
-          ),
-        ],
       ),
     );
   }

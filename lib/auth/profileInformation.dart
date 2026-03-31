@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:bahibo/component/main_navigation_shell.dart';
+import 'package:bahibo/component/ui/dinamic_icon_button.dart';
 import 'package:bahibo/component/ui/dinamic_icon_input.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -149,7 +150,9 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
             const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton(
+              child: DynamicIconButton(
+                text: 'Continue',
+                icon: const Icon(Icons.arrow_forward, size: 20),
                 onPressed: () {
                   Navigator.pushReplacement(
                     context,
@@ -158,20 +161,10 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
                     ),
                   );
                 },
-                style: ButtonStyle(
-                  elevation: WidgetStateProperty.all(0),
-                  shape: MaterialStateProperty.all(
-                    RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        7,
-                      ), // <- pas de coins arrondis
-                    ),
-                  ),
-                  padding: MaterialStateProperty.all(
-                    const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
-                  ),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 16,
+                  horizontal: 24,
                 ),
-                child: Text('Continue'),
               ),
             ),
           ],
