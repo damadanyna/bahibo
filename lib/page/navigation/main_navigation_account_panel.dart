@@ -4,8 +4,14 @@ import 'package:bahibo/component/ProductCard.dart';
 import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
 import 'package:bahibo/component/app_page_skeletons.dart';
+import 'package:bahibo/component/product_list_page.dart';
 import 'package:bahibo/component/profile_models.dart';
+import 'package:bahibo/component/seller_profile_page.dart';
+import 'package:bahibo/component/ui/dinamic_icon_combobox.dart';
 import 'package:bahibo/component/ui/dinamic_icon_input.dart';
+import 'package:bahibo/component/ui/dinamic_icon_textarea.dart';
+import 'package:bahibo/component/user_list_page.dart';
+import 'package:bahibo/page/dashboard_page.dart';
 import 'package:bahibo/page/live/live_preview_page.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
@@ -83,6 +89,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   final TextEditingController _searchController = TextEditingController();
   File? _avatarImageFile;
   File? _coverImageFile;
+  final List<Map<String, dynamic>> _customStudioProducts = [];
   String _searchQuery = '';
   String _studioName = '';
   String _studioAddress = 'Antananarivo, Madagascar';
@@ -95,6 +102,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
 
   List<Map<String, dynamic>> get _catalogProducts => [
     ...profile.products,
+    ..._customStudioProducts,
     ..._extraStudioProducts,
   ];
 
@@ -109,6 +117,113 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
       final category = (product['category'] ?? '').toString().toLowerCase();
       return title.contains(query) || category.contains(query);
     }).toList();
+  }
+
+  List<UserListItemData> _buildMetricUsers({required String metricLabel}) {
+    final users = [
+      buildProfileFromUser(
+        name: 'Miora Andriam',
+        avatarUrl:
+            'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=600',
+        subtitle: 'Cliente fidele de la boutique',
+      ),
+      buildProfileFromUser(
+        name: 'Tahina Rak',
+        avatarUrl:
+            'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=600',
+        subtitle: 'Acheteur actif sur Bahibo',
+      ),
+      buildProfileFromUser(
+        name: 'Aina Store',
+        avatarUrl:
+            'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=600',
+        subtitle: 'Revendeur partenaire',
+      ),
+      buildProfileFromUser(
+        name: 'Kanto Mobile',
+        avatarUrl:
+            'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600',
+        subtitle: 'Passionne tech et accessoires',
+      ),
+    ];
+
+    return users.map((user) {
+      final trailingText = switch (metricLabel) {
+        'Abonnes' => 'Abonne',
+        'Vues profil' => 'Vu',
+        'Likes total' => 'Like',
+        _ => 'Profil',
+      };
+
+      return UserListItemData(
+        name: user.name,
+        subtitle: user.headline,
+        imageUrl: user.avatarUrl,
+        trailingText: trailingText,
+        profileData: user,
+        destinationBuilder: (_) => SellerProfilePage(profile: user),
+      );
+    }).toList();
+  }
+
+  Future<void> _openMetricUsers(String metricLabel) async {
+    if (metricLabel == 'Produits') {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) =>
+              ProductListPage(title: 'Produits', products: _catalogProducts),
+        ),
+      );
+      return;
+    }
+
+    final title = switch (metricLabel) {
+      'Abonnes' => 'Abonnes',
+      'Vues profil' => 'Vues profil',
+      'Likes total' => 'Likes total',
+      _ => metricLabel,
+    };
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => UserListPage(
+          title: title,
+          users: _buildMetricUsers(metricLabel: metricLabel),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openFullDashboard() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => StudioDashboardPage(
+          studioName: _resolvedStudioName,
+          products: _catalogProducts,
+        ),
+      ),
+    );
+  }
+
+  String get _resolvedStudioName {
+    final sanitizedStudioName = _sanitizeDisplayText(_studioName);
+    if (sanitizedStudioName.isNotEmpty) {
+      return sanitizedStudioName;
+    }
+
+    final sanitizedProfileName = _sanitizeDisplayText(profile.name);
+    return sanitizedProfileName.isEmpty ? 'Boutique' : sanitizedProfileName;
+  }
+
+  String _sanitizeDisplayText(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty || trimmed == '""' || trimmed == "''") {
+      return '';
+    }
+
+    final withoutDoubleQuotes = trimmed.replaceAll('"', '');
+    final withoutQuotes = withoutDoubleQuotes.replaceAll("'", '');
+    return withoutQuotes.trim();
   }
 
   @override
@@ -130,8 +245,9 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   }
 
   void _hydrateStudioFields() {
+    _studioName = _sanitizeDisplayText(_studioName);
     if (_studioName.isEmpty) {
-      _studioName = profile.name;
+      _studioName = _sanitizeDisplayText(profile.name);
     }
     if (_studioDescription.isEmpty) {
       _studioDescription = profile.about;
@@ -279,12 +395,13 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                   ),
                 ),
                 const SizedBox(height: 12),
-                DynamicIconInput(
+                DynamicIconTextArea(
                   controller: descriptionController,
                   primary: accentColor,
                   panelColor: inputPanelColor,
-                  borderColor: accentColor.withOpacity(0.12),
-                  hintText: 'Description',
+                  borderColor: accentColor.withValues(alpha: 0.12),
+                  labelText: 'Description',
+                  hintText: 'Description de la boutique',
                   leadingIcon: Icon(Icons.notes_rounded, color: accentColor),
                 ),
                 const SizedBox(height: 18),
@@ -293,8 +410,11 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                   child: ElevatedButton(
                     onPressed: () {
                       setState(() {
-                        if (nameController.text.trim().isNotEmpty) {
-                          _studioName = nameController.text.trim();
+                        final sanitizedStudioName = _sanitizeDisplayText(
+                          nameController.text,
+                        );
+                        if (sanitizedStudioName.isNotEmpty) {
+                          _studioName = sanitizedStudioName;
                         }
                         if (addressController.text.trim().isNotEmpty) {
                           _studioAddress = addressController.text.trim();
@@ -312,6 +432,427 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
               ],
             ),
           ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showCreateProductSheet() async {
+    final nameController = TextEditingController();
+    final categoryController = TextEditingController();
+    final priceController = TextEditingController();
+    final descriptionController = TextEditingController();
+    String availability = 'Disponible';
+    String productCondition = 'Neuf';
+    final productImageFiles = <File>[];
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        final theme = Theme.of(sheetContext);
+        final accentColor = _accentColor(theme);
+        final panelColor = _backgroundColor(theme);
+
+        Future<void> pickCameraProductImage() async {
+          final file = await _imagePicker.pickImage(
+            source: ImageSource.camera,
+            imageQuality: 85,
+            maxWidth: 1800,
+          );
+          if (file == null) {
+            return;
+          }
+
+          productImageFiles.add(File(file.path));
+        }
+
+        Future<void> pickGalleryProductImages() async {
+          final files = await _imagePicker.pickMultiImage(
+            imageQuality: 85,
+            maxWidth: 1800,
+          );
+          if (files.isEmpty) {
+            return;
+          }
+
+          productImageFiles.addAll(files.map((file) => File(file.path)));
+        }
+
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            Future<void> chooseProductImage() async {
+              await showModalBottomSheet<void>(
+                context: context,
+                builder: (imageContext) {
+                  return SafeArea(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.photo_camera_outlined),
+                          title: const Text('Prendre une photo'),
+                          onTap: () async {
+                            Navigator.of(imageContext).pop();
+                            await pickCameraProductImage();
+                            setModalState(() {});
+                          },
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.photo_library_outlined),
+                          title: const Text('Choisir plusieurs photos'),
+                          onTap: () async {
+                            Navigator.of(imageContext).pop();
+                            await pickGalleryProductImages();
+                            setModalState(() {});
+                          },
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            }
+
+            Future<void> replaceProductImage(int index) async {
+              final file = await _imagePicker.pickImage(
+                source: ImageSource.gallery,
+                imageQuality: 85,
+                maxWidth: 1800,
+              );
+              if (file == null) {
+                return;
+              }
+
+              setModalState(() {
+                productImageFiles[index] = File(file.path);
+              });
+            }
+
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+              ),
+              child: Container(
+                decoration: _surfaceDecoration(theme, radius: 28, tinted: true),
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(sheetContext).size.height * 0.92,
+                ),
+                padding: const EdgeInsets.fromLTRB(14, 16, 14, 20),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 42,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: theme.dividerColor,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Text(
+                        'Creer un produit',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Renseigne les informations principales du produit avant publication.',
+                        style: TextStyle(color: theme.appColors.mutedText),
+                      ),
+                      const SizedBox(height: 18),
+                      DynamicIconInput(
+                        controller: nameController,
+                        primary: accentColor,
+                        panelColor: panelColor,
+                        borderColor: accentColor.withValues(alpha: 0.12),
+                        hintText: 'Nom produit',
+                        leadingIcon: Icon(
+                          Icons.inventory_2_outlined,
+                          color: accentColor,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      DynamicIconInput(
+                        controller: categoryController,
+                        primary: accentColor,
+                        panelColor: panelColor,
+                        borderColor: accentColor.withValues(alpha: 0.12),
+                        hintText: 'Categorie',
+                        leadingIcon: Icon(
+                          Icons.category_outlined,
+                          color: accentColor,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      DynamicIconInput(
+                        controller: priceController,
+                        primary: accentColor,
+                        panelColor: panelColor,
+                        borderColor: accentColor.withValues(alpha: 0.12),
+                        hintText: 'Prix',
+                        keyboardType: TextInputType.number,
+                        leadingIcon: Icon(
+                          Icons.payments_outlined,
+                          color: accentColor,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      DynamicIconComboBox<String>(
+                        value: availability,
+                        items: const [
+                          DropdownMenuItem(value: 'Disponible', child: Text('Disponible')),
+                          DropdownMenuItem(value: 'Rupture', child: Text('Rupture')),
+                          DropdownMenuItem(value: 'Precommande', child: Text('Precommande')),
+                        ],
+                        onChanged: (value) {
+                          if (value == null) return;
+                          setModalState(() {
+                            availability = value;
+                          });
+                        },
+                        primary: accentColor,
+                        panelColor: panelColor,
+                        borderColor: accentColor.withValues(alpha: 0.12),
+                        hintText: 'Etat',
+                        leadingIcon: Icon(Icons.sell_outlined, color: accentColor),
+                      ),
+                      const SizedBox(height: 12),
+                      DynamicIconComboBox<String>(
+                        value: productCondition,
+                        items: const [
+                          DropdownMenuItem(value: 'Neuf', child: Text('Neuf')),
+                          DropdownMenuItem(value: 'Occasion', child: Text('Occasion')),
+                          DropdownMenuItem(value: 'Reconditionne', child: Text('Reconditionne')),
+                        ],
+                        onChanged: (value) {
+                          if (value == null) return;
+                          setModalState(() {
+                            productCondition = value;
+                          });
+                        },
+                        primary: accentColor,
+                        panelColor: panelColor,
+                        borderColor: accentColor.withValues(alpha: 0.12),
+                        hintText: 'Etat du produit',
+                        leadingIcon: Icon(Icons.verified_outlined, color: accentColor),
+                      ),
+                      const SizedBox(height: 12),
+                      DynamicIconTextArea(
+                        controller: descriptionController,
+                        primary: accentColor,
+                        panelColor: panelColor,
+                        borderColor: accentColor.withValues(alpha: 0.12),
+                        labelText: 'Description',
+                        hintText: 'Description du produit',
+                        leadingIcon: Icon(Icons.notes_rounded, color: accentColor),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Photo du produit',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Selection multiple depuis la galerie ou ajout progressif photo par photo.',
+                        style: TextStyle(color: theme.appColors.mutedText),
+                      ),
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: panelColor,
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(
+                            color: theme.appColors.inputBorder,
+                          ),
+                        ),
+                        child: productImageFiles.isEmpty
+                            ? Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: chooseProductImage,
+                                  borderRadius: BorderRadius.circular(18),
+                                  child: SizedBox(
+                                    height: 144,
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.add_photo_alternate_outlined,
+                                          color: accentColor,
+                                          size: 34,
+                                        ),
+                                        const SizedBox(height: 10),
+                                        Text(
+                                          'Ajouter des photos produit',
+                                          style: TextStyle(
+                                            color: accentColor,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          'Mode multi-selection',
+                                          style: TextStyle(
+                                            color: theme.appColors.mutedText,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: accentColor.withValues(alpha: 0.14),
+                                          borderRadius: BorderRadius.circular(999),
+                                        ),
+                                        child: Text(
+                                          '${productImageFiles.length} photo${productImageFiles.length > 1 ? 's' : ''}',
+                                          style: TextStyle(
+                                            color: accentColor,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      TextButton.icon(
+                                        onPressed: chooseProductImage,
+                                        icon: const Icon(Icons.add_photo_alternate_outlined),
+                                        label: const Text('Ajouter'),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  SizedBox(
+                                    height: 118,
+                                    child: ListView.separated(
+                                      scrollDirection: Axis.horizontal,
+                                      itemCount: productImageFiles.length,
+                                      separatorBuilder: (_, _) => const SizedBox(width: 10),
+                                      itemBuilder: (context, index) {
+                                        final imageFile = productImageFiles[index];
+                                        return SizedBox(
+                                          width: 108,
+                                          child: Stack(
+                                            fit: StackFit.expand,
+                                            children: [
+                                              ClipRRect(
+                                                borderRadius: BorderRadius.circular(16),
+                                                child: Image.file(
+                                                  imageFile,
+                                                  fit: BoxFit.cover,
+                                                ),
+                                              ),
+                                              Positioned(
+                                                top: 8,
+                                                left: 8,
+                                                child: Row(
+                                                  children: [
+                                                    _buildProductImageAction(
+                                                      icon: Icons.edit_rounded,
+                                                      onTap: () => replaceProductImage(index),
+                                                    ),
+                                                    const SizedBox(width: 6),
+                                                    _buildProductImageAction(
+                                                      icon: Icons.delete_outline_rounded,
+                                                      onTap: () {
+                                                        setModalState(() {
+                                                          productImageFiles.removeAt(index);
+                                                        });
+                                                      },
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                      ),
+                      const SizedBox(height: 18),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            final productName = nameController.text.trim();
+                            final productCategory = categoryController.text.trim();
+                            final parsedPrice = double.tryParse(
+                              priceController.text.trim().replaceAll(',', '.'),
+                            );
+
+                            if (productName.isEmpty ||
+                                productCategory.isEmpty ||
+                                parsedPrice == null ||
+                                descriptionController.text.trim().isEmpty ||
+                                productImageFiles.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Complete le nom, la categorie, le prix, la description et la photo.',
+                                  ),
+                                ),
+                              );
+                              return;
+                            }
+
+                            setState(() {
+                              _customStudioProducts.insert(0, {
+                                'title': productName,
+                                'category': productCategory,
+                                'price': parsedPrice.round(),
+                                'description': descriptionController.text.trim(),
+                                'status': availability,
+                                'condition': productCondition,
+                                'thumbnail': productImageFiles.first.path,
+                                'images': productImageFiles
+                                    .map((file) => file.path)
+                                    .toList(),
+                                'isLocalFile': true,
+                              });
+                            });
+
+                            Navigator.of(sheetContext).pop();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('$productName ajoute au catalogue.'),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.check_circle_outline),
+                          label: const Text('Publier le produit'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
         );
       },
     );
@@ -341,9 +882,31 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     });
   }
 
+  Widget _buildProductImageAction({
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Ink(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.56),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 16, color: Colors.white),
+        ),
+      ),
+    );
+  }
+
   Future<void> _showLaunchLiveSheet() async {
     final titleController = TextEditingController(
-      text: '${_studioName.isEmpty ? profile.name : _studioName} en direct',
+      text: '$_resolvedStudioName en direct',
     );
     final categoryController = TextEditingController(
       text: 'Presentation produit',
@@ -973,7 +1536,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                       const SizedBox(width: 10),
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: () => _showStubAction('Creer un produit'),
+                          onPressed: _showCreateProductSheet,
                           icon: const Icon(Icons.add_box_outlined, size: 18),
                           label: const Text(
                             'Creer produit',
@@ -1056,60 +1619,73 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
             supportAccentColor.withValues(alpha: 0.12),
           ],
         );
-        return Container(
-          padding: const EdgeInsets.all(12),
-          decoration: _surfaceDecoration(
-            theme,
-            radius: 22,
-            tinted: index.isEven,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Align(
-                alignment: Alignment.topRight,
-                child: Container(
-                  width: 38,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(999),
-                    color: accentColor.withValues(alpha: 0.2),
+        final isOpenable =
+            metric.label == 'Abonnes' ||
+            metric.label == 'Vues profil' ||
+            metric.label == 'Produits' ||
+            metric.label == 'Likes total';
+
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: isOpenable ? () => _openMetricUsers(metric.label) : null,
+            borderRadius: BorderRadius.circular(22),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: _surfaceDecoration(
+                theme,
+                radius: 22,
+                tinted: index.isEven,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Align(
+                    alignment: Alignment.topRight,
+                    child: Container(
+                      width: 38,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(999),
+                        color: accentColor.withValues(alpha: 0.2),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  gradient: iconBackground,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(metric.icon, color: accentColor),
-              ),
-              const Spacer(),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  metric.value,
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
+                  const SizedBox(height: 8),
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      gradient: iconBackground,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(metric.icon, color: accentColor),
                   ),
-                ),
+                  const Spacer(),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      metric.value,
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    metric.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: mutedColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                metric.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: mutedColor,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
+            ),
           ),
         );
       },
@@ -1130,104 +1706,111 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
         ? supportAccentColor.withValues(alpha: 0.34)
         : accentColor.withValues(alpha: 0.24);
 
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: _surfaceDecoration(theme, tinted: true),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _openFullDashboard,
+        borderRadius: BorderRadius.circular(24),
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: _surfaceDecoration(theme, tinted: true),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Tableau de bord',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Cette semaine, la boutique est en hausse de 18%.',
-                      style: TextStyle(color: mutedColor),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      accentSurfaceColor,
-                      supportAccentColor.withValues(alpha: 0.18),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  '+18%',
-                  style: TextStyle(
-                    color: accentColor,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          SizedBox(
-            height: 128,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: List.generate(bars.length, (index) {
-                return Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 5),
+              Row(
+                children: [
+                  Expanded(
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.bottomCenter,
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 220),
-                              height: 104 * bars[index],
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    accentColor.withOpacity(0.92),
-                                    chartBaseColor,
-                                  ],
-                                ),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                            ),
+                        Text(
+                          'Tableau de bord',
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 4),
                         Text(
-                          ['L', 'M', 'M', 'J', 'V', 'S', 'D'][index],
-                          style: TextStyle(
-                            color: mutedColor,
-                            fontWeight: FontWeight.w600,
-                          ),
+                          'Cette semaine, la boutique est en hausse de 18%.',
+                          style: TextStyle(color: mutedColor),
                         ),
                       ],
                     ),
                   ),
-                );
-              }),
-            ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          accentSurfaceColor,
+                          supportAccentColor.withValues(alpha: 0.18),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '+18%',
+                      style: TextStyle(
+                        color: accentColor,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                height: 128,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: List.generate(bars.length, (index) {
+                    return Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 5),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            Expanded(
+                              child: Align(
+                                alignment: Alignment.bottomCenter,
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 220),
+                                  height: 104 * bars[index],
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                      colors: [
+                                        accentColor.withValues(alpha: 0.92),
+                                        chartBaseColor,
+                                      ],
+                                    ),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              ['L', 'M', 'M', 'J', 'V', 'S', 'D'][index],
+                              style: TextStyle(
+                                color: mutedColor,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1487,7 +2070,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
             ],
           ),
           const SizedBox(height: 10),
-          _buildInfoRow('Nom', _studioName, mutedColor),
+          _buildInfoRow('Nom', _resolvedStudioName, mutedColor),
           _buildInfoRow('Adresse', _studioAddress, mutedColor),
           _buildInfoRow(
             'Description',

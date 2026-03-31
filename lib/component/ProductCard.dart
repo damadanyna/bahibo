@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
@@ -280,17 +282,35 @@ class ProductCard extends StatelessWidget {
     final theme = Theme.of(context);
     final fallbackIconColor =
         theme.iconTheme.color ?? theme.colorScheme.onSurfaceVariant;
+    final isLocalFile = !(url.startsWith('http://') || url.startsWith('https://'));
 
     return GestureDetector(
       onTap: onTap,
-      child: AppNetworkImage(
-        imageUrl: url,
-        fit: BoxFit.cover,
-        width: double.infinity,
-        height: double.infinity,
-        borderRadius: BorderRadius.circular(4),
-        errorChild: Icon(Icons.image_not_supported, color: fallbackIconColor),
-      ),
+      child: isLocalFile
+          ? ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: Image.file(
+                File(url),
+                fit: BoxFit.cover,
+                width: double.infinity,
+                height: double.infinity,
+                errorBuilder: (_, _, _) => Icon(
+                  Icons.image_not_supported,
+                  color: fallbackIconColor,
+                ),
+              ),
+            )
+          : AppNetworkImage(
+              imageUrl: url,
+              fit: BoxFit.cover,
+              width: double.infinity,
+              height: double.infinity,
+              borderRadius: BorderRadius.circular(4),
+              errorChild: Icon(
+                Icons.image_not_supported,
+                color: fallbackIconColor,
+              ),
+            ),
     );
   }
 }
