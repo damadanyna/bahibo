@@ -1,7 +1,11 @@
+%%{init: {"theme": "dark", "themeVariables": {"background": "#050505", "primaryColor": "#111111", "primaryTextColor": "#FFFFFF", "primaryBorderColor": "#8A8A8A", "lineColor": "#DADADA", "secondaryColor": "#151515", "tertiaryColor": "#101010", "noteTextColor": "#FFFFFF", "textColor": "#FFFFFF", "mainBkg": "#101010", "secondBkg": "#161616", "tertiaryBkg": "#0B0B0B"}}}%%
 erDiagram
     USERS ||--o| SELLER_PROFILES : has
     USERS ||--o{ USER_SESSIONS : owns
+    USERS ||--o{ USER_ADDRESSES : saves
+    USERS ||--o{ CARTS : owns
     USERS ||--o{ SELLER_FOLLOWERS : follows
+    USERS ||--o{ WISHLIST_ITEMS : saves
     USERS ||--o{ PRODUCT_LIKES : likes
     USERS ||--o{ PRODUCT_COMMENTS : writes
     USERS ||--o{ COMMENT_ATTACHMENTS : uploads
@@ -10,12 +14,14 @@ erDiagram
     USERS ||--o{ LIVE_COMMENTS : writes
     USERS ||--o{ LIVE_REACTIONS : reacts
     USERS ||--o{ ORDERS : places
+    USERS ||--o{ NOTIFICATIONS : receives
 
     SELLER_PROFILES ||--o{ PRODUCTS : owns
     SELLER_PROFILES ||--o{ LIVE_SESSIONS : hosts
     SELLER_PROFILES ||--o{ SELLER_METRICS_DAILY : tracks
     SELLER_PROFILES ||--o{ ORDERS : receives
     SELLER_PROFILES ||--o{ SELLER_FOLLOWERS : followed_by
+    SELLER_PROFILES ||--o{ NOTIFICATIONS : triggers
 
     CATEGORIES ||--o{ PRODUCTS : classifies
     CATEGORIES ||--o{ LIVE_SESSIONS : categorizes
@@ -25,7 +31,10 @@ erDiagram
     PRODUCTS ||--o{ PRODUCT_COMMENTS : commented_on
     PRODUCTS ||--o{ PRODUCT_TAGS : tagged_with
     PRODUCTS ||--o{ PRODUCT_VIEWS : viewed_by
+    PRODUCTS ||--o{ CART_ITEMS : added_to
+    PRODUCTS ||--o{ WISHLIST_ITEMS : saved_in
     PRODUCTS ||--o{ ORDER_ITEMS : ordered_in
+    PRODUCTS ||--o{ NOTIFICATIONS : referenced_in
 
     TAGS ||--o{ PRODUCT_TAGS : used_in
 
@@ -38,7 +47,13 @@ erDiagram
     LIVE_SESSIONS ||--o{ LIVE_COMMENTS : has
     LIVE_SESSIONS ||--o{ LIVE_REACTIONS : has
 
+    CARTS ||--o{ CART_ITEMS : contains
+
     ORDERS ||--o{ ORDER_ITEMS : contains
+    ORDERS ||--o| PAYMENTS : settles
+    ORDERS ||--o| SHIPMENTS : ships
+
+    USER_ADDRESSES ||--o{ ORDERS : used_for
 
     USERS {
         uuid id PK
@@ -49,6 +64,23 @@ erDiagram
         string preferred_language
         string role
         boolean is_verified
+        datetime created_at
+        datetime updated_at
+    }
+
+    USER_ADDRESSES {
+        uuid id PK
+        uuid user_id FK
+        string label
+        string recipient_name
+        string recipient_phone
+        string country
+        string city
+        string district
+        string address_line_1
+        string address_line_2
+        string postal_code
+        boolean is_default
         datetime created_at
         datetime updated_at
     }
@@ -229,16 +261,46 @@ erDiagram
         datetime viewed_at
     }
 
+    CARTS {
+        uuid id PK
+        uuid user_id FK
+        string status
+        datetime created_at
+        datetime updated_at
+    }
+
+    CART_ITEMS {
+        uuid id PK
+        uuid cart_id FK
+        uuid product_id FK
+        int quantity
+        decimal unit_price_amount
+        datetime created_at
+        datetime updated_at
+    }
+
+    WISHLIST_ITEMS {
+        uuid id PK
+        uuid user_id FK
+        uuid product_id FK
+        datetime created_at
+    }
+
     ORDERS {
         uuid id PK
         uuid buyer_user_id FK
         uuid seller_profile_id FK
+        uuid shipping_address_id FK
         string status
+        string order_number UK
         decimal subtotal_amount
         decimal delivery_amount
+        decimal discount_amount
         decimal total_amount
         string currency_code
         datetime created_at
+        datetime confirmed_at
+        datetime completed_at
     }
 
     ORDER_ITEMS {
@@ -248,6 +310,44 @@ erDiagram
         int quantity
         decimal unit_price_amount
         decimal total_price_amount
+    }
+
+    PAYMENTS {
+        uuid id PK
+        uuid order_id FK
+        string provider
+        string payment_method
+        string transaction_reference UK
+        decimal amount
+        string currency_code
+        string status
+        datetime paid_at
+        datetime created_at
+    }
+
+    SHIPMENTS {
+        uuid id PK
+        uuid order_id FK
+        string carrier_name
+        string tracking_number UK
+        string shipment_status
+        datetime shipped_at
+        datetime delivered_at
+        datetime created_at
+    }
+
+    NOTIFICATIONS {
+        uuid id PK
+        uuid recipient_user_id FK
+        uuid seller_profile_id FK
+        uuid product_id FK
+        string notification_type
+        string title
+        text body
+        string image_url
+        boolean is_read
+        datetime read_at
+        datetime created_at
     }
 
     TAGS {
