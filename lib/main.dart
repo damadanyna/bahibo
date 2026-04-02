@@ -1,4 +1,4 @@
-import 'package:bahibo/auth/language.dart';
+import 'package:bahibo/auth/session_gate.dart';
 import 'package:bahibo/providers/theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6,7 +6,7 @@ import 'package:provider/provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Désactiver la rotation et forcer le mode portrait
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
@@ -26,7 +26,7 @@ class MyApp extends StatelessWidget {
         builder: (context, themeProvider, child) {
           return MaterialApp(
             debugShowCheckedModeBanner: false,
-            home: const LanguagePage(),
+            home: const SessionGatePage(),
             theme: ThemeProvider.lightTheme,
             darkTheme: ThemeProvider.darkTheme,
             themeMode: themeProvider.themeMode,

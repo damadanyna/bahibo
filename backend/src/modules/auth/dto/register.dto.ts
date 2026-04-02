@@ -3,6 +3,7 @@ import {
   IsOptional,
   IsPhoneNumber,
   IsString,
+  IsUrl,
   MaxLength,
   MinLength,
 } from 'class-validator';
@@ -27,9 +28,9 @@ export class RegisterDto {
   @MinLength(2)
   displayName: string;
 
-  @IsString()
-  @MinLength(6)
-  password: string;
+  @IsOptional()
+  @IsUrl({ require_tld: false })
+  avatarUrl?: string;
 
   @IsOptional()
   @IsEnum(UserRole)

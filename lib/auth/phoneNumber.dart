@@ -23,6 +23,8 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
   final TextEditingController phoneController = TextEditingController();
   final AppAuthService _authService = AppAuthService();
   bool _isSubmitting = false;
+  bool _isCheckingSimNumber = false;
+  String? _simPhoneHint;
 
   final Map<String, String> countryCodes = {
     "Madagascar": "+261",
@@ -45,6 +47,162 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
 
   String get _selectedCountryDialCode =>
       countryCodes[_selectedCountryName] ?? '+261';
+
+  String _digitsOnly(String value) {
+    return value.replaceAll(RegExp(r'\D'), '');
+  }
+
+  String _extractLocalDigits(String value, {String? dialCode}) {
+    final dialDigits = _digitsOnly(dialCode ?? _selectedCountryDialCode);
+    var digits = _digitsOnly(value);
+
+    if (dialDigits.isNotEmpty && digits.startsWith(dialDigits)) {
+      digits = digits.substring(dialDigits.length);
+    }
+
+    return digits.replaceFirst(RegExp(r'^0+'), '');
+  }
+
+  String? _resolveCountryFromPhone(String value) {
+    final digits = _digitsOnly(value);
+    final entries = countryCodes.entries.toList()
+      ..sort((a, b) => b.value.length.compareTo(a.value.length));
+
+    for (final entry in entries) {
+      final dialDigits = _digitsOnly(entry.value);
+      if (digits.startsWith(dialDigits)) {
+        return entry.key;
+      }
+    }
+
+    return null;
+  }
+
+  Future<String?> _requestSimPhoneHint({bool applyToInput = false}) async {
+    if (_isCheckingSimNumber) {
+      return _simPhoneHint;
+    }
+
+    setState(() => _isCheckingSimNumber = true);
+
+    try {
+      final hint = await SmsAutoFill().hint;
+
+      if (!mounted || hint == null || hint.trim().isEmpty) {
+        return null;
+      }
+
+      final normalizedHint = hint.trim();
+      final resolvedCountry = _resolveCountryFromPhone(normalizedHint);
+      final resolvedDialCode = resolvedCountry == null
+          ? _selectedCountryDialCode
+          : countryCodes[resolvedCountry]!;
+
+      setState(() {
+        _simPhoneHint = normalizedHint;
+
+        if (applyToInput) {
+          if (resolvedCountry != null) {
+            countryController.text = resolvedCountry;
+          }
+          phoneController.text = _extractLocalDigits(
+            normalizedHint,
+            dialCode: resolvedDialCode,
+          );
+        }
+      });
+
+      return normalizedHint;
+    } on PlatformException {
+      return null;
+    } finally {
+      if (mounted) {
+        setState(() => _isCheckingSimNumber = false);
+      }
+    }
+  }
+
+  Future<void> _handleUseSimNumberTap() async {
+    final hint = await _requestSimPhoneHint(applyToInput: true);
+
+    if (!mounted) {
+      return;
+    }
+
+    if (hint == null || hint.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Ce telephone ne fournit pas automatiquement le numero de la carte SIM. Vous pouvez saisir le numero manuellement.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Numero SIM detecte: $hint')));
+  }
+
+  Future<bool> _confirmManualPhoneEntry() async {
+    final decision = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Verification SIM indisponible'),
+        content: const Text(
+          'Le telephone ne fournit pas automatiquement le numero de la carte SIM. Voulez-vous continuer avec le numero saisi manuellement ?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Continuer'),
+          ),
+        ],
+      ),
+    );
+
+    return decision ?? false;
+  }
+
+  Future<bool> _verifyPhoneMatchesSim(String phoneE164) async {
+    final simHint = _simPhoneHint ?? await _requestSimPhoneHint();
+
+    if (simHint == null || simHint.isEmpty) {
+      if (!mounted) {
+        return false;
+      }
+
+      return _confirmManualPhoneEntry();
+    }
+
+    final simCountry = _resolveCountryFromPhone(simHint);
+    final simDialCode = simCountry == null
+        ? _selectedCountryDialCode
+        : countryCodes[simCountry]!;
+
+    final enteredDigits = _digitsOnly(phoneE164);
+    final simDigits = _digitsOnly(simHint);
+    final enteredLocal = _extractLocalDigits(phoneE164);
+    final simLocal = _extractLocalDigits(simHint, dialCode: simDialCode);
+    final isMatch = enteredDigits == simDigits || enteredLocal == simLocal;
+
+    if (!isMatch && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Le numero saisi ne correspond pas au numero detecte sur la carte SIM du telephone.',
+          ),
+        ),
+      );
+    }
+
+    return isMatch;
+  }
 
   @override
   void dispose() {
@@ -70,6 +228,16 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
           content: Text('Selectionnez un pays et saisissez un numero valide.'),
         ),
       );
+      return;
+    }
+
+    final simMatches = await _verifyPhoneMatchesSim(fullPhoneNumber);
+
+    if (!simMatches) {
+      return;
+    }
+
+    if (!mounted) {
       return;
     }
 
@@ -296,6 +464,37 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: _isCheckingSimNumber
+                        ? null
+                        : _handleUseSimNumberTap,
+                    icon: Icon(
+                      _isCheckingSimNumber
+                          ? Icons.hourglass_top
+                          : Icons.sim_card_outlined,
+                      size: 18,
+                    ),
+                    label: Text(
+                      _isCheckingSimNumber
+                          ? 'Detection...'
+                          : 'Utiliser mon numero SIM',
+                    ),
+                  ),
+                ),
+                if (_simPhoneHint != null && _simPhoneHint!.isNotEmpty)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Numero detecte: $_simPhoneHint',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: appColors.mutedText,
+                      ),
+                    ),
+                  ),
 
                 const SizedBox(height: 30),
                 SizedBox(

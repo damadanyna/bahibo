@@ -29,7 +29,6 @@ class ProfileInformationPage extends StatefulWidget {
 class _ProfileInformationPageState extends State<ProfileInformationPage> {
   final ImagePicker _imagePicker = ImagePicker();
   final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
   final AppAuthService _authService = AppAuthService();
   File? _selectedProfileImage;
   bool _isSubmitting = false;
@@ -49,20 +48,16 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
   @override
   void dispose() {
     _nameController.dispose();
-    _passwordController.dispose();
     super.dispose();
   }
 
   Future<void> _submitProfile() async {
     final displayName = _nameController.text.trim();
-    final password = _passwordController.text.trim();
 
-    if (displayName.length < 2 || password.length < 6) {
+    if (displayName.length < 2) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Ajoutez un nom et un mot de passe de 6 caracteres.'),
-        ),
+        const SnackBar(content: Text('Ajoutez un nom valide pour continuer.')),
       );
       return;
     }
@@ -70,12 +65,21 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
     setState(() => _isSubmitting = true);
 
     try {
+      String? avatarUrl;
+
+      if (_selectedProfileImage != null) {
+        avatarUrl = await _authService.uploadProfileImage(
+          phoneE164: widget.phoneE164,
+          imageFile: _selectedProfileImage!,
+        );
+      }
+
       await _authService.registerOrLogin(
         phoneE164: widget.phoneE164,
         countryName: widget.countryName,
         countryDialCode: widget.countryDialCode,
         displayName: displayName,
-        password: password,
+        avatarUrl: avatarUrl,
       );
 
       if (!mounted) return;
@@ -101,86 +105,135 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
     final theme = Theme.of(context);
     final appColors = theme.appColors;
     final screenHeight = MediaQuery.sizeOf(context).height;
+    final viewInsets = MediaQuery.viewInsetsOf(context);
     final avatarSectionHeight = (screenHeight * 0.24).clamp(170.0, 250.0);
     final avatarRadius = (screenHeight * 0.075).clamp(58.0, 76.0);
     final actionButtonSize = avatarRadius * 0.48;
 
     return Scaffold(
       backgroundColor: appColors.backgroundBase,
-      resizeToAvoidBottomInset: false,
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 40),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Container(
-              alignment: Alignment.center,
-              child: Text(
-                "Almost there!",
-                style: TextStyle(
-                  fontSize: 25,
-                  fontWeight: FontWeight.w400,
-                  color: appColors.heroForeground,
-                ),
-              ),
-            ),
-            Container(
-              alignment: Alignment.center,
-              child: Text(
-                "Add your name and a profile picture",
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w400,
-                  color: appColors.mutedText,
-                ),
-              ),
-            ),
-            const SizedBox(height: 40),
-            SizedBox(
-              height: avatarSectionHeight,
-              child: Center(
-                child: SizedBox(
-                  width: avatarRadius * 2 + actionButtonSize * 0.9,
-                  height: avatarRadius * 2 + actionButtonSize * 0.9,
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    alignment: Alignment.center,
-                    children: [
-                      CircleAvatar(
-                        radius: avatarRadius,
-                        backgroundColor: appColors.inputFill,
-                        backgroundImage: _selectedProfileImage != null
-                            ? FileImage(_selectedProfileImage!)
-                            : null,
-                        child: _selectedProfileImage == null
-                            ? Icon(
-                                Icons.person,
-                                size: avatarRadius * 1.8,
-                                color: appColors.heroForeground,
-                              )
-                            : null,
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: EdgeInsets.fromLTRB(20, 40, 20, 40 + viewInsets.bottom),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: IntrinsicHeight(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
+                      Container(
+                        alignment: Alignment.center,
+                        child: Text(
+                          "Almost there!",
+                          style: TextStyle(
+                            fontSize: 25,
+                            fontWeight: FontWeight.w400,
+                            color: appColors.heroForeground,
+                          ),
+                        ),
                       ),
-                      Positioned(
-                        right: 0,
-                        bottom: 0,
-                        child: GestureDetector(
-                          onTap: _pickProfileImage,
-                          child: Container(
-                            width: actionButtonSize,
-                            height: actionButtonSize,
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.primary,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: appColors.heroForeground,
-                                width: 2,
-                              ),
+                      Container(
+                        alignment: Alignment.center,
+                        child: Text(
+                          "Add your name and a profile picture",
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w400,
+                            color: appColors.mutedText,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 40),
+                      SizedBox(
+                        height: avatarSectionHeight,
+                        child: Center(
+                          child: SizedBox(
+                            width: avatarRadius * 2 + actionButtonSize * 0.9,
+                            height: avatarRadius * 2 + actionButtonSize * 0.9,
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              alignment: Alignment.center,
+                              children: [
+                                CircleAvatar(
+                                  radius: avatarRadius,
+                                  backgroundColor: appColors.inputFill,
+                                  backgroundImage: _selectedProfileImage != null
+                                      ? FileImage(_selectedProfileImage!)
+                                      : null,
+                                  child: _selectedProfileImage == null
+                                      ? Icon(
+                                          Icons.person,
+                                          size: avatarRadius * 1.8,
+                                          color: appColors.heroForeground,
+                                        )
+                                      : null,
+                                ),
+                                Positioned(
+                                  right: 0,
+                                  bottom: 0,
+                                  child: GestureDetector(
+                                    onTap: _pickProfileImage,
+                                    child: Container(
+                                      width: actionButtonSize,
+                                      height: actionButtonSize,
+                                      decoration: BoxDecoration(
+                                        color: theme.colorScheme.primary,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: appColors.heroForeground,
+                                          width: 2,
+                                        ),
+                                      ),
+                                      child: Icon(
+                                        Icons.add_a_photo_outlined,
+                                        color: theme.colorScheme.onPrimary,
+                                        size: actionButtonSize * 0.72,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                            child: Icon(
-                              Icons.add_a_photo_outlined,
-                              color: theme.colorScheme.onPrimary,
-                              size: actionButtonSize * 0.72,
-                            ),
+                          ),
+                        ),
+                      ),
+                      DynamicIconInput(
+                        controller: _nameController,
+                        primary: theme.colorScheme.primary,
+                        panelColor: appColors.inputFill,
+                        borderColor: appColors.inputBorder,
+                        hintText: 'Your Name',
+                        leadingIcon: Icon(
+                          Icons.person_outline,
+                          color: appColors.mutedText,
+                        ),
+                        leadingSize: 38,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        width: double.infinity,
+                        child: DynamicIconButton(
+                          text: _isSubmitting ? 'Connexion...' : 'Continue',
+                          icon: _isSubmitting
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.arrow_forward, size: 20),
+                          onPressed: _isSubmitting ? null : _submitProfile,
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 16,
+                            horizontal: 24,
                           ),
                         ),
                       ),
@@ -188,44 +241,8 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
                   ),
                 ),
               ),
-            ),
-            DynamicIconInput(
-              controller: _nameController,
-              primary: theme.colorScheme.primary,
-              panelColor: appColors.inputFill,
-              borderColor: appColors.inputBorder,
-              hintText: 'Your Name',
-              leadingIcon: Icon(
-                Icons.person_outline,
-                color: appColors.mutedText,
-              ),
-              leadingSize: 38,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 10,
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            SizedBox(
-              width: double.infinity,
-              child: DynamicIconButton(
-                text: _isSubmitting ? 'Connexion...' : 'Continue',
-                icon: _isSubmitting
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.arrow_forward, size: 20),
-                onPressed: _isSubmitting ? null : _submitProfile,
-                padding: const EdgeInsets.symmetric(
-                  vertical: 16,
-                  horizontal: 24,
-                ),
-              ),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );

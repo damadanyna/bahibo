@@ -1,10 +1,21 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Req,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
+import { UploadProfileImageDto } from './dto/upload-profile-image.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
@@ -20,6 +31,15 @@ export class AuthController {
   @Post('otp/verify')
   verifyOtp(@Body() dto: VerifyOtpDto) {
     return this.authService.verifyOtp(dto);
+  }
+
+  @Post('profile-image')
+  @UseInterceptors(FileInterceptor('image'))
+  uploadProfileImage(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() dto: UploadProfileImageDto,
+  ) {
+    return this.authService.uploadProfileImage(file, dto);
   }
 
   @Post('register')

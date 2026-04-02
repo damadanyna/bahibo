@@ -13,10 +13,12 @@ import * as bcrypt from 'bcryptjs';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { ProfilesService } from '../profiles/profiles.service';
+import { CloudinaryService } from './cloudinary.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
+import { UploadProfileImageDto } from './dto/upload-profile-image.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 
 @Injectable()
@@ -26,6 +28,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly profilesService: ProfilesService,
+    private readonly cloudinaryService: CloudinaryService,
   ) {}
 
   async requestOtp(dto: RequestOtpDto) {
@@ -132,11 +135,35 @@ export class AuthService {
       },
     });
 
+    const existingUser = await this.prisma.user.findUnique({
+      where: { phoneE164: challenge.phoneE164 },
+    });
+
+    if (existingUser) {
+      const authResult = await this.issueTokens(existingUser.id);
+
+      return {
+        success: true,
+        message: 'Phone number verified successfully',
+        data: {
+          verified: true,
+          authenticated: true,
+          hasAccount: true,
+          phoneE164: challenge.phoneE164,
+          countryName: challenge.countryName,
+          countryDialCode: challenge.countryDialCode,
+          ...authResult.data,
+        },
+      };
+    }
+
     return {
       success: true,
       message: 'Phone number verified successfully',
       data: {
         verified: true,
+        authenticated: false,
+        hasAccount: false,
         phoneE164: challenge.phoneE164,
         countryName: challenge.countryName,
         countryDialCode: challenge.countryDialCode,
@@ -144,17 +171,37 @@ export class AuthService {
     };
   }
 
-  async register(dto: RegisterDto) {
-    const existingUser = await this.prisma.user.findUnique({
-      where: { phoneE164: dto.phoneE164 },
-    });
-
-    if (existingUser) {
-      throw new ConflictException('Phone number already registered');
+  async uploadProfileImage(file: Express.Multer.File | undefined, dto: UploadProfileImageDto) {
+    if (!file) {
+      throw new BadRequestException('Profile image file is required');
     }
 
-    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const latestVerifiedChallenge = await this.prisma.phoneOtpChallenge.findFirst({
+      where: {
+        phoneE164: dto.phoneE164,
+        verifiedAt: {
+          not: null,
+        },
+      },
+      orderBy: {
+        verifiedAt: 'desc',
+      },
+    });
 
+    if (!latestVerifiedChallenge) {
+      throw new BadRequestException('Phone number must be verified before uploading profile image');
+    }
+
+    const uploadResult = await this.cloudinaryService.uploadProfileImage(file, dto.phoneE164);
+
+    return {
+      success: true,
+      message: 'Profile image uploaded successfully',
+      data: uploadResult,
+    };
+  }
+
+  async register(dto: RegisterDto) {
     const latestVerifiedChallenge = await this.prisma.phoneOtpChallenge.findFirst({
       where: {
         phoneE164: dto.phoneE164,
@@ -171,12 +218,26 @@ export class AuthService {
       throw new BadRequestException('Phone number must be verified before registration');
     }
 
+    const existingUser = await this.prisma.user.findUnique({
+      where: { phoneE164: dto.phoneE164 },
+    });
+
+    if (existingUser) {
+      return this.issueTokens(existingUser.id);
+    }
+
+    const passwordHash = await bcrypt.hash(
+      `otp-only:${dto.phoneE164}:${Date.now()}`,
+      10,
+    );
+
     const user = await this.prisma.user.create({
       data: {
         phoneE164: dto.phoneE164,
         countryName: dto.countryName ?? latestVerifiedChallenge.countryName,
         countryDialCode: dto.countryDialCode ?? latestVerifiedChallenge.countryDialCode,
         displayName: dto.displayName,
+        avatarUrl: dto.avatarUrl,
         passwordHash,
         role: dto.role ?? UserRole.CUSTOMER,
         isVerified: true,
@@ -282,12 +343,12 @@ export class AuthService {
       { sub: user.id, phoneE164: user.phoneE164, role: user.role, type: 'refresh' },
       {
         secret: this.configService.get<string>('JWT_REFRESH_SECRET', 'change-me-refresh'),
-        expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '7d') as JwtSignOptions['expiresIn'],
+        expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '30d') as JwtSignOptions['expiresIn'],
       },
     );
 
     const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
-    const refreshExpiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '7d');
+    const refreshExpiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '30d');
     const expiresAt = this.resolveRefreshExpiry(refreshExpiresIn);
 
     await this.prisma.refreshToken.create({

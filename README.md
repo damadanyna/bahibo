@@ -2,6 +2,11 @@
 
 A new Flutter project.
 
+## Project Docs
+
+- [Workflow progress](docs/workflow-progress.md)
+- [Database schema](docs/bahibo-database-schema.mmd)
+
 ## Getting Started
 
 This project is a starting point for a Flutter application.

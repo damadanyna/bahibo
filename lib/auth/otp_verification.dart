@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:bahibo/component/main_navigation_shell.dart';
 import 'package:bahibo/auth/profileInformation.dart';
 import 'package:bahibo/component/ui/dinamic_icon_button.dart';
 import 'package:bahibo/services/app_api_client.dart';
@@ -103,12 +104,23 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
     setState(() => _isVerifying = true);
 
     try {
-      await _authService.verifyOtp(
+      final response = await _authService.verifyOtp(
         phoneE164: widget.phoneE164,
         otpCode: otpCode,
       );
 
       if (!mounted) {
+        return;
+      }
+
+      if (response['authenticated'] == true) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const BahiboNavigationShell(),
+          ),
+          (route) => false,
+        );
         return;
       }
 
@@ -187,6 +199,7 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final appColors = theme.appColors;
+    final viewInsets = MediaQuery.viewInsetsOf(context);
 
     return Scaffold(
       backgroundColor: appColors.backgroundBase,
@@ -196,128 +209,144 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
         foregroundColor: appColors.heroForeground,
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 12),
-              Text(
-                'Verify your number',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w700,
-                  color: appColors.heroForeground,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Enter the 6-digit code sent to ${widget.phoneE164}. On compatible devices, the code will be detected automatically.',
-                style: TextStyle(
-                  fontSize: 15,
-                  height: 1.45,
-                  color: appColors.mutedText,
-                ),
-              ),
-              if (widget.appSignature == null ||
-                  widget.appSignature!.isEmpty) ...[
-                const SizedBox(height: 12),
-                Text(
-                  'Auto-detection is unavailable on this device, but manual OTP entry still works.',
-                  style: TextStyle(fontSize: 13, color: appColors.mutedText),
-                ),
-              ],
-              if (widget.debugCode != null) ...[
-                const SizedBox(height: 18),
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: appColors.inputFill,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: appColors.inputBorder),
-                  ),
-                  child: Text(
-                    'Mode dev: OTP actuel ${widget.debugCode}',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: appColors.heroForeground,
-                    ),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 30),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 22,
-                ),
-                decoration: BoxDecoration(
-                  color: appColors.inputFill,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: appColors.inputBorder),
-                ),
-                child: PinFieldAutoFill(
-                  currentCode: _currentCode,
-                  codeLength: 6,
-                  autoFocus: true,
-                  decoration: BoxLooseDecoration(
-                    strokeColorBuilder: FixedColorBuilder(
-                      appColors.inputBorder,
-                    ),
-                    bgColorBuilder: FixedColorBuilder(appColors.backgroundBase),
-                    textStyle: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800,
-                      color: appColors.heroForeground,
-                    ),
-                    radius: const Radius.circular(16),
-                  ),
-                  onCodeChanged: (value) {
-                    final nextValue = value ?? '';
-                    setState(() {
-                      _currentCode = nextValue;
-                    });
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: EdgeInsets.fromLTRB(24, 18, 24, 18 + viewInsets.bottom),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: IntrinsicHeight(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SizedBox(height: 12),
+                      Text(
+                        'Verify your number',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w700,
+                          color: appColors.heroForeground,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Enter the 6-digit code sent to ${widget.phoneE164}. On compatible devices, the code will be detected automatically.',
+                        style: TextStyle(
+                          fontSize: 15,
+                          height: 1.45,
+                          color: appColors.mutedText,
+                        ),
+                      ),
+                      if (widget.appSignature == null ||
+                          widget.appSignature!.isEmpty) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          'Auto-detection is unavailable on this device, but manual OTP entry still works.',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: appColors.mutedText,
+                          ),
+                        ),
+                      ],
+                      if (widget.debugCode != null) ...[
+                        const SizedBox(height: 18),
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: appColors.inputFill,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: appColors.inputBorder),
+                          ),
+                          child: Text(
+                            'Mode dev: OTP actuel ${widget.debugCode}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: appColors.heroForeground,
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 24),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 22,
+                        ),
+                        decoration: BoxDecoration(
+                          color: appColors.inputFill,
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: appColors.inputBorder),
+                        ),
+                        child: PinFieldAutoFill(
+                          currentCode: _currentCode,
+                          codeLength: 6,
+                          autoFocus: true,
+                          decoration: BoxLooseDecoration(
+                            strokeColorBuilder: FixedColorBuilder(
+                              appColors.inputBorder,
+                            ),
+                            bgColorBuilder: FixedColorBuilder(
+                              appColors.backgroundBase,
+                            ),
+                            textStyle: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w800,
+                              color: appColors.heroForeground,
+                            ),
+                            radius: const Radius.circular(16),
+                          ),
+                          onCodeChanged: (value) {
+                            final nextValue = value ?? '';
+                            setState(() {
+                              _currentCode = nextValue;
+                            });
 
-                    if (nextValue.length == 6) {
-                      _verifyOtp(nextValue);
-                    }
-                  },
-                ),
-              ),
-              const SizedBox(height: 18),
-              Text(
-                _remainingSeconds > 0
-                    ? 'Resend available in ${_remainingSeconds}s'
-                    : 'You can request a new OTP now.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: appColors.mutedText),
-              ),
-              const SizedBox(height: 18),
-              DynamicIconButton(
-                text: _isVerifying ? 'Verifying...' : 'Verify OTP',
-                icon: Icon(
-                  _isVerifying
-                      ? Icons.verified_user_outlined
-                      : Icons.check_circle_outline,
-                  size: 20,
-                ),
-                onPressed: _isVerifying ? null : () => _verifyOtp(),
-              ),
-              const SizedBox(height: 12),
-              TextButton(
-                onPressed: (_remainingSeconds == 0 && !_isResending)
-                    ? _resendOtp
-                    : null,
-                child: Text(
-                  _isResending ? 'Resending...' : 'Resend code',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: appColors.socialWhatsApp,
+                            if (nextValue.length == 6) {
+                              _verifyOtp(nextValue);
+                            }
+                          },
+                        ),
+                      ),
+                      const Spacer(),
+                      const SizedBox(height: 18),
+                      Text(
+                        _remainingSeconds > 0
+                            ? 'Resend available in ${_remainingSeconds}s'
+                            : 'You can request a new OTP now.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: appColors.mutedText),
+                      ),
+                      const SizedBox(height: 18),
+                      DynamicIconButton(
+                        text: _isVerifying ? 'Verifying...' : 'Verify OTP',
+                        icon: Icon(
+                          _isVerifying
+                              ? Icons.verified_user_outlined
+                              : Icons.check_circle_outline,
+                          size: 20,
+                        ),
+                        onPressed: _isVerifying ? null : () => _verifyOtp(),
+                      ),
+                      const SizedBox(height: 12),
+                      TextButton(
+                        onPressed: (_remainingSeconds == 0 && !_isResending)
+                            ? _resendOtp
+                            : null,
+                        child: Text(
+                          _isResending ? 'Resending...' : 'Resend code',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: appColors.socialWhatsApp,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );

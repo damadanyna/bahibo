@@ -7,6 +7,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { ProfilesModule } from '../profiles/profiles.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { CloudinaryService } from './cloudinary.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 
 @Module({
@@ -27,7 +28,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy, CloudinaryService],
   exports: [AuthService],
 })
 export class AuthModule {}

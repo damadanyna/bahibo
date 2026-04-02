@@ -1,12 +1,14 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SessionStorage {
+  static const int _sessionDurationInDays = 30;
   static const String _accessTokenKey = 'bahibo.access_token';
   static const String _refreshTokenKey = 'bahibo.refresh_token';
   static const String _phoneKey = 'bahibo.phone';
   static const String _displayNameKey = 'bahibo.display_name';
   static const String _countryNameKey = 'bahibo.country_name';
   static const String _countryDialCodeKey = 'bahibo.country_dial_code';
+  static const String _sessionExpiryKey = 'bahibo.session_expiry';
   static const String _pendingPhoneKey = 'bahibo.pending_phone';
   static const String _pendingCountryNameKey = 'bahibo.pending_country_name';
   static const String _pendingCountryDialCodeKey =
@@ -31,7 +33,41 @@ class SessionStorage {
     if (countryDialCode != null) {
       await prefs.setString(_countryDialCodeKey, countryDialCode);
     }
+    await prefs.setInt(
+      _sessionExpiryKey,
+      _nextSessionExpiry().millisecondsSinceEpoch,
+    );
     await clearPhoneDraft();
+  }
+
+  Future<bool> hasValidSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    final accessToken = prefs.getString(_accessTokenKey);
+    final refreshToken = prefs.getString(_refreshTokenKey);
+    final expiryMillis = prefs.getInt(_sessionExpiryKey);
+
+    if (accessToken == null || refreshToken == null || expiryMillis == null) {
+      return false;
+    }
+
+    final now = DateTime.now();
+    final expiry = DateTime.fromMillisecondsSinceEpoch(expiryMillis);
+
+    if (expiry.isBefore(now)) {
+      await clear();
+      return false;
+    }
+
+    await touchSession();
+    return true;
+  }
+
+  Future<void> touchSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(
+      _sessionExpiryKey,
+      _nextSessionExpiry().millisecondsSinceEpoch,
+    );
   }
 
   Future<void> savePhoneDraft({
@@ -62,6 +98,10 @@ class SessionStorage {
     return prefs.getString(_refreshTokenKey);
   }
 
+  DateTime _nextSessionExpiry() {
+    return DateTime.now().add(const Duration(days: _sessionDurationInDays));
+  }
+
   Future<void> clear() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_accessTokenKey);
@@ -70,6 +110,7 @@ class SessionStorage {
     await prefs.remove(_displayNameKey);
     await prefs.remove(_countryNameKey);
     await prefs.remove(_countryDialCodeKey);
+    await prefs.remove(_sessionExpiryKey);
     await clearPhoneDraft();
   }
 }
