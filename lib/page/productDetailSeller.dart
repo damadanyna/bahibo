@@ -29,8 +29,6 @@ class ProductDetailPage extends StatefulWidget {
 
 class _ProductDetailPageState extends State<ProductDetailPage>
     with AppPageRefreshMixin<ProductDetailPage> {
-  static const String _defaultAvailabilityMessage =
-      'Cet article est toujours disponible ?';
   static const String _sellerName = 'John Doe';
   static const String _sellerBadge = 'En ligne';
   static const String _sellerImageUrl =
@@ -101,7 +99,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     return '$category • $status';
   }
 
-  ChatPage _buildSellerChatPage({String? initialMessage}) {
+  ChatPage _buildSellerChatPage() {
     final images =
         (widget.product['images'] as List?)?.whereType<String>().toList() ??
         const <String>[];
@@ -129,15 +127,11 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       productImageUrl: images.isNotEmpty
           ? images.first
           : _resolveStringField(['thumbnail', 'imageUrl'], _sellerImageUrl),
-      initialMessage: initialMessage,
-      embedProductContextInInitialMessage: initialMessage != null,
     );
   }
 
-  void _openSellerChat({String? initialMessage}) {
-    final route = MaterialPageRoute(
-      builder: (_) => _buildSellerChatPage(initialMessage: initialMessage),
-    );
+  void _openSellerChat() {
+    final route = MaterialPageRoute(builder: (_) => _buildSellerChatPage());
 
     if (widget.openedFromChat) {
       Navigator.pushReplacement(context, route);
@@ -390,200 +384,6 @@ class _ProductDetailPageState extends State<ProductDetailPage>
 
                               const SizedBox(height: 12),
 
-                              // ── Carte vendeur ──
-                              GestureDetector(
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => SellerProfilePage(
-                                        profile: defaultSellerProfileData(),
-                                      ),
-                                    ),
-                                  );
-                                },
-                                child: Container(
-                                  margin: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                  ),
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    color: detailCardColor,
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Stack(
-                                        children: [
-                                          GestureDetector(
-                                            onTap: () {
-                                              Navigator.push(
-                                                context,
-                                                MaterialPageRoute(
-                                                  builder: (_) => ImageViewerPage(
-                                                    imageUrls: const [
-                                                      _sellerImageUrl,
-                                                    ],
-                                                    initialIndex: 0,
-                                                    heroTag:
-                                                        'seller-avatar-detail',
-                                                    onSellerTap: () {
-                                                      Navigator.push(
-                                                        context,
-                                                        MaterialPageRoute(
-                                                          builder: (_) =>
-                                                              SellerProfilePage(
-                                                                profile:
-                                                                    defaultSellerProfileData(),
-                                                              ),
-                                                        ),
-                                                      );
-                                                    },
-                                                    onSellerMessageTap: () {
-                                                      _openSellerChat();
-                                                    },
-                                                    overlay: ImageViewerOverlayData(
-                                                      title: 'Profil vendeur',
-                                                      description:
-                                                          'Vendeur actif sur Bahibo, disponible pour des photos et details supplementaires.',
-                                                      sellerName: _sellerName,
-                                                      sellerAvatarUrl:
-                                                          _sellerImageUrl,
-                                                      sellerBadge: _sellerBadge,
-                                                    ),
-                                                  ),
-                                                ),
-                                              );
-                                            },
-                                            child: Hero(
-                                              tag: 'seller-avatar-detail',
-                                              child: AppCircleNetworkAvatar(
-                                                radius: 28,
-                                                imageUrl: _sellerImageUrl,
-                                              ),
-                                            ),
-                                          ),
-                                          Positioned(
-                                            bottom: 0,
-                                            right: 0,
-                                            child: Container(
-                                              width: 14,
-                                              height: 14,
-                                              decoration: BoxDecoration(
-                                                color: appColors.success,
-                                                shape: BoxShape.circle,
-                                                border: Border.all(
-                                                  color: detailCardColor,
-                                                  width: 2,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              _sellerName,
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 15,
-                                                color: detailPrimaryTextColor,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 2),
-                                            Row(
-                                              children: [
-                                                Container(
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                        horizontal: 8,
-                                                        vertical: 3,
-                                                      ),
-                                                  decoration: BoxDecoration(
-                                                    color: theme
-                                                        .colorScheme
-                                                        .primary
-                                                        .withOpacity(0.1),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          20,
-                                                        ),
-                                                  ),
-                                                  child: Row(
-                                                    children: [
-                                                      Icon(
-                                                        Icons.verified,
-                                                        size: 12,
-                                                        color: theme
-                                                            .colorScheme
-                                                            .primary,
-                                                      ),
-                                                      const SizedBox(width: 3),
-                                                      Text(
-                                                        'Vendeur Vérifié',
-                                                        style: TextStyle(
-                                                          color: theme
-                                                              .colorScheme
-                                                              .primary,
-                                                          fontSize: 11,
-                                                          fontWeight:
-                                                              FontWeight.w600,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      // Bouton voir profil
-                                      OutlinedButton(
-                                        onPressed: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) => SellerProfilePage(
-                                                profile:
-                                                    defaultSellerProfileData(),
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                        style: OutlinedButton.styleFrom(
-                                          foregroundColor:
-                                              theme.colorScheme.primary,
-                                          side: BorderSide(
-                                            color: theme.colorScheme.primary,
-                                          ),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              20,
-                                            ),
-                                          ),
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 8,
-                                          ),
-                                        ),
-                                        child: const Text(
-                                          'Profil',
-                                          style: TextStyle(fontSize: 12),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-
-                              const SizedBox(height: 12),
-
                               // ── Description ──
                               Container(
                                 margin: const EdgeInsets.symmetric(
@@ -632,29 +432,6 @@ class _ProductDetailPageState extends State<ProductDetailPage>
             ),
             if (isOffline) const AppOfflineBanner(bottomOffset: 20),
           ],
-        ),
-      ),
-
-      // ── Bouton fixe en bas ──
-      bottomNavigationBar: Container(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-        decoration: BoxDecoration(color: bottomBarColor),
-        child: UiChatMessageInput(
-          controller: _availabilityController,
-          primary: theme.colorScheme.primary,
-          panelColor: theme.brightness == Brightness.dark
-              ? theme.scaffoldBackgroundColor
-              : theme.cardColor,
-          hintText: 'Cet article est-il disponible ?',
-          allowEmptySend: true,
-          onSend: (text) {
-            final message = text.trim();
-            _openSellerChat(
-              initialMessage: message.isEmpty
-                  ? _defaultAvailabilityMessage
-                  : message,
-            );
-          },
         ),
       ),
     );

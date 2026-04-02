@@ -14,6 +14,7 @@ import 'package:bahibo/component/ui/dinamic_icon_textarea.dart';
 import 'package:bahibo/component/user_list_page.dart';
 import 'package:bahibo/page/dashboard_page.dart';
 import 'package:bahibo/page/live/live_preview_page.dart';
+import 'package:bahibo/page/productDetailSeller.dart' as seller_detail;
 import 'package:bahibo/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -172,8 +173,12 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     if (metricLabel == 'Produits') {
       await Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) =>
-              ProductListPage(title: 'Produits', products: _catalogProducts),
+          builder: (_) => ProductListPage(
+            title: 'Produits',
+            products: _catalogProducts,
+            detailPageBuilder: (product) =>
+                seller_detail.ProductDetailPage(product: product),
+          ),
         ),
       );
       return;
@@ -2196,7 +2201,11 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
             ...filteredProducts.take(3).map((product) {
               return Padding(
                 padding: const EdgeInsets.only(bottom: 10),
-                child: ProductCard(product: product),
+                child: ProductCard(
+                  product: product,
+                  detailPageBuilder: (product) =>
+                      seller_detail.ProductDetailPage(product: product),
+                ),
               );
             }),
         ],

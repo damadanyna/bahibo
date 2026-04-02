@@ -7,8 +7,17 @@ import '../page/productDetail.dart';
 
 class ProductCard extends StatelessWidget {
   final Map<String, dynamic> product;
+  final Widget Function(Map<String, dynamic> product)? detailPageBuilder;
 
-  const ProductCard({super.key, required this.product});
+  const ProductCard({super.key, required this.product, this.detailPageBuilder});
+
+  Widget _buildDetailPage() {
+    if (detailPageBuilder != null) {
+      return detailPageBuilder!(product);
+    }
+
+    return ProductDetailPage(product: product);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,9 +34,7 @@ class ProductCard extends StatelessWidget {
       onTap: () {
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (_) => ProductDetailPage(product: product),
-          ),
+          MaterialPageRoute(builder: (_) => _buildDetailPage()),
         );
       },
       child: Container(
@@ -142,7 +149,7 @@ class ProductCard extends StatelessWidget {
     void openProductDetail() {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => ProductDetailPage(product: product)),
+        MaterialPageRoute(builder: (_) => _buildDetailPage()),
       );
     }
 
@@ -282,7 +289,8 @@ class ProductCard extends StatelessWidget {
     final theme = Theme.of(context);
     final fallbackIconColor =
         theme.iconTheme.color ?? theme.colorScheme.onSurfaceVariant;
-    final isLocalFile = !(url.startsWith('http://') || url.startsWith('https://'));
+    final isLocalFile =
+        !(url.startsWith('http://') || url.startsWith('https://'));
 
     return GestureDetector(
       onTap: onTap,
@@ -294,10 +302,8 @@ class ProductCard extends StatelessWidget {
                 fit: BoxFit.cover,
                 width: double.infinity,
                 height: double.infinity,
-                errorBuilder: (_, _, _) => Icon(
-                  Icons.image_not_supported,
-                  color: fallbackIconColor,
-                ),
+                errorBuilder: (_, _, _) =>
+                    Icon(Icons.image_not_supported, color: fallbackIconColor),
               ),
             )
           : AppNetworkImage(

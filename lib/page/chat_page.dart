@@ -8,8 +8,42 @@ import 'package:bahibo/component/app_page_refresh.dart';
 import 'package:bahibo/component/ui/chat_message_input.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 
+typedef ChatProductPageBuilder = Widget Function(
+  Map<String, dynamic> product, {
+  bool openedFromChat,
+});
+
 class ChatPage extends StatefulWidget {
-  const ChatPage({super.key});
+  final String sellerName;
+  final String sellerRole;
+  final String avatarUrl;
+  final Map<String, dynamic>? product;
+  final ChatProductPageBuilder? productPageBuilder;
+  final String productTitle;
+  final String productDescription;
+  final String productSubtitle;
+  final String productPriceLabel;
+  final String productImageUrl;
+  final String? initialMessage;
+  final bool embedProductContextInInitialMessage;
+
+  const ChatPage({
+    super.key,
+    this.sellerName = 'John Rakoto',
+    this.sellerRole = 'Vendeur certifie',
+    this.avatarUrl =
+        'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200',
+    this.product,
+    this.productPageBuilder,
+    this.productTitle = 'Samsung Galaxy S20',
+    this.productDescription = 'Aucune description disponible.',
+    this.productSubtitle = 'Produit verifie • Disponible',
+    this.productPriceLabel = '2 375 000 MGA',
+    this.productImageUrl =
+        'https://images.unsplash.com/photo-1598327105666-5b89351aff97?w=600',
+    this.initialMessage,
+    this.embedProductContextInInitialMessage = false,
+  });
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -48,6 +82,7 @@ class _ChatPageState extends State<ChatPage>
   void initState() {
     super.initState();
     initializePageRefresh();
+    _addInitialMessageIfNeeded();
     Future.delayed(const Duration(milliseconds: 260), () {
       if (!mounted) return;
       setState(() => _showEntrySkeleton = false);
@@ -88,6 +123,111 @@ class _ChatPageState extends State<ChatPage>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _animateToBottom();
     });
+  }
+
+  void _addInitialMessageIfNeeded() {
+    final initialMessage = widget.initialMessage?.trim();
+    if (initialMessage == null || initialMessage.isEmpty) return;
+
+    final alreadyExists = _messages.any(
+      (message) => message.isMine && message.message == initialMessage,
+    );
+    if (alreadyExists) return;
+
+    final now = TimeOfDay.now();
+    final formattedTime =
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+
+    _messages.add(
+      _ChatMessage(
+        message: initialMessage,
+        time: formattedTime,
+        isMine: true,
+        attachmentType: widget.embedProductContextInInitialMessage
+            ? _AttachmentType.product
+            : null,
+        productTitle: widget.productTitle,
+        productDescription: widget.productDescription,
+        productSubtitle: widget.productSubtitle,
+        productPriceLabel: widget.productPriceLabel,
+        productImageUrl: widget.productImageUrl,
+      ),
+    );
+  }
+
+  void _openProductCard() {
+    final product = widget.product;
+    final productPageBuilder = widget.productPageBuilder;
+
+    if (product != null && productPageBuilder != null) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => productPageBuilder(product, openedFromChat: true),
+        ),
+      );
+      return;
+    }
+
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: appColors.panelBackground,
+      barrierColor: appColors.overlaySurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 48,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: appColors.overlayBorder,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  widget.productTitle,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Description du produit',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: appColors.mutedText,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  widget.productDescription,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: theme.colorScheme.onSurface,
+                    height: 1.6,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _handleAttachment(UiChatAttachment attachment) {
@@ -156,6 +296,16 @@ class _ChatPageState extends State<ChatPage>
           attachmentBytes: bytes,
         );
         break;
+      case _AttachmentType.product:
+        message = _ChatMessage(
+          message: messageText ?? 'Produit partage',
+          time: formattedTime,
+          isMine: true,
+          attachmentType: _AttachmentType.product,
+          attachmentLabel: label ?? 'Produit',
+          attachmentBytes: bytes,
+        );
+        break;
     }
 
     setState(() {
@@ -204,10 +354,9 @@ class _ChatPageState extends State<ChatPage>
     final cardColor = appColors.panelBackground;
     final panelColor = appColors.inputFill;
     final subtleText = appColors.mutedText;
-    const sellerName = 'John Rakoto';
-    const sellerRole = 'Vendeur certifie';
-    const avatarUrl =
-        'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200';
+    final sellerName = widget.sellerName;
+    final sellerRole = widget.sellerRole;
+    final avatarUrl = widget.avatarUrl;
 
     return Scaffold(
       backgroundColor: background,
@@ -251,13 +400,21 @@ class _ChatPageState extends State<ChatPage>
                                   avatarUrl: avatarUrl,
                                 ),
                                 const SizedBox(height: 10),
-                                _ProductContextCard(
-                                  primary: primary,
-                                  cardColor: cardColor,
-                                  subtleText: subtleText,
-                                  isDark: isDark,
-                                ),
-                                const SizedBox(height: 18),
+                                if (!widget.embedProductContextInInitialMessage) ...[
+                                  _ProductContextCard(
+                                    primary: primary,
+                                    cardColor: cardColor,
+                                    subtleText: subtleText,
+                                    isDark: isDark,
+                                    onTap: _openProductCard,
+                                    productTitle: widget.productTitle,
+                                    productDescription: widget.productDescription,
+                                    productSubtitle: widget.productSubtitle,
+                                    productPriceLabel: widget.productPriceLabel,
+                                    productImageUrl: widget.productImageUrl,
+                                  ),
+                                  const SizedBox(height: 18),
+                                ],
                                 Container(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 14,
@@ -291,6 +448,12 @@ class _ChatPageState extends State<ChatPage>
                                       attachmentType: chat.attachmentType,
                                       attachmentLabel: chat.attachmentLabel,
                                       attachmentBytes: chat.attachmentBytes,
+                                      productTitle: chat.productTitle,
+                                      productDescription: chat.productDescription,
+                                      productSubtitle: chat.productSubtitle,
+                                      productPriceLabel: chat.productPriceLabel,
+                                      productImageUrl: chat.productImageUrl,
+                                      onProductTap: _openProductCard,
                                       avatarUrl: avatarUrl,
                                       isDark: isDark,
                                       primary: primary,
@@ -475,79 +638,97 @@ class _ProductContextCard extends StatelessWidget {
   final Color cardColor;
   final Color subtleText;
   final bool isDark;
+  final VoidCallback? onTap;
+  final String productTitle;
+  final String productDescription;
+  final String productSubtitle;
+  final String productPriceLabel;
+  final String productImageUrl;
 
   const _ProductContextCard({
     required this.primary,
     required this.cardColor,
     required this.subtleText,
     required this.isDark,
+    this.onTap,
+    required this.productTitle,
+    required this.productDescription,
+    required this.productSubtitle,
+    required this.productPriceLabel,
+    required this.productImageUrl,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: cardColor,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Theme.of(context).appColors.inputBorder),
-      ),
-      child: Row(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(18),
-            child: AppNetworkImage(
-              imageUrl:
-                  'https://images.unsplash.com/photo-1598327105666-5b89351aff97?w=600',
-              width: 72,
-              height: 72,
-              fit: BoxFit.cover,
-              borderRadius: BorderRadius.circular(18),
-            ),
+        child: Ink(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: cardColor,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Theme.of(context).appColors.inputBorder),
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Samsung Galaxy S20',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: AppNetworkImage(
+                  imageUrl: productImageUrl,
+                  width: 72,
+                  height: 72,
+                  fit: BoxFit.cover,
+                  borderRadius: BorderRadius.circular(18),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'Produit verifie • Disponible',
-                  style: TextStyle(
-                    color: subtleText,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: primary.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    '2 375 000 MGA',
-                    style: TextStyle(
-                      color: primary,
-                      fontWeight: FontWeight.w800,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      productTitle,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 4),
+                    Text(
+                      productSubtitle,
+                      style: TextStyle(
+                        color: subtleText,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: primary.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        productPriceLabel,
+                        style: TextStyle(
+                          color: primary,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -560,6 +741,11 @@ class _ChatMessage {
   final _AttachmentType? attachmentType;
   final String? attachmentLabel;
   final Uint8List? attachmentBytes;
+  final String? productTitle;
+  final String? productDescription;
+  final String? productSubtitle;
+  final String? productPriceLabel;
+  final String? productImageUrl;
 
   const _ChatMessage({
     required this.message,
@@ -568,10 +754,15 @@ class _ChatMessage {
     this.attachmentType,
     this.attachmentLabel,
     this.attachmentBytes,
+    this.productTitle,
+    this.productDescription,
+    this.productSubtitle,
+    this.productPriceLabel,
+    this.productImageUrl,
   });
 }
 
-enum _AttachmentType { photo, document, text }
+enum _AttachmentType { photo, document, text, product }
 
 class _ChatBubble extends StatelessWidget {
   final String message;
@@ -580,6 +771,12 @@ class _ChatBubble extends StatelessWidget {
   final _AttachmentType? attachmentType;
   final String? attachmentLabel;
   final Uint8List? attachmentBytes;
+  final String? productTitle;
+  final String? productDescription;
+  final String? productSubtitle;
+  final String? productPriceLabel;
+  final String? productImageUrl;
+  final VoidCallback? onProductTap;
   final String avatarUrl;
   final bool isDark;
   final Color primary;
@@ -593,6 +790,12 @@ class _ChatBubble extends StatelessWidget {
     this.attachmentType,
     this.attachmentLabel,
     this.attachmentBytes,
+    this.productTitle,
+    this.productDescription,
+    this.productSubtitle,
+    this.productPriceLabel,
+    this.productImageUrl,
+    this.onProductTap,
     required this.avatarUrl,
     required this.isDark,
     required this.primary,
@@ -651,6 +854,12 @@ class _ChatBubble extends StatelessWidget {
                       type: attachmentType!,
                       label: attachmentLabel ?? message,
                       bytes: attachmentBytes,
+                      productTitle: productTitle,
+                      productDescription: productDescription,
+                      productSubtitle: productSubtitle,
+                      productPriceLabel: productPriceLabel,
+                      productImageUrl: productImageUrl,
+                      onProductTap: onProductTap,
                       isMine: isMine,
                       isDark: isDark,
                       primary: primary,
@@ -702,6 +911,12 @@ class _AttachmentPreview extends StatelessWidget {
   final _AttachmentType type;
   final String label;
   final Uint8List? bytes;
+  final String? productTitle;
+  final String? productDescription;
+  final String? productSubtitle;
+  final String? productPriceLabel;
+  final String? productImageUrl;
+  final VoidCallback? onProductTap;
   final bool isMine;
   final bool isDark;
   final Color primary;
@@ -710,6 +925,12 @@ class _AttachmentPreview extends StatelessWidget {
     required this.type,
     required this.label,
     this.bytes,
+    this.productTitle,
+    this.productDescription,
+    this.productSubtitle,
+    this.productPriceLabel,
+    this.productImageUrl,
+    this.onProductTap,
     required this.isMine,
     required this.isDark,
     required this.primary,
@@ -740,6 +961,25 @@ class _AttachmentPreview extends StatelessWidget {
         icon = Icons.notes_outlined;
         title = 'Texte';
         break;
+      case _AttachmentType.product:
+        icon = Icons.shopping_bag_outlined;
+        title = 'Produit';
+        break;
+    }
+
+    if (type == _AttachmentType.product) {
+      return _ProductMessagePreview(
+        onTap: onProductTap,
+        isMine: isMine,
+        isDark: isDark,
+        primary: primary,
+        productTitle: productTitle ?? 'Produit',
+        productDescription:
+            productDescription ?? 'Aucune description disponible.',
+        productSubtitle: productSubtitle ?? 'Disponible',
+        productPriceLabel: productPriceLabel ?? '',
+        productImageUrl: productImageUrl ?? '',
+      );
     }
 
     if (type == _AttachmentType.photo && bytes != null) {
@@ -834,6 +1074,128 @@ class _AttachmentPreview extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ProductMessagePreview extends StatelessWidget {
+  final VoidCallback? onTap;
+  final bool isMine;
+  final bool isDark;
+  final Color primary;
+  final String productTitle;
+  final String productDescription;
+  final String productSubtitle;
+  final String productPriceLabel;
+  final String productImageUrl;
+
+  const _ProductMessagePreview({
+    this.onTap,
+    required this.isMine,
+    required this.isDark,
+    required this.primary,
+    required this.productTitle,
+    required this.productDescription,
+    required this.productSubtitle,
+    required this.productPriceLabel,
+    required this.productImageUrl,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final appColors = Theme.of(context).appColors;
+    final backgroundColor = isMine
+        ? appColors.heroSurface
+        : (isDark ? appColors.heroSurface : primary.withOpacity(0.08));
+    final titleColor = isMine
+        ? appColors.heroForeground
+        : Theme.of(context).colorScheme.onSurface;
+    final subtitleColor = isMine
+        ? appColors.heroForegroundMuted
+        : appColors.mutedText;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Ink(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: isMine ? appColors.heroBorder : appColors.inputBorder,
+            ),
+          ),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: AppNetworkImage(
+                  imageUrl: productImageUrl,
+                  width: 62,
+                  height: 62,
+                  fit: BoxFit.cover,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      productTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: titleColor,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      productSubtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: subtitleColor,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isMine
+                            ? appColors.heroBorder
+                            : primary.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        productPriceLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: titleColor,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

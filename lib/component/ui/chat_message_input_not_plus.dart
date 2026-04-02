@@ -13,6 +13,7 @@ class UiChatMessageInput extends StatefulWidget {
   final Color? borderColor;
   final String hintText;
   final bool autoClearOnSend;
+  final bool allowEmptySend;
 
   const UiChatMessageInput({
     super.key,
@@ -23,6 +24,7 @@ class UiChatMessageInput extends StatefulWidget {
     this.borderColor,
     this.hintText = 'Ecrire votre message...',
     this.autoClearOnSend = true,
+    this.allowEmptySend = false,
   });
 
   @override
@@ -32,7 +34,7 @@ class UiChatMessageInput extends StatefulWidget {
 class _UiChatMessageInputState extends State<UiChatMessageInput> {
   Future<void> _handleSend() async {
     final text = widget.controller.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty && !widget.allowEmptySend) return;
     await widget.onSend(text);
     if (widget.autoClearOnSend && mounted) {
       widget.controller.clear();
