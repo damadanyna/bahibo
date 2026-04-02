@@ -1,0 +1,162 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CUSTOMER
+  SELLER
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum ShipmentStatus {
+  PENDING
+  READY
+  IN_TRANSIT
+  DELIVERED
+  FAILED
+}
+
+model User {
+  id              String         @id @default(uuid())
+  phoneE164       String         @unique
+  displayName     String
+  passwordHash    String
+  avatarUrl       String?
+  preferredLanguage String?
+  role            UserRole       @default(CUSTOMER)
+  isVerified      Boolean        @default(false)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  refreshTokens   RefreshToken[]
+  sellerProfile   SellerProfile?
+  cart            Cart?
+  orders          Order[]
+}
+
+model RefreshToken {
+  id         String   @id @default(uuid())
+  tokenHash  String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SellerProfile {
+  id          String    @id @default(uuid())
+  studioName  String
+  description String?
+  city        String?
+  country     String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  userId      String    @unique
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  products    Product[]
+  orders      Order[]
+}
+
+model Category {
+  id        String    @id @default(uuid())
+  name      String
+  slug      String    @unique
+  icon      String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  products  Product[]
+}
+
+model Product {
+  id              String      @id @default(uuid())
+  title           String
+  description     String
+  imageUrl        String
+  priceAmount     Decimal     @db.Decimal(12, 2)
+  currencyCode    String      @default("MGA")
+  isAvailable     Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  sellerProfileId String
+  categoryId      String
+  sellerProfile   SellerProfile @relation(fields: [sellerProfileId], references: [id], onDelete: Cascade)
+  category        Category    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  cartItems       CartItem[]
+  orderItems      OrderItem[]
+}
+
+model Cart {
+  id        String     @id @default(uuid())
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  userId    String     @unique
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     CartItem[]
+}
+
+model CartItem {
+  id          String   @id @default(uuid())
+  quantity    Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  cartId      String
+  productId   String
+  cart        Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, productId])
+}
+
+model Order {
+  id               String        @id @default(uuid())
+  orderNumber      String        @unique
+  status           OrderStatus   @default(PENDING)
+  subtotalAmount   Decimal       @db.Decimal(12, 2)
+  deliveryAmount   Decimal       @db.Decimal(12, 2)
+  totalAmount      Decimal       @db.Decimal(12, 2)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  buyerUserId      String
+  sellerProfileId  String
+  buyer            User          @relation(fields: [buyerUserId], references: [id], onDelete: Restrict)
+  sellerProfile    SellerProfile @relation(fields: [sellerProfileId], references: [id], onDelete: Restrict)
+  items            OrderItem[]
+  shipment         Shipment?
+}
+
+model OrderItem {
+  id               String   @id @default(uuid())
+  quantity         Int
+  unitPriceAmount  Decimal  @db.Decimal(12, 2)
+  totalPriceAmount Decimal  @db.Decimal(12, 2)
+  orderId          String
+  productId        String
+  order            Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product          Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+}
+
+model Shipment {
+  id             String         @id @default(uuid())
+  carrierName    String?
+  trackingNumber String?        @unique
+  shipmentStatus ShipmentStatus @default(PENDING)
+  shippedAt      DateTime?
+  deliveredAt    DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  orderId        String         @unique
+  order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}

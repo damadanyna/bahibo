@@ -1,12 +1,11 @@
-import 'dart:convert';
-
 import 'package:bahibo/component/app_page_refresh.dart';
 import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/page/notifications_page.dart';
+import 'package:bahibo/services/catalog_api_service.dart';
+import 'package:bahibo/services/notifications_api_service.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 
 import '../component/ProductCard.dart';
 import 'category_page.dart';
@@ -23,80 +22,15 @@ class _ProductlistState extends State<Productlist>
   static const double _bottomContentPadding = 84;
   static const double _offlineBannerBottomOffset = 64;
 
-  final List<Map<String, dynamic>> _notifications = [
-    {
-      'section': 'Important',
-      'type': 'follow',
-      'channel': 'Aicha Mode',
-      'description': 'Nouveau fournisseur dans votre reseau.',
-      'content':
-          'vient de s\'abonner a votre boutique et suit vos nouvelles sorties.',
-      'time': 'Il y a 5 min',
-      'avatarUrl': 'https://i.pravatar.cc/240?img=32',
-      'unread': true,
-    },
-    {
-      'section': 'Important',
-      'type': 'catalog_update',
-      'channel': 'Maison Kivu',
-      'description':
-          'Le catalogue fournisseur que vous suivez vient d\'etre mis a jour.',
-      'content':
-          'a mis en ligne 3 nouveaux produits chez le fournisseur que vous suivez.',
-      'time': 'Il y a 24 min',
-      'avatarUrl': 'https://i.pravatar.cc/240?img=12',
-      'thumbnailUrl':
-          'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=480',
-      'unread': true,
-    },
-    {
-      'section': 'Aujourd\'hui',
-      'type': 'product_added',
-      'channel': 'Elanga Store',
-      'description':
-          'Un nouveau produit vient d\'etre ajoute par ce fournisseur.',
-      'content':
-          'a ajoute un nouveau produit dans les articles que vous suivez.',
-      'productName': 'Sac a main cuir premium',
-      'time': 'Il y a 20 min',
-      'avatarUrl': 'https://i.pravatar.cc/240?img=52',
-      'thumbnailUrl':
-          'https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=480',
-      'unread': false,
-    },
-    {
-      'section': 'Aujourd\'hui',
-      'type': 'product_added',
-      'channel': 'Jojo Tech',
-      'description': 'Produit ajoute dans votre veille vendeur.',
-      'content': 'a ajoute un nouvel article parmi les produits suivis.',
-      'productName': 'iPhone pliable Pro X',
-      'time': 'Il y a 13 heures',
-      'avatarUrl': 'https://i.pravatar.cc/240?img=18',
-      'thumbnailUrl':
-          'https://images.unsplash.com/photo-1598327105666-5b89351aff97?w=480',
-      'unread': false,
-    },
-    {
-      'section': 'Aujourd\'hui',
-      'type': 'product_added',
-      'channel': 'NalaK',
-      'description': 'Nouvel arrivage premium disponible maintenant.',
-      'content':
-          'a publie un nouveau produit premium venant d\'un fournisseur abonne.',
-      'productName': 'Coffret parfum prestige',
-      'time': 'Il y a 13 heures',
-      'avatarUrl': 'https://i.pravatar.cc/240?img=47',
-      'thumbnailUrl':
-          'https://images.unsplash.com/photo-1541643600914-78b084683601?w=480',
-      'unread': false,
-    },
-  ];
+  final CatalogApiService _catalogApiService = CatalogApiService();
+  final NotificationsApiService _notificationsApiService =
+      NotificationsApiService();
+  final List<Map<String, dynamic>> _notifications = [];
 
   final ScrollController _scrollController = ScrollController();
 
   List<dynamic> products = [];
-  List<String> categories = [];
+  List<Map<String, dynamic>> categories = [];
   List<dynamic> mixedItems = [];
 
   int skip = 0;
@@ -141,6 +75,7 @@ class _ProductlistState extends State<Productlist>
     initializePageRefresh();
     fetchCategories();
     fetchProducts();
+    fetchNotifications();
     _scrollController.addListener(_onScroll);
   }
 
@@ -172,6 +107,7 @@ class _ProductlistState extends State<Productlist>
 
     await fetchCategories();
     await fetchProducts();
+    await fetchNotifications();
 
     if (_scrollController.hasClients) {
       _scrollController.jumpTo(0);
@@ -179,35 +115,36 @@ class _ProductlistState extends State<Productlist>
   }
 
   Future<void> fetchCategories() async {
-    final response = await http.get(
-      Uri.parse('https://dummyjson.com/products/categories'),
-    );
-
-    if (response.statusCode == 200) {
-      final List data = json.decode(response.body);
+    try {
+      final data = await _catalogApiService.fetchCategories();
+      if (!mounted) return;
       setState(() {
-        categories = data.map((e) => e['slug'].toString()).toList();
+        categories = data;
         _rebuildMixedItems();
       });
-    }
+    } catch (_) {}
   }
 
   Future<void> fetchProducts() async {
     if (isLoading || !hasMore) return;
     setState(() => isLoading = true);
 
-    final response = await http.get(
-      Uri.parse('https://dummyjson.com/products?limit=$limit&skip=$skip'),
-    );
+    try {
+      final data = await _catalogApiService.fetchProducts(
+        limit: limit,
+        skip: skip,
+      );
+      final List<dynamic> newProducts = List<dynamic>.from(
+        data['products'] as List? ?? const [],
+      );
 
-    if (response.statusCode == 200) {
-      final Map<String, dynamic> data = json.decode(response.body);
-      final List newProducts = data['products'];
+      if (!mounted) return;
 
       setState(() {
         skip += limit;
         products.addAll(newProducts);
-        hasMore = products.length < (data['total'] as int);
+        hasMore =
+            products.length < ((data['total'] as int?) ?? products.length);
         isLoading = false;
         _rebuildMixedItems();
       });
@@ -215,9 +152,22 @@ class _ProductlistState extends State<Productlist>
       if (kDebugMode) {
         print('Charge: ${products.length} produits, hasMore: $hasMore');
       }
-    } else {
+    } catch (_) {
+      if (!mounted) return;
       setState(() => isLoading = false);
     }
+  }
+
+  Future<void> fetchNotifications() async {
+    try {
+      final data = await _notificationsApiService.fetchNotifications();
+      if (!mounted) return;
+      setState(() {
+        _notifications
+          ..clear()
+          ..addAll(data);
+      });
+    } catch (_) {}
   }
 
   void _rebuildMixedItems() {
@@ -326,6 +276,10 @@ class _ProductlistState extends State<Productlist>
                   itemCount: categories.length,
                   itemBuilder: (context, index) {
                     final cat = categories[index];
+                    final slug = cat['slug']?.toString() ?? '';
+                    final label = cat['name']?.toString() ?? slug;
+                    final icon =
+                        cat['icon']?.toString() ?? categoryIcons[slug] ?? '🛍️';
                     return GestureDetector(
                       onTap: () async {
                         final savedOffset = _scrollController.offset;
@@ -334,8 +288,9 @@ class _ProductlistState extends State<Productlist>
                           context,
                           MaterialPageRoute(
                             builder: (_) => CategoryPage(
-                              categoryName: cat,
-                              categoryIcon: categoryIcons[cat] ?? '🛍️',
+                              categoryName: slug,
+                              categoryLabel: label,
+                              categoryIcon: icon,
                             ),
                           ),
                         );
@@ -357,13 +312,10 @@ class _ProductlistState extends State<Productlist>
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Text(
-                              categoryIcons[cat] ?? '🛍️',
-                              style: const TextStyle(fontSize: 28),
-                            ),
+                            Text(icon, style: const TextStyle(fontSize: 28)),
                             const SizedBox(height: 4),
                             Text(
-                              cat,
+                              label,
                               textAlign: TextAlign.center,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,

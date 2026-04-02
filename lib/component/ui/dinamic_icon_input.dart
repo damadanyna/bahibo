@@ -26,6 +26,7 @@ class DynamicIconInput extends StatefulWidget {
   final double trailingSize;
   final EdgeInsetsGeometry contentPadding;
   final bool showBorder;
+  final bool obscureText;
 
   const DynamicIconInput({
     super.key,
@@ -48,6 +49,7 @@ class DynamicIconInput extends StatefulWidget {
     this.trailingSize = 42,
     this.contentPadding = const EdgeInsets.fromLTRB(7, 3, 5, 3),
     this.showBorder = true,
+    this.obscureText = false,
   });
 
   @override
@@ -111,6 +113,7 @@ class _DynamicIconInputState extends State<DynamicIconInput> {
               focusNode: widget.focusNode,
               maxLines: 1,
               keyboardType: widget.keyboardType,
+              obscureText: widget.obscureText,
               inputFormatters: widget.inputFormatters,
               textInputAction: widget.textInputAction,
               onSubmitted: (_) => _handleSubmit(),

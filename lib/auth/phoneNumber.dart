@@ -32,6 +32,17 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
   };
 
   @override
+  void dispose() {
+    phoneController.dispose();
+    super.dispose();
+  }
+
+  String _normalizePhoneNumber(String value) {
+    final compact = value.replaceAll(RegExp(r'\s+'), '');
+    return compact.startsWith('+') ? compact : '+$compact';
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final appColors = theme.appColors;
@@ -320,8 +331,11 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) =>
-                                    const ProfileInformationPage(),
+                                builder: (context) => ProfileInformationPage(
+                                  phoneE164: _normalizePhoneNumber(
+                                    phoneController.text,
+                                  ),
+                                ),
                               ),
                             );
                           },

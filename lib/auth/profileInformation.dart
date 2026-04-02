@@ -3,13 +3,17 @@ import 'dart:io';
 import 'package:bahibo/component/main_navigation_shell.dart';
 import 'package:bahibo/component/ui/dinamic_icon_button.dart';
 import 'package:bahibo/component/ui/dinamic_icon_input.dart';
+import 'package:bahibo/services/app_api_client.dart';
+import 'package:bahibo/services/app_auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'package:bahibo/theme/app_theme_extensions.dart';
 
 class ProfileInformationPage extends StatefulWidget {
-  const ProfileInformationPage({super.key});
+  const ProfileInformationPage({super.key, required this.phoneE164});
+
+  final String phoneE164;
 
   @override
   State<ProfileInformationPage> createState() => _ProfileInformationPageState();
@@ -18,7 +22,10 @@ class ProfileInformationPage extends StatefulWidget {
 class _ProfileInformationPageState extends State<ProfileInformationPage> {
   final ImagePicker _imagePicker = ImagePicker();
   final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final AppAuthService _authService = AppAuthService();
   File? _selectedProfileImage;
+  bool _isSubmitting = false;
 
   Future<void> _pickProfileImage() async {
     final file = await _imagePicker.pickImage(
@@ -35,7 +42,49 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
   @override
   void dispose() {
     _nameController.dispose();
+    _passwordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _submitProfile() async {
+    final displayName = _nameController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (displayName.length < 2 || password.length < 6) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ajoutez un nom et un mot de passe de 6 caracteres.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      await _authService.registerOrLogin(
+        phoneE164: widget.phoneE164,
+        displayName: displayName,
+        password: password,
+      );
+
+      if (!mounted) return;
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const BahiboNavigationShell()),
+      );
+    } on AppApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
   }
 
   @override
@@ -148,19 +197,33 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
               ),
             ),
             const SizedBox(height: 20),
+            DynamicIconInput(
+              controller: _passwordController,
+              primary: theme.colorScheme.primary,
+              panelColor: appColors.inputFill,
+              borderColor: appColors.inputBorder,
+              hintText: 'Password',
+              obscureText: true,
+              leadingIcon: Icon(Icons.lock_outline, color: appColors.mutedText),
+              leadingSize: 38,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 10,
+              ),
+            ),
+            const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
               child: DynamicIconButton(
-                text: 'Continue',
-                icon: const Icon(Icons.arrow_forward, size: 20),
-                onPressed: () {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const BahiboNavigationShell(),
-                    ),
-                  );
-                },
+                text: _isSubmitting ? 'Connexion...' : 'Continue',
+                icon: _isSubmitting
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.arrow_forward, size: 20),
+                onPressed: _isSubmitting ? null : _submitProfile,
                 padding: const EdgeInsets.symmetric(
                   vertical: 16,
                   horizontal: 24,

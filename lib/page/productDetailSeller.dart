@@ -7,6 +7,7 @@ import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
 import 'package:bahibo/component/app_back_button.dart';
 import 'package:bahibo/component/ui/chat_message_input_not_plus.dart';
+import 'package:bahibo/formatter/price_formatter.dart';
 import 'package:flutter/material.dart';
 import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/page/chat_page.dart';
@@ -83,19 +84,17 @@ class _ProductDetailPageState extends State<ProductDetailPage>
 
   String _buildProductPriceLabel() {
     final price = (widget.product['price'] as num?)?.toDouble() ?? 0.0;
-    final priceFormatted = (price * 400).toStringAsFixed(0).replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (match) => '${match[1]} ',
-    );
-    return '$priceFormatted Ar';
+    final currency = resolveProductCurrency(widget.product);
+    return '${formatPriceAmount(price)} $currency';
   }
 
   String _buildProductSubtitle() {
     final category = _resolveStringField(['category'], 'Produit verifie');
-    final status = _resolveStringField(
-      ['availability', 'status', 'sellerBadge'],
-      'Disponible',
-    );
+    final status = _resolveStringField([
+      'availability',
+      'status',
+      'sellerBadge',
+    ], 'Disponible');
     return '$category • $status';
   }
 
@@ -105,23 +104,26 @@ class _ProductDetailPageState extends State<ProductDetailPage>
         const <String>[];
 
     return ChatPage(
-      sellerName: _resolveStringField(['sellerName', 'vendorName'], _sellerName),
-      sellerRole: _resolveStringField(['sellerRole', 'sellerBadge'], _sellerBadge),
-      avatarUrl: _resolveStringField(
-        ['sellerAvatarUrl', 'sellerImageUrl', 'avatarUrl'],
-        _sellerImageUrl,
-      ),
+      sellerName: _resolveStringField([
+        'sellerName',
+        'vendorName',
+      ], _sellerName),
+      sellerRole: _resolveStringField([
+        'sellerRole',
+        'sellerBadge',
+      ], _sellerBadge),
+      avatarUrl: _resolveStringField([
+        'sellerAvatarUrl',
+        'sellerImageUrl',
+        'avatarUrl',
+      ], _sellerImageUrl),
       product: Map<String, dynamic>.from(widget.product),
       productPageBuilder: (product, {openedFromChat = false}) =>
-          ProductDetailPage(
-            product: product,
-            openedFromChat: openedFromChat,
-          ),
+          ProductDetailPage(product: product, openedFromChat: openedFromChat),
       productTitle: _resolveStringField(['title', 'name'], 'Produit'),
-      productDescription: _resolveStringField(
-        ['description'],
-        'Aucune description disponible.',
-      ),
+      productDescription: _resolveStringField([
+        'description',
+      ], 'Aucune description disponible.'),
       productSubtitle: _buildProductSubtitle(),
       productPriceLabel: _buildProductPriceLabel(),
       productImageUrl: images.isNotEmpty
@@ -153,12 +155,8 @@ class _ProductDetailPageState extends State<ProductDetailPage>
 
     final String title = widget.product['title'] ?? 'Produit';
     final double price = (widget.product['price'] as num?)?.toDouble() ?? 0.0;
-    final String priceFormatted = (price * 400)
-        .toStringAsFixed(0)
-        .replaceAllMapped(
-          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-          (m) => '${m[1]} ',
-        );
+    final String priceFormatted = formatPriceAmount(price);
+    final String currency = resolveProductCurrency(widget.product);
 
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -199,7 +197,12 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Padding(
-                                padding: const EdgeInsets.fromLTRB(16, 5, 16, 7),
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  5,
+                                  16,
+                                  7,
+                                ),
                                 child: Text(
                                   'Abaoly',
                                   style: TextStyle(
@@ -307,7 +310,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                             bottom: 4,
                                           ),
                                           child: Text(
-                                            'MGA',
+                                            currency,
                                             style: TextStyle(
                                               fontSize: 14,
                                               fontWeight: FontWeight.w600,

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:bahibo/formatter/price_formatter.dart';
 import 'package:flutter/material.dart';
 import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
@@ -29,6 +30,8 @@ class ProductCard extends StatelessWidget {
         theme.textTheme.titleMedium?.color ?? theme.colorScheme.onSurface;
     final categoryColor = theme.colorScheme.primary;
     final priceColor = theme.colorScheme.error;
+    final price = (product['price'] as num?)?.toDouble() ?? 0.0;
+    final currency = resolveProductCurrency(product);
 
     return GestureDetector(
       onTap: () {
@@ -104,13 +107,10 @@ class ProductCard extends StatelessWidget {
                     Text.rich(
                       TextSpan(
                         children: [
-                          TextSpan(
-                            text: ((product['price'] as num).toDouble() * 400)
-                                .toStringAsFixed(0),
-                          ),
+                          TextSpan(text: formatPriceAmount(price)),
                           const TextSpan(text: ' '),
                           TextSpan(
-                            text: 'MGA',
+                            text: currency,
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,

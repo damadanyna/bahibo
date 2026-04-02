@@ -71,6 +71,7 @@ class NavigationCategoryGrid extends StatelessWidget {
                 MaterialPageRoute(
                   builder: (_) => CategoryPage(
                     categoryName: category.slug,
+                    categoryLabel: category.label,
                     categoryIcon: category.icon,
                   ),
                 ),

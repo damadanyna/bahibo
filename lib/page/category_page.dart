@@ -1,20 +1,21 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import "../component/ProductCard.dart";
 import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
+import 'package:bahibo/services/catalog_api_service.dart';
 import "../component/theme_menu_button.dart";
 import 'package:bahibo/theme/app_theme_extensions.dart';
 
 class CategoryPage extends StatefulWidget {
   final String categoryName;
   final String categoryIcon;
+  final String? categoryLabel;
 
   const CategoryPage({
     super.key,
     required this.categoryName,
     required this.categoryIcon,
+    this.categoryLabel,
   });
 
   @override
@@ -23,6 +24,7 @@ class CategoryPage extends StatefulWidget {
 
 class _CategoryPageState extends State<CategoryPage>
     with AppPageRefreshMixin<CategoryPage> {
+  final CatalogApiService _catalogApiService = CatalogApiService();
   List<dynamic> products = [];
   int skip = 0;
   final int limit = 10;
@@ -72,22 +74,28 @@ class _CategoryPageState extends State<CategoryPage>
     if (isLoading || !hasMore) return;
     setState(() => isLoading = true);
 
-    final response = await http.get(
-      Uri.parse(
-        "https://dummyjson.com/products/category/${widget.categoryName}?limit=$limit&skip=$skip",
-      ),
-    );
+    try {
+      final data = await _catalogApiService.fetchProducts(
+        limit: limit,
+        skip: skip,
+        categorySlug: widget.categoryName,
+      );
+      final List<dynamic> newProducts = List<dynamic>.from(
+        data['products'] as List? ?? const [],
+      );
 
-    if (response.statusCode == 200) {
-      final Map<String, dynamic> data = json.decode(response.body);
-      final List newProducts = data['products'];
+      if (!mounted) return;
 
       setState(() {
         skip += limit;
         products.addAll(newProducts);
-        hasMore = products.length < (data['total'] as int);
+        hasMore =
+            products.length < ((data['total'] as int?) ?? products.length);
         isLoading = false;
       });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => isLoading = false);
     }
   }
 
@@ -114,7 +122,7 @@ class _CategoryPageState extends State<CategoryPage>
             Text(widget.categoryIcon),
             const SizedBox(width: 8),
             Text(
-              widget.categoryName,
+              widget.categoryLabel ?? widget.categoryName,
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ],
