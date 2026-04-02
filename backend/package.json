@@ -5,6 +5,7 @@
   "description": "NestJS backend for the Bahibo ecommerce application",
   "license": "UNLICENSED",
   "scripts": {
+    "clean": "node -e \"const fs=require('fs'); if (fs.existsSync('dist')) fs.rmSync('dist', { recursive: true, force: true });\"",
     "build": "nest build",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
@@ -14,6 +15,9 @@
     "start:prod": "node dist/main",
     "lint": "echo \"No linter configured yet\""
   },
+  "prebuild": "npm run clean",
+  "prestart": "npm run clean",
+  "prestart:dev": "npm run clean",
   "prisma": {
     "seed": "ts-node --project tsconfig.json prisma/seed.ts"
   },

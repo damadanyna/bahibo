@@ -33,6 +33,8 @@ enum ShipmentStatus {
 model User {
   id              String         @id @default(uuid())
   phoneE164       String         @unique
+  countryName     String?
+  countryDialCode String?
   displayName     String
   passwordHash    String
   avatarUrl       String?
@@ -45,6 +47,21 @@ model User {
   sellerProfile   SellerProfile?
   cart            Cart?
   orders          Order[]
+}
+
+model PhoneOtpChallenge {
+  id              String   @id @default(uuid())
+  phoneE164       String
+  countryName     String?
+  countryDialCode String?
+  codeHash        String
+  expiresAt       DateTime
+  attempts        Int      @default(0)
+  verifiedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([phoneE164, createdAt])
 }
 
 model RefreshToken {

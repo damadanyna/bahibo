@@ -11,9 +11,16 @@ import 'package:image_picker/image_picker.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 
 class ProfileInformationPage extends StatefulWidget {
-  const ProfileInformationPage({super.key, required this.phoneE164});
+  const ProfileInformationPage({
+    super.key,
+    required this.phoneE164,
+    required this.countryName,
+    required this.countryDialCode,
+  });
 
   final String phoneE164;
+  final String countryName;
+  final String countryDialCode;
 
   @override
   State<ProfileInformationPage> createState() => _ProfileInformationPageState();
@@ -65,6 +72,8 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
     try {
       await _authService.registerOrLogin(
         phoneE164: widget.phoneE164,
+        countryName: widget.countryName,
+        countryDialCode: widget.countryDialCode,
         displayName: displayName,
         password: password,
       );
@@ -197,21 +206,7 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
               ),
             ),
             const SizedBox(height: 20),
-            DynamicIconInput(
-              controller: _passwordController,
-              primary: theme.colorScheme.primary,
-              panelColor: appColors.inputFill,
-              borderColor: appColors.inputBorder,
-              hintText: 'Password',
-              obscureText: true,
-              leadingIcon: Icon(Icons.lock_outline, color: appColors.mutedText),
-              leadingSize: 38,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 10,
-              ),
-            ),
-            const SizedBox(height: 20),
+
             SizedBox(
               width: double.infinity,
               child: DynamicIconButton(

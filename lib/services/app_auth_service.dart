@@ -11,6 +11,8 @@ class AppAuthService {
 
   Future<void> registerOrLogin({
     required String phoneE164,
+    required String countryName,
+    required String countryDialCode,
     required String displayName,
     required String password,
   }) async {
@@ -19,16 +21,14 @@ class AppAuthService {
         '/auth/register',
         body: {
           'phoneE164': phoneE164,
+          'countryName': countryName,
+          'countryDialCode': countryDialCode,
           'displayName': displayName,
           'password': password,
           'role': 'CUSTOMER',
         },
       );
-      await _persistSession(
-        data as Map<String, dynamic>,
-        phoneE164,
-        displayName,
-      );
+      await _persistSession(data as Map<String, dynamic>);
       return;
     } on AppApiException catch (error) {
       if (error.statusCode != 409) {
@@ -41,11 +41,44 @@ class AppAuthService {
       body: {'phoneE164': phoneE164, 'password': password},
     );
 
-    await _persistSession(
-      loginData as Map<String, dynamic>,
-      phoneE164,
-      displayName,
+    await _persistSession(loginData as Map<String, dynamic>);
+  }
+
+  Future<Map<String, dynamic>> requestOtp({
+    required String phoneE164,
+    required String countryName,
+    required String countryDialCode,
+    String? appSignature,
+  }) async {
+    await _sessionStorage.savePhoneDraft(
+      phoneE164: phoneE164,
+      countryName: countryName,
+      countryDialCode: countryDialCode,
     );
+
+    final data = await _client.post(
+      '/auth/otp/request',
+      body: {
+        'phoneE164': phoneE164,
+        'countryName': countryName,
+        'countryDialCode': countryDialCode,
+        'appSignature': appSignature,
+      },
+    );
+
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<Map<String, dynamic>> verifyOtp({
+    required String phoneE164,
+    required String otpCode,
+  }) async {
+    final data = await _client.post(
+      '/auth/otp/verify',
+      body: {'phoneE164': phoneE164, 'otpCode': otpCode},
+    );
+
+    return Map<String, dynamic>.from(data as Map);
   }
 
   Future<Map<String, dynamic>> fetchCurrentUser() async {
@@ -53,16 +86,18 @@ class AppAuthService {
     return Map<String, dynamic>.from(data as Map);
   }
 
-  Future<void> _persistSession(
-    Map<String, dynamic> data,
-    String phoneE164,
-    String displayName,
-  ) {
+  Future<void> _persistSession(Map<String, dynamic> data) {
+    final user = Map<String, dynamic>.from(
+      (data['user'] as Map?) ?? const <String, dynamic>{},
+    );
+
     return _sessionStorage.saveSession(
       accessToken: data['accessToken'] as String,
       refreshToken: data['refreshToken'] as String,
-      phoneE164: phoneE164,
-      displayName: displayName,
+      phoneE164: (user['phoneE164'] as String?) ?? '',
+      displayName: (user['displayName'] as String?) ?? '',
+      countryName: user['countryName'] as String?,
+      countryDialCode: user['countryDialCode'] as String?,
     );
   }
 }

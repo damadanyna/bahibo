@@ -4,6 +4,7 @@ class ApiConfig {
   static const String _configuredBaseUrl = String.fromEnvironment(
     'BAHIBO_API_BASE_URL',
   );
+  static const String _localNetworkBaseUrl = 'http://10.44.12.62:4000/api/v1';
 
   static String get baseUrl {
     if (_configuredBaseUrl.isNotEmpty) {
@@ -11,12 +12,12 @@ class ApiConfig {
     }
 
     if (kIsWeb) {
-      return 'http://localhost:4000/api/v1';
+      return _localNetworkBaseUrl;
     }
 
     return switch (defaultTargetPlatform) {
-      TargetPlatform.android => 'http://10.0.2.2:4000/api/v1',
-      _ => 'http://localhost:4000/api/v1',
+      TargetPlatform.android => _localNetworkBaseUrl,
+      _ => _localNetworkBaseUrl,
     };
   }
 }

@@ -1,9 +1,11 @@
-import 'package:bahibo/auth/profileInformation.dart';
+import 'package:bahibo/auth/otp_verification.dart';
 import 'package:bahibo/component/ui/dinamic_icon_button.dart';
 import 'package:bahibo/component/ui/dinamic_icon_input.dart';
-import 'package:bahibo/formatter/PhoneNumberFormatter%20extends%20TextInputFormatter.dart';
+import 'package:bahibo/services/app_api_client.dart';
+import 'package:bahibo/services/app_auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:sms_autofill/sms_autofill.dart';
 
 import 'package:bahibo/theme/app_theme_extensions.dart';
 
@@ -15,7 +17,12 @@ class PhoneNumberPage extends StatefulWidget {
 }
 
 class _PhoneNumberPageState extends State<PhoneNumberPage> {
+  final TextEditingController countryController = TextEditingController(
+    text: 'Madagascar',
+  );
   final TextEditingController phoneController = TextEditingController();
+  final AppAuthService _authService = AppAuthService();
+  bool _isSubmitting = false;
 
   final Map<String, String> countryCodes = {
     "Madagascar": "+261",
@@ -31,15 +38,130 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
     "India": "+91",
   };
 
+  String get _selectedCountryName {
+    final raw = countryController.text.trim();
+    return countryCodes.containsKey(raw) ? raw : 'Madagascar';
+  }
+
+  String get _selectedCountryDialCode =>
+      countryCodes[_selectedCountryName] ?? '+261';
+
   @override
   void dispose() {
+    countryController.dispose();
     phoneController.dispose();
     super.dispose();
   }
 
-  String _normalizePhoneNumber(String value) {
-    final compact = value.replaceAll(RegExp(r'\s+'), '');
-    return compact.startsWith('+') ? compact : '+$compact';
+  String _buildPhoneE164() {
+    final digits = phoneController.text.replaceAll(RegExp(r'\D'), '');
+    final normalizedLocal = digits.replaceFirst(RegExp(r'^0+'), '');
+    return '$_selectedCountryDialCode$normalizedLocal';
+  }
+
+  Future<void> _showPhoneConfirmationDialog() async {
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
+    final fullPhoneNumber = _buildPhoneE164();
+
+    if (fullPhoneNumber.length < 10) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Selectionnez un pays et saisissez un numero valide.'),
+        ),
+      );
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: theme.cardColor,
+        title: Column(
+          children: [
+            Text(
+              'Confirmer le numero',
+              style: TextStyle(color: appColors.heroForeground),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              fullPhoneNumber,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: appColors.heroForeground,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Un code OTP sera envoye par SMS a ce numero.',
+          style: TextStyle(color: appColors.mutedText),
+          textAlign: TextAlign.center,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Modifier'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(dialogContext).pop();
+              await _requestOtp(fullPhoneNumber);
+            },
+            child: const Text('Yes'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _requestOtp(String phoneE164) async {
+    if (_isSubmitting) {
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      final appSignature = await SmsAutoFill().getAppSignature;
+      final response = await _authService.requestOtp(
+        phoneE164: phoneE164,
+        countryName: _selectedCountryName,
+        countryDialCode: _selectedCountryDialCode,
+        appSignature: appSignature,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => OtpVerificationPage(
+            phoneE164: phoneE164,
+            countryName: _selectedCountryName,
+            countryDialCode: _selectedCountryDialCode,
+            appSignature: appSignature,
+            debugCode: response['debugCode'] as String?,
+          ),
+        ),
+      );
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
   }
 
   @override
@@ -68,7 +190,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
           Container(
             alignment: Alignment.center,
             child: Text(
-              'Bahibo need to verify you phone number',
+              'Bahibo need to verify your phone number',
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w400,
@@ -91,130 +213,102 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
             child: Column(
               children: [
-                Autocomplete<String>(
-                  optionsBuilder: (TextEditingValue textEditingValue) {
-                    if (textEditingValue.text.isEmpty) {
-                      return const Iterable<String>.empty();
-                    }
-
-                    const countries = [
-                      "Madagascar",
-                      "France",
-                      "Mauritius",
-                      "Canada",
-                      "Germany",
-                      "Italy",
-                      "Spain",
-                      "United States",
-                      "China",
-                      "Japan",
-                      "India",
-                    ];
-
-                    return countries.where((country) {
-                      return country.toLowerCase().contains(
-                        textEditingValue.text.toLowerCase(),
-                      );
-                    });
-                  },
-
-                  onSelected: (String country) {
-                    phoneController.text = countryCodes[country]! + " ";
-                  },
-
-                  fieldViewBuilder:
-                      (context, controller, focusNode, onEditingComplete) {
-                        return DynamicIconInput(
-                          controller: controller,
-                          focusNode: focusNode,
-                          primary: theme.colorScheme.primary,
-                          panelColor: appColors.inputFill,
-                          borderColor: appColors.inputBorder,
-                          hintText: 'Country',
-                          textInputAction: TextInputAction.next,
-                          leadingIcon: Icon(
-                            Icons.public,
-                            color: appColors.mutedText,
-                          ),
-                          leadingSize: 38,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 10,
-                          ),
-                        );
-                      },
-                ),
-
-                const SizedBox(height: 20),
-
                 DynamicIconInput(
-                  controller: phoneController,
+                  controller: countryController,
                   primary: theme.colorScheme.primary,
                   panelColor: appColors.inputFill,
                   borderColor: appColors.inputBorder,
-                  hintText: 'Phone Number',
-                  keyboardType: TextInputType.phone,
-                  inputFormatters: [PhoneNumberFormatter()],
-                  textInputAction: TextInputAction.done,
-                  leadingIcon: Icon(Icons.phone, color: appColors.mutedText),
-                  leadingSize: 38,
+                  hintText: 'Country',
+                  textInputAction: TextInputAction.next,
+                  leadingIcon: Icon(Icons.public, color: appColors.mutedText),
+                  trailingIcon: PopupMenuButton<String>(
+                    initialValue: _selectedCountryName,
+                    tooltip: 'Choisir un pays',
+                    icon: Icon(
+                      Icons.keyboard_arrow_down,
+                      color: appColors.heroForeground,
+                    ),
+                    onSelected: (country) {
+                      setState(() {
+                        countryController.text = country;
+                      });
+                    },
+                    itemBuilder: (context) => countryCodes.keys
+                        .map(
+                          (country) => PopupMenuItem<String>(
+                            value: country,
+                            child: Text('$country (${countryCodes[country]})'),
+                          ),
+                        )
+                        .toList(),
+                  ),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 14,
                     vertical: 10,
                   ),
                 ),
 
+                const SizedBox(height: 20),
+
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 16,
+                      ),
+                      decoration: BoxDecoration(
+                        color: appColors.inputFill,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: appColors.inputBorder),
+                      ),
+                      child: Text(
+                        _selectedCountryDialCode,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: appColors.heroForeground,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: DynamicIconInput(
+                        controller: phoneController,
+                        primary: theme.colorScheme.primary,
+                        panelColor: appColors.inputFill,
+                        borderColor: appColors.inputBorder,
+                        hintText: 'Phone Number',
+                        keyboardType: TextInputType.phone,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        textInputAction: TextInputAction.done,
+                        leadingIcon: Icon(
+                          Icons.phone,
+                          color: appColors.mutedText,
+                        ),
+                        leadingSize: 38,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
                 const SizedBox(height: 30),
                 SizedBox(
                   width: double.infinity,
                   child: DynamicIconButton(
-                    text: 'Continue',
-                    icon: const Icon(Icons.arrow_forward, size: 20),
-                    onPressed: () {
-                      String phoneNumber = phoneController.text;
-                      // Affiche le dialog quand on appuie
-                      showDialog(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: Column(
-                            mainAxisAlignment: MainAxisAlignment.start,
-                            children: [
-                              const Text(
-                                "Is the correct phone number?",
-                                textAlign: TextAlign.center,
-                                style: TextStyle(fontSize: 15),
-                              ),
-                              Text(
-                                phoneNumber,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () {
-                                Navigator.of(context).pop(); // ferme le dialog
-                                // Ici tu peux gérer le "Don't allow"
-                                print("Permission denied");
-                              },
-                              child: const Text("Modify"),
-                            ),
-                            TextButton(
-                              onPressed: () {
-                                Navigator.of(context).pop(); // ferme le dialog
-                                // Ici tu peux gérer le "Allow"
-                                _showContactsAndMediaDialog(context);
-                              },
-                              child: const Text("Yes"),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
+                    text: _isSubmitting ? 'Sending OTP...' : 'Continue',
+                    icon: Icon(
+                      _isSubmitting ? Icons.hourglass_top : Icons.arrow_forward,
+                      size: 20,
+                    ),
+                    onPressed: _isSubmitting
+                        ? null
+                        : _showPhoneConfirmationDialog,
                     padding: const EdgeInsets.symmetric(
                       vertical: 16,
                       horizontal: 24,
@@ -226,133 +320,6 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
           ),
         ],
       ),
-    );
-  }
-
-  void _showContactsAndMediaDialog(BuildContext context) {
-    final theme = Theme.of(context);
-    final appColors = theme.appColors;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return Dialog(
-          backgroundColor: theme.cardColor,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Icône verte en haut
-              Container(
-                width: double.infinity,
-                height: 100,
-                decoration: BoxDecoration(
-                  color: appColors.socialWhatsApp,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(10),
-                    topRight: Radius.circular(10),
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.perm_contact_cal_outlined,
-                      color: appColors.heroForeground,
-                      size: 40,
-                    ),
-                    const SizedBox(width: 50),
-                    Text(
-                      "+",
-                      style: TextStyle(
-                        color: appColors.heroForeground,
-                        fontSize: 24,
-                      ),
-                    ),
-                    const SizedBox(width: 50),
-                    Icon(
-                      Icons.folder_outlined,
-                      color: appColors.heroForeground,
-                      size: 40,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.all(12),
-
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Container(
-                      alignment: Alignment.centerLeft,
-                      child: // Titre
-                      const Text(
-                        "Contacts and media",
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      "To easily send messages and photos to friends and family, "
-                      "allow Bahibo to access your photos and other media.",
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Theme.of(context).textTheme.bodyMedium?.color,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Boutons
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          onPressed: () {
-                            Navigator.of(context).pop();
-                            print("Not now tapped");
-                          },
-                          child: Text(
-                            "Not now",
-                            style: TextStyle(color: appColors.socialWhatsApp),
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            Navigator.of(context).pop();
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => ProfileInformationPage(
-                                  phoneE164: _normalizePhoneNumber(
-                                    phoneController.text,
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                          child: Text(
-                            "Continue",
-                            style: TextStyle(color: appColors.socialWhatsApp),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 }

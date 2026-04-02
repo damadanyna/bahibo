@@ -9,6 +9,7 @@ import { PrismaModule } from './modules/prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CartModule } from './modules/cart/cart.module';
 import { OrdersModule } from './modules/orders/orders.module';
+import { ProfilesModule } from './modules/profiles/profiles.module';
 import { ShipmentsModule } from './modules/shipments/shipments.module';
 
 @Module({
@@ -19,6 +20,7 @@ import { ShipmentsModule } from './modules/shipments/shipments.module';
     HealthModule,
     PrismaModule,
     AuthModule,
+    ProfilesModule,
     CategoriesModule,
     ProductsModule,
     NotificationsModule,
