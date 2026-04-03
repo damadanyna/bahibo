@@ -6,7 +6,6 @@ import 'package:bahibo/component/app_share_sheet.dart';
 import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
 import 'package:bahibo/component/app_back_button.dart';
-import 'package:bahibo/component/ui/chat_message_input_not_plus.dart';
 import 'package:bahibo/formatter/price_formatter.dart';
 import 'package:flutter/material.dart';
 import 'package:bahibo/component/app_network_image.dart';
@@ -104,6 +103,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
         const <String>[];
 
     return ChatPage(
+      conversationProductId: widget.product['id']?.toString(),
       sellerName: _resolveStringField([
         'sellerName',
         'vendorName',

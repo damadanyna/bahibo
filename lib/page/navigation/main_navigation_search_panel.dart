@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/component/navigation/navigation_search_chip.dart';
@@ -7,9 +6,10 @@ import 'package:bahibo/component/profile_models.dart';
 import 'package:bahibo/component/seller_profile_page.dart';
 import 'package:bahibo/component/ui/dinamic_icon_input.dart';
 import 'package:bahibo/page/productDetail.dart';
+import 'package:bahibo/services/app_api_client.dart';
+import 'package:bahibo/services/search_api_service.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 
 class MainNavigationSearchPanel extends StatefulWidget {
   const MainNavigationSearchPanel({super.key});
@@ -20,59 +20,20 @@ class MainNavigationSearchPanel extends StatefulWidget {
 }
 
 class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
-  static const String _productsApiUrl = 'https://dummyjson.com/products';
-  static const List<Map<String, dynamic>> _extraStudioProducts = [
-    {
-      'title': 'Dior Sauvage Parfum',
-      'category': 'Parfum de luxe',
-      'price': 560,
-      'thumbnail':
-          'https://images.unsplash.com/photo-1594035910387-fea47794261f?w=800',
-    },
-    {
-      'title': 'iPhone 13 Pro Max',
-      'category': 'Top vente',
-      'price': 3150,
-      'thumbnail':
-          'https://images.unsplash.com/photo-1632661674596-df8be070a5c5?w=800',
-    },
-    {
-      'title': 'Tecno Camon 20',
-      'category': 'Disponible',
-      'price': 890,
-      'thumbnail':
-          'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=800',
-    },
-    {
-      'title': 'AirPods Pro 2',
-      'category': 'Accessoire',
-      'price': 680,
-      'thumbnail':
-          'https://images.unsplash.com/photo-1606220588913-b3aacb4d2f46?w=800',
-    },
-    {
-      'title': 'Samsung Galaxy S23',
-      'category': 'Top vente',
-      'price': 2890,
-      'thumbnail':
-          'https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?w=800',
-    },
-    {
-      'title': 'Apple Watch Series 9',
-      'category': 'Accessoire',
-      'price': 1490,
-      'thumbnail':
-          'https://images.unsplash.com/photo-1546868871-7041f2a55e12?w=800',
-    },
-  ];
+  final SearchApiService _searchApiService = SearchApiService();
 
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
-  final List<_SearchSuggestion> _sellerSuggestions = _buildSellerSuggestions();
-  List<_SearchSuggestion> _productSuggestions = const [];
+  List<_SearchSuggestion> _suggestions = const [];
   Timer? _searchDebounce;
   bool _isSearchingApi = false;
   String? _searchError;
+  Map<String, int> _resultCounts = const {
+    'products': 0,
+    'users': 0,
+    'categories': 0,
+    'locations': 0,
+  };
 
   @override
   void initState() {
@@ -101,145 +62,6 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
     }
   }
 
-  static String _buildProductKeywords({
-    required String title,
-    required String category,
-    required String sellerName,
-    String? description,
-    List<dynamic>? tags,
-  }) {
-    final base =
-        '$title commentaire avis bon produit livraison rapide qualite vendeur $sellerName $category ${description ?? ''} ${(tags ?? const []).join(' ')}';
-    final normalizedTitle = title.toLowerCase();
-
-    if (normalizedTitle.contains('watch')) {
-      return '$base watch smartwatch montre water waterproof water resistant resistant sport fitness';
-    }
-
-    if (normalizedTitle.contains('airpods')) {
-      return '$base audio ecouteur wireless bluetooth music';
-    }
-
-    if (normalizedTitle.contains('iphone') ||
-        normalizedTitle.contains('samsung') ||
-        normalizedTitle.contains('tecno') ||
-        normalizedTitle.contains('redmi')) {
-      return '$base telephone smartphone mobile camera batterie';
-    }
-
-    if (normalizedTitle.contains('dior')) {
-      return '$base parfum fragrance beauty luxe mode';
-    }
-
-    return base;
-  }
-
-  static List<_SearchSuggestion> _buildSellerSuggestions() {
-    final profiles = <UserProfileData>[
-      defaultSellerProfileData(),
-      buildProfileFromUser(
-        name: 'Miora Mobile',
-        avatarUrl:
-            'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=600',
-        subtitle: 'Vendeuse accessoires et smartphones',
-      ),
-      buildProfileFromUser(
-        name: 'Tahina Store',
-        avatarUrl:
-            'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=600',
-        subtitle: 'Boutique telephones et gadgets',
-      ),
-    ];
-    final diorProfile = buildProfileFromUser(
-      name: 'Dior Beauty Mada',
-      avatarUrl:
-          'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?w=600',
-      subtitle: 'Boutique officielle parfums et beaute',
-    );
-
-    final suggestions = <_SearchSuggestion>[];
-    final seen = <String>{};
-
-    void addSuggestion(_SearchSuggestion suggestion) {
-      final key =
-          '${suggestion.type}|${_SearchSuggestion.normalize(suggestion.label)}';
-      if (seen.add(key)) {
-        suggestions.add(suggestion);
-      }
-    }
-
-    for (var index = 0; index < profiles.length; index++) {
-      final profile = profiles[index];
-
-      if (index == 0) {
-        addSuggestion(
-          _SearchSuggestion(
-            label: 'Dior Beauty Mada',
-            subtitle: 'Boutique officielle parfums et beaute',
-            type: _SuggestionType.seller,
-            sellerName: 'Dior Beauty Mada',
-            imageUrl:
-                'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?w=600',
-            description:
-                'Selection Dior: parfums, rouge a levres, coffrets cadeaux et nouveautes luxe.',
-            keywords:
-                'dior beauty mada parfum luxe maquillage mode sauvage miss dior vendeur officiel',
-            sellerProfile: diorProfile,
-          ),
-        );
-      }
-
-      addSuggestion(
-        _SearchSuggestion(
-          label: profile.name,
-          subtitle: profile.roleLabel,
-          type: _SuggestionType.seller,
-          sellerName: profile.name,
-          imageUrl: profile.avatarUrl,
-          description: profile.about,
-          keywords:
-              '${profile.headline} ${profile.about} vendeur fiable repond rapidement service serieux ${profile.roleLabel}',
-          sellerProfile: profile,
-        ),
-      );
-    }
-
-    return suggestions;
-  }
-
-  List<_SearchSuggestion> _buildLocalProductSuggestions() {
-    final products = <Map<String, dynamic>>[
-      ...defaultSellerProfileData().products,
-      ..._extraStudioProducts,
-    ];
-
-    return products.map((product) {
-      final title = (product['title'] ?? '').toString();
-      final category = (product['category'] ?? '').toString();
-      final thumbnail = (product['thumbnail'] ?? '').toString();
-      final price = (product['price'] ?? '').toString();
-
-      return _SearchSuggestion(
-        label: title,
-        subtitle: 'Produit local',
-        type: _SuggestionType.product,
-        sellerName: 'Bahibo Studio',
-        productName: title,
-        categoryName: category,
-        imageUrl: thumbnail,
-        description: category.isEmpty
-            ? 'Disponible sur Bahibo'
-            : '$category • ${price.isEmpty ? '' : '$price MGA'}',
-        keywords: _buildProductKeywords(
-          title: title,
-          category: category,
-          sellerName: 'Bahibo Studio',
-        ),
-        productData: _normalizeProductData(product),
-      );
-    }).toList();
-  }
-
   Future<void> _refreshSearchResults() async {
     final query = _searchController.text.trim();
 
@@ -249,96 +71,46 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
     });
 
     try {
-      final remoteSuggestions = await _fetchApiProductSuggestions(query);
-      if (!mounted) return;
-      setState(() {
-        _productSuggestions = remoteSuggestions;
-        _isSearchingApi = false;
-      });
-    } catch (_) {
-      final fallbackSuggestions = _buildLocalProductSuggestions();
-      if (!mounted) return;
-      setState(() {
-        _productSuggestions = fallbackSuggestions;
-        _isSearchingApi = false;
-        _searchError = 'Recherche API indisponible, affichage local.';
-      });
-    }
-  }
-
-  Future<List<_SearchSuggestion>> _fetchApiProductSuggestions(
-    String query,
-  ) async {
-    final endpoint = query.isEmpty
-        ? Uri.parse('$_productsApiUrl?limit=100')
-        : Uri.parse(
-            '$_productsApiUrl/search?q=${Uri.encodeQueryComponent(query)}',
-          );
-
-    final response = await http.get(endpoint);
-    if (response.statusCode != 200) {
-      throw Exception('API error');
-    }
-
-    final data = json.decode(response.body) as Map<String, dynamic>;
-    final products = (data['products'] as List<dynamic>? ?? const []);
-
-    return products.map((rawProduct) {
-      final product = rawProduct as Map<String, dynamic>;
-      final title = (product['title'] ?? '').toString();
-      final category = (product['category'] ?? '').toString();
-      final thumbnail = (product['thumbnail'] ?? '').toString();
-      final price = (product['price'] ?? '').toString();
-      final brand = (product['brand'] ?? 'Boutique partenaire').toString();
-      final description = (product['description'] ?? '').toString();
-      final tags = (product['tags'] as List<dynamic>?) ?? const [];
-
-      return _SearchSuggestion(
-        label: title,
-        subtitle: 'Produit chez $brand',
-        type: _SuggestionType.product,
-        sellerName: brand,
-        productName: title,
-        categoryName: category,
-        imageUrl: thumbnail,
-        description: category.isEmpty
-            ? description
-            : '$category • ${price.isEmpty ? '' : '$price MGA'} • $description',
-        keywords: _buildProductKeywords(
-          title: title,
-          category: category,
-          sellerName: brand,
-          description: description,
-          tags: tags,
+      final response = await _searchApiService.search(query: query);
+      final rawResults = (response['results'] as List?) ?? const [];
+      final counts = Map<String, int>.from(
+        ((response['counts'] as Map?) ?? const <String, int>{}).map(
+          (key, value) =>
+              MapEntry(key.toString(), (value as num?)?.toInt() ?? 0),
         ),
-        productData: _normalizeProductData(product),
       );
-    }).toList();
-  }
 
-  static Map<String, dynamic> _normalizeProductData(
-    Map<String, dynamic> product,
-  ) {
-    final normalized = Map<String, dynamic>.from(product);
-    final thumbnail = (normalized['thumbnail'] ?? '').toString();
-    final images = (normalized['images'] as List?)
-        ?.whereType<String>()
-        .toList();
+      if (!mounted) return;
 
-    normalized['thumbnail'] = thumbnail;
-    normalized['images'] = images == null || images.isEmpty
-        ? (thumbnail.isEmpty ? <String>[] : <String>[thumbnail])
-        : images;
-
-    return normalized;
+      setState(() {
+        _suggestions = rawResults
+            .whereType<Map>()
+            .map(
+              (item) =>
+                  _SearchSuggestion.fromApi(Map<String, dynamic>.from(item)),
+            )
+            .toList();
+        _resultCounts = {
+          'products': counts['products'] ?? 0,
+          'users': counts['users'] ?? 0,
+          'categories': counts['categories'] ?? 0,
+          'locations': counts['locations'] ?? 0,
+        };
+        _isSearchingApi = false;
+      });
+    } on AppApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _suggestions = const [];
+        _isSearchingApi = false;
+        _searchError = error.message;
+      });
+    }
   }
 
   List<_SearchSuggestion> get _visibleSuggestions {
     final query = _searchController.text.trim().toLowerCase();
-    final suggestions = <_SearchSuggestion>[
-      ..._productSuggestions,
-      ..._sellerSuggestions,
-    ];
+    final suggestions = <_SearchSuggestion>[..._suggestions];
 
     suggestions.sort((left, right) {
       final leftStarts = _SearchSuggestion.normalize(
@@ -379,10 +151,34 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
 
   UserProfileData _resolveSellerProfile(_SearchSuggestion suggestion) {
     if (suggestion.sellerProfile != null) {
-      return suggestion.sellerProfile!;
+      final profile = suggestion.sellerProfile!;
+      final avatarUrl = profile.avatarUrl.trim().isNotEmpty
+          ? profile.avatarUrl.trim()
+          : ((suggestion.imageUrl ?? '').trim().isNotEmpty
+                ? suggestion.imageUrl!.trim()
+                : 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600');
+      final coverImageUrl = profile.coverImageUrl.trim().isNotEmpty
+          ? profile.coverImageUrl.trim()
+          : 'https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?w=1600';
+
+      return UserProfileData(
+        userId: profile.userId,
+        name: profile.name,
+        avatarUrl: avatarUrl,
+        coverImageUrl: coverImageUrl,
+        roleLabel: profile.roleLabel,
+        responseLabel: profile.responseLabel,
+        headline: profile.headline,
+        about: profile.about,
+        followerCount: profile.followerCount,
+        visitorCount: profile.visitorCount,
+        rating: profile.rating,
+        products: profile.products,
+      );
     }
 
     return buildProfileFromUser(
+      userId: suggestion.type == _SuggestionType.user ? suggestion.id : null,
       name: suggestion.sellerName ?? suggestion.label,
       avatarUrl:
           suggestion.imageUrl ??
@@ -401,6 +197,13 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
           builder: (_) => ProductDetailPage(product: suggestion.productData!),
         ),
       );
+      return;
+    }
+
+    if (suggestion.type == _SuggestionType.category ||
+        suggestion.type == _SuggestionType.location) {
+      _searchFocusNode.requestFocus();
+      unawaited(_refreshSearchResults());
       return;
     }
 
@@ -454,7 +257,7 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
                   panelColor: theme.cardColor,
                   borderColor: appColors.inputBorder,
                   hintText:
-                      'Rechercher un produit, un vendeur, une categorie...',
+                      'Rechercher un utilisateur, produit, categorie ou lieu...',
                   contentPadding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
                   leadingSize: 24,
                   leadingIcon: Icon(
@@ -523,7 +326,7 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Aucun produit ou vendeur pour "$query".',
+              'Aucun utilisateur, produit, categorie ou lieu pour "$query".',
               style: TextStyle(
                 color: theme.appColors.mutedText,
                 fontWeight: FontWeight.w600,
@@ -547,14 +350,16 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
     final productCount = suggestions
         .where((suggestion) => suggestion.type == _SuggestionType.product)
         .length;
-    final sellerCount = suggestions.length - productCount;
+    final userCount = suggestions
+        .where((suggestion) => suggestion.type == _SuggestionType.user)
+        .length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           query.isEmpty
-              ? 'Produits et vendeurs charges depuis l’API'
+              ? 'Resultats depuis la base Bahibo'
               : 'Resultats lies a la recherche (${suggestions.length})',
           style: theme.textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w800,
@@ -562,7 +367,7 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
         ),
         const SizedBox(height: 6),
         Text(
-          '$productCount produits • $sellerCount vendeurs',
+          '${_resultCounts['products'] ?? productCount} produits • ${_resultCounts['users'] ?? userCount} utilisateurs • ${_resultCounts['categories'] ?? 0} categories • ${_resultCounts['locations'] ?? 0} lieux',
           style: TextStyle(
             color: theme.appColors.mutedText,
             fontWeight: FontWeight.w600,
@@ -765,9 +570,10 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
   }
 }
 
-enum _SuggestionType { product, seller }
+enum _SuggestionType { product, user, category, location }
 
 class _SearchSuggestion {
+  final String id;
   final String label;
   final String subtitle;
   final _SuggestionType type;
@@ -775,12 +581,14 @@ class _SearchSuggestion {
   final String? productName;
   final String? sellerName;
   final String? categoryName;
+  final String? locationLabel;
   final String? imageUrl;
   final String? description;
   final Map<String, dynamic>? productData;
   final UserProfileData? sellerProfile;
 
   const _SearchSuggestion({
+    required this.id,
     required this.label,
     required this.subtitle,
     required this.type,
@@ -788,11 +596,68 @@ class _SearchSuggestion {
     this.productName,
     this.sellerName,
     this.categoryName,
+    this.locationLabel,
     this.imageUrl,
     this.description,
     this.productData,
     this.sellerProfile,
   });
+
+  factory _SearchSuggestion.fromApi(Map<String, dynamic> item) {
+    final rawType = (item['type'] as String? ?? '').trim().toLowerCase();
+    final type = switch (rawType) {
+      'product' => _SuggestionType.product,
+      'user' => _SuggestionType.user,
+      'category' => _SuggestionType.category,
+      'location' => _SuggestionType.location,
+      _ => _SuggestionType.product,
+    };
+
+    UserProfileData? sellerProfile;
+    final rawSellerProfile = item['sellerProfile'];
+    if (rawSellerProfile is Map) {
+      sellerProfile = UserProfileData(
+        userId: rawSellerProfile['userId'] as String?,
+        name: (rawSellerProfile['name'] as String?) ?? '',
+        avatarUrl: (rawSellerProfile['avatarUrl'] as String?) ?? '',
+        coverImageUrl: (rawSellerProfile['coverImageUrl'] as String?) ?? '',
+        roleLabel: (rawSellerProfile['roleLabel'] as String?) ?? 'Vendeur',
+        responseLabel:
+            (rawSellerProfile['responseLabel'] as String?) ?? 'Profil actif',
+        headline: (rawSellerProfile['headline'] as String?) ?? '',
+        about: (rawSellerProfile['about'] as String?) ?? '',
+        followerCount: (rawSellerProfile['followerCount'] as String?) ?? '0',
+        visitorCount: (rawSellerProfile['visitorCount'] as String?) ?? '0',
+        rating: (rawSellerProfile['rating'] as String?) ?? '0.0',
+        products: ((rawSellerProfile['products'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((product) => Map<String, dynamic>.from(product))
+            .toList(),
+      );
+    }
+
+    Map<String, dynamic>? productData;
+    final rawProductData = item['productData'];
+    if (rawProductData is Map) {
+      productData = Map<String, dynamic>.from(rawProductData);
+    }
+
+    return _SearchSuggestion(
+      id: (item['id'] as String?) ?? '',
+      label: (item['label'] as String?) ?? '',
+      subtitle: (item['subtitle'] as String?) ?? '',
+      type: type,
+      keywords: (item['description'] as String?) ?? '',
+      productName: (item['label'] as String?) ?? '',
+      sellerName: item['sellerName'] as String?,
+      categoryName: item['categoryName'] as String?,
+      locationLabel: item['locationLabel'] as String?,
+      imageUrl: item['imageUrl'] as String?,
+      description: item['description'] as String?,
+      productData: productData,
+      sellerProfile: sellerProfile,
+    );
+  }
 
   static String normalize(String? value) {
     return (value ?? '').toLowerCase();
@@ -803,14 +668,18 @@ class _SearchSuggestion {
       : (sellerName ?? label);
 
   String get searchableText =>
-      '${normalize(label)} ${normalize(subtitle)} ${normalize(typeLabel)} ${normalize(keywords)} ${normalize(description)} ${normalize(productName)} ${normalize(sellerName)} ${normalize(categoryName)}';
+      '${normalize(label)} ${normalize(subtitle)} ${normalize(typeLabel)} ${normalize(keywords)} ${normalize(description)} ${normalize(productName)} ${normalize(sellerName)} ${normalize(categoryName)} ${normalize(locationLabel)}';
 
   String get typeLabel {
     switch (type) {
       case _SuggestionType.product:
         return 'Produit';
-      case _SuggestionType.seller:
-        return 'Vendeur';
+      case _SuggestionType.user:
+        return 'Utilisateur';
+      case _SuggestionType.category:
+        return 'Categorie';
+      case _SuggestionType.location:
+        return 'Lieu';
     }
   }
 
@@ -818,8 +687,12 @@ class _SearchSuggestion {
     switch (type) {
       case _SuggestionType.product:
         return Icons.inventory_2_outlined;
-      case _SuggestionType.seller:
-        return Icons.storefront_rounded;
+      case _SuggestionType.user:
+        return Icons.person_outline_rounded;
+      case _SuggestionType.category:
+        return Icons.sell_outlined;
+      case _SuggestionType.location:
+        return Icons.location_on_outlined;
     }
   }
 }

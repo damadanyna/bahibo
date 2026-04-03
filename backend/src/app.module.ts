@@ -8,8 +8,11 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { PrismaModule } from './modules/prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CartModule } from './modules/cart/cart.module';
+import { ConversationsModule } from './modules/conversations/conversations.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { ProfilesModule } from './modules/profiles/profiles.module';
+import { PushNotificationsModule } from './modules/push-notifications/push-notifications.module';
+import { SearchModule } from './modules/search/search.module';
 import { ShipmentsModule } from './modules/shipments/shipments.module';
 
 @Module({
@@ -21,6 +24,9 @@ import { ShipmentsModule } from './modules/shipments/shipments.module';
     PrismaModule,
     AuthModule,
     ProfilesModule,
+    PushNotificationsModule,
+    ConversationsModule,
+    SearchModule,
     CategoriesModule,
     ProductsModule,
     NotificationsModule,

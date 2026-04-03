@@ -1,6 +1,8 @@
 import 'package:bahibo/auth/language.dart';
 import 'package:bahibo/component/main_navigation_shell.dart';
 import 'package:bahibo/services/app_auth_service.dart';
+import 'package:bahibo/services/chat_realtime_service.dart';
+import 'package:bahibo/services/push_notification_service.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
@@ -14,6 +16,7 @@ class SessionGatePage extends StatefulWidget {
 class _SessionGatePageState extends State<SessionGatePage> {
   final AppAuthService _authService = AppAuthService();
   late final Future<bool> _sessionFuture;
+  bool _didBootstrapAuthenticatedSession = false;
 
   @override
   void initState() {
@@ -41,7 +44,15 @@ class _SessionGatePageState extends State<SessionGatePage> {
         }
 
         if (snapshot.data == true) {
-          return const BahiboNavigationShell();
+          if (!_didBootstrapAuthenticatedSession) {
+            _didBootstrapAuthenticatedSession = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) async {
+              await ChatRealtimeService.instance.ensureConnected();
+              await PushNotificationService.syncDeviceTokenIfAuthenticated();
+              await PushNotificationService.processPendingNotificationNavigation();
+            });
+          }
+          return BahiboNavigationShell(key: BahiboNavigationShell.shellKey);
         }
 
         return const LanguagePage();

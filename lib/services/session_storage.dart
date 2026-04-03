@@ -98,6 +98,26 @@ class SessionStorage {
     return prefs.getString(_refreshTokenKey);
   }
 
+  Future<String?> getDisplayName() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_displayNameKey);
+  }
+
+  Future<String?> getPhoneE164() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_phoneKey);
+  }
+
+  Future<String?> getCountryName() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_countryNameKey);
+  }
+
+  Future<String?> getCountryDialCode() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_countryDialCodeKey);
+  }
+
   DateTime _nextSessionExpiry() {
     return DateTime.now().add(const Duration(days: _sessionDurationInDays));
   }

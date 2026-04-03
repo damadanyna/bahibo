@@ -25,6 +25,7 @@ class UiChatAttachment {
 typedef UiChatAttachmentCallback =
     FutureOr<void> Function(UiChatAttachment attachment);
 typedef UiChatSendCallback = FutureOr<void> Function(String text);
+typedef UiChatTextChangedCallback = FutureOr<void> Function(String text);
 
 class UiChatMessageInput extends StatefulWidget {
   final TextEditingController controller;
@@ -38,6 +39,7 @@ class UiChatMessageInput extends StatefulWidget {
   final List<String> documentExtensions;
   final bool autoClearOnSend;
   final bool enableQuickText;
+  final UiChatTextChangedCallback? onTextChanged;
 
   const UiChatMessageInput({
     super.key,
@@ -53,6 +55,7 @@ class UiChatMessageInput extends StatefulWidget {
     this.documentExtensions = const ['pdf', 'doc', 'docx', 'txt'],
     this.autoClearOnSend = true,
     this.enableQuickText = true,
+    this.onTextChanged,
   });
 
   @override
@@ -254,6 +257,7 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
               controller: widget.controller,
               maxLines: 1,
               textInputAction: TextInputAction.send,
+              onChanged: widget.onTextChanged,
               onSubmitted: (_) => _handleSend(),
               style: TextStyle(
                 color: theme.colorScheme.onSurface,

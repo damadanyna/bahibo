@@ -1,8 +1,11 @@
 import 'dart:io';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 
 import 'app_api_client.dart';
 import 'api_config.dart';
+import 'chat_realtime_service.dart';
+import 'push_notification_service.dart';
 import 'session_storage.dart';
 import 'package:http/http.dart' as http;
 
@@ -158,13 +161,23 @@ class AppAuthService {
       (data['user'] as Map?) ?? const <String, dynamic>{},
     );
 
-    return _sessionStorage.saveSession(
-      accessToken: data['accessToken'] as String,
-      refreshToken: data['refreshToken'] as String,
-      phoneE164: (user['phoneE164'] as String?) ?? '',
-      displayName: (user['displayName'] as String?) ?? '',
-      countryName: user['countryName'] as String?,
-      countryDialCode: user['countryDialCode'] as String?,
-    );
+    return _sessionStorage
+        .saveSession(
+          accessToken: data['accessToken'] as String,
+          refreshToken: data['refreshToken'] as String,
+          phoneE164: (user['phoneE164'] as String?) ?? '',
+          displayName: (user['displayName'] as String?) ?? '',
+          countryName: user['countryName'] as String?,
+          countryDialCode: user['countryDialCode'] as String?,
+        )
+        .then((_) async {
+          try {
+            await ChatRealtimeService.instance.ensureConnected();
+            await PushNotificationService.syncDeviceTokenIfAuthenticated();
+            await PushNotificationService.processPendingNotificationNavigation();
+          } catch (error) {
+            debugPrint('Unable to finish push bootstrap after auth: $error');
+          }
+        });
   }
 }

@@ -22,10 +22,83 @@ class SellerProfilePage extends StatefulWidget {
 
 class _SellerProfilePageState extends State<SellerProfilePage>
     with AppPageRefreshMixin<SellerProfilePage> {
+  static const String _defaultAvatarUrl =
+      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600';
+  static const String _defaultCoverImageUrl =
+      'https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?w=1600';
   bool _showEntrySkeleton = true;
   bool _isSubscribed = false;
 
   UserProfileData get profile => widget.profile;
+
+  String get _profileAvatarUrl {
+    final value = profile.avatarUrl.trim();
+    return value.isNotEmpty ? value : _defaultAvatarUrl;
+  }
+
+  String get _profileCoverImageUrl {
+    final value = profile.coverImageUrl.trim();
+    if (value.isNotEmpty) {
+      return value;
+    }
+    return _defaultCoverImageUrl;
+  }
+
+  Map<String, dynamic>? get _messageProduct {
+    for (final product in profile.products) {
+      final productId = product['id']?.toString().trim() ?? '';
+      if (productId.isNotEmpty) {
+        return product;
+      }
+    }
+    return null;
+  }
+
+  void _openMessageThread() {
+    final product = _messageProduct;
+    final productId = product?['id']?.toString().trim() ?? '';
+    final recipientUserId = profile.userId?.trim() ?? '';
+
+    // if (productId.isEmpty) {
+    //   ScaffoldMessenger.of(context).showSnackBar(
+    //     const SnackBar(
+    //       content: Text(
+    //         'Aucune annonce disponible pour ouvrir une conversation.',
+    //       ),
+    //     ),
+    //   );
+    //   return;
+    // }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatPage(
+          conversationProductId: productId.isNotEmpty ? productId : null,
+          conversationUserId: recipientUserId.isNotEmpty
+              ? recipientUserId
+              : null,
+          sellerName: profile.name,
+          sellerRole: profile.roleLabel,
+          avatarUrl: _profileAvatarUrl,
+          product: product,
+          productTitle: (product?['title'] as String?)?.trim() ?? '',
+          productSubtitle: (product?['category'] as String?)?.trim() ?? '',
+          productPriceLabel: product?['price'] == null
+              ? ''
+              : '${product!['price']} MGA',
+          productImageUrl:
+              ((product?['thumbnail'] as String?)?.trim().isNotEmpty ?? false)
+              ? (product?['thumbnail'] as String).trim()
+              : ((((product?['images'] as List?) ?? const [])
+                            .whereType<String>()
+                            .firstOrNull)
+                        ?.trim() ??
+                    ''),
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -392,7 +465,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
           children: [
             Positioned.fill(
               child: AppNetworkImage(
-                imageUrl: profile.coverImageUrl,
+                imageUrl: _profileCoverImageUrl,
                 fit: BoxFit.cover,
               ),
             ),
@@ -429,22 +502,15 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                               context,
                               MaterialPageRoute(
                                 builder: (_) => ImageViewerPage(
-                                  imageUrls: [profile.avatarUrl],
+                                  imageUrls: [_profileAvatarUrl],
                                   initialIndex: 0,
                                   heroTag: 'profile-avatar-${profile.name}',
-                                  onSellerMessageTap: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => const ChatPage(),
-                                      ),
-                                    );
-                                  },
+                                  onSellerMessageTap: _openMessageThread,
                                   overlay: ImageViewerOverlayData(
                                     title: profile.name,
                                     description: profile.headline,
                                     sellerName: profile.name,
-                                    sellerAvatarUrl: profile.avatarUrl,
+                                    sellerAvatarUrl: _profileAvatarUrl,
                                     sellerBadge: profile.roleLabel,
                                   ),
                                 ),
@@ -462,7 +528,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                               ),
                               child: AppCircleNetworkAvatar(
                                 radius: 34,
-                                imageUrl: profile.avatarUrl,
+                                imageUrl: _profileAvatarUrl,
                               ),
                             ),
                           ),
@@ -613,14 +679,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                       children: [
                         Expanded(
                           child: ElevatedButton.icon(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => const ChatPage(),
-                                ),
-                              );
-                            },
+                            onPressed: _openMessageThread,
                             icon: const Icon(Icons.message_outlined, size: 18),
                             label: const Text('Message'),
                             style: ElevatedButton.styleFrom(

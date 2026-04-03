@@ -12,6 +12,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { RegisterDeviceTokenDto } from './dto/register-device-token.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
@@ -60,6 +61,19 @@ export class AuthController {
   @Post('logout')
   logout(@Body() dto: RefreshTokenDto) {
     return this.authService.logout(dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('device-token')
+  async registerDeviceToken(
+    @Req() req: { user: { userId: string } },
+    @Body() dto: RegisterDeviceTokenDto,
+  ) {
+    return {
+      success: true,
+      message: 'Device token registered successfully',
+      data: await this.authService.registerDeviceToken(req.user.userId, dto),
+    };
   }
 
   @UseGuards(JwtAuthGuard)

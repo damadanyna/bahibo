@@ -1,86 +1,18 @@
+import 'dart:async';
+
 import 'package:bahibo/component/navigation/navigation_message_components.dart';
 import 'package:bahibo/page/chat_page.dart';
+import 'package:bahibo/services/app_api_client.dart';
+import 'package:bahibo/services/chat_realtime_service.dart';
+import 'package:bahibo/services/conversations_api_service.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
-typedef NavigationMessageConversation = ({
-  String name,
-  String preview,
-  String time,
-  String avatarUrl,
-  bool unread,
-});
+final ValueNotifier<int> mainNavigationUnreadMessageCountNotifier =
+    ValueNotifier<int>(0);
 
-const List<NavigationMessageConversation> mainNavigationMessageConversations = [
-  (
-    name: 'John Rakoto',
-    preview: 'Bonjour, le Samsung S20 est-il toujours disponible ?',
-    time: '13:06',
-    avatarUrl:
-        'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600',
-    unread: true,
-  ),
-  (
-    name: 'Miora Andrianiaina',
-    preview: 'Je peux vous envoyer les photos cet apres-midi.',
-    time: '11:24',
-    avatarUrl:
-        'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=300',
-    unread: false,
-  ),
-  (
-    name: 'Kevin R.',
-    preview: 'Merci, je passe demain matin vers 9h.',
-    time: 'Hier',
-    avatarUrl:
-        'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=300',
-    unread: false,
-  ),
-  (
-    name: 'Aina Shop',
-    preview: 'Le produit est reserve jusqu a ce soir.',
-    time: 'Lun',
-    avatarUrl:
-        'https://images.unsplash.com/photo-1544723795-3fb6469f5b39?w=300',
-    unread: true,
-  ),
-  (
-    name: 'Tiana Market',
-    preview: 'Le prix est negociable si vous venez aujourd hui.',
-    time: 'Dim',
-    avatarUrl:
-        'https://images.unsplash.com/photo-1504257432389-52343af06ae3?w=300',
-    unread: false,
-  ),
-  (
-    name: 'Sarah Boutique',
-    preview: 'Bonsoir, la robe est encore disponible en taille M.',
-    time: 'Sam',
-    avatarUrl:
-        'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=300',
-    unread: true,
-  ),
-  (
-    name: 'Nomena Tech',
-    preview: 'Je peux livrer le laptop demain matin si besoin.',
-    time: 'Ven',
-    avatarUrl:
-        'https://images.unsplash.com/photo-1504593811423-6dd665756598?w=300',
-    unread: false,
-  ),
-  (
-    name: 'Lova Deco',
-    preview: 'Les photos supplementaires ont ete envoyees.',
-    time: 'Jeu',
-    avatarUrl:
-        'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=300',
-    unread: true,
-  ),
-];
-
-int get mainNavigationUnreadMessageCount => mainNavigationMessageConversations
-    .where((message) => message.unread)
-    .length;
+int get mainNavigationUnreadMessageCount =>
+    mainNavigationUnreadMessageCountNotifier.value;
 
 class MainNavigationMessagesPanel extends StatefulWidget {
   const MainNavigationMessagesPanel({super.key});
@@ -92,11 +24,22 @@ class MainNavigationMessagesPanel extends StatefulWidget {
 
 class _MainNavigationMessagesPanelState
     extends State<MainNavigationMessagesPanel> {
+  static const Duration _conversationsPollInterval = Duration(seconds: 5);
+
+  final ConversationsApiService _conversationsApiService =
+      ConversationsApiService();
   static const double _searchBarHeight = 58;
   final GlobalKey _stackKey = GlobalKey();
   final GlobalKey _searchAnchorKey = GlobalKey();
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
+
+  Timer? _conversationsPollTimer;
+  StreamSubscription<Map<String, dynamic>>? _realtimeEventsSubscription;
+  List<Map<String, dynamic>> _conversations = const [];
+  final Map<String, bool> _typingConversationStates = {};
+  bool _isLoading = true;
+  String? _loadError;
   String _searchQuery = '';
   double? _searchAnchorTop;
 
@@ -104,6 +47,9 @@ class _MainNavigationMessagesPanelState
   void initState() {
     super.initState();
     _scrollController.addListener(_handleScroll);
+    _bindRealtimeUpdates();
+    _startConversationsPolling();
+    _loadConversations();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _captureSearchAnchorTop();
     });
@@ -111,10 +57,74 @@ class _MainNavigationMessagesPanelState
 
   @override
   void dispose() {
+    _realtimeEventsSubscription?.cancel();
+    _conversationsPollTimer?.cancel();
     _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _startConversationsPolling() {
+    _conversationsPollTimer?.cancel();
+    _conversationsPollTimer = Timer.periodic(
+      _conversationsPollInterval,
+      (_) => _loadConversations(silent: true),
+    );
+  }
+
+  void _bindRealtimeUpdates() {
+    ChatRealtimeService.instance.ensureConnected();
+    _realtimeEventsSubscription?.cancel();
+    _realtimeEventsSubscription = ChatRealtimeService.instance.events.listen((
+      event,
+    ) {
+      final eventType = event['type']?.toString();
+      final conversationId = event['conversationId']?.toString();
+
+      if (eventType == 'typing:update' && conversationId != null) {
+        final isTyping = event['isTyping'] == true;
+        if (mounted) {
+          setState(() {
+            if (isTyping) {
+              _typingConversationStates[conversationId] = true;
+            } else {
+              _typingConversationStates.remove(conversationId);
+            }
+          });
+        }
+        return;
+      }
+
+      if (conversationId != null) {
+        _typingConversationStates.remove(conversationId);
+      }
+
+      unawaited(_loadConversations(silent: true));
+    });
+  }
+
+  String? _conversationId(Map<String, dynamic> conversation) {
+    final value = conversation['id'];
+    if (value == null) {
+      return null;
+    }
+
+    final normalized = value.toString().trim();
+    if (normalized.isEmpty) {
+      return null;
+    }
+
+    return normalized;
+  }
+
+  bool _conversationIsTyping(Map<String, dynamic> conversation) {
+    final conversationId = _conversationId(conversation);
+    if (conversationId == null) {
+      return false;
+    }
+
+    return _typingConversationStates[conversationId] == true;
   }
 
   void _handleScroll() {
@@ -137,6 +147,149 @@ class _MainNavigationMessagesPanelState
     }
   }
 
+  Future<void> _loadConversations({bool silent = false}) async {
+    if (mounted && !silent) {
+      setState(() {
+        _isLoading = true;
+        _loadError = null;
+      });
+    }
+
+    try {
+      final conversations = await _conversationsApiService.fetchConversations();
+      final unreadCount = conversations.fold<int>(
+        0,
+        (total, conversation) =>
+            total + (((conversation['unreadCount'] as num?)?.toInt()) ?? 0),
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _conversations = conversations;
+        _isLoading = false;
+        _loadError = null;
+      });
+      mainNavigationUnreadMessageCountNotifier.value = unreadCount;
+    } on AppApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        if (!silent) {
+          _conversations = const [];
+        }
+        _isLoading = false;
+        _loadError = silent ? _loadError : error.message;
+      });
+      if (!silent) {
+        mainNavigationUnreadMessageCountNotifier.value = 0;
+      }
+    }
+  }
+
+  bool _conversationIsUnread(Map<String, dynamic> conversation) {
+    return ((conversation['unreadCount'] as num?)?.toInt() ?? 0) > 0;
+  }
+
+  String _conversationName(Map<String, dynamic> conversation) {
+    final participant = conversation['participant'];
+    if (participant is Map) {
+      final value = participant['displayName'];
+      if (value is String && value.trim().isNotEmpty) {
+        return value.trim();
+      }
+    }
+    return 'Conversation';
+  }
+
+  String _conversationAvatar(Map<String, dynamic> conversation) {
+    final participant = conversation['participant'];
+    if (participant is Map) {
+      final value = participant['avatarUrl'];
+      if (value is String && value.trim().isNotEmpty) {
+        return value.trim();
+      }
+    }
+    return 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600';
+  }
+
+  String _conversationPreview(Map<String, dynamic> conversation) {
+    final lastMessage = conversation['lastMessage'];
+    if (lastMessage is Map) {
+      final value = lastMessage['content'];
+      if (value is String && value.trim().isNotEmpty) {
+        return value.trim();
+      }
+    }
+
+    final product = conversation['product'];
+    if (product is Map) {
+      final title = product['title'];
+      if (title is String && title.trim().isNotEmpty) {
+        return 'Discussion sur ${title.trim()}';
+      }
+    }
+
+    return 'Nouvelle conversation';
+  }
+
+  String _conversationTime(Map<String, dynamic> conversation) {
+    final value = conversation['lastMessageAt'];
+    if (value is! String || value.isEmpty) {
+      return '';
+    }
+
+    final dateTime = DateTime.tryParse(value)?.toLocal();
+    if (dateTime == null) {
+      return '';
+    }
+
+    final now = DateTime.now();
+    final isToday =
+        now.year == dateTime.year &&
+        now.month == dateTime.month &&
+        now.day == dateTime.day;
+    if (isToday) {
+      final hour = dateTime.hour.toString().padLeft(2, '0');
+      final minute = dateTime.minute.toString().padLeft(2, '0');
+      return '$hour:$minute';
+    }
+
+    final yesterday = now.subtract(const Duration(days: 1));
+    final isYesterday =
+        yesterday.year == dateTime.year &&
+        yesterday.month == dateTime.month &&
+        yesterday.day == dateTime.day;
+    if (isYesterday) {
+      return 'Hier';
+    }
+
+    const weekdayLabels = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+    final difference = now.difference(dateTime).inDays;
+    if (difference < 7) {
+      return weekdayLabels[dateTime.weekday - 1];
+    }
+
+    final day = dateTime.day.toString().padLeft(2, '0');
+    final month = dateTime.month.toString().padLeft(2, '0');
+    return '$day/$month';
+  }
+
+  void _openConversation(Map<String, dynamic> conversation) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatPage(
+          conversationId: conversation['id']?.toString(),
+          sellerName: _conversationName(conversation),
+          sellerRole:
+              ((conversation['participant'] as Map?)?['roleLabel']
+                  as String?) ??
+              'Utilisateur',
+          avatarUrl: _conversationAvatar(conversation),
+        ),
+      ),
+    ).then((_) => _loadConversations());
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -145,17 +298,14 @@ class _MainNavigationMessagesPanelState
     final primary = theme.colorScheme.primary;
     final heroColor = appColors.panelMuted;
     final searchFillColor = appColors.panelBackground;
-    final quickActionColor = isDark
-        ? appColors.heroSurface
-        : primary.withValues(alpha: 0.12);
     final titleColor = theme.colorScheme.onSurface;
     final mutedColor = appColors.mutedText;
     final normalizedQuery = _searchQuery.trim().toLowerCase();
     final filteredConversations = normalizedQuery.isEmpty
-        ? mainNavigationMessageConversations
-        : mainNavigationMessageConversations.where((conversation) {
-            final name = conversation.name.toLowerCase();
-            final preview = conversation.preview.toLowerCase();
+        ? _conversations
+        : _conversations.where((conversation) {
+            final name = _conversationName(conversation).toLowerCase();
+            final preview = _conversationPreview(conversation).toLowerCase();
             return name.contains(normalizedQuery) ||
                 preview.contains(normalizedQuery);
           }).toList();
@@ -166,9 +316,7 @@ class _MainNavigationMessagesPanelState
         ? null
         : _searchAnchorTop! - currentScrollOffset;
     final isSearchPinned = rawSearchTop != null && rawSearchTop <= 0;
-    final floatingSearchTop = rawSearchTop == null
-        ? null
-        : rawSearchTop.clamp(0.0, double.infinity);
+    final floatingSearchTop = rawSearchTop?.clamp(0.0, double.infinity);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _captureSearchAnchorTop();
@@ -207,18 +355,12 @@ class _MainNavigationMessagesPanelState
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              'Messages',
-                              style: theme.textTheme.headlineMedium?.copyWith(
-                                fontWeight: FontWeight.w900,
-                                color: titleColor,
-                              ),
-                            ),
-                          ),
-                        ],
+                      Text(
+                        'Messages',
+                        style: theme.textTheme.headlineMedium?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          color: titleColor,
+                        ),
                       ),
                       const SizedBox(height: 8),
                       SizedBox(
@@ -242,40 +384,43 @@ class _MainNavigationMessagesPanelState
                           ),
                         ),
                       ),
-                      const SizedBox(height: 18),
-                      SizedBox(
-                        height: 92,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: filteredConversations.length,
-                          separatorBuilder: (context, index) =>
-                              const SizedBox(width: 16),
-                          itemBuilder: (context, index) {
-                            final conversation = filteredConversations[index];
-                            return NavigationMessageStoryAvatar(
-                              name: conversation.name.split(' ').first,
-                              avatarUrl: conversation.avatarUrl,
-                              isActive: true,
-                              primary: primary,
-                              labelColor: titleColor,
-                              haloColor: heroColor,
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => const ChatPage(),
-                                  ),
-                                );
-                              },
-                            );
-                          },
+                      if (filteredConversations.isNotEmpty) ...[
+                        const SizedBox(height: 18),
+                        SizedBox(
+                          height: 92,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: filteredConversations.length,
+                            separatorBuilder: (context, index) =>
+                                const SizedBox(width: 16),
+                            itemBuilder: (context, index) {
+                              final conversation = filteredConversations[index];
+                              return NavigationMessageStoryAvatar(
+                                name: _conversationName(
+                                  conversation,
+                                ).split(' ').first,
+                                avatarUrl: _conversationAvatar(conversation),
+                                isActive: _conversationIsUnread(conversation),
+                                primary: primary,
+                                labelColor: titleColor,
+                                haloColor: heroColor,
+                                onTap: () => _openConversation(conversation),
+                              );
+                            },
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
                 const SizedBox(height: 14),
-                if (filteredConversations.isEmpty)
+                if (_isLoading)
+                  _buildInfoCard(
+                    context,
+                    text: 'Chargement des conversations...',
+                    color: mutedColor,
+                  )
+                else if (_loadError != null)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
                     child: Container(
@@ -285,14 +430,32 @@ class _MainNavigationMessagesPanelState
                         borderRadius: BorderRadius.circular(24),
                         border: Border.all(color: appColors.inputBorder),
                       ),
-                      child: Text(
-                        'Aucun message ne correspond a votre recherche.',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: mutedColor,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _loadError!,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.error,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextButton(
+                            onPressed: _loadConversations,
+                            child: const Text('Reessayer'),
+                          ),
+                        ],
                       ),
                     ),
+                  )
+                else if (filteredConversations.isEmpty)
+                  _buildInfoCard(
+                    context,
+                    text: normalizedQuery.isEmpty
+                        ? 'Aucune conversation pour le moment.'
+                        : 'Aucun message ne correspond a votre recherche.',
+                    color: mutedColor,
                   )
                 else
                   ...List.generate(filteredConversations.length, (index) {
@@ -300,30 +463,26 @@ class _MainNavigationMessagesPanelState
                     return Padding(
                       padding: EdgeInsets.fromLTRB(
                         18,
-                        0,
+                        index == 0 ? 0 : 12,
                         18,
                         index == filteredConversations.length - 1 ? 0 : 12,
                       ),
                       child: NavigationConversationTile(
-                        name: conversation.name,
-                        preview: conversation.preview,
-                        time: conversation.time,
-                        avatarUrl: conversation.avatarUrl,
-                        unread: conversation.unread,
+                        name: _conversationName(conversation),
+                        preview: _conversationPreview(conversation),
+                        time: _conversationTime(conversation),
+                        avatarUrl: _conversationAvatar(conversation),
+                        isTyping: _conversationIsTyping(conversation),
+                        unread: _conversationIsUnread(conversation),
                         primary: primary,
                         isDark: isDark,
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const ChatPage()),
-                          );
-                        },
+                        onTap: () => _openConversation(conversation),
                       ),
                     );
                   }),
               ],
             ),
-            if (floatingSearchTop != null && isSearchPinned)
+            if (isSearchPinned && floatingSearchTop != null)
               Positioned(
                 top: floatingSearchTop,
                 left: 18,
@@ -340,6 +499,33 @@ class _MainNavigationMessagesPanelState
                 ),
               ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoCard(
+    BuildContext context, {
+    required String text,
+    required Color color,
+  }) {
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: theme.cardColor,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: appColors.inputBorder),
+        ),
+        child: Text(
+          text,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: color,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
     );

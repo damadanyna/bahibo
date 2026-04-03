@@ -1,4 +1,5 @@
 class UserProfileData {
+  final String? userId;
   final String name;
   final String avatarUrl;
   final String coverImageUrl;
@@ -12,6 +13,7 @@ class UserProfileData {
   final List<Map<String, dynamic>> products;
 
   const UserProfileData({
+    this.userId,
     required this.name,
     required this.avatarUrl,
     required this.coverImageUrl,
@@ -67,11 +69,13 @@ UserProfileData defaultSellerProfileData() {
 }
 
 UserProfileData buildProfileFromUser({
+  String? userId,
   required String name,
   required String avatarUrl,
   required String subtitle,
 }) {
   return UserProfileData(
+    userId: userId,
     name: name,
     avatarUrl: avatarUrl,
     coverImageUrl:

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "528733985883",
+    "project_id": "bahibo-865e5",
+    "storage_bucket": "bahibo-865e5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:528733985883:android:afff732cc3bfd999a0737e",
+        "android_client_info": {
+          "package_name": "com.example.bahibo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCmN3EFkEpONY5rQ22bJmjNWetL4-qjoe0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

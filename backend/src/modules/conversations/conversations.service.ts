@@ -1,0 +1,460 @@
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+
+import { PrismaService } from '../prisma/prisma.service';
+import { PushNotificationsService } from '../push-notifications/push-notifications.service';
+import { CreateMessageDto } from './dto/create-message.dto';
+import { ConversationsRealtimeGateway } from './realtime/conversations-realtime.gateway';
+
+const conversationDetailInclude = Prisma.validator<Prisma.ChatConversationInclude>()({
+  buyer: true,
+  seller: true,
+  product: {
+    include: {
+      category: true,
+      sellerProfile: {
+        include: {
+          user: true,
+        },
+      },
+    },
+  },
+  messages: {
+    include: {
+      sender: true,
+    },
+    orderBy: {
+      createdAt: 'asc',
+    },
+  },
+});
+
+type ConversationDetail = Prisma.ChatConversationGetPayload<{
+  include: typeof conversationDetailInclude;
+}>;
+
+const conversationListInclude = Prisma.validator<Prisma.ChatConversationInclude>()({
+  buyer: true,
+  seller: true,
+  product: {
+    include: {
+      category: true,
+      sellerProfile: {
+        include: {
+          user: true,
+        },
+      },
+    },
+  },
+  messages: {
+    include: {
+      sender: true,
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+    take: 1,
+  },
+});
+
+type ConversationListItem = Prisma.ChatConversationGetPayload<{
+  include: typeof conversationListInclude;
+}>;
+
+@Injectable()
+export class ConversationsService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pushNotificationsService: PushNotificationsService,
+    private readonly conversationsRealtimeGateway: ConversationsRealtimeGateway,
+  ) {}
+
+  private buildDirectConversationKey(firstUserId: string, secondUserId: string) {
+    return [firstUserId, secondUserId].sort().join(':');
+  }
+
+  private resolveRoleLabel(user: { role: string }) {
+    if (user.role === 'SELLER') {
+      return 'Vendeur';
+    }
+    if (user.role === 'ADMIN') {
+      return 'Administrateur';
+    }
+    return 'Utilisateur';
+  }
+
+  async listConversations(userId: string) {
+    const conversations = await this.prisma.chatConversation.findMany({
+      where: {
+        OR: [{ buyerUserId: userId }, { sellerUserId: userId }],
+      },
+      include: conversationListInclude,
+      orderBy: {
+        lastMessageAt: 'desc',
+      },
+    });
+
+    return Promise.all(
+      conversations.map(async (conversation) => {
+        const unreadCount = await this.prisma.chatMessage.count({
+          where: {
+            conversationId: conversation.id,
+            senderUserId: {
+              not: userId,
+            },
+            readAt: null,
+          },
+        });
+
+        return this.presentConversationListItem(
+          conversation,
+          userId,
+          unreadCount,
+        );
+      }),
+    );
+  }
+
+  async getOrCreateConversationForProduct(userId: string, productId: string) {
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      include: {
+        category: true,
+        sellerProfile: {
+          include: {
+            user: true,
+          },
+        },
+      },
+    });
+
+    if (!product) {
+      throw new NotFoundException('Product not found');
+    }
+
+    const sellerUserId = product.sellerProfile.userId;
+
+    if (sellerUserId === userId) {
+      throw new BadRequestException(
+        'You cannot start a conversation with your own product',
+      );
+    }
+
+    const existingConversation = await this.prisma.chatConversation.findUnique({
+      where: {
+        buyerUserId_sellerUserId_productId: {
+          buyerUserId: userId,
+          sellerUserId,
+          productId,
+        },
+      },
+      include: conversationDetailInclude,
+    });
+
+    if (existingConversation) {
+      const readCount = await this.markConversationAsRead(existingConversation.id, userId);
+      if (readCount > 0) {
+        this.emitConversationRead(existingConversation, userId);
+      }
+      return this.presentConversationDetail(existingConversation, userId);
+    }
+
+    const conversation = await this.prisma.chatConversation.create({
+      data: {
+        buyerUserId: userId,
+        sellerUserId,
+        productId,
+        kind: 'PRODUCT',
+      },
+      include: conversationDetailInclude,
+    });
+
+    return this.presentConversationDetail(conversation, userId);
+  }
+
+  async getOrCreateConversationForUser(userId: string, targetUserId: string) {
+    if (!targetUserId.trim()) {
+      throw new BadRequestException('Target user is required');
+    }
+
+    if (targetUserId === userId) {
+      throw new BadRequestException(
+        'You cannot start a conversation with yourself',
+      );
+    }
+
+    const targetUser = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+    });
+
+    if (!targetUser) {
+      throw new NotFoundException('User not found');
+    }
+
+    const directKey = this.buildDirectConversationKey(userId, targetUserId);
+
+    const existingConversation = await this.prisma.chatConversation.findFirst({
+      where: { directKey },
+      include: conversationDetailInclude,
+    });
+
+    if (existingConversation) {
+      const readCount = await this.markConversationAsRead(existingConversation.id, userId);
+      if (readCount > 0) {
+        this.emitConversationRead(existingConversation, userId);
+      }
+      return this.presentConversationDetail(existingConversation, userId);
+    }
+
+    const conversation = await this.prisma.chatConversation.create({
+      data: {
+        buyerUserId: userId,
+        sellerUserId: targetUserId,
+        kind: 'DIRECT',
+        directKey,
+      },
+      include: conversationDetailInclude,
+    });
+
+    return this.presentConversationDetail(conversation, userId);
+  }
+
+  async getConversation(userId: string, conversationId: string) {
+    const conversation = await this.findAccessibleConversation(
+      userId,
+      conversationId,
+    );
+    const readCount = await this.markConversationAsRead(conversation.id, userId);
+    if (readCount > 0) {
+      this.emitConversationRead(conversation, userId);
+    }
+    return this.presentConversationDetail(conversation, userId);
+  }
+
+  async sendMessageForProduct(
+    userId: string,
+    productId: string,
+    dto: CreateMessageDto,
+  ) {
+    const conversation = await this.getOrCreateConversationForProduct(
+      userId,
+      productId,
+    );
+    return this.sendMessage(userId, conversation.id, dto);
+  }
+
+  async sendMessageForUser(
+    userId: string,
+    targetUserId: string,
+    dto: CreateMessageDto,
+  ) {
+    const conversation = await this.getOrCreateConversationForUser(
+      userId,
+      targetUserId,
+    );
+    return this.sendMessage(userId, conversation.id, dto);
+  }
+
+  async sendMessage(userId: string, conversationId: string, dto: CreateMessageDto) {
+    const content = dto.content.trim();
+
+    if (!content) {
+      throw new BadRequestException('Message content is required');
+    }
+
+    const conversation = await this.findAccessibleConversation(
+      userId,
+      conversationId,
+    );
+    const recipientUserId = conversation.buyerUserId === userId
+      ? conversation.sellerUserId
+      : conversation.buyerUserId;
+    const sender = conversation.buyerUserId === userId
+      ? conversation.buyer
+      : conversation.seller;
+    const recipient = conversation.buyerUserId === userId
+      ? conversation.seller
+      : conversation.buyer;
+
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.chatMessage.create({
+        data: {
+          conversationId: conversation.id,
+          senderUserId: userId,
+          content,
+        },
+      });
+
+      await transaction.chatConversation.update({
+        where: { id: conversation.id },
+        data: {
+          lastMessageAt: new Date(),
+        },
+      });
+    });
+
+    this.conversationsRealtimeGateway.emitConversationEvent(
+      [conversation.buyerUserId, conversation.sellerUserId],
+      {
+        type: 'message:new',
+        conversationId: conversation.id,
+        actorUserId: userId,
+      },
+    );
+
+    if (!this.conversationsRealtimeGateway.isUserConnected(recipientUserId)) {
+      await this.pushNotificationsService.sendChatMessageNotification({
+        recipientUserId,
+        conversationId: conversation.id,
+        senderDisplayName: sender.displayName,
+        senderAvatarUrl: sender.avatarUrl ?? undefined,
+        senderRoleLabel: this.resolveRoleLabel(sender),
+        recipientDisplayName: recipient.displayName,
+        content,
+        conversationKind: conversation.kind,
+        productId: conversation.productId ?? undefined,
+      });
+    }
+
+    return this.getConversation(userId, conversationId);
+  }
+
+  private async findAccessibleConversation(userId: string, conversationId: string) {
+    const conversation = await this.prisma.chatConversation.findUnique({
+      where: { id: conversationId },
+      include: conversationDetailInclude,
+    });
+
+    if (!conversation) {
+      throw new NotFoundException('Conversation not found');
+    }
+
+    if (
+      conversation.buyerUserId !== userId &&
+      conversation.sellerUserId !== userId
+    ) {
+      throw new ForbiddenException(
+        'You do not have access to this conversation',
+      );
+    }
+
+    return conversation;
+  }
+
+  private async markConversationAsRead(conversationId: string, userId: string) {
+    const result = await this.prisma.chatMessage.updateMany({
+      where: {
+        conversationId,
+        senderUserId: {
+          not: userId,
+        },
+        readAt: null,
+      },
+      data: {
+        readAt: new Date(),
+      },
+    });
+
+    return result.count;
+  }
+
+  private emitConversationRead(
+    conversation: { id: string; buyerUserId: string; sellerUserId: string },
+    userId: string,
+  ) {
+    this.conversationsRealtimeGateway.emitConversationEvent(
+      [conversation.buyerUserId, conversation.sellerUserId],
+      {
+        type: 'conversation:read',
+        conversationId: conversation.id,
+        actorUserId: userId,
+      },
+    );
+  }
+
+  private presentConversationListItem(
+    conversation: ConversationListItem,
+    userId: string,
+    unreadCount: number,
+  ) {
+    const isBuyer = conversation.buyerUserId === userId;
+    const participant = isBuyer ? conversation.seller : conversation.buyer;
+    const lastMessage = conversation.messages[0] ?? null;
+
+    return {
+      id: conversation.id,
+      participant: {
+        id: participant.id,
+        displayName: participant.displayName,
+        avatarUrl: participant.avatarUrl,
+        roleLabel: this.resolveRoleLabel(participant),
+      },
+      product: conversation.product
+        ? {
+            id: conversation.product.id,
+            title: conversation.product.title,
+            imageUrl: conversation.product.imageUrl,
+            category: conversation.product.category.name,
+            price: conversation.product.priceAmount.toNumber(),
+            currency: conversation.product.currencyCode,
+          }
+        : null,
+      lastMessage: lastMessage
+        ? {
+            id: lastMessage.id,
+            content: lastMessage.content,
+            createdAt: lastMessage.createdAt.toISOString(),
+            isMine: lastMessage.senderUserId === userId,
+          }
+        : null,
+      unreadCount,
+      kind: conversation.kind,
+      lastMessageAt: conversation.lastMessageAt.toISOString(),
+    };
+  }
+
+  private presentConversationDetail(conversation: ConversationDetail, userId: string) {
+    const isBuyer = conversation.buyerUserId === userId;
+    const participant = isBuyer ? conversation.seller : conversation.buyer;
+
+    return {
+      id: conversation.id,
+      participant: {
+        id: participant.id,
+        displayName: participant.displayName,
+        avatarUrl: participant.avatarUrl,
+        roleLabel: this.resolveRoleLabel(participant),
+      },
+      product: conversation.product
+        ? {
+            id: conversation.product.id,
+            title: conversation.product.title,
+            description: conversation.product.description,
+            subtitle: `${conversation.product.category.name} • ${conversation.product.isAvailable ? 'Disponible' : 'Indisponible'}`,
+            imageUrl: conversation.product.imageUrl,
+            price: conversation.product.priceAmount.toNumber(),
+            currency: conversation.product.currencyCode,
+          }
+        : null,
+      messages: conversation.messages.map((message) => ({
+        id: message.id,
+        content: message.content,
+        createdAt: message.createdAt.toISOString(),
+        isMine: message.senderUserId === userId,
+        sender: {
+          id: message.sender.id,
+          displayName: message.sender.displayName,
+          avatarUrl: message.sender.avatarUrl,
+        },
+      })),
+      kind: conversation.kind,
+      createdAt: conversation.createdAt.toISOString(),
+      lastMessageAt: conversation.lastMessageAt.toISOString(),
+    };
+  }
+}

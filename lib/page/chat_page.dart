@@ -1,19 +1,24 @@
-import 'dart:typed_data';
+import 'dart:async';
 
 import 'package:bahibo/component/app_back_button.dart';
-import 'package:flutter/material.dart';
 import 'package:bahibo/component/app_network_image.dart';
-import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
+import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/ui/chat_message_input.dart';
+import 'package:bahibo/formatter/price_formatter.dart';
+import 'package:bahibo/services/app_api_client.dart';
+import 'package:bahibo/services/chat_realtime_service.dart';
+import 'package:bahibo/services/conversations_api_service.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:flutter/material.dart';
 
-typedef ChatProductPageBuilder = Widget Function(
-  Map<String, dynamic> product, {
-  bool openedFromChat,
-});
+typedef ChatProductPageBuilder =
+    Widget Function(Map<String, dynamic> product, {bool openedFromChat});
 
 class ChatPage extends StatefulWidget {
+  final String? conversationId;
+  final String? conversationProductId;
+  final String? conversationUserId;
   final String sellerName;
   final String sellerRole;
   final String avatarUrl;
@@ -29,18 +34,20 @@ class ChatPage extends StatefulWidget {
 
   const ChatPage({
     super.key,
-    this.sellerName = 'John Rakoto',
-    this.sellerRole = 'Vendeur certifie',
+    this.conversationId,
+    this.conversationProductId,
+    this.conversationUserId,
+    this.sellerName = 'Conversation',
+    this.sellerRole = 'Utilisateur',
     this.avatarUrl =
         'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200',
     this.product,
     this.productPageBuilder,
-    this.productTitle = 'Samsung Galaxy S20',
+    this.productTitle = '',
     this.productDescription = 'Aucune description disponible.',
-    this.productSubtitle = 'Produit verifie • Disponible',
-    this.productPriceLabel = '2 375 000 MGA',
-    this.productImageUrl =
-        'https://images.unsplash.com/photo-1598327105666-5b89351aff97?w=600',
+    this.productSubtitle = '',
+    this.productPriceLabel = '',
+    this.productImageUrl = '',
     this.initialMessage,
     this.embedProductContextInInitialMessage = false,
   });
@@ -51,47 +58,51 @@ class ChatPage extends StatefulWidget {
 
 class _ChatPageState extends State<ChatPage>
     with AppPageRefreshMixin<ChatPage> {
+  static const Duration _conversationPollInterval = Duration(seconds: 3);
+  static const Duration _typingStopDelay = Duration(milliseconds: 1200);
+  final ConversationsApiService _conversationsApiService =
+      ConversationsApiService();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final List<_ChatMessage> _messages = [];
+  StreamSubscription<Map<String, dynamic>>? _realtimeEventsSubscription;
+  Timer? _conversationPollTimer;
+  Timer? _typingStopTimer;
   static const int _scrollRetryCount = 4;
   bool _showEntrySkeleton = true;
-  final List<_ChatMessage> _messages = [
-    const _ChatMessage(
-      message: 'Bonjour, le Samsung S20 est-il toujours disponible ?',
-      time: '13:00',
-      isMine: false,
-    ),
-    const _ChatMessage(
-      message: 'Oui, il est toujours disponible. Interesse ?',
-      time: '13:02',
-      isMine: true,
-    ),
-    const _ChatMessage(
-      message: 'Oui, je souhaite l\'acheter. Je peux passer aujourd\'hui ?',
-      time: '13:04',
-      isMine: false,
-    ),
-    const _ChatMessage(
-      message: 'Pas de souci. Je suis disponible a partir de 16h.',
-      time: '13:06',
-      isMine: true,
-    ),
-  ];
+  bool _isSending = false;
+  bool _isParticipantTyping = false;
+  bool _isTypingEventActive = false;
+  bool _initialMessageHandled = false;
+  String? _conversationId;
+  String? _loadError;
+  Map<String, dynamic>? _conversation;
 
   @override
   void initState() {
     super.initState();
     initializePageRefresh();
-    _addInitialMessageIfNeeded();
+    _conversationId = widget.conversationId;
+
+    if (_usesLiveConversation) {
+      _bindRealtimeUpdates();
+      _startConversationPolling();
+      _loadConversation();
+      return;
+    }
+
     Future.delayed(const Duration(milliseconds: 260), () {
       if (!mounted) return;
       setState(() => _showEntrySkeleton = false);
-      _scheduleScrollToBottom();
     });
   }
 
   @override
   void dispose() {
+    _realtimeEventsSubscription?.cancel();
+    _conversationPollTimer?.cancel();
+    _typingStopTimer?.cancel();
+    _emitTyping(false);
     disposePageRefresh();
     _messageController.dispose();
     _scrollController.dispose();
@@ -100,229 +111,362 @@ class _ChatPageState extends State<ChatPage>
 
   @override
   Future<void> onPageReload() async {
-    if (mounted) {
-      setState(() => _showEntrySkeleton = true);
-    }
-    await Future.delayed(const Duration(milliseconds: 400));
-    if (!mounted) return;
-    setState(() => _showEntrySkeleton = false);
-    _scheduleScrollToBottom();
-  }
-
-  void _sendMessage(String text) {
-    final now = TimeOfDay.now();
-    final formattedTime =
-        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-
-    setState(() {
-      _messages.add(
-        _ChatMessage(message: text, time: formattedTime, isMine: true),
-      );
-    });
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _animateToBottom();
-    });
-  }
-
-  void _addInitialMessageIfNeeded() {
-    final initialMessage = widget.initialMessage?.trim();
-    if (initialMessage == null || initialMessage.isEmpty) return;
-
-    final alreadyExists = _messages.any(
-      (message) => message.isMine && message.message == initialMessage,
-    );
-    if (alreadyExists) return;
-
-    final now = TimeOfDay.now();
-    final formattedTime =
-        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-
-    _messages.add(
-      _ChatMessage(
-        message: initialMessage,
-        time: formattedTime,
-        isMine: true,
-        attachmentType: widget.embedProductContextInInitialMessage
-            ? _AttachmentType.product
-            : null,
-        productTitle: widget.productTitle,
-        productDescription: widget.productDescription,
-        productSubtitle: widget.productSubtitle,
-        productPriceLabel: widget.productPriceLabel,
-        productImageUrl: widget.productImageUrl,
-      ),
-    );
-  }
-
-  void _openProductCard() {
-    final product = widget.product;
-    final productPageBuilder = widget.productPageBuilder;
-
-    if (product != null && productPageBuilder != null) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => productPageBuilder(product, openedFromChat: true),
-        ),
-      );
+    if (_usesLiveConversation) {
+      await _loadConversation();
       return;
     }
 
-    final theme = Theme.of(context);
-    final appColors = theme.appColors;
+    if (!mounted) return;
+    setState(() => _showEntrySkeleton = false);
+  }
 
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: appColors.panelBackground,
-      barrierColor: appColors.overlaySurface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 48,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: appColors.overlayBorder,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  widget.productTitle,
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: theme.colorScheme.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Description du produit',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: appColors.mutedText,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  widget.productDescription,
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: theme.colorScheme.onSurface,
-                    height: 1.6,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+  bool get _usesLiveConversation =>
+      (widget.conversationId?.isNotEmpty ?? false) ||
+      (widget.conversationProductId?.isNotEmpty ?? false) ||
+      (widget.conversationUserId?.isNotEmpty ?? false);
+
+  String get _sellerNameValue {
+    final participant = _conversation?['participant'];
+    if (participant is Map) {
+      final value = participant['displayName'];
+      if (value is String && value.trim().isNotEmpty) {
+        return value.trim();
+      }
+    }
+    return widget.sellerName;
+  }
+
+  String get _sellerRoleValue {
+    final participant = _conversation?['participant'];
+    if (participant is Map) {
+      final value = participant['roleLabel'];
+      if (value is String && value.trim().isNotEmpty) {
+        return value.trim();
+      }
+    }
+    return widget.sellerRole;
+  }
+
+  String get _avatarUrlValue {
+    final participant = _conversation?['participant'];
+    if (participant is Map) {
+      final value = participant['avatarUrl'];
+      if (value is String && value.trim().isNotEmpty) {
+        return value.trim();
+      }
+    }
+    return widget.avatarUrl;
+  }
+
+  String? get _participantUserId {
+    final participant = _conversation?['participant'];
+    if (participant is Map) {
+      final value = participant['id'];
+      if (value != null) {
+        final normalized = value.toString().trim();
+        if (normalized.isNotEmpty) {
+          return normalized;
+        }
+      }
+    }
+    return null;
+  }
+
+  Map<String, dynamic>? get _productValue {
+    final product = _conversation?['product'];
+    if (product is Map) {
+      return Map<String, dynamic>.from(product);
+    }
+    return widget.product;
+  }
+
+  String get _productTitleValue {
+    final value = _productValue?['title'];
+    if (value is String && value.trim().isNotEmpty) {
+      return value.trim();
+    }
+    return widget.productTitle;
+  }
+
+  String get _productSubtitleValue {
+    final value = _productValue?['subtitle'];
+    if (value is String && value.trim().isNotEmpty) {
+      return value.trim();
+    }
+    return widget.productSubtitle;
+  }
+
+  String get _productImageUrlValue {
+    final value = _productValue?['imageUrl'];
+    if (value is String && value.trim().isNotEmpty) {
+      return value.trim();
+    }
+    return widget.productImageUrl;
+  }
+
+  String get _productPriceLabelValue {
+    final price = _productValue?['price'];
+    final currency = _productValue?['currency'];
+    if (price is num && currency is String && currency.trim().isNotEmpty) {
+      return '${formatPriceAmount(price.toDouble())} ${currency.trim()}';
+    }
+    return widget.productPriceLabel;
+  }
+
+  void _startConversationPolling() {
+    _conversationPollTimer?.cancel();
+    _conversationPollTimer = Timer.periodic(
+      _conversationPollInterval,
+      (_) => _refreshConversationSilently(),
     );
   }
 
-  void _handleAttachment(UiChatAttachment attachment) {
-    switch (attachment.type) {
-      case UiChatAttachmentType.photo:
-        _addAttachmentMessage(
-          _AttachmentType.photo,
-          label: attachment.label,
-          bytes: attachment.bytes,
-          messageText: attachment.messageText,
-        );
-        break;
-      case UiChatAttachmentType.document:
-        _addAttachmentMessage(
-          _AttachmentType.document,
-          label: attachment.label,
-          bytes: attachment.bytes,
-          messageText: attachment.messageText,
-        );
-        break;
-      case UiChatAttachmentType.quickText:
-        setState(() {});
-        break;
+  void _bindRealtimeUpdates() {
+    ChatRealtimeService.instance.ensureConnected();
+    _realtimeEventsSubscription?.cancel();
+    _realtimeEventsSubscription = ChatRealtimeService.instance.events.listen((
+      event,
+    ) {
+      final eventConversationId = event['conversationId']?.toString();
+      final currentConversationId = _conversationId;
+      if (eventConversationId == null || currentConversationId == null) {
+        return;
+      }
+
+      if (eventConversationId != currentConversationId) {
+        return;
+      }
+
+      if (event['type'] == 'typing:update') {
+        final actorUserId = event['actorUserId']?.toString();
+        if (actorUserId != null && actorUserId == _participantUserId) {
+          final isTyping = event['isTyping'] == true;
+          if (mounted) {
+            setState(() => _isParticipantTyping = isTyping);
+          } else {
+            _isParticipantTyping = isTyping;
+          }
+        }
+        return;
+      }
+
+      unawaited(_refreshConversationSilently());
+    });
+  }
+
+  void _handleComposerChanged(String text) {
+    if (_conversationId == null || _participantUserId == null) {
+      return;
+    }
+
+    final hasContent = text.trim().isNotEmpty;
+    if (hasContent) {
+      if (!_isTypingEventActive) {
+        _emitTyping(true);
+      }
+      _typingStopTimer?.cancel();
+      _typingStopTimer = Timer(_typingStopDelay, () {
+        _emitTyping(false);
+      });
+      return;
+    }
+
+    _typingStopTimer?.cancel();
+    _emitTyping(false);
+  }
+
+  void _emitTyping(bool isTyping) {
+    final conversationId = _conversationId;
+    final participantUserId = _participantUserId;
+    if (conversationId == null || participantUserId == null) {
+      return;
+    }
+
+    if (_isTypingEventActive == isTyping) {
+      return;
+    }
+
+    _isTypingEventActive = isTyping;
+    ChatRealtimeService.instance.emitTyping(
+      conversationId: conversationId,
+      recipientUserId: participantUserId,
+      isTyping: isTyping,
+    );
+  }
+
+  Future<Map<String, dynamic>> _fetchConversationData() {
+    if (_conversationId != null) {
+      return _conversationsApiService.fetchConversationById(_conversationId!);
+    }
+    if (widget.conversationProductId?.isNotEmpty ?? false) {
+      return _conversationsApiService.fetchConversationForProduct(
+        widget.conversationProductId!,
+      );
+    }
+    return _conversationsApiService.fetchConversationForUser(
+      widget.conversationUserId!,
+    );
+  }
+
+  Future<void> _refreshConversationSilently() async {
+    if (!mounted || !_usesLiveConversation || _isSending) {
+      return;
+    }
+
+    try {
+      final previousLastMessageId = _messages.isEmpty
+          ? null
+          : _messages.last.id;
+      final previousMessageCount = _messages.length;
+      final data = await _fetchConversationData();
+      if (!mounted) return;
+      _applyConversation(data);
+      final hasNewMessage =
+          _messages.length != previousMessageCount ||
+          (_messages.isNotEmpty && _messages.last.id != previousLastMessageId);
+      if (hasNewMessage) {
+        setState(() {
+          _loadError = null;
+          _showEntrySkeleton = false;
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) => _animateToBottom());
+      } else {
+        setState(() {
+          _loadError = null;
+          _showEntrySkeleton = false;
+        });
+      }
+    } on AppApiException {
+      if (!mounted) return;
     }
   }
 
-  void _addAttachmentMessage(
-    _AttachmentType type, {
-    String? label,
-    Uint8List? bytes,
-    String? messageText,
-  }) {
-    final now = TimeOfDay.now();
-    final formattedTime =
-        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-
-    late final _ChatMessage message;
-    switch (type) {
-      case _AttachmentType.photo:
-        message = _ChatMessage(
-          message: messageText ?? 'Photo importee',
-          time: formattedTime,
-          isMine: true,
-          attachmentType: _AttachmentType.photo,
-          attachmentLabel: label ?? 'Image_produit.jpg',
-          attachmentBytes: bytes,
-        );
-        break;
-      case _AttachmentType.document:
-        message = _ChatMessage(
-          message: messageText ?? 'Document ajoute',
-          time: formattedTime,
-          isMine: true,
-          attachmentType: _AttachmentType.document,
-          attachmentLabel: label ?? 'Facture_bahibo.pdf',
-          attachmentBytes: bytes,
-        );
-        break;
-      case _AttachmentType.text:
-        message = _ChatMessage(
-          message: messageText ?? 'Texte ajoute',
-          time: formattedTime,
-          isMine: true,
-          attachmentType: _AttachmentType.text,
-          attachmentLabel: label ?? 'Message rapide',
-          attachmentBytes: bytes,
-        );
-        break;
-      case _AttachmentType.product:
-        message = _ChatMessage(
-          message: messageText ?? 'Produit partage',
-          time: formattedTime,
-          isMine: true,
-          attachmentType: _AttachmentType.product,
-          attachmentLabel: label ?? 'Produit',
-          attachmentBytes: bytes,
-        );
-        break;
+  Future<void> _loadConversation() async {
+    if (mounted) {
+      setState(() {
+        _showEntrySkeleton = true;
+        _loadError = null;
+      });
     }
 
-    setState(() {
-      _messages.add(message);
-    });
+    try {
+      final data = await _fetchConversationData();
+      _applyConversation(data);
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _animateToBottom();
-    });
+      if (!_initialMessageHandled) {
+        _initialMessageHandled = true;
+        final initialMessage = widget.initialMessage?.trim() ?? '';
+        final alreadyExists = initialMessage.isEmpty
+            ? true
+            : _messages.any(
+                (message) =>
+                    message.isMine && message.message == initialMessage,
+              );
+        if (!alreadyExists && initialMessage.isNotEmpty) {
+          await _sendMessage(initialMessage);
+          return;
+        }
+      }
+
+      if (!mounted) return;
+      setState(() => _showEntrySkeleton = false);
+      _scheduleScrollToBottom();
+    } on AppApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _showEntrySkeleton = false;
+        _loadError = error.message;
+      });
+    }
+  }
+
+  void _applyConversation(Map<String, dynamic> data) {
+    final previousConversationId = _conversationId;
+    _conversationId = data['id']?.toString() ?? _conversationId;
+    _conversation = Map<String, dynamic>.from(data);
+    if (_conversationId != null && _conversationId != previousConversationId) {
+      _bindRealtimeUpdates();
+    }
+    final rawMessages = (data['messages'] as List?) ?? const [];
+    _messages
+      ..clear()
+      ..addAll(
+        rawMessages.whereType<Map>().map(
+          (message) => _ChatMessage(
+            id: message['id']?.toString(),
+            message: (message['content'] as String?) ?? '',
+            time: _formatMessageTime(message['createdAt'] as String?),
+            isMine: message['isMine'] == true,
+          ),
+        ),
+      );
+  }
+
+  String _formatMessageTime(String? isoValue) {
+    final dateTime = isoValue == null
+        ? null
+        : DateTime.tryParse(isoValue)?.toLocal();
+    if (dateTime == null) {
+      return '';
+    }
+    final hour = dateTime.hour.toString().padLeft(2, '0');
+    final minute = dateTime.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+
+  Future<void> _sendMessage(String text) async {
+    final content = text.trim();
+    if (content.isEmpty || !_usesLiveConversation || _isSending) {
+      return;
+    }
+
+    _typingStopTimer?.cancel();
+    _emitTyping(false);
+    setState(() => _isSending = true);
+    try {
+      final data = _conversationId != null
+          ? await _conversationsApiService.sendMessage(
+              conversationId: _conversationId!,
+              content: content,
+            )
+          : (widget.conversationProductId?.isNotEmpty ?? false)
+          ? await _conversationsApiService.sendProductMessage(
+              productId: widget.conversationProductId!,
+              content: content,
+            )
+          : await _conversationsApiService.sendUserMessage(
+              targetUserId: widget.conversationUserId!,
+              content: content,
+            );
+      _applyConversation(data);
+      if (!mounted) return;
+      _messageController.clear();
+      setState(() => _showEntrySkeleton = false);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _animateToBottom());
+    } on AppApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) {
+        setState(() => _isSending = false);
+      }
+    }
+  }
+
+  void _handleAttachment(UiChatAttachment attachment) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${attachment.label} n\'est pas encore supporte.'),
+      ),
+    );
   }
 
   void _scheduleScrollToBottom({int remaining = _scrollRetryCount}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
-
       _jumpToBottom();
-
       if (remaining > 0) {
         _scheduleScrollToBottom(remaining: remaining - 1);
       }
@@ -331,8 +475,7 @@ class _ChatPageState extends State<ChatPage>
 
   void _jumpToBottom() {
     if (!_scrollController.hasClients) return;
-    final maxExtent = _scrollController.position.maxScrollExtent;
-    _scrollController.jumpTo(maxExtent);
+    _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
   }
 
   void _animateToBottom() {
@@ -342,6 +485,19 @@ class _ChatPageState extends State<ChatPage>
       duration: const Duration(milliseconds: 260),
       curve: Curves.easeOutCubic,
     );
+  }
+
+  void _openProductCard() {
+    final product = _productValue;
+    final productPageBuilder = widget.productPageBuilder;
+    if (product != null && productPageBuilder != null) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => productPageBuilder(product, openedFromChat: true),
+        ),
+      );
+    }
   }
 
   @override
@@ -354,9 +510,9 @@ class _ChatPageState extends State<ChatPage>
     final cardColor = appColors.panelBackground;
     final panelColor = appColors.inputFill;
     final subtleText = appColors.mutedText;
-    final sellerName = widget.sellerName;
-    final sellerRole = widget.sellerRole;
-    final avatarUrl = widget.avatarUrl;
+    final sellerName = _sellerNameValue;
+    final sellerRole = _sellerRoleValue;
+    final avatarUrl = _avatarUrlValue;
 
     return Scaffold(
       backgroundColor: background,
@@ -372,7 +528,7 @@ class _ChatPageState extends State<ChatPage>
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [
-                            primary.withOpacity(isDark ? 0.12 : 0.08),
+                            primary.withValues(alpha: isDark ? 0.12 : 0.08),
                             background,
                             background,
                           ],
@@ -399,22 +555,20 @@ class _ChatPageState extends State<ChatPage>
                                   sellerRole: sellerRole,
                                   avatarUrl: avatarUrl,
                                 ),
-                                const SizedBox(height: 10),
-                                if (!widget.embedProductContextInInitialMessage) ...[
+                                if (_productTitleValue.isNotEmpty) ...[
+                                  const SizedBox(height: 10),
                                   _ProductContextCard(
                                     primary: primary,
                                     cardColor: cardColor,
                                     subtleText: subtleText,
-                                    isDark: isDark,
                                     onTap: _openProductCard,
-                                    productTitle: widget.productTitle,
-                                    productDescription: widget.productDescription,
-                                    productSubtitle: widget.productSubtitle,
-                                    productPriceLabel: widget.productPriceLabel,
-                                    productImageUrl: widget.productImageUrl,
+                                    productTitle: _productTitleValue,
+                                    productSubtitle: _productSubtitleValue,
+                                    productPriceLabel: _productPriceLabelValue,
+                                    productImageUrl: _productImageUrlValue,
                                   ),
-                                  const SizedBox(height: 18),
                                 ],
+                                const SizedBox(height: 18),
                                 Container(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 14,
@@ -424,9 +578,7 @@ class _ChatPageState extends State<ChatPage>
                                     color: panelColor,
                                     borderRadius: BorderRadius.circular(999),
                                     border: Border.all(
-                                      color: Theme.of(
-                                        context,
-                                      ).appColors.inputBorder,
+                                      color: theme.appColors.inputBorder,
                                     ),
                                   ),
                                   child: Text(
@@ -438,30 +590,44 @@ class _ChatPageState extends State<ChatPage>
                                   ),
                                 ),
                                 const SizedBox(height: 18),
-                                ..._messages.map(
-                                  (chat) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 14),
-                                    child: _ChatBubble(
-                                      message: chat.message,
-                                      time: chat.time,
-                                      isMine: chat.isMine,
-                                      attachmentType: chat.attachmentType,
-                                      attachmentLabel: chat.attachmentLabel,
-                                      attachmentBytes: chat.attachmentBytes,
-                                      productTitle: chat.productTitle,
-                                      productDescription: chat.productDescription,
-                                      productSubtitle: chat.productSubtitle,
-                                      productPriceLabel: chat.productPriceLabel,
-                                      productImageUrl: chat.productImageUrl,
-                                      onProductTap: _openProductCard,
-                                      avatarUrl: avatarUrl,
-                                      isDark: isDark,
-                                      primary: primary,
-                                      cardColor: cardColor,
-                                      subtleText: subtleText,
+                                if (_loadError != null)
+                                  _ChatInfoCard(
+                                    text: _loadError!,
+                                    color: theme.colorScheme.error,
+                                    cardColor: cardColor,
+                                  )
+                                else if (_messages.isEmpty)
+                                  _ChatInfoCard(
+                                    text: 'Aucun message pour le moment.',
+                                    color: subtleText,
+                                    cardColor: cardColor,
+                                  )
+                                else
+                                  ..._messages.map(
+                                    (chat) => Padding(
+                                      padding: const EdgeInsets.only(
+                                        bottom: 14,
+                                      ),
+                                      child: _ChatBubble(
+                                        message: chat.message,
+                                        time: chat.time,
+                                        isMine: chat.isMine,
+                                        avatarUrl: avatarUrl,
+                                        isDark: isDark,
+                                        primary: primary,
+                                        cardColor: cardColor,
+                                        subtleText: subtleText,
+                                      ),
                                     ),
                                   ),
-                                ),
+                                if (_isParticipantTyping) ...[
+                                  const SizedBox(height: 6),
+                                  _TypingIndicatorBubble(
+                                    avatarUrl: avatarUrl,
+                                    cardColor: cardColor,
+                                    subtleText: subtleText,
+                                  ),
+                                ],
                               ],
                             ),
                           ),
@@ -472,6 +638,7 @@ class _ChatPageState extends State<ChatPage>
                         child: UiChatMessageInput(
                           controller: _messageController,
                           onAttachmentSelected: _handleAttachment,
+                          onTextChanged: _handleComposerChanged,
                           onSend: _sendMessage,
                           primary: primary,
                           panelColor: panelColor,
@@ -516,112 +683,40 @@ class _ChatHeader extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [primary.withOpacity(0.92), appColors.heroAccent],
+          colors: [primary.withValues(alpha: 0.92), appColors.heroAccent],
         ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(3),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: appColors.heroBorder),
-                ),
-                child: AppCircleNetworkAvatar(radius: 26, imageUrl: avatarUrl),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      sellerName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: appColors.heroForeground,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: appColors.success,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '$sellerRole • En ligne maintenant',
-                            style: TextStyle(
-                              color: appColors.heroForegroundMuted,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: appColors.heroSurface,
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: appColors.heroBorder),
-                ),
-                child: Text(
-                  'Actif',
+          Container(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: appColors.heroBorder),
+            ),
+            child: AppCircleNetworkAvatar(radius: 26, imageUrl: avatarUrl),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  sellerName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: appColors.heroForeground,
-                    fontSize: 7,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              color: appColors.heroSurface,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: appColors.overlayBorder),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.shield_outlined,
-                  color: appColors.heroForeground,
-                  size: 18,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.zero,
-                    child: Text(
-                      'Discutez en toute securite avant de confirmer la transaction.',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: appColors.heroForegroundMuted,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                const SizedBox(height: 4),
+                Text(
+                  sellerRole,
+                  style: TextStyle(
+                    color: appColors.heroForegroundMuted,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
@@ -637,10 +732,8 @@ class _ProductContextCard extends StatelessWidget {
   final Color primary;
   final Color cardColor;
   final Color subtleText;
-  final bool isDark;
   final VoidCallback? onTap;
   final String productTitle;
-  final String productDescription;
   final String productSubtitle;
   final String productPriceLabel;
   final String productImageUrl;
@@ -649,10 +742,8 @@ class _ProductContextCard extends StatelessWidget {
     required this.primary,
     required this.cardColor,
     required this.subtleText,
-    required this.isDark,
     this.onTap,
     required this.productTitle,
-    required this.productDescription,
     required this.productSubtitle,
     required this.productPriceLabel,
     required this.productImageUrl,
@@ -674,17 +765,18 @@ class _ProductContextCard extends StatelessWidget {
           ),
           child: Row(
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(18),
-                child: AppNetworkImage(
-                  imageUrl: productImageUrl,
-                  width: 72,
-                  height: 72,
-                  fit: BoxFit.cover,
+              if (productImageUrl.isNotEmpty)
+                ClipRRect(
                   borderRadius: BorderRadius.circular(18),
+                  child: AppNetworkImage(
+                    imageUrl: productImageUrl,
+                    width: 72,
+                    height: 72,
+                    fit: BoxFit.cover,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 14),
+              if (productImageUrl.isNotEmpty) const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -697,32 +789,36 @@ class _ProductContextCard extends StatelessWidget {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      productSubtitle,
-                      style: TextStyle(
-                        color: subtleText,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: primary.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        productPriceLabel,
+                    if (productSubtitle.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        productSubtitle,
                         style: TextStyle(
-                          color: primary,
-                          fontWeight: FontWeight.w800,
+                          color: subtleText,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                    ),
+                    ],
+                    if (productPriceLabel.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: primary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          productPriceLabel,
+                          style: TextStyle(
+                            color: primary,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -735,48 +831,23 @@ class _ProductContextCard extends StatelessWidget {
 }
 
 class _ChatMessage {
+  final String? id;
   final String message;
   final String time;
   final bool isMine;
-  final _AttachmentType? attachmentType;
-  final String? attachmentLabel;
-  final Uint8List? attachmentBytes;
-  final String? productTitle;
-  final String? productDescription;
-  final String? productSubtitle;
-  final String? productPriceLabel;
-  final String? productImageUrl;
 
   const _ChatMessage({
+    this.id,
     required this.message,
     required this.time,
     required this.isMine,
-    this.attachmentType,
-    this.attachmentLabel,
-    this.attachmentBytes,
-    this.productTitle,
-    this.productDescription,
-    this.productSubtitle,
-    this.productPriceLabel,
-    this.productImageUrl,
   });
 }
-
-enum _AttachmentType { photo, document, text, product }
 
 class _ChatBubble extends StatelessWidget {
   final String message;
   final String time;
   final bool isMine;
-  final _AttachmentType? attachmentType;
-  final String? attachmentLabel;
-  final Uint8List? attachmentBytes;
-  final String? productTitle;
-  final String? productDescription;
-  final String? productSubtitle;
-  final String? productPriceLabel;
-  final String? productImageUrl;
-  final VoidCallback? onProductTap;
   final String avatarUrl;
   final bool isDark;
   final Color primary;
@@ -787,15 +858,6 @@ class _ChatBubble extends StatelessWidget {
     required this.message,
     required this.time,
     required this.isMine,
-    this.attachmentType,
-    this.attachmentLabel,
-    this.attachmentBytes,
-    this.productTitle,
-    this.productDescription,
-    this.productSubtitle,
-    this.productPriceLabel,
-    this.productImageUrl,
-    this.onProductTap,
     required this.avatarUrl,
     required this.isDark,
     required this.primary,
@@ -807,7 +869,7 @@ class _ChatBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final appColors = Theme.of(context).appColors;
     final bubbleColor = isMine
-        ? primary.withOpacity(isDark ? 0.90 : 0.96)
+        ? primary.withValues(alpha: isDark ? 0.90 : 0.96)
         : cardColor;
     final textColor = isMine
         ? appColors.heroForeground
@@ -849,23 +911,6 @@ class _ChatBubble extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (attachmentType != null) ...[
-                    _AttachmentPreview(
-                      type: attachmentType!,
-                      label: attachmentLabel ?? message,
-                      bytes: attachmentBytes,
-                      productTitle: productTitle,
-                      productDescription: productDescription,
-                      productSubtitle: productSubtitle,
-                      productPriceLabel: productPriceLabel,
-                      productImageUrl: productImageUrl,
-                      onProductTap: onProductTap,
-                      isMine: isMine,
-                      isDark: isDark,
-                      primary: primary,
-                    ),
-                    const SizedBox(height: 10),
-                  ],
                   Text(
                     message,
                     style: TextStyle(
@@ -907,295 +952,132 @@ class _ChatBubble extends StatelessWidget {
   }
 }
 
-class _AttachmentPreview extends StatelessWidget {
-  final _AttachmentType type;
-  final String label;
-  final Uint8List? bytes;
-  final String? productTitle;
-  final String? productDescription;
-  final String? productSubtitle;
-  final String? productPriceLabel;
-  final String? productImageUrl;
-  final VoidCallback? onProductTap;
-  final bool isMine;
-  final bool isDark;
-  final Color primary;
+class _ChatInfoCard extends StatelessWidget {
+  final String text;
+  final Color color;
+  final Color cardColor;
 
-  const _AttachmentPreview({
-    required this.type,
-    required this.label,
-    this.bytes,
-    this.productTitle,
-    this.productDescription,
-    this.productSubtitle,
-    this.productPriceLabel,
-    this.productImageUrl,
-    this.onProductTap,
-    required this.isMine,
-    required this.isDark,
-    required this.primary,
+  const _ChatInfoCard({
+    required this.text,
+    required this.color,
+    required this.cardColor,
   });
 
   @override
   Widget build(BuildContext context) {
-    final appColors = Theme.of(context).appColors;
-    final backgroundColor = isMine
-        ? appColors.heroSurface
-        : (isDark ? appColors.heroSurface : primary.withOpacity(0.08));
-    final textColor = isMine
-        ? appColors.heroForeground
-        : Theme.of(context).colorScheme.onSurface;
-
-    IconData icon;
-    String title;
-    switch (type) {
-      case _AttachmentType.photo:
-        icon = Icons.photo_outlined;
-        title = 'Photo';
-        break;
-      case _AttachmentType.document:
-        icon = Icons.insert_drive_file_outlined;
-        title = 'Document';
-        break;
-      case _AttachmentType.text:
-        icon = Icons.notes_outlined;
-        title = 'Texte';
-        break;
-      case _AttachmentType.product:
-        icon = Icons.shopping_bag_outlined;
-        title = 'Produit';
-        break;
-    }
-
-    if (type == _AttachmentType.product) {
-      return _ProductMessagePreview(
-        onTap: onProductTap,
-        isMine: isMine,
-        isDark: isDark,
-        primary: primary,
-        productTitle: productTitle ?? 'Produit',
-        productDescription:
-            productDescription ?? 'Aucune description disponible.',
-        productSubtitle: productSubtitle ?? 'Disponible',
-        productPriceLabel: productPriceLabel ?? '',
-        productImageUrl: productImageUrl ?? '',
-      );
-    }
-
-    if (type == _AttachmentType.photo && bytes != null) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Stack(
-          children: [
-            Image.memory(
-              bytes!,
-              height: 164,
-              width: double.infinity,
-              fit: BoxFit.cover,
-            ),
-            Positioned(
-              left: 10,
-              right: 10,
-              bottom: 10,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: appColors.scrimSoft,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.photo_outlined,
-                      color: appColors.heroForeground,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        label,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: appColors.heroForeground,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
     return Container(
-      padding: const EdgeInsets.all(12),
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(16),
+        color: cardColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Theme.of(context).appColors.inputBorder),
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: isMine ? appColors.heroBorder : primary.withOpacity(0.14),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: textColor, size: 20),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: textColor,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: textColor.withOpacity(0.82),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+      child: Text(
+        text,
+        style: TextStyle(color: color, fontWeight: FontWeight.w700),
       ),
     );
   }
 }
 
-class _ProductMessagePreview extends StatelessWidget {
-  final VoidCallback? onTap;
-  final bool isMine;
-  final bool isDark;
-  final Color primary;
-  final String productTitle;
-  final String productDescription;
-  final String productSubtitle;
-  final String productPriceLabel;
-  final String productImageUrl;
+class _TypingIndicatorBubble extends StatefulWidget {
+  final String avatarUrl;
+  final Color cardColor;
+  final Color subtleText;
 
-  const _ProductMessagePreview({
-    this.onTap,
-    required this.isMine,
-    required this.isDark,
-    required this.primary,
-    required this.productTitle,
-    required this.productDescription,
-    required this.productSubtitle,
-    required this.productPriceLabel,
-    required this.productImageUrl,
+  const _TypingIndicatorBubble({
+    required this.avatarUrl,
+    required this.cardColor,
+    required this.subtleText,
   });
 
   @override
-  Widget build(BuildContext context) {
-    final appColors = Theme.of(context).appColors;
-    final backgroundColor = isMine
-        ? appColors.heroSurface
-        : (isDark ? appColors.heroSurface : primary.withOpacity(0.08));
-    final titleColor = isMine
-        ? appColors.heroForeground
-        : Theme.of(context).colorScheme.onSurface;
-    final subtitleColor = isMine
-        ? appColors.heroForegroundMuted
-        : appColors.mutedText;
+  State<_TypingIndicatorBubble> createState() => _TypingIndicatorBubbleState();
+}
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Ink(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: backgroundColor,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: isMine ? appColors.heroBorder : appColors.inputBorder,
+class _TypingIndicatorBubbleState extends State<_TypingIndicatorBubble>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final borderColor = Theme.of(context).appColors.inputBorder;
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 2, right: 10),
+            child: AppCircleNetworkAvatar(
+              radius: 16,
+              imageUrl: widget.avatarUrl,
             ),
           ),
-          child: Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: AppNetworkImage(
-                  imageUrl: productImageUrl,
-                  width: 62,
-                  height: 62,
-                  fit: BoxFit.cover,
-                  borderRadius: BorderRadius.circular(14),
-                ),
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+            decoration: BoxDecoration(
+              color: widget.cardColor,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(22),
+                topRight: Radius.circular(22),
+                bottomLeft: Radius.circular(8),
+                bottomRight: Radius.circular(22),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      productTitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: titleColor,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      productSubtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: subtitleColor,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isMine
-                            ? appColors.heroBorder
-                            : primary.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        productPriceLabel,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: titleColor,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 12,
+              border: Border.all(color: borderColor),
+            ),
+            child: AnimatedBuilder(
+              animation: _controller,
+              builder: (context, _) {
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: List.generate(3, (index) {
+                    final phase = (_controller.value - (index * 0.18)) % 1.0;
+                    final opacity =
+                        0.28 + ((phase < 0.5 ? phase : 1 - phase) * 1.4);
+                    final scale =
+                        0.82 + ((phase < 0.5 ? phase : 1 - phase) * 0.5);
+
+                    return Padding(
+                      padding: EdgeInsets.only(right: index == 2 ? 0 : 6),
+                      child: Transform.scale(
+                        scale: scale.clamp(0.82, 1.12),
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: widget.subtleText.withValues(
+                              alpha: opacity.clamp(0.28, 0.92),
+                            ),
+                            shape: BoxShape.circle,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+                    );
+                  }),
+                );
+              },
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

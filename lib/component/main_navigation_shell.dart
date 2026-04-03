@@ -1,7 +1,8 @@
+import 'package:bahibo/page/chat_page.dart';
 import 'package:bahibo/page/productList.dart';
+import 'package:bahibo/page/navigation/main_simple_user.dart';
 import 'package:bahibo/page/navigation/main_navigation_messages_panel.dart';
 import 'package:bahibo/page/navigation/main_navigation_search_panel.dart';
-import 'package:bahibo/page/navigation/main_navigation_account_panel.dart';
 import 'package:flutter/material.dart';
 
 import 'package:bahibo/theme/app_theme_extensions.dart';
@@ -21,13 +22,16 @@ const List<MainNavigationItem> bahiboMainNavigationItems = [
 ];
 
 class BahiboNavigationShell extends StatefulWidget {
+  static final GlobalKey<MainNavigationShellState> shellKey =
+      GlobalKey<MainNavigationShellState>();
+
   const BahiboNavigationShell({super.key});
 
   @override
-  State<BahiboNavigationShell> createState() => _MainNavigationShellState();
+  State<BahiboNavigationShell> createState() => MainNavigationShellState();
 }
 
-class _MainNavigationShellState extends State<BahiboNavigationShell> {
+class MainNavigationShellState extends State<BahiboNavigationShell> {
   int _currentIndex = 0;
 
   void _handleNavigationSelection(int index) {
@@ -37,15 +41,41 @@ class _MainNavigationShellState extends State<BahiboNavigationShell> {
     setState(() => _currentIndex = index);
   }
 
+  Future<void> openConversationFromNotification({
+    required String conversationId,
+    required String sellerName,
+    required String sellerRole,
+    required String avatarUrl,
+  }) async {
+    if (mounted && _currentIndex != 2) {
+      setState(() => _currentIndex = 2);
+    }
+
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    if (!mounted) {
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ChatPage(
+          conversationId: conversationId,
+          sellerName: sellerName,
+          sellerRole: sellerRole,
+          avatarUrl: avatarUrl,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final unreadMessageCount = mainNavigationUnreadMessageCount;
     const pages = [
       Productlist(),
       MainNavigationSearchPanel(),
       MainNavigationMessagesPanel(),
-      MainNavigationAccountPanel(),
+      MainSimpleUser(),
     ];
 
     return Scaffold(
@@ -59,11 +89,14 @@ class _MainNavigationShellState extends State<BahiboNavigationShell> {
             left: 0,
             right: 0,
             bottom: 0,
-            child: MainNavigationBar(
-              currentIndex: _currentIndex,
-              items: bahiboMainNavigationItems,
-              unreadMessageCount: unreadMessageCount,
-              onTap: _handleNavigationSelection,
+            child: ValueListenableBuilder<int>(
+              valueListenable: mainNavigationUnreadMessageCountNotifier,
+              builder: (context, unreadMessageCount, _) => MainNavigationBar(
+                currentIndex: _currentIndex,
+                items: bahiboMainNavigationItems,
+                unreadMessageCount: unreadMessageCount,
+                onTap: _handleNavigationSelection,
+              ),
             ),
           ),
         ],

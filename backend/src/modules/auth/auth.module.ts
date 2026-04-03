@@ -5,6 +5,7 @@ import { PassportModule } from '@nestjs/passport';
 
 import { PrismaModule } from '../prisma/prisma.module';
 import { ProfilesModule } from '../profiles/profiles.module';
+import { PushNotificationsModule } from '../push-notifications/push-notifications.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { CloudinaryService } from './cloudinary.service';
@@ -14,6 +15,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
   imports: [
     PrismaModule,
     ProfilesModule,
+    PushNotificationsModule,
     PassportModule,
     ConfigModule,
     JwtModule.registerAsync({

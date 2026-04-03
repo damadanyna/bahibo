@@ -106,6 +106,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
         const <String>[];
 
     return ChatPage(
+      conversationProductId: widget.product['id']?.toString(),
       sellerName: _resolveStringField([
         'sellerName',
         'vendorName',

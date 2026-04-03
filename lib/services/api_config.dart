@@ -20,4 +20,9 @@ class ApiConfig {
       _ => _localNetworkBaseUrl,
     };
   }
+
+  static String get socketUrl {
+    final uri = Uri.parse(baseUrl);
+    return uri.replace(path: '', query: null, fragment: '').toString();
+  }
 }

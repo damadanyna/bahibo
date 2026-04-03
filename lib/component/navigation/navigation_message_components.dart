@@ -179,6 +179,7 @@ class NavigationConversationTile extends StatelessWidget {
   final String preview;
   final String time;
   final String avatarUrl;
+  final bool isTyping;
   final bool unread;
   final Color primary;
   final bool isDark;
@@ -190,6 +191,7 @@ class NavigationConversationTile extends StatelessWidget {
     required this.preview,
     required this.time,
     required this.avatarUrl,
+    this.isTyping = false,
     required this.unread,
     required this.primary,
     required this.isDark,
@@ -307,18 +309,23 @@ class NavigationConversationTile extends StatelessWidget {
                     Row(
                       children: [
                         Expanded(
-                          child: Text(
-                            preview,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: previewColor,
-                              fontWeight: unread
-                                  ? FontWeight.w600
-                                  : FontWeight.w500,
-                              fontSize: 14,
-                            ),
-                          ),
+                          child: isTyping
+                              ? _NavigationTypingPreview(
+                                  primary: primary,
+                                  previewColor: previewColor,
+                                )
+                              : Text(
+                                  preview,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: previewColor,
+                                    fontWeight: unread
+                                        ? FontWeight.w600
+                                        : FontWeight.w500,
+                                    fontSize: 14,
+                                  ),
+                                ),
                         ),
                         if (unread) ...[
                           const SizedBox(width: 10),
@@ -340,6 +347,90 @@ class NavigationConversationTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _NavigationTypingPreview extends StatefulWidget {
+  final Color primary;
+  final Color previewColor;
+
+  const _NavigationTypingPreview({
+    required this.primary,
+    required this.previewColor,
+  });
+
+  @override
+  State<_NavigationTypingPreview> createState() =>
+      _NavigationTypingPreviewState();
+}
+
+class _NavigationTypingPreviewState extends State<_NavigationTypingPreview>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Text(
+          'En train d\'ecrire',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: widget.primary,
+            fontWeight: FontWeight.w700,
+            fontSize: 14,
+          ),
+        ),
+        const SizedBox(width: 8),
+        AnimatedBuilder(
+          animation: _controller,
+          builder: (context, _) {
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(3, (index) {
+                final phase = (_controller.value - (index * 0.18)) % 1.0;
+                final opacity =
+                    0.28 + ((phase < 0.5 ? phase : 1 - phase) * 1.4);
+                final scale = 0.8 + ((phase < 0.5 ? phase : 1 - phase) * 0.45);
+
+                return Padding(
+                  padding: EdgeInsets.only(right: index == 2 ? 0 : 4),
+                  child: Transform.scale(
+                    scale: scale.clamp(0.8, 1.08),
+                    child: Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: widget.primary.withValues(
+                          alpha: opacity.clamp(0.28, 0.92),
+                        ),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            );
+          },
+        ),
+      ],
     );
   }
 }

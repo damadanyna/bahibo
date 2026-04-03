@@ -13,8 +13,10 @@ import * as bcrypt from 'bcryptjs';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { ProfilesService } from '../profiles/profiles.service';
+import { PushNotificationsService } from '../push-notifications/push-notifications.service';
 import { CloudinaryService } from './cloudinary.service';
 import { LoginDto } from './dto/login.dto';
+import { RegisterDeviceTokenDto } from './dto/register-device-token.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
@@ -28,6 +30,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly profilesService: ProfilesService,
+    private readonly pushNotificationsService: PushNotificationsService,
     private readonly cloudinaryService: CloudinaryService,
   ) {}
 
@@ -320,6 +323,14 @@ export class AuthService {
 
   getAuthenticatedUser(userId: string) {
     return this.profilesService.getCurrentUserProfile(userId);
+  }
+
+  async registerDeviceToken(userId: string, dto: RegisterDeviceTokenDto) {
+    await this.pushNotificationsService.registerDeviceToken(userId, dto);
+
+    return {
+      tokenRegistered: true,
+    };
   }
 
   private async issueTokens(userId: string) {
