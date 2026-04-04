@@ -16,5 +16,6 @@ export interface ProductEntity {
   images: string[];
   thumbnail: string;
   isAvailable: boolean;
+  likesCount: number;
   createdAt: string;
 }

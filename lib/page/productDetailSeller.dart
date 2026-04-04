@@ -1,5 +1,4 @@
 import 'package:bahibo/component/app_comments_sheet.dart';
-import 'package:bahibo/component/app_likes_sheet.dart';
 import 'package:bahibo/component/profile_models.dart';
 import 'package:bahibo/component/seller_profile_page.dart';
 import 'package:bahibo/component/app_share_sheet.dart';
@@ -7,6 +6,8 @@ import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
 import 'package:bahibo/component/app_back_button.dart';
 import 'package:bahibo/formatter/price_formatter.dart';
+import 'package:bahibo/services/app_api_client.dart';
+import 'package:bahibo/services/catalog_api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/page/chat_page.dart';
@@ -33,20 +34,27 @@ class _ProductDetailPageState extends State<ProductDetailPage>
   static const String _sellerBadge = 'En ligne';
   static const String _sellerImageUrl =
       'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600';
+  final CatalogApiService _catalogApiService = CatalogApiService();
 
   late PageController _pageController;
+  late Map<String, dynamic> _productData;
   final TextEditingController _availabilityController = TextEditingController();
-  final List<AppLikeItem> _likes = defaultAppLikes();
-  final int _likeCount = 6374;
+  int _likeCount = 0;
   int _commentCount = 64;
   bool _showEntrySkeleton = true;
+  bool _isLiked = false;
+  bool _isLikeSubmitting = false;
   final List<AppCommentItem> _comments = defaultAppComments();
+
+  Map<String, dynamic> get product => _productData;
 
   @override
   void initState() {
     super.initState();
     initializePageRefresh();
     _pageController = PageController();
+    _productData = Map<String, dynamic>.from(widget.product);
+    _likeCount = _resolveLikeCount(_productData);
     Future.delayed(const Duration(milliseconds: 260), () {
       if (!mounted) return;
       setState(() => _showEntrySkeleton = false);
@@ -73,7 +81,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
 
   String _resolveStringField(List<String> keys, String fallback) {
     for (final key in keys) {
-      final value = widget.product[key];
+      final value = product[key];
       if (value is String && value.trim().isNotEmpty) {
         return value.trim();
       }
@@ -82,8 +90,8 @@ class _ProductDetailPageState extends State<ProductDetailPage>
   }
 
   String _buildProductPriceLabel() {
-    final price = (widget.product['price'] as num?)?.toDouble() ?? 0.0;
-    final currency = resolveProductCurrency(widget.product);
+    final price = (product['price'] as num?)?.toDouble() ?? 0.0;
+    final currency = resolveProductCurrency(product);
     return '${formatPriceAmount(price)} $currency';
   }
 
@@ -99,11 +107,11 @@ class _ProductDetailPageState extends State<ProductDetailPage>
 
   ChatPage _buildSellerChatPage() {
     final images =
-        (widget.product['images'] as List?)?.whereType<String>().toList() ??
+        (product['images'] as List?)?.whereType<String>().toList() ??
         const <String>[];
 
     return ChatPage(
-      conversationProductId: widget.product['id']?.toString(),
+      conversationProductId: product['id']?.toString(),
       sellerName: _resolveStringField([
         'sellerName',
         'vendorName',
@@ -117,7 +125,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
         'sellerImageUrl',
         'avatarUrl',
       ], _sellerImageUrl),
-      product: Map<String, dynamic>.from(widget.product),
+      product: Map<String, dynamic>.from(product),
       productPageBuilder: (product, {openedFromChat = false}) =>
           ProductDetailPage(product: product, openedFromChat: openedFromChat),
       productTitle: _resolveStringField(['title', 'name'], 'Produit'),
@@ -143,30 +151,66 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     Navigator.push(context, route);
   }
 
-  void _showLikesSheet() {
-    showAppLikesSheet(context, currentLikeCount: _likeCount, likes: _likes);
+  int _resolveLikeCount(Map<String, dynamic> currentProduct) {
+    final likesCount = currentProduct['likesCount'];
+    if (likesCount is int) {
+      return likesCount;
+    }
+    if (likesCount is num) {
+      return likesCount.toInt();
+    }
+    return 0;
+  }
+
+  Future<void> _toggleLike() async {
+    final productId = product['id']?.toString().trim() ?? '';
+    if (productId.isEmpty || _isLikeSubmitting) {
+      return;
+    }
+
+    setState(() => _isLikeSubmitting = true);
+
+    try {
+      final updatedProduct = _isLiked
+          ? await _catalogApiService.unlikeProduct(productId)
+          : await _catalogApiService.likeProduct(productId);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _productData = updatedProduct;
+        _likeCount = _resolveLikeCount(updatedProduct);
+        _isLiked = !_isLiked;
+      });
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) {
+        setState(() => _isLikeSubmitting = false);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final List<String> images =
-        (widget.product['images'] as List?)?.whereType<String>().toList() ??
-        [widget.product['thumbnail'] ?? 'https://via.placeholder.com/150'];
+        (product['images'] as List?)?.whereType<String>().toList() ??
+        [product['thumbnail'] ?? 'https://via.placeholder.com/150'];
 
-    final String title = widget.product['title'] ?? 'Produit';
-    final double price = (widget.product['price'] as num?)?.toDouble() ?? 0.0;
+    final String title = product['title'] ?? 'Produit';
+    final double price = (product['price'] as num?)?.toDouble() ?? 0.0;
     final String priceFormatted = formatPriceAmount(price);
-    final String currency = resolveProductCurrency(widget.product);
+    final String currency = resolveProductCurrency(product);
 
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final appColors = theme.appColors;
     final pageBackgroundColor = appColors.backgroundBase;
-    final topBarColor = appColors.panelMuted;
-    final topBarForegroundColor = isDark
-        ? (theme.appBarTheme.foregroundColor ?? appColors.heroForeground)
-        : theme.colorScheme.onSurface;
-    final bottomBarColor = isDark ? theme.scaffoldBackgroundColor : topBarColor;
     final detailCardColor = theme.cardColor;
     final detailPrimaryTextColor =
         theme.textTheme.bodyLarge?.color ?? theme.colorScheme.onSurface;
@@ -226,10 +270,12 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                       MainAxisAlignment.spaceAround,
                                   children: [
                                     _socialActionCard(
-                                      icon: Icons.favorite,
+                                      icon: _isLiked
+                                          ? Icons.favorite
+                                          : Icons.favorite_border,
                                       label: '$_likeCount',
                                       iconColor: appColors.favoriteAccent,
-                                      onTap: _showLikesSheet,
+                                      onTap: _toggleLike,
                                     ),
                                     _socialActionCard(
                                       icon: Icons.chat,
@@ -270,7 +316,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                         borderRadius: BorderRadius.circular(20),
                                       ),
                                       child: Text(
-                                        widget.product['category'] ?? 'Produit',
+                                        product['category'] ?? 'Produit',
                                         style: TextStyle(
                                           color: theme.colorScheme.primary,
                                           fontSize: 12,
@@ -410,7 +456,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                     ),
                                     const SizedBox(height: 8),
                                     Text(
-                                      widget.product['description'] ??
+                                      product['description'] ??
                                           'Aucune description disponible.',
                                       style: TextStyle(
                                         fontSize: 14,
@@ -566,9 +612,9 @@ class _ProductDetailPageState extends State<ProductDetailPage>
             _openSellerChat();
           },
           overlay: ImageViewerOverlayData(
-            title: widget.product['title'] as String? ?? 'Produit',
+            title: product['title'] as String? ?? 'Produit',
             description:
-                widget.product['description'] as String? ??
+                product['description'] as String? ??
                 'Aucune description disponible.',
             sellerName: _sellerName,
             sellerAvatarUrl: _sellerImageUrl,

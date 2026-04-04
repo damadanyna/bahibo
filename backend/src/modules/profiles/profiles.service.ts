@@ -17,7 +17,10 @@ export class ProfilesService {
 
   async getCurrentUserProfile(userId: string) {
     const user = await this.findUserProfileById(userId, this.prisma);
-    return presentUserProfile(user);
+    const sellerStats = user.sellerProfile
+      ? await this.buildSellerStats(user.sellerProfile.id)
+      : undefined;
+    return presentUserProfile(user, sellerStats);
   }
 
   async updateCurrentUserProfile(userId: string, dto: UpdateProfileDto) {
@@ -48,7 +51,9 @@ export class ProfilesService {
       }
     });
 
-    return this.getCurrentUserProfile(userId);
+    const profile = await this.getCurrentUserProfile(userId);
+    this.emitProfileUpdated(profile);
+    return profile;
   }
 
   async getPublicSellerProfile(sellerProfileId: string) {
@@ -61,6 +66,24 @@ export class ProfilesService {
             products: true,
           },
         },
+        products: {
+          include: {
+            category: true,
+            _count: {
+              select: {
+                likes: true,
+              },
+            },
+            productImages: {
+              orderBy: {
+                sortOrder: 'asc',
+              },
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+        },
       },
     });
 
@@ -68,7 +91,145 @@ export class ProfilesService {
       throw new NotFoundException('Seller profile not found');
     }
 
-    return presentPublicSellerProfile(sellerProfile);
+    const sellerStats = await this.buildSellerStats(sellerProfileId);
+    return presentPublicSellerProfile(sellerProfile, sellerStats, false);
+  }
+
+  async getPublicSellerProfileForViewer(sellerProfileId: string, viewerUserId: string) {
+    const sellerProfile = await this.prisma.sellerProfile.findUnique({
+      where: { id: sellerProfileId },
+      include: {
+        user: true,
+        _count: {
+          select: {
+            products: true,
+          },
+        },
+        products: {
+          include: {
+            category: true,
+            _count: {
+              select: {
+                likes: true,
+              },
+            },
+            productImages: {
+              orderBy: {
+                sortOrder: 'asc',
+              },
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+        },
+      },
+    });
+
+    if (!sellerProfile) {
+      throw new NotFoundException('Seller profile not found');
+    }
+
+    const [sellerStats, existingFollow] = await Promise.all([
+      this.buildSellerStats(sellerProfileId),
+      this.prisma.sellerFollow.findUnique({
+        where: {
+          followerUserId_sellerProfileId: {
+            followerUserId: viewerUserId,
+            sellerProfileId,
+          },
+        },
+      }),
+    ]);
+
+    return presentPublicSellerProfile(
+      sellerProfile,
+      sellerStats,
+      existingFollow != null,
+    );
+  }
+
+  async followSeller(viewerUserId: string, sellerProfileId: string) {
+    const sellerProfile = await this.prisma.sellerProfile.findUnique({
+      where: { id: sellerProfileId },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!sellerProfile) {
+      throw new NotFoundException('Seller profile not found');
+    }
+
+    if (sellerProfile.userId === viewerUserId) {
+      throw new BadRequestException('Impossible de s\'abonner a son propre profil.');
+    }
+
+    await this.prisma.sellerFollow.upsert({
+      where: {
+        followerUserId_sellerProfileId: {
+          followerUserId: viewerUserId,
+          sellerProfileId,
+        },
+      },
+      create: {
+        followerUserId: viewerUserId,
+        sellerProfileId,
+      },
+      update: {},
+    });
+
+    await this.emitSellerMetricsProfileUpdate(sellerProfile.userId);
+    return this.getPublicSellerProfileForViewer(sellerProfileId, viewerUserId);
+  }
+
+  async unfollowSeller(viewerUserId: string, sellerProfileId: string) {
+    const sellerProfile = await this.prisma.sellerProfile.findUnique({
+      where: { id: sellerProfileId },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!sellerProfile) {
+      throw new NotFoundException('Seller profile not found');
+    }
+
+    await this.prisma.sellerFollow.deleteMany({
+      where: {
+        followerUserId: viewerUserId,
+        sellerProfileId,
+      },
+    });
+
+    await this.emitSellerMetricsProfileUpdate(sellerProfile.userId);
+    return this.getPublicSellerProfileForViewer(sellerProfileId, viewerUserId);
+  }
+
+  async recordSellerProfileView(viewerUserId: string, sellerProfileId: string) {
+    const sellerProfile = await this.prisma.sellerProfile.findUnique({
+      where: { id: sellerProfileId },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!sellerProfile) {
+      throw new NotFoundException('Seller profile not found');
+    }
+
+    if (sellerProfile.userId !== viewerUserId) {
+      await this.prisma.sellerProfileView.create({
+        data: {
+          sellerProfileId,
+          viewerUserId,
+        },
+      });
+
+      await this.emitSellerMetricsProfileUpdate(sellerProfile.userId);
+    }
+
+    return this.getPublicSellerProfileForViewer(sellerProfileId, viewerUserId);
   }
 
   async updateCurrentUserAvatarImage(
@@ -255,6 +416,54 @@ export class ProfilesService {
     });
   }
 
+  private emitProfileUpdated(profile: Awaited<ReturnType<ProfilesService['getCurrentUserProfile']>>) {
+    this.conversationsRealtimeGateway.emitProfileEvent(profile.id, {
+      type: 'profile:updated',
+      userId: profile.id,
+      profile: {
+        id: profile.id,
+        role: profile.role,
+        shopRequestStatus: profile.shopRequestStatus,
+        shopRequestSubmittedAt: profile.shopRequestSubmittedAt,
+        shopRequestReviewedAt: profile.shopRequestReviewedAt,
+        sellerProfile: profile.sellerProfile,
+      },
+    });
+  }
+
+  async emitSellerMetricsProfileUpdate(userId: string) {
+    const profile = await this.getCurrentUserProfile(userId);
+    this.emitProfileUpdated(profile);
+  }
+
+  private async buildSellerStats(sellerProfileId: string) {
+    const [followerCount, profileViewCount, totalLikesCount, productCount] = await Promise.all([
+      this.prisma.sellerFollow.count({
+        where: { sellerProfileId },
+      }),
+      this.prisma.sellerProfileView.count({
+        where: { sellerProfileId },
+      }),
+      this.prisma.productLike.count({
+        where: {
+          product: {
+            sellerProfileId,
+          },
+        },
+      }),
+      this.prisma.product.count({
+        where: { sellerProfileId },
+      }),
+    ]);
+
+    return {
+      followerCount,
+      profileViewCount,
+      productCount,
+      totalLikesCount,
+    };
+  }
+
   private async findUserProfileById(userId: string, client: PrismaService | Prisma.TransactionClient) {
     const user = await client.user.findUnique({
       where: { id: userId },
@@ -269,6 +478,11 @@ export class ProfilesService {
             products: {
               include: {
                 category: true,
+                _count: {
+                  select: {
+                    likes: true,
+                  },
+                },
                 productImages: {
                   orderBy: {
                     sortOrder: 'asc',
@@ -298,25 +512,30 @@ export class ProfilesService {
           include: {
             _count: {
               select: {
-                products: true;
-              };
-            };
+                products: true,
+              },
+            },
             products: {
               include: {
-                category: true;
+                category: true,
+                _count: {
+                  select: {
+                    likes: true,
+                  },
+                },
                 productImages: {
                   orderBy: {
-                    sortOrder: 'asc';
-                  };
-                };
-              };
+                    sortOrder: 'asc',
+                  },
+                },
+              },
               orderBy: {
-                createdAt: 'desc';
-              };
-            };
-          };
-        };
-      };
+                createdAt: 'desc',
+              },
+            },
+          },
+        },
+      },
     }>,
     dto: UpdateProfileDto,
   ): Prisma.UserUpdateInput {
@@ -459,11 +678,14 @@ export class ProfilesService {
       data,
     });
 
+    const profile = await this.getCurrentUserProfile(userId);
+    this.emitProfileUpdated(profile);
+
     return {
       originalUrl: uploadResult.originalUrl,
       publicId: uploadResult.publicId,
       imageUrl: uploadResult.imageUrl,
-      profile: await this.getCurrentUserProfile(userId),
+      profile,
     };
   }
 }

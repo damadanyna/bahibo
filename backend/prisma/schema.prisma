@@ -72,6 +72,9 @@ model User {
   soldConversations   ChatConversation[] @relation("ConversationSeller")
   chatMessages        ChatMessage[]      @relation("MessageSender")
   deviceTokens        UserDeviceToken[]
+  sellerFollows       SellerFollow[]     @relation("SellerFollowFollower")
+  sellerProfileViews  SellerProfileView[] @relation("SellerProfileViewViewer")
+  productLikes        ProductLike[]
 }
 
 model UserDeviceToken {
@@ -123,6 +126,8 @@ model SellerProfile {
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   products    Product[]
   orders      Order[]
+  followers   SellerFollow[]
+  profileViews SellerProfileView[]
 }
 
 model Category {
@@ -150,9 +155,46 @@ model Product {
   sellerProfile   SellerProfile @relation(fields: [sellerProfileId], references: [id], onDelete: Cascade)
   category        Category    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   productImages   ProductImage[]
+  likes           ProductLike[]
   cartItems       CartItem[]
   orderItems      OrderItem[]
   conversations   ChatConversation[]
+}
+
+model SellerFollow {
+  id              String        @id @default(uuid())
+  createdAt       DateTime      @default(now())
+  followerUserId  String
+  sellerProfileId String
+  follower        User          @relation("SellerFollowFollower", fields: [followerUserId], references: [id], onDelete: Cascade)
+  sellerProfile   SellerProfile @relation(fields: [sellerProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([followerUserId, sellerProfileId])
+  @@index([sellerProfileId, createdAt])
+}
+
+model SellerProfileView {
+  id              String        @id @default(uuid())
+  createdAt       DateTime      @default(now())
+  viewerUserId    String?
+  sellerProfileId String
+  viewer          User?         @relation("SellerProfileViewViewer", fields: [viewerUserId], references: [id], onDelete: SetNull)
+  sellerProfile   SellerProfile @relation(fields: [sellerProfileId], references: [id], onDelete: Cascade)
+
+  @@index([sellerProfileId, createdAt])
+  @@index([viewerUserId, createdAt])
+}
+
+model ProductLike {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  userId    String
+  productId String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([productId, createdAt])
 }
 
 model ProductImage {

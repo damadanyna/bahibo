@@ -6,11 +6,17 @@ import 'package:bahibo/theme/app_theme_extensions.dart';
 class StudioDashboardPage extends StatefulWidget {
   final String studioName;
   final List<Map<String, dynamic>> products;
+  final String followerCount;
+  final String visitorCount;
+  final String totalLikesCount;
 
   const StudioDashboardPage({
     super.key,
     required this.studioName,
     required this.products,
+    required this.followerCount,
+    required this.visitorCount,
+    required this.totalLikesCount,
   });
 
   @override
@@ -34,75 +40,222 @@ class _StudioDashboardPageState extends State<StudioDashboardPage> {
     return sanitized.isEmpty ? 'Boutique' : sanitized;
   }
 
-  static const Map<_DashboardRange, _DashboardSnapshot> _snapshots = {
-    _DashboardRange.last5Days: _DashboardSnapshot(
-      sales: '1.8M MGA',
-      orders: '42',
-      visits: '1.9k',
-      likes: '640',
-      growth: '+12%',
-      bars: [0.38, 0.46, 0.62, 0.58, 0.84],
-      labels: ['J-4', 'J-3', 'J-2', 'J-1', 'Auj'],
-      followersCurve: [0.18, 0.24, 0.29, 0.33, 0.46],
-      likesCurve: [0.36, 0.44, 0.57, 0.63, 0.80],
-      viewsCurve: [0.42, 0.51, 0.60, 0.56, 0.72],
-      productAddsCurve: [0.22, 0.28, 0.31, 0.35, 0.48],
-    ),
-    _DashboardRange.lastWeek: _DashboardSnapshot(
-      sales: '3.4M MGA',
-      orders: '89',
-      visits: '3.8k',
-      likes: '1.2k',
-      growth: '+18%',
-      bars: [0.35, 0.58, 0.47, 0.74, 0.62, 0.85, 0.68],
-      labels: ['L', 'M', 'M', 'J', 'V', 'S', 'D'],
-      followersCurve: [0.14, 0.19, 0.27, 0.33, 0.39, 0.51, 0.48],
-      likesCurve: [0.24, 0.42, 0.38, 0.58, 0.51, 0.80, 0.66],
-      viewsCurve: [0.31, 0.48, 0.52, 0.63, 0.60, 0.72, 0.70],
-      productAddsCurve: [0.18, 0.23, 0.21, 0.32, 0.36, 0.43, 0.39],
-    ),
-    _DashboardRange.lastMonth: _DashboardSnapshot(
-      sales: '12.6M MGA',
-      orders: '312',
-      visits: '14.8k',
-      likes: '4.6k',
-      growth: '+24%',
-      bars: [0.28, 0.36, 0.42, 0.48, 0.56, 0.62, 0.74, 0.68],
-      labels: ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8'],
-      followersCurve: [0.10, 0.16, 0.21, 0.28, 0.35, 0.41, 0.50, 0.56],
-      likesCurve: [0.20, 0.28, 0.36, 0.45, 0.55, 0.61, 0.74, 0.69],
-      viewsCurve: [0.26, 0.34, 0.40, 0.47, 0.59, 0.67, 0.71, 0.76],
-      productAddsCurve: [0.12, 0.18, 0.22, 0.26, 0.33, 0.37, 0.43, 0.40],
-    ),
-    _DashboardRange.last3Months: _DashboardSnapshot(
-      sales: '36.9M MGA',
-      orders: '901',
-      visits: '39.5k',
-      likes: '12.4k',
-      growth: '+31%',
-      bars: [0.32, 0.45, 0.52, 0.61, 0.72, 0.82],
-      labels: ['M-5', 'M-4', 'M-3', 'M-2', 'M-1', 'Act'],
-      followersCurve: [0.12, 0.18, 0.24, 0.31, 0.42, 0.54],
-      likesCurve: [0.28, 0.34, 0.46, 0.58, 0.69, 0.82],
-      viewsCurve: [0.33, 0.40, 0.49, 0.62, 0.72, 0.78],
-      productAddsCurve: [0.14, 0.19, 0.25, 0.34, 0.41, 0.52],
-    ),
-    _DashboardRange.lastYear: _DashboardSnapshot(
-      sales: '118.4M MGA',
-      orders: '2.8k',
-      visits: '128k',
-      likes: '39k',
-      growth: '+44%',
-      bars: [0.24, 0.30, 0.44, 0.48, 0.58, 0.64, 0.69, 0.76, 0.83, 0.88],
-      labels: ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O'],
-      followersCurve: [0.08, 0.11, 0.16, 0.21, 0.27, 0.34, 0.41, 0.49, 0.56, 0.63],
-      likesCurve: [0.16, 0.22, 0.30, 0.38, 0.44, 0.55, 0.63, 0.71, 0.78, 0.86],
-      viewsCurve: [0.20, 0.26, 0.34, 0.41, 0.49, 0.58, 0.64, 0.72, 0.80, 0.90],
-      productAddsCurve: [0.10, 0.14, 0.18, 0.24, 0.31, 0.38, 0.43, 0.50, 0.58, 0.66],
-    ),
-  };
+  int get _followersTotal => _parseCompactCount(widget.followerCount);
+  int get _viewsTotal => _parseCompactCount(widget.visitorCount);
+  int get _likesTotal => _parseCompactCount(widget.totalLikesCount);
 
-  _DashboardSnapshot get _snapshot => _snapshots[_selectedRange]!;
+  _DashboardSnapshot get _snapshot => _buildSnapshot();
+
+  int _parseCompactCount(String value) {
+    final normalizedValue = value.trim().toLowerCase();
+    if (normalizedValue.isEmpty) {
+      return 0;
+    }
+
+    final multiplier = normalizedValue.endsWith('k')
+        ? 1000
+        : normalizedValue.endsWith('m')
+        ? 1000000
+        : 1;
+    final numericPart = normalizedValue.replaceAll(RegExp(r'[^0-9\.]'), '');
+    final parsedValue = double.tryParse(numericPart);
+    if (parsedValue == null) {
+      return 0;
+    }
+
+    return (parsedValue * multiplier).round();
+  }
+
+  int _parseProductLikes(Map<String, dynamic> product) {
+    final rawLikes = product['likesCount'];
+    if (rawLikes is num) {
+      return rawLikes.toInt();
+    }
+
+    return int.tryParse('${rawLikes ?? 0}') ?? 0;
+  }
+
+  int _parseProductPrice(Map<String, dynamic> product) {
+    final rawPrice = product['price'] ?? product['priceAmount'];
+    if (rawPrice is num) {
+      return rawPrice.round();
+    }
+
+    final normalized = '${rawPrice ?? ''}'.replaceAll(RegExp(r'[^0-9\.]'), '');
+    final parsed = double.tryParse(normalized);
+    return parsed?.round() ?? 0;
+  }
+
+  DateTime? _parseProductCreatedAt(Map<String, dynamic> product) {
+    final rawCreatedAt = product['createdAt'];
+    if (rawCreatedAt is! String || rawCreatedAt.trim().isEmpty) {
+      return null;
+    }
+
+    return DateTime.tryParse(rawCreatedAt)?.toLocal();
+  }
+
+  int _bucketCountForRange(_DashboardRange range) {
+    return switch (range) {
+      _DashboardRange.last5Days => 5,
+      _DashboardRange.lastWeek => 7,
+      _DashboardRange.lastMonth => 8,
+      _DashboardRange.last3Months => 6,
+      _DashboardRange.lastYear => 10,
+    };
+  }
+
+  Duration _windowForRange(_DashboardRange range) {
+    return switch (range) {
+      _DashboardRange.last5Days => const Duration(days: 5),
+      _DashboardRange.lastWeek => const Duration(days: 7),
+      _DashboardRange.lastMonth => const Duration(days: 56),
+      _DashboardRange.last3Months => const Duration(days: 180),
+      _DashboardRange.lastYear => const Duration(days: 300),
+    };
+  }
+
+  List<String> _labelsForRange(_DashboardRange range) {
+    return switch (range) {
+      _DashboardRange.last5Days => const ['J-4', 'J-3', 'J-2', 'J-1', 'Auj'],
+      _DashboardRange.lastWeek => const ['L', 'M', 'M', 'J', 'V', 'S', 'D'],
+      _DashboardRange.lastMonth => const ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8'],
+      _DashboardRange.last3Months => const ['M-5', 'M-4', 'M-3', 'M-2', 'M-1', 'Act'],
+      _DashboardRange.lastYear => const ['M-9', 'M-8', 'M-7', 'M-6', 'M-5', 'M-4', 'M-3', 'M-2', 'M-1', 'Act'],
+    };
+  }
+
+  List<int> _buildBucketSeriesFromProducts(
+    _DashboardRange range,
+    int Function(Map<String, dynamic>) valueOf,
+  ) {
+    final bucketCount = _bucketCountForRange(range);
+    final window = _windowForRange(range);
+    final now = DateTime.now();
+    final start = now.subtract(window);
+    final bucketSizeInMs = window.inMilliseconds / bucketCount;
+    final values = List<int>.filled(bucketCount, 0);
+
+    for (final product in widget.products) {
+      final createdAt = _parseProductCreatedAt(product);
+      if (createdAt == null || createdAt.isBefore(start) || createdAt.isAfter(now)) {
+        continue;
+      }
+
+      final diffInMs = createdAt.difference(start).inMilliseconds;
+      var bucketIndex = (diffInMs / bucketSizeInMs).floor();
+      if (bucketIndex < 0) {
+        bucketIndex = 0;
+      }
+      if (bucketIndex >= bucketCount) {
+        bucketIndex = bucketCount - 1;
+      }
+
+      values[bucketIndex] += valueOf(product);
+    }
+
+    return values;
+  }
+
+  List<int> _distributeTotalAcrossBuckets(int total, List<int> weights) {
+    if (total <= 0 || weights.isEmpty) {
+      return List<int>.filled(weights.length, 0);
+    }
+
+    final normalizedWeights = weights.any((weight) => weight > 0)
+        ? weights.map((weight) => weight + 1).toList()
+        : List<int>.generate(weights.length, (index) => index + 1);
+    final totalWeight = normalizedWeights.fold<int>(0, (sum, weight) => sum + weight);
+    final rawShares = normalizedWeights
+        .map((weight) => total * weight / totalWeight)
+        .toList();
+    final distributed = rawShares.map((value) => value.floor()).toList();
+    var remaining = total - distributed.fold<int>(0, (sum, value) => sum + value);
+
+    final fractions = List.generate(rawShares.length, (index) => index)
+      ..sort((left, right) {
+        final leftFraction = rawShares[left] - distributed[left];
+        final rightFraction = rawShares[right] - distributed[right];
+        return rightFraction.compareTo(leftFraction);
+      });
+
+    for (var index = 0; index < fractions.length && remaining > 0; index++) {
+      distributed[fractions[index]] += 1;
+      remaining -= 1;
+    }
+
+    return distributed;
+  }
+
+  List<double> _normalizeSeries(List<int> values) {
+    if (values.isEmpty) {
+      return const [];
+    }
+
+    final maxValue = values.reduce((left, right) => left > right ? left : right);
+    if (maxValue <= 0) {
+      return List<double>.filled(values.length, 0);
+    }
+
+    return values.map((value) => value / maxValue).toList();
+  }
+
+  String _formatGrowth(List<int> values) {
+    if (values.isEmpty) {
+      return '0%';
+    }
+
+    final midpoint = values.length ~/ 2;
+    final before = values.take(midpoint).fold<int>(0, (sum, value) => sum + value);
+    final after = values.skip(midpoint).fold<int>(0, (sum, value) => sum + value);
+    if (before == 0 && after == 0) {
+      return '0%';
+    }
+    if (before == 0) {
+      return '+100%';
+    }
+
+    final growth = (((after - before) / before) * 100).round();
+    return growth > 0 ? '+$growth%' : '$growth%';
+  }
+
+  _DashboardSnapshot _buildSnapshot() {
+    final labels = _labelsForRange(_selectedRange);
+    final productAddsActual = _buildBucketSeriesFromProducts(
+      _selectedRange,
+      (_) => 1,
+    );
+    final revenueActual = _buildBucketSeriesFromProducts(
+      _selectedRange,
+      _parseProductPrice,
+    );
+    final rawLikesActual = _buildBucketSeriesFromProducts(
+      _selectedRange,
+      _parseProductLikes,
+    );
+    final likesActual = rawLikesActual.any((value) => value > 0)
+        ? _distributeTotalAcrossBuckets(_likesTotal, rawLikesActual)
+        : _distributeTotalAcrossBuckets(_likesTotal, productAddsActual);
+    final viewsActual = _distributeTotalAcrossBuckets(_viewsTotal, productAddsActual);
+    final followersActual = _distributeTotalAcrossBuckets(_followersTotal, productAddsActual);
+    final barsSource = revenueActual.any((value) => value > 0)
+        ? revenueActual
+        : productAddsActual;
+
+    return _DashboardSnapshot(
+      growth: _formatGrowth(productAddsActual),
+      labels: labels,
+      bars: _normalizeSeries(barsSource),
+      followersCurve: _normalizeSeries(followersActual),
+      followersActual: followersActual,
+      likesCurve: _normalizeSeries(likesActual),
+      likesActual: likesActual,
+      viewsCurve: _normalizeSeries(viewsActual),
+      viewsActual: viewsActual,
+      productAddsCurve: _normalizeSeries(productAddsActual),
+      productAddsActual: productAddsActual,
+    );
+  }
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -353,22 +506,26 @@ class _StudioDashboardPageState extends State<StudioDashboardPage> {
         label: 'Likes',
         color: primary,
         values: _snapshot.likesCurve,
+        actualValues: _snapshot.likesActual,
       ),
       _DashboardLineData(
         label: 'Vues',
         color: viewsColor,
         values: _snapshot.viewsCurve,
+        actualValues: _snapshot.viewsActual,
       ),
       _DashboardLineData(
         label: 'Ajouts produit',
         color: productsColor,
         values: _snapshot.productAddsCurve,
+        actualValues: _snapshot.productAddsActual,
       ),
     ];
     final followerLine = _DashboardLineData(
       label: 'Abonnes',
       color: followersColor,
       values: _snapshot.followersCurve,
+      actualValues: _snapshot.followersActual,
     );
 
     return Container(
@@ -635,7 +792,7 @@ class _StudioDashboardPageState extends State<StudioDashboardPage> {
           minDistance = distance;
           bestMatch = _DashboardPointSelection(
             label: line.label,
-            valueText: _formatCurveValue(line.label, line.values[index]),
+            valueText: _formatCurveValue(line.label, line.actualValues[index]),
             position: point,
             color: line.color,
           );
@@ -646,45 +803,11 @@ class _StudioDashboardPageState extends State<StudioDashboardPage> {
     return minDistance <= 28 ? bestMatch : null;
   }
 
-  String _formatCurveValue(String label, double normalizedValue) {
-    final normalized = normalizedValue.clamp(0.0, 1.0);
-    final baseValues = <String, Map<_DashboardRange, int>>{
-      'Abonnes': {
-        _DashboardRange.last5Days: 180,
-        _DashboardRange.lastWeek: 520,
-        _DashboardRange.lastMonth: 1800,
-        _DashboardRange.last3Months: 4800,
-        _DashboardRange.lastYear: 14000,
-      },
-      'Likes': {
-        _DashboardRange.last5Days: 640,
-        _DashboardRange.lastWeek: 1200,
-        _DashboardRange.lastMonth: 4600,
-        _DashboardRange.last3Months: 12400,
-        _DashboardRange.lastYear: 39000,
-      },
-      'Vues': {
-        _DashboardRange.last5Days: 1900,
-        _DashboardRange.lastWeek: 3800,
-        _DashboardRange.lastMonth: 14800,
-        _DashboardRange.last3Months: 39500,
-        _DashboardRange.lastYear: 128000,
-      },
-      'Ajouts produit': {
-        _DashboardRange.last5Days: 14,
-        _DashboardRange.lastWeek: 26,
-        _DashboardRange.lastMonth: 94,
-        _DashboardRange.last3Months: 210,
-        _DashboardRange.lastYear: 860,
-      },
-    };
-
-    final baseValue = baseValues[label]?[_selectedRange] ?? 0;
-    final resolvedValue = (baseValue * normalized).round();
+  String _formatCurveValue(String label, int actualValue) {
     if (label == 'Ajouts produit') {
-      return '$resolvedValue';
+      return '$actualValue';
     }
-    return _formatCompactNumber(resolvedValue);
+    return _formatCompactNumber(actualValue);
   }
 
   String _formatCompactNumber(int value) {
@@ -773,30 +896,30 @@ enum _DashboardRange {
 }
 
 class _DashboardSnapshot {
-  final String sales;
-  final String orders;
-  final String visits;
-  final String likes;
   final String growth;
   final List<double> bars;
   final List<String> labels;
   final List<double> followersCurve;
+  final List<int> followersActual;
   final List<double> likesCurve;
+  final List<int> likesActual;
   final List<double> viewsCurve;
+  final List<int> viewsActual;
   final List<double> productAddsCurve;
+  final List<int> productAddsActual;
 
   const _DashboardSnapshot({
-    required this.sales,
-    required this.orders,
-    required this.visits,
-    required this.likes,
     required this.growth,
     required this.bars,
     required this.labels,
     required this.followersCurve,
+    required this.followersActual,
     required this.likesCurve,
+    required this.likesActual,
     required this.viewsCurve,
+    required this.viewsActual,
     required this.productAddsCurve,
+    required this.productAddsActual,
   });
 }
 
@@ -804,11 +927,13 @@ class _DashboardLineData {
   final String label;
   final Color color;
   final List<double> values;
+  final List<int> actualValues;
 
   const _DashboardLineData({
     required this.label,
     required this.color,
     required this.values,
+    required this.actualValues,
   });
 }
 

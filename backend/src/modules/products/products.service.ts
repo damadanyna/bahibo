@@ -6,6 +6,7 @@ import {
 import { Prisma } from '@prisma/client';
 
 import { CloudinaryService } from '../auth/cloudinary.service';
+import { ConversationsRealtimeGateway } from '../conversations/realtime/conversations-realtime.gateway';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -14,6 +15,11 @@ import { ProductEntity } from './entities/product.entity';
 type ProductWithRelations = Prisma.ProductGetPayload<{
   include: {
     category: true;
+    _count: {
+      select: {
+        likes: true;
+      };
+    };
     productImages: {
       orderBy: {
         sortOrder: 'asc';
@@ -32,6 +38,7 @@ export class ProductsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cloudinaryService: CloudinaryService,
+    private readonly conversationsRealtimeGateway: ConversationsRealtimeGateway,
   ) {}
 
   async create(
@@ -76,6 +83,11 @@ export class ProductsService {
       },
       include: {
         category: true,
+        _count: {
+          select: {
+            likes: true,
+          },
+        },
         productImages: {
           orderBy: {
             sortOrder: 'asc',
@@ -89,6 +101,7 @@ export class ProductsService {
       },
     });
 
+    await this.emitSellerProfileUpdatedByProfileId(sellerProfile.id);
     return this.toEntity(product);
   }
 
@@ -113,6 +126,11 @@ export class ProductsService {
       where: { id: productId },
       include: {
         category: true,
+        _count: {
+          select: {
+            likes: true,
+          },
+        },
         productImages: {
           orderBy: {
             sortOrder: 'asc',
@@ -174,6 +192,11 @@ export class ProductsService {
       },
       include: {
         category: true,
+        _count: {
+          select: {
+            likes: true,
+          },
+        },
         productImages: {
           orderBy: {
             sortOrder: 'asc',
@@ -187,6 +210,68 @@ export class ProductsService {
       },
     });
 
+    await this.emitSellerProfileUpdatedByProfileId(sellerProfile.id);
+    return this.toEntity(updatedProduct);
+  }
+
+  async likeProduct(currentUserId: string, productId: string) {
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      include: {
+        category: true,
+        _count: {
+          select: {
+            likes: true,
+          },
+        },
+        productImages: {
+          orderBy: {
+            sortOrder: 'asc',
+          },
+        },
+        sellerProfile: {
+          include: {
+            user: true,
+          },
+        },
+      },
+    });
+
+    if (!product) {
+      throw new NotFoundException('Product not found');
+    }
+
+    await this.prisma.productLike.upsert({
+      where: {
+        userId_productId: {
+          userId: currentUserId,
+          productId,
+        },
+      },
+      create: {
+        userId: currentUserId,
+        productId,
+      },
+      update: {},
+    });
+
+    const updatedProduct = await this.findProductWithRelations(productId);
+    await this.emitSellerProfileUpdatedByProfileId(updatedProduct.sellerProfile.id);
+    return this.toEntity(updatedProduct);
+  }
+
+  async unlikeProduct(currentUserId: string, productId: string) {
+    const product = await this.findProductWithRelations(productId);
+
+    await this.prisma.productLike.deleteMany({
+      where: {
+        userId: currentUserId,
+        productId,
+      },
+    });
+
+    const updatedProduct = await this.findProductWithRelations(productId);
+    await this.emitSellerProfileUpdatedByProfileId(updatedProduct.sellerProfile.id);
     return this.toEntity(updatedProduct);
   }
 
@@ -213,6 +298,11 @@ export class ProductsService {
         where,
         include: {
           category: true,
+          _count: {
+            select: {
+              likes: true,
+            },
+          },
           productImages: {
             orderBy: {
               sortOrder: 'asc',
@@ -246,6 +336,11 @@ export class ProductsService {
       where: { id },
       include: {
         category: true,
+        _count: {
+          select: {
+            likes: true,
+          },
+        },
         productImages: {
           orderBy: {
             sortOrder: 'asc',
@@ -433,6 +528,129 @@ export class ProductsService {
       .replace(/^-+|-+$/g, '');
   }
 
+  private async findProductWithRelations(productId: string) {
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      include: {
+        category: true,
+        _count: {
+          select: {
+            likes: true,
+          },
+        },
+        productImages: {
+          orderBy: {
+            sortOrder: 'asc',
+          },
+        },
+        sellerProfile: {
+          include: {
+            user: true,
+          },
+        },
+      },
+    });
+
+    if (!product) {
+      throw new NotFoundException('Product not found');
+    }
+
+    return product;
+  }
+
+  private async emitSellerProfileUpdatedByProfileId(sellerProfileId: string) {
+    const sellerProfile = await this.prisma.sellerProfile.findUnique({
+      where: { id: sellerProfileId },
+      include: {
+        user: true,
+        _count: {
+          select: {
+            products: true,
+          },
+        },
+        products: {
+          include: {
+            category: true,
+            _count: {
+              select: {
+                likes: true,
+              },
+            },
+            productImages: {
+              orderBy: {
+                sortOrder: 'asc',
+              },
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+        },
+      },
+    });
+
+    if (!sellerProfile) {
+      return;
+    }
+
+    const [followerCount, visitorCount, totalLikesCount] = await Promise.all([
+      this.prisma.sellerFollow.count({
+        where: { sellerProfileId },
+      }),
+      this.prisma.sellerProfileView.count({
+        where: { sellerProfileId },
+      }),
+      this.prisma.productLike.count({
+        where: {
+          product: {
+            sellerProfileId,
+          },
+        },
+      }),
+    ]);
+
+    this.conversationsRealtimeGateway.emitProfileEvent(sellerProfile.userId, {
+      type: 'profile:updated',
+      userId: sellerProfile.userId,
+      profile: {
+        id: sellerProfile.user.id,
+        role: sellerProfile.user.role,
+        shopRequestStatus: sellerProfile.user.shopRequestStatus,
+        shopRequestSubmittedAt:
+          sellerProfile.user.shopRequestSubmittedAt?.toISOString() ?? null,
+        shopRequestReviewedAt:
+          sellerProfile.user.shopRequestReviewedAt?.toISOString() ?? null,
+        sellerProfile: {
+          id: sellerProfile.id,
+          studioName: sellerProfile.studioName,
+          description: sellerProfile.description,
+          city: sellerProfile.city,
+          country: sellerProfile.country,
+          followerCount,
+          visitorCount,
+          productCount: sellerProfile._count.products,
+          totalLikesCount,
+          products: sellerProfile.products.map((product) => ({
+            id: product.id,
+            title: product.title,
+            description: product.description,
+            imageUrl: product.imageUrl,
+            priceAmount: product.priceAmount.toNumber(),
+            currencyCode: product.currencyCode,
+            category: product.category.name,
+            categoryId: product.categoryId,
+            likesCount: product._count.likes,
+            createdAt: product.createdAt.toISOString(),
+            images:
+              product.productImages.length > 0
+                ? product.productImages.map((image) => image.imageUrl)
+                : [product.imageUrl],
+          })),
+        },
+      },
+    });
+  }
+
   private toEntity(product: ProductWithRelations): ProductEntity {
     const imageUrls = product.productImages.length > 0
       ? product.productImages.map((image) => image.imageUrl)
@@ -456,6 +674,7 @@ export class ProductsService {
       images: imageUrls,
       thumbnail: imageUrls[0],
       isAvailable: product.isAvailable,
+      likesCount: product._count.likes,
       createdAt: product.createdAt.toISOString(),
     };
   }

@@ -40,6 +40,53 @@ class CatalogApiService {
     return Map<String, dynamic>.from(data as Map);
   }
 
+  Future<Map<String, dynamic>> fetchSellerProfile(
+    String sellerProfileId,
+  ) async {
+    final data = await _client.get('/profiles/sellers/$sellerProfileId');
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<Map<String, dynamic>> followSeller(String sellerProfileId) async {
+    final data = await _client.post(
+      '/profiles/sellers/$sellerProfileId/follow',
+      authenticated: true,
+    );
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<Map<String, dynamic>> unfollowSeller(String sellerProfileId) async {
+    final data = await _client.post(
+      '/profiles/sellers/$sellerProfileId/unfollow',
+      authenticated: true,
+    );
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<Map<String, dynamic>> recordSellerView(String sellerProfileId) async {
+    final data = await _client.post(
+      '/profiles/sellers/$sellerProfileId/view',
+      authenticated: true,
+    );
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<Map<String, dynamic>> likeProduct(String productId) async {
+    final data = await _client.post(
+      '/products/$productId/like',
+      authenticated: true,
+    );
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<Map<String, dynamic>> unlikeProduct(String productId) async {
+    final data = await _client.post(
+      '/products/$productId/unlike',
+      authenticated: true,
+    );
+    return Map<String, dynamic>.from(data as Map);
+  }
+
   Future<Map<String, dynamic>> createProduct({
     required String title,
     required String description,

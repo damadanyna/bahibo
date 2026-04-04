@@ -146,4 +146,46 @@ export class ProfilesController {
       data: await this.profilesService.getPublicSellerProfile(sellerProfileId),
     };
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('sellers/:sellerProfileId/follow')
+  async followSeller(
+    @Req() req: { user: { userId: string } },
+    @Param('sellerProfileId') sellerProfileId: string,
+  ) {
+    return {
+      success: true,
+      message: 'Seller followed successfully',
+      data: await this.profilesService.followSeller(req.user.userId, sellerProfileId),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('sellers/:sellerProfileId/unfollow')
+  async unfollowSeller(
+    @Req() req: { user: { userId: string } },
+    @Param('sellerProfileId') sellerProfileId: string,
+  ) {
+    return {
+      success: true,
+      message: 'Seller unfollowed successfully',
+      data: await this.profilesService.unfollowSeller(req.user.userId, sellerProfileId),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('sellers/:sellerProfileId/view')
+  async recordSellerView(
+    @Req() req: { user: { userId: string } },
+    @Param('sellerProfileId') sellerProfileId: string,
+  ) {
+    return {
+      success: true,
+      message: 'Seller profile view recorded successfully',
+      data: await this.profilesService.recordSellerProfileView(
+        req.user.userId,
+        sellerProfileId,
+      ),
+    };
+  }
 }

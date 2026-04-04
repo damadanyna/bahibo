@@ -90,7 +90,41 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     }).toList();
   }
 
+  int _metricCountValue(String value) {
+    final normalizedValue = value.trim().toLowerCase();
+    if (normalizedValue.isEmpty) {
+      return 0;
+    }
+
+    final multiplier = normalizedValue.endsWith('k')
+        ? 1000
+        : normalizedValue.endsWith('m')
+        ? 1000000
+        : 1;
+    final numericPart = normalizedValue.replaceAll(RegExp(r'[^0-9\.]'), '');
+    final parsedValue = double.tryParse(numericPart);
+    if (parsedValue == null) {
+      return 0;
+    }
+
+    return (parsedValue * multiplier).round();
+  }
+
+  int _metricValueByLabel(String metricLabel) {
+    return switch (metricLabel) {
+      'Abonnes' => _metricCountValue(profile.followerCount),
+      'Vues profil' => _metricCountValue(profile.visitorCount),
+      'Likes total' => _metricCountValue(profile.totalLikesCount),
+      'Produits' => _metricCountValue(profile.productCount),
+      _ => 0,
+    };
+  }
+
   List<UserListItemData> _buildMetricUsers({required String metricLabel}) {
+    if (_metricValueByLabel(metricLabel) <= 0) {
+      return const [];
+    }
+
     final users = [
       buildProfileFromUser(
         name: 'Miora Andriam',
@@ -175,6 +209,9 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
         builder: (_) => StudioDashboardPage(
           studioName: _resolvedStudioName,
           products: _catalogProducts,
+          followerCount: profile.followerCount,
+          visitorCount: profile.visitorCount,
+          totalLikesCount: profile.totalLikesCount,
         ),
       ),
     );

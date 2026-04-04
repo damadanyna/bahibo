@@ -163,6 +163,7 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
 
       return UserProfileData(
         userId: profile.userId,
+        sellerProfileId: profile.sellerProfileId,
         name: profile.name,
         avatarUrl: avatarUrl,
         coverImageUrl: coverImageUrl,
@@ -172,7 +173,10 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
         about: profile.about,
         followerCount: profile.followerCount,
         visitorCount: profile.visitorCount,
+        productCount: profile.productCount,
+        totalLikesCount: profile.totalLikesCount,
         rating: profile.rating,
+        isFollowing: profile.isFollowing,
         products: profile.products,
       );
     }
@@ -618,6 +622,7 @@ class _SearchSuggestion {
     if (rawSellerProfile is Map) {
       sellerProfile = UserProfileData(
         userId: rawSellerProfile['userId'] as String?,
+        sellerProfileId: rawSellerProfile['sellerProfileId'] as String?,
         name: (rawSellerProfile['name'] as String?) ?? '',
         avatarUrl: (rawSellerProfile['avatarUrl'] as String?) ?? '',
         coverImageUrl: (rawSellerProfile['coverImageUrl'] as String?) ?? '',
@@ -628,7 +633,11 @@ class _SearchSuggestion {
         about: (rawSellerProfile['about'] as String?) ?? '',
         followerCount: (rawSellerProfile['followerCount'] as String?) ?? '0',
         visitorCount: (rawSellerProfile['visitorCount'] as String?) ?? '0',
+        productCount: (rawSellerProfile['productCount'] as String?) ?? '0',
+        totalLikesCount:
+            (rawSellerProfile['totalLikesCount'] as String?) ?? '0',
         rating: (rawSellerProfile['rating'] as String?) ?? '0.0',
+        isFollowing: rawSellerProfile['isFollowing'] as bool? ?? false,
         products: ((rawSellerProfile['products'] as List?) ?? const [])
             .whereType<Map>()
             .map((product) => Map<String, dynamic>.from(product))

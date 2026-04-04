@@ -7,6 +7,8 @@ import 'package:bahibo/component/profile_models.dart';
 import 'package:bahibo/component/user_list_page.dart';
 import 'package:bahibo/page/chat_page.dart';
 import 'package:bahibo/page/image_viewer_page.dart';
+import 'package:bahibo/services/app_api_client.dart';
+import 'package:bahibo/services/catalog_api_service.dart';
 import 'package:flutter/material.dart';
 
 import 'package:bahibo/theme/app_theme_extensions.dart';
@@ -26,10 +28,13 @@ class _SellerProfilePageState extends State<SellerProfilePage>
       'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600';
   static const String _defaultCoverImageUrl =
       'https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?w=1600';
+  final CatalogApiService _catalogApiService = CatalogApiService();
   bool _showEntrySkeleton = true;
   bool _isSubscribed = false;
+  bool _isSubscriptionSubmitting = false;
+  late UserProfileData _currentProfile;
 
-  UserProfileData get profile => widget.profile;
+  UserProfileData get profile => _currentProfile;
 
   String get _profileAvatarUrl {
     final value = profile.avatarUrl.trim();
@@ -104,6 +109,9 @@ class _SellerProfilePageState extends State<SellerProfilePage>
   void initState() {
     super.initState();
     initializePageRefresh();
+    _currentProfile = widget.profile;
+    _isSubscribed = widget.profile.isFollowing;
+    _refreshSellerProfile(recordView: true);
     Future.delayed(const Duration(milliseconds: 240), () {
       if (!mounted) return;
       setState(() => _showEntrySkeleton = false);
@@ -121,9 +129,94 @@ class _SellerProfilePageState extends State<SellerProfilePage>
     if (mounted) {
       setState(() => _showEntrySkeleton = true);
     }
+    await _refreshSellerProfile();
     await Future.delayed(const Duration(milliseconds: 450));
     if (!mounted) return;
     setState(() => _showEntrySkeleton = false);
+  }
+
+  Future<void> _refreshSellerProfile({bool recordView = false}) async {
+    final sellerProfileId = profile.sellerProfileId?.trim() ?? '';
+    if (sellerProfileId.isEmpty) {
+      return;
+    }
+
+    try {
+      final data = recordView
+          ? await _catalogApiService.recordSellerView(sellerProfileId)
+          : await _catalogApiService.fetchSellerProfile(sellerProfileId);
+      final nextProfile = buildSellerProfileFromApi(data);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _currentProfile = nextProfile;
+        _isSubscribed = nextProfile.isFollowing;
+      });
+    } on AppApiException catch (error) {
+      if (recordView) {
+        try {
+          final data = await _catalogApiService.fetchSellerProfile(
+            sellerProfileId,
+          );
+          final nextProfile = buildSellerProfileFromApi(data);
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _currentProfile = nextProfile;
+            _isSubscribed = nextProfile.isFollowing;
+          });
+        } on AppApiException {
+          debugPrint('Unable to refresh seller profile: ${error.message}');
+        }
+      } else {
+        debugPrint('Unable to refresh seller profile: ${error.message}');
+      }
+    }
+  }
+
+  Future<void> _toggleSubscription() async {
+    final sellerProfileId = profile.sellerProfileId?.trim() ?? '';
+    if (sellerProfileId.isEmpty || _isSubscriptionSubmitting) {
+      return;
+    }
+
+    setState(() => _isSubscriptionSubmitting = true);
+
+    try {
+      final data = _isSubscribed
+          ? await _catalogApiService.unfollowSeller(sellerProfileId)
+          : await _catalogApiService.followSeller(sellerProfileId);
+      final nextProfile = buildSellerProfileFromApi(data);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _currentProfile = nextProfile;
+        _isSubscribed = nextProfile.isFollowing;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _isSubscribed
+                ? 'Vous etes abonne a la chaine de ${profile.name}.'
+                : 'Vous etes desabonne de la chaine de ${profile.name}.',
+          ),
+        ),
+      );
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) {
+        setState(() => _isSubscriptionSubmitting = false);
+      }
+    }
   }
 
   @override
@@ -336,20 +429,9 @@ class _SellerProfilePageState extends State<SellerProfilePage>
               child: const Text('Annuler'),
             ),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.of(dialogContext).pop();
-                setState(() {
-                  _isSubscribed = !_isSubscribed;
-                });
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      _isSubscribed
-                          ? 'Vous etes abonne a la chaine de ${profile.name}.'
-                          : 'Vous etes desabonne de la chaine de ${profile.name}.',
-                    ),
-                  ),
-                );
+                await _toggleSubscription();
               },
               style: ElevatedButton.styleFrom(
                 shape: RoundedRectangleBorder(
@@ -696,8 +778,9 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                         const SizedBox(width: 10),
                         Expanded(
                           child: OutlinedButton.icon(
-                            onPressed: () =>
-                                _showSubscribeConfirmation(context),
+                            onPressed: _isSubscriptionSubmitting
+                                ? null
+                                : () => _showSubscribeConfirmation(context),
                             icon: Icon(
                               _isSubscribed
                                   ? Icons.how_to_reg_rounded
@@ -829,53 +912,57 @@ class _SellerProfilePageState extends State<SellerProfilePage>
     Color mutedColor,
     Color primaryGreen,
   ) {
-    final followers = [
-      _userItem(
-        name: 'Miora Andrianiaina',
-        subtitle: 'Suit la boutique depuis 8 mois',
-        imageUrl:
-            'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200',
-        trailingText: 'Abonne',
-      ),
-      _userItem(
-        name: 'Toky Rajaonarison',
-        subtitle: 'Acheteur regulier',
-        imageUrl:
-            'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200',
-        trailingText: 'Abonne',
-      ),
-      _userItem(
-        name: 'Aina Ravelona',
-        subtitle: 'Suit les nouveautes smartphone',
-        imageUrl:
-            'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200',
-        trailingText: 'Abonne',
-      ),
-    ];
+    final followers = _metricCountValue(profile.followerCount) <= 0
+        ? <UserListItemData>[]
+        : [
+            _userItem(
+              name: 'Miora Andrianiaina',
+              subtitle: 'Suit la boutique depuis 8 mois',
+              imageUrl:
+                  'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200',
+              trailingText: 'Abonne',
+            ),
+            _userItem(
+              name: 'Toky Rajaonarison',
+              subtitle: 'Acheteur regulier',
+              imageUrl:
+                  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200',
+              trailingText: 'Abonne',
+            ),
+            _userItem(
+              name: 'Aina Ravelona',
+              subtitle: 'Suit les nouveautes smartphone',
+              imageUrl:
+                  'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200',
+              trailingText: 'Abonne',
+            ),
+          ];
 
-    final visitors = [
-      _userItem(
-        name: 'Feno Nantenaina',
-        subtitle: 'A visite le profil aujourd\'hui',
-        imageUrl:
-            'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=200',
-        trailingText: 'Aujourd\'hui',
-      ),
-      _userItem(
-        name: 'Sarah R.',
-        subtitle: 'A consulte 3 annonces cette semaine',
-        imageUrl:
-            'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=200',
-        trailingText: '3 vues',
-      ),
-      _userItem(
-        name: 'Kevin M.',
-        subtitle: 'Interesse par les iPhone',
-        imageUrl:
-            'https://images.unsplash.com/photo-1504593811423-6dd665756598?w=200',
-        trailingText: 'Recurrent',
-      ),
-    ];
+    final visitors = _metricCountValue(profile.visitorCount) <= 0
+        ? <UserListItemData>[]
+        : [
+            _userItem(
+              name: 'Feno Nantenaina',
+              subtitle: 'A visite le profil aujourd\'hui',
+              imageUrl:
+                  'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=200',
+              trailingText: 'Aujourd\'hui',
+            ),
+            _userItem(
+              name: 'Sarah R.',
+              subtitle: 'A consulte 3 annonces cette semaine',
+              imageUrl:
+                  'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=200',
+              trailingText: '3 vues',
+            ),
+            _userItem(
+              name: 'Kevin M.',
+              subtitle: 'Interesse par les iPhone',
+              imageUrl:
+                  'https://images.unsplash.com/photo-1504593811423-6dd665756598?w=200',
+              trailingText: 'Recurrent',
+            ),
+          ];
 
     final ratings = [
       _userItem(
@@ -968,6 +1055,26 @@ class _SellerProfilePageState extends State<SellerProfilePage>
       profileData: nextProfile,
       destinationBuilder: (_) => SellerProfilePage(profile: nextProfile),
     );
+  }
+
+  int _metricCountValue(String value) {
+    final normalizedValue = value.trim().toLowerCase();
+    if (normalizedValue.isEmpty) {
+      return 0;
+    }
+
+    final multiplier = normalizedValue.endsWith('k')
+        ? 1000
+        : normalizedValue.endsWith('m')
+        ? 1000000
+        : 1;
+    final numericPart = normalizedValue.replaceAll(RegExp(r'[^0-9\.]'), '');
+    final parsedValue = double.tryParse(numericPart);
+    if (parsedValue == null) {
+      return 0;
+    }
+
+    return (parsedValue * multiplier).round();
   }
 
   Widget _statCard({

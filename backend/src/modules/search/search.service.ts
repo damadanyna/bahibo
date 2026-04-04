@@ -83,6 +83,11 @@ export class SearchService {
       where,
       include: {
         category: true,
+        _count: {
+          select: {
+            likes: true,
+          },
+        },
         sellerProfile: {
           include: {
             user: true,
@@ -124,6 +129,7 @@ export class SearchService {
         images: [product.imageUrl],
         thumbnail: product.imageUrl,
         isAvailable: product.isAvailable,
+        likesCount: product._count.likes,
         createdAt: product.createdAt.toISOString(),
       },
     }));
@@ -167,7 +173,16 @@ export class SearchService {
       include: {
         sellerProfile: {
           include: {
+            followers: true,
+            profileViews: true,
             products: {
+              include: {
+                _count: {
+                  select: {
+                    likes: true,
+                  },
+                },
+              },
               orderBy: { createdAt: 'desc' },
               take: 6,
             },
@@ -196,6 +211,10 @@ export class SearchService {
         (user.countryName != null && user.countryName!.trim().length > 0
           ? `Utilisateur Bahibo de ${user.countryName}.`
           : 'Utilisateur Bahibo.');
+      const totalLikesCount = sellerProducts.reduce(
+        (sum, product) => sum + product._count.likes,
+        0,
+      );
 
       return {
         id: user.id,
@@ -219,17 +238,20 @@ export class SearchService {
           responseLabel: 'Profil actif',
           headline,
           about: description,
-          followerCount: '${sellerProducts.length}',
-          visitorCount: '${sellerProducts.length * 12}',
+          followerCount: `${user.sellerProfile?.followers.length ?? 0}`,
+          visitorCount: `${user.sellerProfile?.profileViews.length ?? 0}`,
           rating: '4.8',
           products: sellerProducts.map((product) => ({
             'id': product.id,
             'title': product.title,
             'category': 'Produit Bahibo',
             'price': product.priceAmount.toNumber(),
+            'likesCount': product._count.likes,
             'images': [product.imageUrl],
             'thumbnail': product.imageUrl,
           })),
+          totalLikesCount: `${totalLikesCount}`,
+          sellerProfileId: user.sellerProfile?.id,
         },
       };
     });

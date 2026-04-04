@@ -115,4 +115,30 @@ export class ProductsController {
       data: await this.productsService.findOne(id),
     };
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/like')
+  async likeProduct(
+    @Req() req: { user: { userId: string } },
+    @Param('id') id: string,
+  ) {
+    return {
+      success: true,
+      message: 'Product liked successfully',
+      data: await this.productsService.likeProduct(req.user.userId, id),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/unlike')
+  async unlikeProduct(
+    @Req() req: { user: { userId: string } },
+    @Param('id') id: string,
+  ) {
+    return {
+      success: true,
+      message: 'Product unliked successfully',
+      data: await this.productsService.unlikeProduct(req.user.userId, id),
+    };
+  }
 }

@@ -127,6 +127,7 @@ class _ProductListPageState extends State<ProductListPage>
 
       return matchesQuery && matchesCategory && matchesStatus;
     }).toList();
+    final hasSourceProducts = widget.products.isNotEmpty;
     final itemCount = filteredProducts.isEmpty
         ? 2
         : filteredProducts.length + 1;
@@ -251,35 +252,19 @@ class _ProductListPageState extends State<ProductListPage>
                       }
 
                       if (filteredProducts.isEmpty) {
-                        return Container(
-                          padding: const EdgeInsets.all(24),
-                          decoration: BoxDecoration(
-                            color: surfaceColor,
-                            borderRadius: BorderRadius.circular(22),
-                          ),
-                          child: Column(
-                            children: [
-                              Icon(
-                                Icons.search_off,
-                                size: 36,
-                                color: mutedColor,
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                'Aucun produit trouve',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                  color: theme.colorScheme.onSurface,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'Essaie un autre nom ou une autre categorie.',
-                                style: TextStyle(color: mutedColor),
-                              ),
-                            ],
-                          ),
+                        return _buildEmptyStateCard(
+                          theme: theme,
+                          surfaceColor: surfaceColor,
+                          mutedColor: mutedColor,
+                          icon: hasSourceProducts
+                              ? Icons.search_off_rounded
+                              : Icons.inventory_2_outlined,
+                          title: hasSourceProducts
+                              ? 'Aucun produit trouve'
+                              : 'Aucun produit disponible',
+                          message: hasSourceProducts
+                              ? 'Essaie un autre nom ou une autre categorie.'
+                              : 'Les produits apparaitront ici des qu\'ils seront ajoutes.',
                         );
                       }
 
@@ -379,6 +364,43 @@ class _ProductListPageState extends State<ProductListPage>
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildEmptyStateCard({
+    required ThemeData theme,
+    required Color surfaceColor,
+    required Color mutedColor,
+    required IconData icon,
+    required String title,
+    required String message,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 38, color: mutedColor),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: mutedColor),
+          ),
+        ],
+      ),
     );
   }
 }

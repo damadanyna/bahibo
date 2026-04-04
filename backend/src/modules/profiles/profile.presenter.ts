@@ -12,6 +12,11 @@ type UserProfileRecord = Prisma.UserGetPayload<{
         products: {
           include: {
             category: true;
+            _count: {
+              select: {
+                likes: true;
+              };
+            };
             productImages: {
               orderBy: {
                 sortOrder: 'asc';
@@ -32,8 +37,33 @@ type PublicSellerProfileRecord = Prisma.SellerProfileGetPayload<{
         products: true;
       };
     };
+    products: {
+      include: {
+        category: true;
+        _count: {
+          select: {
+            likes: true;
+          };
+        };
+        productImages: {
+          orderBy: {
+            sortOrder: 'asc';
+          };
+        };
+      };
+      orderBy: {
+        createdAt: 'desc';
+      };
+    };
   };
 }>;
+
+type SellerStats = {
+  followerCount: number;
+  profileViewCount: number;
+  productCount: number;
+  totalLikesCount: number;
+};
 
 function addMonths(date: Date, months: number) {
   const nextDate = new Date(date);
@@ -41,11 +71,20 @@ function addMonths(date: Date, months: number) {
   return nextDate;
 }
 
-export function presentUserProfile(user: UserProfileRecord) {
+export function presentUserProfile(user: UserProfileRecord, sellerStats?: SellerStats) {
   const nextDisplayNameChangeAt = user.displayNameChangedAt != null
     ? addMonths(user.displayNameChangedAt, 3)
     : null;
   const productCount = user.sellerProfile?._count.products ?? 0;
+  const resolvedSellerStats: SellerStats = sellerStats ?? {
+    followerCount: 0,
+    profileViewCount: 0,
+    productCount,
+    totalLikesCount: user.sellerProfile?.products.reduce(
+      (sum, product) => sum + product._count.likes,
+      0,
+    ) ?? 0,
+  };
   const sellerProducts = user.sellerProfile?.products.map((product) => ({
     images: product.productImages.length > 0
       ? product.productImages.map((image) => image.imageUrl)
@@ -57,7 +96,7 @@ export function presentUserProfile(user: UserProfileRecord) {
     thumbnail:
       product.productImages[0]?.imageUrl ??
       product.imageUrl,
-    likesCount: 0,
+    likesCount: product._count.likes,
     createdAt: product.createdAt.toISOString(),
   })) ?? [];
 
@@ -82,12 +121,7 @@ export function presentUserProfile(user: UserProfileRecord) {
     shopRequestStatus: user.shopRequestStatus,
     shopRequestSubmittedAt: user.shopRequestSubmittedAt?.toISOString() ?? null,
     shopRequestReviewedAt: user.shopRequestReviewedAt?.toISOString() ?? null,
-    sellerStats: {
-      followerCount: 0,
-      profileViewCount: 0,
-      productCount,
-      totalLikesCount: 0,
-    },
+    sellerStats: resolvedSellerStats,
     isVerified: user.isVerified,
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
@@ -98,7 +132,7 @@ export function presentUserProfile(user: UserProfileRecord) {
           description: user.sellerProfile.description,
           city: user.sellerProfile.city,
           country: user.sellerProfile.country,
-          productCount,
+          productCount: resolvedSellerStats.productCount,
           products: sellerProducts,
           createdAt: user.sellerProfile.createdAt.toISOString(),
           updatedAt: user.sellerProfile.updatedAt.toISOString(),
@@ -107,7 +141,21 @@ export function presentUserProfile(user: UserProfileRecord) {
   };
 }
 
-export function presentPublicSellerProfile(profile: PublicSellerProfileRecord) {
+export function presentPublicSellerProfile(
+  profile: PublicSellerProfileRecord,
+  sellerStats?: SellerStats,
+  isFollowing = false,
+) {
+  const resolvedSellerStats: SellerStats = sellerStats ?? {
+    followerCount: 0,
+    profileViewCount: 0,
+    productCount: profile._count.products,
+    totalLikesCount: profile.products.reduce(
+      (sum, product) => sum + product._count.likes,
+      0,
+    ),
+  };
+
   return {
     id: profile.id,
     studioName: profile.studioName,
@@ -116,7 +164,21 @@ export function presentPublicSellerProfile(profile: PublicSellerProfileRecord) {
     country: profile.country,
     createdAt: profile.createdAt.toISOString(),
     updatedAt: profile.updatedAt.toISOString(),
-    productCount: profile._count.products,
+    productCount: resolvedSellerStats.productCount,
+    sellerStats: resolvedSellerStats,
+    isFollowing,
+    products: profile.products.map((product) => ({
+      id: product.id,
+      title: product.title,
+      category: product.category.name,
+      price: product.priceAmount.toNumber(),
+      images: product.productImages.length > 0
+        ? product.productImages.map((image) => image.imageUrl)
+        : [product.imageUrl],
+      thumbnail: product.productImages[0]?.imageUrl ?? product.imageUrl,
+      likesCount: product._count.likes,
+      createdAt: product.createdAt.toISOString(),
+    })),
     isVerified: profile.user.isVerified,
     owner: {
       userId: profile.user.id,

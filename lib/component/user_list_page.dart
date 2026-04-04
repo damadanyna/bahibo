@@ -90,6 +90,8 @@ class _UserListPageState extends State<UserListPage>
       if (normalizedQuery.isEmpty) return true;
       return user.name.toLowerCase().contains(normalizedQuery);
     }).toList();
+    final hasSourceUsers = widget.users.isNotEmpty;
+    final itemCount = filteredUsers.isEmpty ? 2 : filteredUsers.length + 1;
 
     return Scaffold(
       backgroundColor: backgroundColor,
@@ -105,7 +107,7 @@ class _UserListPageState extends State<UserListPage>
                 : ListView.separated(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                    itemCount: filteredUsers.length + 1,
+                    itemCount: itemCount,
                     separatorBuilder: (_, index) => index == 0
                         ? const SizedBox(height: 18)
                         : const SizedBox(height: 12),
@@ -119,7 +121,9 @@ class _UserListPageState extends State<UserListPage>
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                               colors: [
-                                primary.withOpacity(isDark ? 0.30 : 0.18),
+                                primary.withValues(
+                                  alpha: isDark ? 0.30 : 0.18,
+                                ),
                                 surfaceColor,
                               ],
                             ),
@@ -199,35 +203,19 @@ class _UserListPageState extends State<UserListPage>
                       }
 
                       if (filteredUsers.isEmpty) {
-                        return Container(
-                          padding: const EdgeInsets.all(24),
-                          decoration: BoxDecoration(
-                            color: surfaceColor,
-                            borderRadius: BorderRadius.circular(22),
-                          ),
-                          child: Column(
-                            children: [
-                              Icon(
-                                Icons.search_off,
-                                size: 36,
-                                color: mutedColor,
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                'Aucun profil trouve',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                  color: theme.colorScheme.onSurface,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'Essaie un autre nom dans la recherche.',
-                                style: TextStyle(color: mutedColor),
-                              ),
-                            ],
-                          ),
+                        return _buildEmptyStateCard(
+                          context: context,
+                          surfaceColor: surfaceColor,
+                          mutedColor: mutedColor,
+                          icon: hasSourceUsers
+                              ? Icons.search_off_rounded
+                              : Icons.people_outline_rounded,
+                          title: hasSourceUsers
+                              ? 'Aucun profil trouve'
+                              : 'Aucun profil disponible',
+                          message: hasSourceUsers
+                              ? 'Essaie un autre nom dans la recherche.'
+                              : 'Les profils apparaitront ici des qu\'ils seront disponibles.',
                         );
                       }
 
@@ -293,7 +281,7 @@ class _UserListPageState extends State<UserListPage>
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: primary.withOpacity(0.25),
+                    color: primary.withValues(alpha: 0.25),
                     width: 2,
                   ),
                 ),
@@ -340,7 +328,7 @@ class _UserListPageState extends State<UserListPage>
                   vertical: 9,
                 ),
                 decoration: BoxDecoration(
-                  color: primary.withOpacity(0.12),
+                  color: primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
@@ -351,6 +339,45 @@ class _UserListPageState extends State<UserListPage>
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyStateCard({
+    required BuildContext context,
+    required Color surfaceColor,
+    required Color mutedColor,
+    required IconData icon,
+    required String title,
+    required String message,
+  }) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 38, color: mutedColor),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: mutedColor),
+          ),
+        ],
       ),
     );
   }

@@ -34,15 +34,7 @@ type ProfileRealtimePayload = {
     shopRequestStatus: string;
     shopRequestSubmittedAt: string | null;
     shopRequestReviewedAt: string | null;
-    sellerProfile: {
-      id: string;
-      studioName: string;
-      description: string | null;
-      city: string | null;
-      country: string | null;
-      createdAt: string;
-      updatedAt: string;
-    } | null;
+    sellerProfile: Record<string, unknown> | null;
   };
 };
 

@@ -1,5 +1,6 @@
 class UserProfileData {
   final String? userId;
+  final String? sellerProfileId;
   final String name;
   final String avatarUrl;
   final String coverImageUrl;
@@ -12,10 +13,12 @@ class UserProfileData {
   final String productCount;
   final String totalLikesCount;
   final String rating;
+  final bool isFollowing;
   final List<Map<String, dynamic>> products;
 
   const UserProfileData({
     this.userId,
+    this.sellerProfileId,
     required this.name,
     required this.avatarUrl,
     required this.coverImageUrl,
@@ -28,8 +31,57 @@ class UserProfileData {
     this.productCount = '0',
     this.totalLikesCount = '0',
     required this.rating,
+    this.isFollowing = false,
     required this.products,
   });
+}
+
+UserProfileData buildSellerProfileFromApi(Map<String, dynamic> data) {
+  final owner = Map<String, dynamic>.from(
+    (data['owner'] as Map?) ?? const <String, dynamic>{},
+  );
+  final sellerStats = Map<String, dynamic>.from(
+    (data['sellerStats'] as Map?) ?? const <String, dynamic>{},
+  );
+  final products = ((data['products'] as List?) ?? const [])
+      .whereType<Map>()
+      .map((product) => Map<String, dynamic>.from(product))
+      .toList();
+  final city = (data['city'] as String?)?.trim() ?? '';
+  final country = (data['country'] as String?)?.trim() ?? '';
+  final headlineParts = [
+    city,
+    country,
+  ].where((value) => value.isNotEmpty).toList();
+
+  return UserProfileData(
+    userId: owner['userId'] as String?,
+    sellerProfileId: data['id'] as String?,
+    name: (data['studioName'] as String?)?.trim().isNotEmpty == true
+        ? (data['studioName'] as String).trim()
+        : ((owner['displayName'] as String?)?.trim().isNotEmpty == true
+              ? (owner['displayName'] as String).trim()
+              : 'Boutique Bahibo'),
+    avatarUrl: (owner['avatarUrl'] as String?) ?? '',
+    coverImageUrl: (owner['coverImageUrl'] as String?) ?? '',
+    roleLabel: (data['isVerified'] as bool? ?? false)
+        ? 'Vendeur certifie'
+        : 'Vendeur',
+    responseLabel: 'Profil actif',
+    headline: headlineParts.isNotEmpty
+        ? headlineParts.join(', ')
+        : 'Boutique Bahibo active',
+    about: (data['description'] as String?)?.trim().isNotEmpty == true
+        ? (data['description'] as String).trim()
+        : 'Boutique Bahibo active sur la plateforme.',
+    followerCount: '${sellerStats['followerCount'] ?? 0}',
+    visitorCount: '${sellerStats['profileViewCount'] ?? 0}',
+    productCount: '${sellerStats['productCount'] ?? products.length}',
+    totalLikesCount: '${sellerStats['totalLikesCount'] ?? 0}',
+    rating: '0.0',
+    isFollowing: data['isFollowing'] as bool? ?? false,
+    products: products,
+  );
 }
 
 UserProfileData buildSellerAccountProfileFromCurrentUser(
@@ -49,6 +101,13 @@ UserProfileData buildSellerAccountProfileFromCurrentUser(
   String productCount = '0';
   String totalLikesCount = '0';
 
+  if (sellerStats is Map) {
+    followerCount = '${sellerStats['followerCount'] ?? 0}';
+    visitorCount = '${sellerStats['profileViewCount'] ?? 0}';
+    productCount = '${sellerStats['productCount'] ?? 0}';
+    totalLikesCount = '${sellerStats['totalLikesCount'] ?? 0}';
+  }
+
   if (sellerProfile is Map) {
     final sellerStudioName = (sellerProfile['studioName'] as String?)?.trim();
     final sellerDescription = (sellerProfile['description'] as String?)?.trim();
@@ -65,6 +124,7 @@ UserProfileData buildSellerAccountProfileFromCurrentUser(
     if (sellerProducts is List) {
       return UserProfileData(
         userId: user['id'] as String?,
+        sellerProfileId: sellerProfile['id'] as String?,
         name: displayLabel.isNotEmpty ? displayLabel : 'Boutique Bahibo',
         avatarUrl: avatarUrl,
         coverImageUrl: coverImageUrl,
@@ -79,6 +139,7 @@ UserProfileData buildSellerAccountProfileFromCurrentUser(
         productCount: productCount,
         totalLikesCount: totalLikesCount,
         rating: '0.0',
+        isFollowing: false,
         products: sellerProducts
             .whereType<Map>()
             .map((product) => Map<String, dynamic>.from(product))
@@ -87,15 +148,11 @@ UserProfileData buildSellerAccountProfileFromCurrentUser(
     }
   }
 
-  if (sellerStats is Map) {
-    followerCount = '${sellerStats['followerCount'] ?? 0}';
-    visitorCount = '${sellerStats['profileViewCount'] ?? 0}';
-    productCount = '${sellerStats['productCount'] ?? 0}';
-    totalLikesCount = '${sellerStats['totalLikesCount'] ?? 0}';
-  }
-
   return UserProfileData(
     userId: user['id'] as String?,
+    sellerProfileId: sellerProfile is Map
+        ? sellerProfile['id'] as String?
+        : null,
     name: displayLabel.isNotEmpty ? displayLabel : 'Boutique Bahibo',
     avatarUrl: avatarUrl,
     coverImageUrl: coverImageUrl,
@@ -110,12 +167,14 @@ UserProfileData buildSellerAccountProfileFromCurrentUser(
     productCount: productCount,
     totalLikesCount: totalLikesCount,
     rating: '0.0',
+    isFollowing: false,
     products: const [],
   );
 }
 
 UserProfileData defaultSellerProfileData() {
   return UserProfileData(
+    sellerProfileId: null,
     name: 'John Rakoto',
     avatarUrl:
         'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600',
@@ -131,6 +190,7 @@ UserProfileData defaultSellerProfileData() {
     productCount: '2',
     totalLikesCount: '9.2k',
     rating: '4.9',
+    isFollowing: false,
     products: [
       {
         'title': 'Samsung Galaxy S20',
@@ -164,6 +224,7 @@ UserProfileData buildProfileFromUser({
 }) {
   return UserProfileData(
     userId: userId,
+    sellerProfileId: null,
     name: name,
     avatarUrl: avatarUrl,
     coverImageUrl:
@@ -178,6 +239,7 @@ UserProfileData buildProfileFromUser({
     productCount: '2',
     totalLikesCount: '0',
     rating: '4.7',
+    isFollowing: false,
     products: [
       {
         'title': 'iPhone 13 Mini',
