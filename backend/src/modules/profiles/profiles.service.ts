@@ -259,7 +259,28 @@ export class ProfilesService {
     const user = await client.user.findUnique({
       where: { id: userId },
       include: {
-        sellerProfile: true,
+        sellerProfile: {
+          include: {
+            _count: {
+              select: {
+                products: true,
+              },
+            },
+            products: {
+              include: {
+                category: true,
+                productImages: {
+                  orderBy: {
+                    sortOrder: 'asc',
+                  },
+                },
+              },
+              orderBy: {
+                createdAt: 'desc',
+              },
+            },
+          },
+        },
       },
     });
 
@@ -271,7 +292,32 @@ export class ProfilesService {
   }
 
   private buildUserUpdateData(
-    existingUser: Prisma.UserGetPayload<{ include: { sellerProfile: true } }>,
+    existingUser: Prisma.UserGetPayload<{
+      include: {
+        sellerProfile: {
+          include: {
+            _count: {
+              select: {
+                products: true;
+              };
+            };
+            products: {
+              include: {
+                category: true;
+                productImages: {
+                  orderBy: {
+                    sortOrder: 'asc';
+                  };
+                };
+              };
+              orderBy: {
+                createdAt: 'desc';
+              };
+            };
+          };
+        };
+      };
+    }>,
     dto: UpdateProfileDto,
   ): Prisma.UserUpdateInput {
     const userData: Prisma.UserUpdateInput = {};

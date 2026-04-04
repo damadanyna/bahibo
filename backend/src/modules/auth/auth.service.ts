@@ -497,9 +497,9 @@ export class AuthService {
     const normalizedSignature = appSignature?.trim();
 
     if (normalizedSignature) {
-      return `<#> Bahibo code: ${otpCode}\n${normalizedSignature}`;
+      return `<#> Bahibo verification code ${otpCode}\n${normalizedSignature}`;
     }
 
-    return `Bahibo verification code: ${otpCode}`;
+    return `Bahibo verification code ${otpCode}. Do not share it.`;
   }
 }

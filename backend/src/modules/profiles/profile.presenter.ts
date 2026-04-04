@@ -2,7 +2,25 @@ import { Prisma } from '@prisma/client';
 
 type UserProfileRecord = Prisma.UserGetPayload<{
   include: {
-    sellerProfile: true;
+    sellerProfile: {
+      include: {
+        _count: {
+          select: {
+            products: true;
+          };
+        };
+        products: {
+          include: {
+            category: true;
+            productImages: {
+              orderBy: {
+                sortOrder: 'asc';
+              };
+            };
+          };
+        };
+      };
+    };
   };
 }>;
 
@@ -27,6 +45,21 @@ export function presentUserProfile(user: UserProfileRecord) {
   const nextDisplayNameChangeAt = user.displayNameChangedAt != null
     ? addMonths(user.displayNameChangedAt, 3)
     : null;
+  const productCount = user.sellerProfile?._count.products ?? 0;
+  const sellerProducts = user.sellerProfile?.products.map((product) => ({
+    images: product.productImages.length > 0
+      ? product.productImages.map((image) => image.imageUrl)
+      : [product.imageUrl],
+    id: product.id,
+    title: product.title,
+    category: product.category.name,
+    price: product.priceAmount.toNumber(),
+    thumbnail:
+      product.productImages[0]?.imageUrl ??
+      product.imageUrl,
+    likesCount: 0,
+    createdAt: product.createdAt.toISOString(),
+  })) ?? [];
 
   return {
     id: user.id,
@@ -49,6 +82,12 @@ export function presentUserProfile(user: UserProfileRecord) {
     shopRequestStatus: user.shopRequestStatus,
     shopRequestSubmittedAt: user.shopRequestSubmittedAt?.toISOString() ?? null,
     shopRequestReviewedAt: user.shopRequestReviewedAt?.toISOString() ?? null,
+    sellerStats: {
+      followerCount: 0,
+      profileViewCount: 0,
+      productCount,
+      totalLikesCount: 0,
+    },
     isVerified: user.isVerified,
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
@@ -59,6 +98,8 @@ export function presentUserProfile(user: UserProfileRecord) {
           description: user.sellerProfile.description,
           city: user.sellerProfile.city,
           country: user.sellerProfile.country,
+          productCount,
+          products: sellerProducts,
           createdAt: user.sellerProfile.createdAt.toISOString(),
           updatedAt: user.sellerProfile.updatedAt.toISOString(),
         }

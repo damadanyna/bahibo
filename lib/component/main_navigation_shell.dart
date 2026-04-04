@@ -1,8 +1,15 @@
+import 'dart:async';
+
+import 'package:bahibo/component/profile_models.dart';
 import 'package:bahibo/page/chat_page.dart';
 import 'package:bahibo/page/productList.dart';
+import 'package:bahibo/page/navigation/main_navigation_account_panel.dart';
 import 'package:bahibo/page/navigation/main_simple_user.dart';
 import 'package:bahibo/page/navigation/main_navigation_messages_panel.dart';
 import 'package:bahibo/page/navigation/main_navigation_search_panel.dart';
+import 'package:bahibo/services/app_api_client.dart';
+import 'package:bahibo/services/app_auth_service.dart';
+import 'package:bahibo/services/chat_realtime_service.dart';
 import 'package:flutter/material.dart';
 
 import 'package:bahibo/theme/app_theme_extensions.dart';
@@ -32,13 +39,72 @@ class BahiboNavigationShell extends StatefulWidget {
 }
 
 class MainNavigationShellState extends State<BahiboNavigationShell> {
+  final AppAuthService _authService = AppAuthService();
+
   int _currentIndex = 0;
+  bool _usesSellerAccountPanel = false;
+  UserProfileData? _sellerAccountProfile;
+  StreamSubscription<Map<String, dynamic>>? _profileEventsSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAccountPanelKind();
+    _bindRealtimeProfileUpdates();
+  }
+
+  @override
+  void dispose() {
+    _profileEventsSubscription?.cancel();
+    super.dispose();
+  }
 
   void _handleNavigationSelection(int index) {
     if (_currentIndex == index) {
       return;
     }
     setState(() => _currentIndex = index);
+  }
+
+  Future<void> _loadAccountPanelKind() async {
+    try {
+      final user = await _authService.fetchCurrentUser();
+      if (!mounted) {
+        return;
+      }
+
+      final role = (user['role'] as String?)?.trim() ?? 'CUSTOMER';
+      setState(() {
+        _usesSellerAccountPanel = role == 'SELLER';
+        _sellerAccountProfile = role == 'SELLER'
+            ? buildSellerAccountProfileFromCurrentUser(user)
+            : null;
+      });
+    } on AppApiException {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _usesSellerAccountPanel = false;
+        _sellerAccountProfile = null;
+      });
+    }
+  }
+
+  void _bindRealtimeProfileUpdates() {
+    ChatRealtimeService.instance.ensureConnected();
+    _profileEventsSubscription?.cancel();
+    _profileEventsSubscription = ChatRealtimeService.instance.events.listen((
+      event,
+    ) {
+      final type = event['type']?.toString();
+      if (type != 'profile:shop-request-updated' && type != 'profile:updated') {
+        return;
+      }
+
+      unawaited(_loadAccountPanelKind());
+    });
   }
 
   Future<void> openConversationFromNotification({
@@ -71,11 +137,13 @@ class MainNavigationShellState extends State<BahiboNavigationShell> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    const pages = [
-      Productlist(),
-      MainNavigationSearchPanel(),
-      MainNavigationMessagesPanel(),
-      MainSimpleUser(),
+    final pages = [
+      const Productlist(),
+      const MainNavigationSearchPanel(),
+      const MainNavigationMessagesPanel(),
+      _usesSellerAccountPanel
+          ? MainNavigationAccountPanel(profile: _sellerAccountProfile)
+          : const MainSimpleUser(),
     ];
 
     return Scaffold(

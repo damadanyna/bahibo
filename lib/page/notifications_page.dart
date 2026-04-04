@@ -1,10 +1,14 @@
+import 'package:bahibo/auth/phoneNumber.dart';
 import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/component/theme_menu_button.dart';
+import 'package:bahibo/services/app_api_client.dart';
+import 'package:bahibo/services/app_auth_service.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
 class NotificationsPage extends StatelessWidget {
   final List<Map<String, dynamic>> notifications;
+  static final AppAuthService _authService = AppAuthService();
 
   const NotificationsPage({super.key, required this.notifications});
 
@@ -97,6 +101,57 @@ class NotificationsPage extends StatelessWidget {
     );
   }
 
+  Future<bool> _confirmLogout(BuildContext context) async {
+    final decision = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Deconnexion'),
+        content: const Text(
+          'Voulez-vous vraiment deconnecter ce compte ?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Deconnecter'),
+          ),
+        ],
+      ),
+    );
+
+    return decision ?? false;
+  }
+
+  Future<void> _logout(BuildContext context) async {
+    final shouldLogout = await _confirmLogout(context);
+    if (!shouldLogout || !context.mounted) {
+      return;
+    }
+
+    try {
+      await _authService.logout();
+    } on AppApiException catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+      return;
+    }
+
+    if (!context.mounted) {
+      return;
+    }
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const PhoneNumberPage()),
+      (route) => false,
+    );
+  }
+
   Future<void> _handleMenuSelection(
     BuildContext context,
     _NotificationAppBarAction action,
@@ -137,6 +192,9 @@ class NotificationsPage extends StatelessWidget {
             'Les commentaires servent a prioriser les corrections et les nouvelles fonctionnalites dans l\'application.',
           ],
         );
+        return;
+      case _NotificationAppBarAction.logout:
+        await _logout(context);
         return;
     }
   }
@@ -198,6 +256,13 @@ class NotificationsPage extends StatelessWidget {
                 child: _NotificationMenuItem(
                   icon: Icons.rate_review_outlined,
                   label: 'Commentaire',
+                ),
+              ),
+              PopupMenuItem(
+                value: _NotificationAppBarAction.logout,
+                child: _NotificationMenuItem(
+                  icon: Icons.logout_rounded,
+                  label: 'Deconnexion',
                 ),
               ),
             ],
@@ -547,7 +612,7 @@ class _NotificationThumbnail extends StatelessWidget {
   }
 }
 
-enum _NotificationAppBarAction { theme, conditions, help, comment }
+enum _NotificationAppBarAction { theme, conditions, help, comment, logout }
 
 class _NotificationMenuItem extends StatelessWidget {
   final IconData icon;

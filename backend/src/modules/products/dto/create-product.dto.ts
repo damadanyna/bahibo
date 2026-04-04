@@ -1,0 +1,60 @@
+import { Type } from 'class-transformer';
+import {
+  IsBoolean,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUrl,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
+
+export class CreateProductDto {
+  @IsString()
+  @MinLength(2)
+  @MaxLength(160)
+  title: string;
+
+  @IsString()
+  @MinLength(10)
+  @MaxLength(2000)
+  description: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  priceAmount: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(12)
+  currencyCode?: string;
+
+  @IsOptional()
+  @IsString()
+  categoryId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  categorySlug?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  categoryName?: string;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  isAvailable?: boolean;
+
+  @IsOptional()
+  @IsUrl({ require_tld: false })
+  imageUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  imageOrderJson?: string;
+}

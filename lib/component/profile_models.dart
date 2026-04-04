@@ -9,6 +9,8 @@ class UserProfileData {
   final String about;
   final String followerCount;
   final String visitorCount;
+  final String productCount;
+  final String totalLikesCount;
   final String rating;
   final List<Map<String, dynamic>> products;
 
@@ -23,9 +25,93 @@ class UserProfileData {
     required this.about,
     required this.followerCount,
     required this.visitorCount,
+    this.productCount = '0',
+    this.totalLikesCount = '0',
     required this.rating,
     required this.products,
   });
+}
+
+UserProfileData buildSellerAccountProfileFromCurrentUser(
+  Map<String, dynamic> user,
+) {
+  final displayName = (user['displayName'] as String?)?.trim() ?? '';
+  final avatarUrl = (user['avatarUrl'] as String?)?.trim() ?? '';
+  final coverImageUrl = (user['coverImageUrl'] as String?)?.trim() ?? '';
+  final locationLabel = (user['locationLabel'] as String?)?.trim() ?? '';
+  final sellerProfile = user['sellerProfile'];
+  final sellerStats = user['sellerStats'];
+
+  String about = 'Boutique Bahibo active sur la plateforme.';
+  String displayLabel = displayName;
+  String followerCount = '0';
+  String visitorCount = '0';
+  String productCount = '0';
+  String totalLikesCount = '0';
+
+  if (sellerProfile is Map) {
+    final sellerStudioName = (sellerProfile['studioName'] as String?)?.trim();
+    final sellerDescription = (sellerProfile['description'] as String?)?.trim();
+    final sellerProducts = sellerProfile['products'];
+
+    if (sellerStudioName != null && sellerStudioName.isNotEmpty) {
+      displayLabel = sellerStudioName;
+    }
+
+    if (sellerDescription != null && sellerDescription.isNotEmpty) {
+      about = sellerDescription;
+    }
+
+    if (sellerProducts is List) {
+      return UserProfileData(
+        userId: user['id'] as String?,
+        name: displayLabel.isNotEmpty ? displayLabel : 'Boutique Bahibo',
+        avatarUrl: avatarUrl,
+        coverImageUrl: coverImageUrl,
+        roleLabel: 'Vendeur certifie',
+        responseLabel: 'Profil actif',
+        headline: locationLabel.isNotEmpty
+            ? locationLabel
+            : 'Boutique Bahibo active',
+        about: about,
+        followerCount: followerCount,
+        visitorCount: visitorCount,
+        productCount: productCount,
+        totalLikesCount: totalLikesCount,
+        rating: '0.0',
+        products: sellerProducts
+            .whereType<Map>()
+            .map((product) => Map<String, dynamic>.from(product))
+            .toList(),
+      );
+    }
+  }
+
+  if (sellerStats is Map) {
+    followerCount = '${sellerStats['followerCount'] ?? 0}';
+    visitorCount = '${sellerStats['profileViewCount'] ?? 0}';
+    productCount = '${sellerStats['productCount'] ?? 0}';
+    totalLikesCount = '${sellerStats['totalLikesCount'] ?? 0}';
+  }
+
+  return UserProfileData(
+    userId: user['id'] as String?,
+    name: displayLabel.isNotEmpty ? displayLabel : 'Boutique Bahibo',
+    avatarUrl: avatarUrl,
+    coverImageUrl: coverImageUrl,
+    roleLabel: 'Vendeur certifie',
+    responseLabel: 'Profil actif',
+    headline: locationLabel.isNotEmpty
+        ? locationLabel
+        : 'Boutique Bahibo active',
+    about: about,
+    followerCount: followerCount,
+    visitorCount: visitorCount,
+    productCount: productCount,
+    totalLikesCount: totalLikesCount,
+    rating: '0.0',
+    products: const [],
+  );
 }
 
 UserProfileData defaultSellerProfileData() {
@@ -42,6 +128,8 @@ UserProfileData defaultSellerProfileData() {
         'Specialiste des smartphones premium et reconditionnes. Je teste chaque appareil avant vente et je peux envoyer des photos/video supplementaires sur demande.',
     followerCount: '12.4k',
     visitorCount: '248',
+    productCount: '2',
+    totalLikesCount: '9.2k',
     rating: '4.9',
     products: [
       {
@@ -87,6 +175,8 @@ UserProfileData buildProfileFromUser({
         '$name consulte regulierement les annonces mobiles et interagit avec la communaute Bahibo.',
     followerCount: '1.2k',
     visitorCount: '86',
+    productCount: '2',
+    totalLikesCount: '0',
     rating: '4.7',
     products: [
       {

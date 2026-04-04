@@ -209,6 +209,24 @@ class AppAuthService {
     }
   }
 
+  Future<void> logout() async {
+    final refreshToken = await _sessionStorage.getRefreshToken();
+
+    if (refreshToken != null && refreshToken.isNotEmpty) {
+      try {
+        await _client.post(
+          '/auth/logout',
+          body: {'refreshToken': refreshToken},
+        );
+      } on AppApiException {
+        // Clear local session even if the server logout request fails.
+      }
+    }
+
+    ChatRealtimeService.instance.disconnect();
+    await _sessionStorage.clear();
+  }
+
   Future<void> _persistSession(Map<String, dynamic> data) {
     final user = Map<String, dynamic>.from(
       (data['user'] as Map?) ?? const <String, dynamic>{},

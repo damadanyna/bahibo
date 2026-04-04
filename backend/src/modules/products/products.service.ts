@@ -1,12 +1,24 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
+import { CloudinaryService } from '../auth/cloudinary.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { CreateProductDto } from './dto/create-product.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductEntity } from './entities/product.entity';
 
 type ProductWithRelations = Prisma.ProductGetPayload<{
   include: {
     category: true;
+    productImages: {
+      orderBy: {
+        sortOrder: 'asc';
+      };
+    };
     sellerProfile: {
       include: {
         user: true;
@@ -17,7 +29,166 @@ type ProductWithRelations = Prisma.ProductGetPayload<{
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cloudinaryService: CloudinaryService,
+  ) {}
+
+  async create(
+    currentUser: { userId: string; role: string },
+    dto: CreateProductDto,
+    files: Express.Multer.File[] = [],
+  ) {
+    const sellerProfile = await this.prisma.sellerProfile.findUnique({
+      where: { userId: currentUser.userId },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!sellerProfile) {
+      throw new BadRequestException('Seller profile not found for this user.');
+    }
+
+    const category = await this.resolveCategory(dto);
+    const imageUrls = await this.resolveProductImageUrls(
+      sellerProfile.id,
+      dto,
+      files,
+    );
+
+    const product = await this.prisma.product.create({
+      data: {
+        title: dto.title.trim(),
+        description: dto.description.trim(),
+        imageUrl: imageUrls[0],
+        priceAmount: dto.priceAmount,
+        currencyCode: (dto.currencyCode?.trim().toUpperCase() ?? 'MGA'),
+        isAvailable: dto.isAvailable ?? true,
+        categoryId: category.id,
+        sellerProfileId: sellerProfile.id,
+        productImages: {
+          create: imageUrls.map((imageUrl, index) => ({
+            imageUrl,
+            sortOrder: index,
+          })),
+        },
+      },
+      include: {
+        category: true,
+        productImages: {
+          orderBy: {
+            sortOrder: 'asc',
+          },
+        },
+        sellerProfile: {
+          include: {
+            user: true,
+          },
+        },
+      },
+    });
+
+    return this.toEntity(product);
+  }
+
+  async update(
+    currentUser: { userId: string; role: string },
+    productId: string,
+    dto: UpdateProductDto,
+    files: Express.Multer.File[] = [],
+  ) {
+    const sellerProfile = await this.prisma.sellerProfile.findUnique({
+      where: { userId: currentUser.userId },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!sellerProfile) {
+      throw new BadRequestException('Seller profile not found for this user.');
+    }
+
+    const existingProduct = await this.prisma.product.findUnique({
+      where: { id: productId },
+      include: {
+        category: true,
+        productImages: {
+          orderBy: {
+            sortOrder: 'asc',
+          },
+        },
+        sellerProfile: {
+          include: {
+            user: true,
+          },
+        },
+      },
+    });
+
+    if (!existingProduct) {
+      throw new NotFoundException('Product not found');
+    }
+
+    if (existingProduct.sellerProfile.userId != currentUser.userId) {
+      throw new NotFoundException('Product not found');
+    }
+
+    const shouldResolveCategory =
+      (dto.categoryId?.trim().length ?? 0) > 0 ||
+      (dto.categorySlug?.trim().length ?? 0) > 0 ||
+      (dto.categoryName?.trim().length ?? 0) > 0;
+
+    const category = shouldResolveCategory
+      ? await this.resolveCategory(dto)
+      : existingProduct.category;
+
+    const imageUrls = await this.resolveProductImageUrls(
+      sellerProfile.id,
+      dto,
+      files,
+      existingProduct.productImages.length > 0
+        ? existingProduct.productImages.map((image) => image.imageUrl)
+        : [existingProduct.imageUrl],
+    );
+
+    const updatedProduct = await this.prisma.product.update({
+      where: { id: productId },
+      data: {
+        title: dto.title?.trim() ?? existingProduct.title,
+        description: dto.description?.trim() ?? existingProduct.description,
+        imageUrl: imageUrls[0],
+        priceAmount: dto.priceAmount ?? existingProduct.priceAmount,
+        currencyCode:
+          dto.currencyCode?.trim().toUpperCase() ??
+          existingProduct.currencyCode,
+        isAvailable: dto.isAvailable ?? existingProduct.isAvailable,
+        categoryId: category.id,
+        productImages: {
+          deleteMany: {},
+          create: imageUrls.map((imageUrl, index) => ({
+            imageUrl,
+            sortOrder: index,
+          })),
+        },
+      },
+      include: {
+        category: true,
+        productImages: {
+          orderBy: {
+            sortOrder: 'asc',
+          },
+        },
+        sellerProfile: {
+          include: {
+            user: true,
+          },
+        },
+      },
+    });
+
+    return this.toEntity(updatedProduct);
+  }
 
   async findAll(params: {
     limit: number;
@@ -42,6 +213,11 @@ export class ProductsService {
         where,
         include: {
           category: true,
+          productImages: {
+            orderBy: {
+              sortOrder: 'asc',
+            },
+          },
           sellerProfile: {
             include: {
               user: true,
@@ -70,6 +246,11 @@ export class ProductsService {
       where: { id },
       include: {
         category: true,
+        productImages: {
+          orderBy: {
+            sortOrder: 'asc',
+          },
+        },
         sellerProfile: {
           include: {
             user: true,
@@ -85,7 +266,178 @@ export class ProductsService {
     return this.toEntity(product);
   }
 
+  private async resolveCategory(dto: {
+    categoryId?: string;
+    categorySlug?: string;
+    categoryName?: string;
+  }) {
+    const categoryId = dto.categoryId?.trim();
+    if ((categoryId?.length ?? 0) > 0) {
+      const category = await this.prisma.category.findUnique({
+        where: { id: categoryId },
+      });
+
+      if (!category) {
+        throw new NotFoundException('Category not found');
+      }
+
+      return category;
+    }
+
+    const rawCategoryName = dto.categoryName?.trim();
+    const rawCategorySlug = dto.categorySlug?.trim();
+
+    if (!rawCategoryName && !rawCategorySlug) {
+      throw new BadRequestException(
+        'categoryId, categorySlug or categoryName is required.',
+      );
+    }
+
+    const normalizedSlug = this.toSlug(rawCategorySlug ?? rawCategoryName ?? '');
+    const category = await this.prisma.category.findFirst({
+      where: {
+        OR: [
+          rawCategoryName != null && rawCategoryName.length > 0
+            ? { name: { equals: rawCategoryName, mode: 'insensitive' } }
+            : undefined,
+          normalizedSlug.length > 0
+            ? { slug: { equals: normalizedSlug, mode: 'insensitive' } }
+            : undefined,
+        ].filter(Boolean) as Prisma.CategoryWhereInput[],
+      },
+    });
+
+    if (category) {
+      return category;
+    }
+
+    if (rawCategoryName != null && rawCategoryName.length > 0) {
+      return this.prisma.category.create({
+        data: {
+          name: rawCategoryName,
+          slug: normalizedSlug.length > 0 ? normalizedSlug : this.toSlug(rawCategoryName),
+        },
+      });
+    }
+
+    throw new NotFoundException('Category not found');
+  }
+
+  private async resolveProductImageUrls(
+    sellerProfileId: string,
+    dto: { imageUrl?: string; imageOrderJson?: string },
+    files: Express.Multer.File[] = [],
+    fallbackImageUrls: string[] = [],
+  ) {
+    const uploadedImageUrls = await Promise.all(
+      files.map(async (file) => {
+        const uploadResult = await this.cloudinaryService.uploadProductImage(
+          file,
+          sellerProfileId,
+        );
+        return uploadResult.imageUrl;
+      }),
+    );
+
+    const orderedImageUrls = this.buildOrderedImageUrls(
+      dto.imageOrderJson,
+      uploadedImageUrls,
+      fallbackImageUrls,
+    );
+    if (orderedImageUrls.length > 0) {
+      return orderedImageUrls;
+    }
+
+    const imageUrl = dto.imageUrl?.trim();
+    if (imageUrl) {
+      return [imageUrl];
+    }
+
+    if (uploadedImageUrls.length > 0) {
+      return uploadedImageUrls;
+    }
+
+    if (fallbackImageUrls.length > 0) {
+      return fallbackImageUrls;
+    }
+
+    throw new BadRequestException('A product image is required.');
+  }
+
+  private buildOrderedImageUrls(
+    imageOrderJson: string | undefined,
+    uploadedImageUrls: string[],
+    fallbackImageUrls: string[],
+  ) {
+    const tokens = this.parseImageOrderTokens(imageOrderJson);
+    if (tokens.length === 0) {
+      return [];
+    }
+
+    const orderedImageUrls = tokens
+      .map((token) => {
+        const normalizedToken = token.trim();
+        if (normalizedToken.length === 0) {
+          return null;
+        }
+
+        const uploadedTokenMatch = /^__upload__(\d+)$/.exec(normalizedToken);
+        if (uploadedTokenMatch) {
+          const uploadIndex = Number(uploadedTokenMatch[1]);
+          const uploadedImageUrl = uploadedImageUrls[uploadIndex];
+          if (!uploadedImageUrl) {
+            throw new BadRequestException('Invalid uploaded image order payload.');
+          }
+
+          return uploadedImageUrl;
+        }
+
+        if (fallbackImageUrls.includes(normalizedToken)) {
+          return normalizedToken;
+        }
+
+        if (uploadedImageUrls.length === 0) {
+          return normalizedToken;
+        }
+
+        throw new BadRequestException('Invalid retained image payload.');
+      })
+      .filter((imageUrl): imageUrl is string => imageUrl != null);
+
+    return orderedImageUrls;
+  }
+
+  private parseImageOrderTokens(imageOrderJson?: string) {
+    const normalizedPayload = imageOrderJson?.trim();
+    if (!normalizedPayload) {
+      return [];
+    }
+
+    try {
+      const parsedPayload = JSON.parse(normalizedPayload);
+      if (!Array.isArray(parsedPayload)) {
+        throw new Error('Image order payload is not an array');
+      }
+
+      return parsedPayload.filter((token): token is string => typeof token === 'string');
+    } catch {
+      throw new BadRequestException('Invalid image order payload.');
+    }
+  }
+
+  private toSlug(value: string) {
+    return value
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+
   private toEntity(product: ProductWithRelations): ProductEntity {
+    const imageUrls = product.productImages.length > 0
+      ? product.productImages.map((image) => image.imageUrl)
+      : [product.imageUrl];
+
     return {
       id: product.id,
       title: product.title,
@@ -101,8 +453,8 @@ export class ProductsService {
           product.sellerProfile.user.avatarUrl ??
           'https://i.pravatar.cc/240?img=12',
       },
-      images: [product.imageUrl],
-      thumbnail: product.imageUrl,
+      images: imageUrls,
+      thumbnail: imageUrls[0],
       isAvailable: product.isAvailable,
       createdAt: product.createdAt.toISOString(),
     };

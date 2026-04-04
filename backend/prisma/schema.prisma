@@ -149,9 +149,22 @@ model Product {
   categoryId      String
   sellerProfile   SellerProfile @relation(fields: [sellerProfileId], references: [id], onDelete: Cascade)
   category        Category    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  productImages   ProductImage[]
   cartItems       CartItem[]
   orderItems      OrderItem[]
   conversations   ChatConversation[]
+}
+
+model ProductImage {
+  id        String   @id @default(uuid())
+  imageUrl  String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, sortOrder])
 }
 
 model ChatConversation {

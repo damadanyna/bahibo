@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 
 import 'package:bahibo/component/ProductCard.dart';
 import 'package:bahibo/component/app_network_image.dart';
@@ -15,12 +16,22 @@ import 'package:bahibo/component/user_list_page.dart';
 import 'package:bahibo/page/dashboard_page.dart';
 import 'package:bahibo/page/live/live_preview_page.dart';
 import 'package:bahibo/page/productDetailSeller.dart' as seller_detail;
+import 'package:bahibo/services/app_api_client.dart';
+import 'package:bahibo/services/catalog_api_service.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 enum _EditableProfileImageTarget { avatar, cover }
+
+class _SelectedProductImage {
+  const _SelectedProductImage.local(this.file) : url = null;
+  const _SelectedProductImage.remote(this.url) : file = null;
+
+  final File? file;
+  final String? url;
+}
 
 class MainNavigationAccountPanel extends StatefulWidget {
   final UserProfileData? profile;
@@ -34,65 +45,14 @@ class MainNavigationAccountPanel extends StatefulWidget {
 
 class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     with AppPageRefreshMixin<MainNavigationAccountPanel> {
-  static const List<Map<String, dynamic>> _extraStudioProducts = [
-    {
-      'title': 'iPhone 13 Pro Max',
-      'category': 'Top vente',
-      'price': 3150,
-      'images': [
-        'https://images.unsplash.com/photo-1632661674596-df8be070a5c5?w=800',
-      ],
-      'thumbnail':
-          'https://images.unsplash.com/photo-1632661674596-df8be070a5c5?w=800',
-    },
-    {
-      'title': 'Tecno Camon 20',
-      'category': 'Disponible',
-      'price': 890,
-      'images': [
-        'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=800',
-      ],
-      'thumbnail':
-          'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=800',
-    },
-    {
-      'title': 'AirPods Pro 2',
-      'category': 'Accessoire',
-      'price': 680,
-      'images': [
-        'https://images.unsplash.com/photo-1606220588913-b3aacb4d2f46?w=800',
-      ],
-      'thumbnail':
-          'https://images.unsplash.com/photo-1606220588913-b3aacb4d2f46?w=800',
-    },
-    {
-      'title': 'Samsung Galaxy S23',
-      'category': 'Top vente',
-      'price': 2890,
-      'images': [
-        'https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?w=800',
-      ],
-      'thumbnail':
-          'https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?w=800',
-    },
-    {
-      'title': 'Apple Watch Series 9',
-      'category': 'Accessoire',
-      'price': 1490,
-      'images': [
-        'https://images.unsplash.com/photo-1546868871-7041f2a55e12?w=800',
-      ],
-      'thumbnail':
-          'https://images.unsplash.com/photo-1546868871-7041f2a55e12?w=800',
-    },
-  ];
-
   bool _showEntrySkeleton = true;
+  final CatalogApiService _catalogApiService = CatalogApiService();
   final ImagePicker _imagePicker = ImagePicker();
   final TextEditingController _searchController = TextEditingController();
   File? _avatarImageFile;
   File? _coverImageFile;
   final List<Map<String, dynamic>> _customStudioProducts = [];
+  final Map<String, Map<String, dynamic>> _productOverrides = {};
   String _searchQuery = '';
   String _studioName = '';
   String _studioAddress = 'Antananarivo, Madagascar';
@@ -104,9 +64,17 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   UserProfileData get profile => widget.profile ?? defaultSellerProfileData();
 
   List<Map<String, dynamic>> get _catalogProducts => [
-    ...profile.products,
+    ...profile.products.map((product) {
+      final baseProduct = Map<String, dynamic>.from(product);
+      final productId = (baseProduct['id'] ?? '').toString();
+      final override = _productOverrides[productId];
+      if (override == null) {
+        return baseProduct;
+      }
+
+      return Map<String, dynamic>.from(override);
+    }),
     ..._customStudioProducts,
-    ..._extraStudioProducts,
   ];
 
   List<Map<String, dynamic>> get _filteredProducts {
@@ -384,19 +352,39 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     });
   }
 
+  @override
+  void didUpdateWidget(covariant MainNavigationAccountPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.profile != widget.profile && widget.profile != null) {
+      _hydrateStudioFields(forceFromProfile: true);
+    }
+  }
+
   void _handleSearchChanged() {
     final nextQuery = _searchController.text;
     if (nextQuery == _searchQuery) return;
     setState(() => _searchQuery = nextQuery);
   }
 
-  void _hydrateStudioFields() {
+  void _hydrateStudioFields({bool forceFromProfile = false}) {
+    final sanitizedProfileName = _sanitizeDisplayText(profile.name);
+    final sanitizedProfileHeadline = _sanitizeDisplayText(profile.headline);
+    final sanitizedProfileDescription = profile.about.trim();
+
     _studioName = _sanitizeDisplayText(_studioName);
-    if (_studioName.isEmpty) {
-      _studioName = _sanitizeDisplayText(profile.name);
+    if (forceFromProfile || _studioName.isEmpty) {
+      _studioName = sanitizedProfileName;
     }
-    if (_studioDescription.isEmpty) {
-      _studioDescription = profile.about;
+    if (forceFromProfile || _studioAddress.trim().isEmpty) {
+      _studioAddress = sanitizedProfileHeadline.isNotEmpty
+          ? sanitizedProfileHeadline
+          : _studioAddress;
+    }
+    if (forceFromProfile || _studioDescription.isEmpty) {
+      _studioDescription = sanitizedProfileDescription.isNotEmpty
+          ? sanitizedProfileDescription
+          : _studioDescription;
     }
   }
 
@@ -481,6 +469,8 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {
         final theme = Theme.of(sheetContext);
@@ -583,14 +573,46 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     );
   }
 
-  Future<void> _showCreateProductSheet() async {
-    final nameController = TextEditingController();
-    final categoryController = TextEditingController();
-    final priceController = TextEditingController();
-    final descriptionController = TextEditingController();
-    String availability = 'Disponible';
+  Future<void> _showCreateProductSheet({Map<String, dynamic>? initialProduct}) async {
+    final isEditingProduct = initialProduct != null;
+    final initialImageUrls =
+        ((initialProduct?['images'] as List?)?.whereType<String>()
+                .where((imageUrl) => imageUrl.trim().isNotEmpty)
+                .toList() ??
+            <String>[]);
+    if (initialImageUrls.isEmpty) {
+      final fallbackThumbnail = (initialProduct?['thumbnail'] ?? '').toString();
+      if (fallbackThumbnail.trim().isNotEmpty) {
+        initialImageUrls.add(fallbackThumbnail);
+      }
+    }
+    final nameController = TextEditingController(
+      text: (initialProduct?['title'] ?? '').toString(),
+    );
+    final categoryController = TextEditingController(
+      text: (initialProduct?['category'] ?? '').toString(),
+    );
+    final priceController = TextEditingController(
+      text: initialProduct?['price'] == null
+          ? ''
+          : _formatPriceDigits(
+              ((initialProduct?['price'] as num?)?.round() ?? 0).toString(),
+            ),
+    );
+    final descriptionController = TextEditingController(
+      text: (initialProduct?['description'] ?? '').toString(),
+    );
+    String availability = (initialProduct?['isAvailable'] as bool? ?? true)
+        ? 'Disponible'
+        : 'Rupture';
     String productCondition = 'Neuf';
-    final productImageFiles = <File>[];
+    var isPublishingProduct = false;
+    var isUploadDialogVisible = false;
+    BuildContext? uploadDialogContext;
+    Completer<void>? uploadDialogClosedCompleter;
+    final productImages = initialImageUrls
+      .map(_SelectedProductImage.remote)
+      .toList();
     var isFormattingPrice = false;
 
     void formatPriceInput() {
@@ -623,6 +645,82 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
         final accentColor = _accentColor(theme);
         final panelColor = _backgroundColor(theme);
 
+        void showUploadProgressDialog() {
+          if (isUploadDialogVisible || !sheetContext.mounted) {
+            return;
+          }
+
+          isUploadDialogVisible = true;
+          uploadDialogClosedCompleter = Completer<void>();
+          showDialog<void>(
+            context: context,
+            barrierDismissible: false,
+            useRootNavigator: true,
+            builder: (dialogContext) {
+              uploadDialogContext = dialogContext;
+              return PopScope(
+                canPop: false,
+                child: AlertDialog(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  contentPadding: const EdgeInsets.fromLTRB(24, 22, 24, 20),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(color: accentColor),
+                      const SizedBox(height: 18),
+                      Text(
+                        isEditingProduct
+                            ? 'Mise a jour du produit en cours'
+                            : 'Upload du produit en cours',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Les images sont en cours d\'envoi. Veuillez patienter.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: theme.appColors.mutedText),
+                      ),
+                      const SizedBox(height: 16),
+                      LinearProgressIndicator(
+                        borderRadius: BorderRadius.circular(999),
+                        color: accentColor,
+                        minHeight: 7,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ).whenComplete(() {
+            isUploadDialogVisible = false;
+            uploadDialogContext = null;
+            if (uploadDialogClosedCompleter?.isCompleted == false) {
+              uploadDialogClosedCompleter?.complete();
+            }
+            uploadDialogClosedCompleter = null;
+          });
+        }
+
+        Future<void> closeUploadProgressDialog() async {
+          if (!isUploadDialogVisible) {
+            return;
+          }
+
+          final dialogContext = uploadDialogContext;
+          final closedCompleter = uploadDialogClosedCompleter;
+          if (dialogContext == null || closedCompleter == null) {
+            return;
+          }
+
+          Navigator.of(dialogContext, rootNavigator: true).pop();
+          await closedCompleter.future;
+        }
+
         Future<void> pickCameraProductImage() async {
           final file = await _imagePicker.pickImage(
             source: ImageSource.camera,
@@ -633,7 +731,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
             return;
           }
 
-          productImageFiles.add(File(file.path));
+          productImages.add(_SelectedProductImage.local(File(file.path)));
         }
 
         Future<void> pickGalleryProductImages() async {
@@ -645,12 +743,18 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
             return;
           }
 
-          productImageFiles.addAll(files.map((file) => File(file.path)));
+          productImages.addAll(
+            files.map((file) => _SelectedProductImage.local(File(file.path))),
+          );
         }
 
         return StatefulBuilder(
           builder: (context, setModalState) {
             Future<void> chooseProductImage() async {
+              if (isPublishingProduct) {
+                return;
+              }
+
               await showModalBottomSheet<void>(
                 context: context,
                 builder: (imageContext) {
@@ -684,6 +788,10 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
             }
 
             Future<void> replaceProductImage(int index) async {
+              if (isPublishingProduct) {
+                return;
+              }
+
               final file = await _imagePicker.pickImage(
                 source: ImageSource.gallery,
                 imageQuality: 85,
@@ -694,7 +802,9 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
               }
 
               setModalState(() {
-                productImageFiles[index] = File(file.path);
+                productImages[index] = _SelectedProductImage.local(
+                  File(file.path),
+                );
               });
             }
 
@@ -708,11 +818,13 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                   maxHeight: MediaQuery.of(sheetContext).size.height * 0.92,
                 ),
                 padding: const EdgeInsets.fromLTRB(14, 16, 14, 20),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+                child: AbsorbPointer(
+                  absorbing: isPublishingProduct,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                       Center(
                         child: Container(
                           width: 42,
@@ -725,16 +837,53 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                       ),
                       const SizedBox(height: 18),
                       Text(
-                        'Creer un produit',
+                        isEditingProduct ? 'Modifier le produit' : 'Creer un produit',
                         style: theme.textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.w800,
                         ),
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        'Renseigne les informations principales du produit avant publication.',
+                        isEditingProduct
+                            ? 'Mets a jour les informations principales du produit avant validation.'
+                            : 'Renseigne les informations principales du produit avant publication.',
                         style: TextStyle(color: theme.appColors.mutedText),
                       ),
+                      if (isPublishingProduct) ...[
+                        const SizedBox(height: 14),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: accentColor.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: accentColor.withValues(alpha: 0.16),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.1,
+                                  color: accentColor,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  'Publication du produit en cours. L\'image est en cours d\'upload.',
+                                  style: TextStyle(
+                                    color: accentColor,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 18),
                       DynamicIconInput(
                         controller: nameController,
@@ -879,7 +1028,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                             color: theme.appColors.inputBorder,
                           ),
                         ),
-                        child: productImageFiles.isEmpty
+                        child: productImages.isEmpty
                             ? Material(
                                 color: Colors.transparent,
                                 child: InkWell(
@@ -936,7 +1085,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                                           ),
                                         ),
                                         child: Text(
-                                          '${productImageFiles.length} photo${productImageFiles.length > 1 ? 's' : ''}',
+                                          '${productImages.length} photo${productImages.length > 1 ? 's' : ''}',
                                           style: TextStyle(
                                             color: accentColor,
                                             fontWeight: FontWeight.w800,
@@ -945,7 +1094,9 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                                       ),
                                       const Spacer(),
                                       TextButton.icon(
-                                        onPressed: chooseProductImage,
+                                        onPressed: isPublishingProduct
+                                            ? null
+                                            : chooseProductImage,
                                         icon: const Icon(
                                           Icons.add_photo_alternate_outlined,
                                         ),
@@ -954,60 +1105,86 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                                     ],
                                   ),
                                   const SizedBox(height: 10),
-                                  SizedBox(
-                                    height: 118,
-                                    child: ListView.separated(
-                                      scrollDirection: Axis.horizontal,
-                                      itemCount: productImageFiles.length,
-                                      separatorBuilder: (_, _) =>
-                                          const SizedBox(width: 10),
-                                      itemBuilder: (context, index) {
-                                        final imageFile =
-                                            productImageFiles[index];
-                                        return SizedBox(
-                                          width: 108,
-                                          child: Stack(
-                                            fit: StackFit.expand,
-                                            children: [
-                                              ClipRRect(
-                                                borderRadius:
-                                                    BorderRadius.circular(16),
-                                                child: Image.file(
-                                                  imageFile,
-                                                  fit: BoxFit.cover,
-                                                ),
-                                              ),
-                                              Positioned(
-                                                top: 8,
-                                                left: 8,
-                                                child: Row(
-                                                  children: [
-                                                    _buildProductImageAction(
-                                                      icon: Icons.edit_rounded,
-                                                      onTap: () =>
-                                                          replaceProductImage(
-                                                            index,
+                                  LayoutBuilder(
+                                    builder: (context, constraints) {
+                                      final itemWidth =
+                                          (constraints.maxWidth - 20) / 3;
+
+                                      return Wrap(
+                                        spacing: 10,
+                                        runSpacing: 10,
+                                        children: List.generate(
+                                          productImages.length,
+                                          (index) {
+                                            final image = productImages[index];
+
+                                            return SizedBox(
+                                              width: itemWidth.clamp(92.0, 140.0),
+                                              height: itemWidth.clamp(92.0, 140.0),
+                                              child: Stack(
+                                                fit: StackFit.expand,
+                                                children: [
+                                                  ClipRRect(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          16,
+                                                        ),
+                                                    child: image.file != null
+                                                        ? Image.file(
+                                                            image.file!,
+                                                            fit: BoxFit.cover,
+                                                          )
+                                                        : AppNetworkImage(
+                                                            imageUrl:
+                                                                image.url ?? '',
+                                                            fit: BoxFit.cover,
                                                           ),
+                                                  ),
+                                                  Positioned(
+                                                    top: 8,
+                                                    left: 8,
+                                                    child: Row(
+                                                      children: [
+                                                        _buildProductImageAction(
+                                                          icon: Icons
+                                                              .edit_rounded,
+                                                          onTap:
+                                                              isPublishingProduct
+                                                              ? () {}
+                                                              : () =>
+                                                                    replaceProductImage(
+                                                                      index,
+                                                                    ),
+                                                        ),
+                                                        const SizedBox(
+                                                          width: 6,
+                                                        ),
+                                                        _buildProductImageAction(
+                                                          icon: Icons
+                                                              .delete_outline_rounded,
+                                                          onTap:
+                                                              isPublishingProduct
+                                                              ? () {}
+                                                              : () {
+                                                                  setModalState(
+                                                                    () {
+                                                                      productImages.removeAt(
+                                                                        index,
+                                                                      );
+                                                                    },
+                                                                  );
+                                                                },
+                                                        ),
+                                                      ],
                                                     ),
-                                                    const SizedBox(width: 6),
-                                                    _buildProductImageAction(
-                                                      icon: Icons
-                                                          .delete_outline_rounded,
-                                                      onTap: () {
-                                                        setModalState(() {
-                                                          productImageFiles
-                                                              .removeAt(index);
-                                                        });
-                                                      },
-                                                    ),
-                                                  ],
-                                                ),
+                                                  ),
+                                                ],
                                               ),
-                                            ],
-                                          ),
-                                        );
-                                      },
-                                    ),
+                                            );
+                                          },
+                                        ),
+                                      );
+                                    },
                                   ),
                                 ],
                               ),
@@ -1016,12 +1193,29 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                       SizedBox(
                         width: double.infinity,
                         child: DynamicIconButton(
-                          text: 'Publier le produit',
-                          icon: const Icon(
-                            Icons.check_circle_outline,
-                            color: Colors.white,
-                          ),
-                          onPressed: () async {
+                          text: isPublishingProduct
+                            ? (isEditingProduct
+                              ? 'Mise a jour en cours...'
+                              : 'Publication en cours...')
+                            : (isEditingProduct
+                              ? 'Mettre a jour le produit'
+                              : 'Publier le produit'),
+                          icon: isPublishingProduct
+                              ? SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.2,
+                                    color: theme.colorScheme.onPrimary,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.check_circle_outline,
+                                  color: Colors.white,
+                                ),
+                          onPressed: isPublishingProduct
+                              ? null
+                              : () async {
                             final productName = nameController.text.trim();
                             final productCategory = categoryController.text
                                 .trim();
@@ -1037,18 +1231,19 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                                 parsedPrice == null ||
                                 parsedPrice <= 0 ||
                                 productDescription.isEmpty ||
-                                productImageFiles.isEmpty) {
+                                productImages.isEmpty) {
                               await _showMissingProductFieldsDialog(
                                 sheetContext,
                               );
                               return;
                             }
 
-                            final shouldPublish =
-                                await _showPublishProductConfirmationDialog(
-                                  sheetContext,
-                                  productName: productName,
-                                );
+                            final shouldPublish = isEditingProduct
+                                ? true
+                                : await _showPublishProductConfirmationDialog(
+                                    sheetContext,
+                                    productName: productName,
+                                  );
 
                             if (!shouldPublish ||
                                 !mounted ||
@@ -1056,34 +1251,106 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                               return;
                             }
 
-                            setState(() {
-                              _customStudioProducts.insert(0, {
-                                'title': productName,
-                                'category': productCategory,
-                                'price': parsedPrice,
-                                'description': productDescription,
-                                'status': availability,
-                                'condition': productCondition,
-                                'thumbnail': productImageFiles.first.path,
-                                'images': productImageFiles
-                                    .map((file) => file.path)
-                                    .toList(),
-                                'isLocalFile': true,
-                              });
-                            });
+                            String? successMessage;
+                            String? errorMessage;
+                            var shouldCloseSheetAfterSuccess = false;
 
-                            Navigator.of(sheetContext).pop();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  '$productName ajoute au catalogue.',
-                                ),
-                              ),
-                            );
+                            try {
+                              setModalState(() {
+                                isPublishingProduct = true;
+                              });
+                              showUploadProgressDialog();
+
+                              final localImageFiles = <File>[];
+                              final imageOrder = productImages.map((image) {
+                                if (image.file != null) {
+                                  final uploadIndex = localImageFiles.length;
+                                  localImageFiles.add(image.file!);
+                                  return '__upload__$uploadIndex';
+                                }
+
+                                return image.url ?? '';
+                              }).toList();
+
+                              final createdProduct = isEditingProduct
+                                  ? await _catalogApiService.updateProduct(
+                                      productId:
+                                          (initialProduct['id'] ?? '')
+                                              .toString(),
+                                      title: productName,
+                                      description: productDescription,
+                                      priceAmount: parsedPrice,
+                                      categoryName: productCategory,
+                                      imageFiles: localImageFiles,
+                                      imageOrder: imageOrder,
+                                      isAvailable:
+                                          availability == 'Disponible',
+                                    )
+                                  : await _catalogApiService.createProduct(
+                                      title: productName,
+                                      description: productDescription,
+                                      priceAmount: parsedPrice,
+                                      categoryName: productCategory,
+                                      imageFiles: localImageFiles,
+                                      imageOrder: imageOrder,
+                                    );
+
+                              if (!mounted || !sheetContext.mounted) {
+                                return;
+                              }
+
+                              setState(() {
+                                _upsertProductInState({
+                                  ...createdProduct,
+                                  'description': productDescription,
+                                  'status': availability,
+                                  'condition': productCondition,
+                                  'likesCount':
+                                      (initialProduct?['likesCount'] as num?)
+                                          ?.toInt() ??
+                                      0,
+                                  'isLocalFile': false,
+                                });
+                              });
+
+                              successMessage = isEditingProduct
+                                  ? '$productName mis a jour dans votre catalogue.'
+                                  : '$productName ajoute au catalogue.';
+                              shouldCloseSheetAfterSuccess = true;
+                            } on AppApiException catch (error) {
+                              if (!mounted || !sheetContext.mounted) {
+                                return;
+                              }
+
+                              errorMessage = error.message;
+                            } finally {
+                              await closeUploadProgressDialog();
+                              if (sheetContext.mounted) {
+                                setModalState(() {
+                                  isPublishingProduct = false;
+                                });
+                              }
+
+                              if (shouldCloseSheetAfterSuccess &&
+                                  sheetContext.mounted) {
+                                Navigator.of(sheetContext).pop();
+                              }
+
+                              if (mounted && successMessage != null) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(successMessage)),
+                                );
+                              } else if (mounted && errorMessage != null) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(errorMessage)),
+                                );
+                              }
+                            }
                           },
                         ),
                       ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -1308,6 +1575,30 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     );
   }
 
+  void _upsertProductInState(Map<String, dynamic> product) {
+    final productId = (product['id'] ?? '').toString();
+    final normalizedProduct = Map<String, dynamic>.from(product);
+
+    final existingCustomIndex = _customStudioProducts.indexWhere(
+      (item) => (item['id'] ?? '').toString() == productId,
+    );
+    if (existingCustomIndex >= 0) {
+      _customStudioProducts[existingCustomIndex] = normalizedProduct;
+      return;
+    }
+
+    final isProfileProduct = profile.products.any(
+      (item) => (item['id'] ?? '').toString() == productId,
+    );
+
+    if (isProfileProduct) {
+      _productOverrides[productId] = normalizedProduct;
+      return;
+    }
+
+    _customStudioProducts.insert(0, normalizedProduct);
+  }
+
   Color _backgroundColor(ThemeData theme) {
     return theme.appColors.backgroundBase;
   }
@@ -1424,28 +1715,17 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   }
 
   List<_RankedProductEntry> _buildTopProducts() {
-    const likes = [1200, 980, 870, 760, 650, 590, 540, 490, 430, 390];
-    const growth = [
-      '+18%',
-      '+12%',
-      '+9%',
-      '+7%',
-      '+6%',
-      '+4%',
-      '+3%',
-      '+2%',
-      '+2%',
-      '+1%',
-    ];
     final result = <_RankedProductEntry>[];
-    final products = _catalogProducts;
+    final products = [..._catalogProducts];
+    products.sort((left, right) {
+      final leftLikes = (left['likesCount'] as num?)?.toInt() ?? 0;
+      final rightLikes = (right['likesCount'] as num?)?.toInt() ?? 0;
+      return rightLikes.compareTo(leftLikes);
+    });
 
-    for (
-      var index = 0;
-      index < likes.length && index < products.length;
-      index++
-    ) {
+    for (var index = 0; index < products.length; index++) {
       final product = products[index];
+      final likes = (product['likesCount'] as num?)?.toInt() ?? 0;
       result.add(
         _RankedProductEntry(
           rank: index + 1,
@@ -1453,8 +1733,8 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
           category: (product['category'] ?? 'Catalogue').toString(),
           imageUrl: (product['thumbnail'] ?? '').toString(),
           price: (product['price'] ?? 0).toString(),
-          likes: likes[index],
-          growth: growth[index],
+          likes: likes,
+          growth: likes > 0 ? '+0%' : '--',
         ),
       );
     }
@@ -1464,7 +1744,6 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
 
   @override
   Widget build(BuildContext context) {
-    _hydrateStudioFields();
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final backgroundColor = _backgroundColor(theme);
@@ -1823,13 +2102,14 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     final supportAccentColor = _supportAccentColor(theme);
     final metrics = [
       _StudioMetric('Abonnes', profile.followerCount, Icons.groups_2_outlined),
-      _StudioMetric('Vues profil', '3.8k', Icons.visibility_outlined),
-      _StudioMetric('Produits', '${_catalogProducts.length}', Icons.storefront),
-      _StudioMetric('Likes total', '9.2k', Icons.favorite_outline),
+      _StudioMetric('Vues profil', profile.visitorCount, Icons.visibility_outlined),
+      _StudioMetric('Produits', profile.productCount, Icons.storefront),
+      _StudioMetric('Likes total', profile.totalLikesCount, Icons.favorite_outline),
     ];
 
     return GridView.builder(
       shrinkWrap: true,
+      primary: false,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: metrics.length,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -2093,7 +2373,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
           _buildSectionHeader(
             theme,
             'Top 10 produits likes',
-            'Top performance',
+            'Produits reels du studio',
           ),
           const SizedBox(height: 14),
           ...topProducts.take(5).map((product) {
@@ -2201,10 +2481,23 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
             ...filteredProducts.take(3).map((product) {
               return Padding(
                 padding: const EdgeInsets.only(bottom: 10),
-                child: ProductCard(
-                  product: product,
-                  detailPageBuilder: (product) =>
-                      seller_detail.ProductDetailPage(product: product),
+                child: Column(
+                  children: [
+                    ProductCard(
+                      product: product,
+                      detailPageBuilder: (product) =>
+                          seller_detail.ProductDetailPage(product: product),
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: () =>
+                            _showCreateProductSheet(initialProduct: product),
+                        icon: const Icon(Icons.edit_outlined, size: 18),
+                        label: const Text('Modifier le produit'),
+                      ),
+                    ),
+                  ],
                 ),
               );
             }),

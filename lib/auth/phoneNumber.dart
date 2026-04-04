@@ -305,6 +305,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
         return;
       }
 
+      final debugCode = (response['debugCode'] as String?)?.trim();
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -313,7 +314,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
             countryName: _selectedCountryName,
             countryDialCode: _selectedCountryDialCode,
             appSignature: appSignature,
-            debugCode: response['debugCode'] as String?,
+            debugCode: debugCode,
           ),
         ),
       );
