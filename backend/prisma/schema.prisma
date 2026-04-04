@@ -13,6 +13,13 @@ enum UserRole {
   ADMIN
 }
 
+enum ShopRequestStatus {
+  NONE
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum OrderStatus {
   PENDING
   CONFIRMED
@@ -43,8 +50,16 @@ model User {
   displayName     String
   passwordHash    String
   avatarUrl       String?
+  coverImageUrl   String?
+  locationLabel   String?
+  locationLatitude Float?
+  locationLongitude Float?
+  locationUpdatedAt DateTime?
   preferredLanguage String?
   role            UserRole       @default(CUSTOMER)
+  shopRequestStatus ShopRequestStatus @default(NONE)
+  shopRequestSubmittedAt DateTime?
+  shopRequestReviewedAt DateTime?
   isVerified      Boolean        @default(false)
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt

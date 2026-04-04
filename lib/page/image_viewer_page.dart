@@ -5,6 +5,7 @@ import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
 import 'package:bahibo/component/app_share_sheet.dart';
+import 'package:bahibo/services/cloudinary_image_url.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 
 class ImageViewerOverlayData {
@@ -124,7 +125,9 @@ class _ImageViewerPageState extends State<ImageViewerPage>
 
   @override
   Widget build(BuildContext context) {
-    final images = widget.imageUrls;
+    final images = widget.imageUrls
+        .map(CloudinaryImageUrl.forViewer)
+        .toList(growable: false);
     final overlay = widget.overlay;
     final bottomOverlayOffset = isOffline ? 74.0 : 28.0;
     final appColors = Theme.of(context).appColors;
@@ -159,6 +162,7 @@ class _ImageViewerPageState extends State<ImageViewerPage>
                 Widget image = AppNetworkImage(
                   imageUrl: images[index],
                   fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
                   errorChild: Icon(
                     Icons.broken_image,
                     color: appColors.heroForegroundMuted,

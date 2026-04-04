@@ -40,6 +40,7 @@ class AppNetworkImage extends StatelessWidget {
   final double? width;
   final double? height;
   final BoxFit fit;
+  final FilterQuality filterQuality;
   final BorderRadius? borderRadius;
   final BoxShape shape;
   final Widget? errorChild;
@@ -50,6 +51,7 @@ class AppNetworkImage extends StatelessWidget {
     this.width,
     this.height,
     this.fit = BoxFit.cover,
+    this.filterQuality = FilterQuality.medium,
     this.borderRadius,
     this.shape = BoxShape.rectangle,
     this.errorChild,
@@ -62,6 +64,7 @@ class AppNetworkImage extends StatelessWidget {
     final image = Image.network(
       imageUrl,
       fit: fit,
+      filterQuality: filterQuality,
       width: width,
       height: height,
       loadingBuilder: (context, child, loadingProgress) {
@@ -71,6 +74,16 @@ class AppNetworkImage extends StatelessWidget {
           height: height,
           borderRadius: borderRadius,
           shape: shape,
+          child: Center(
+            child: SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.4,
+                color: appColors.placeholderIcon,
+              ),
+            ),
+          ),
         );
       },
       errorBuilder: (_, __, ___) {

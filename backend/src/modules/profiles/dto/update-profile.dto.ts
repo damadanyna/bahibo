@@ -1,6 +1,9 @@
 import { Type } from 'class-transformer';
 import {
+  IsLatitude,
+  IsLongitude,
   IsOptional,
+  IsNumber,
   IsString,
   IsUrl,
   MaxLength,
@@ -45,9 +48,30 @@ export class UpdateProfileDto {
   avatarUrl?: string;
 
   @IsOptional()
+  @IsUrl({ require_tld: false })
+  coverImageUrl?: string;
+
+  @IsOptional()
   @IsString()
   @MaxLength(10)
   preferredLanguage?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  locationLabel?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @IsLatitude()
+  locationLatitude?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @IsLongitude()
+  locationLongitude?: number;
 
   @IsOptional()
   @ValidateNested()

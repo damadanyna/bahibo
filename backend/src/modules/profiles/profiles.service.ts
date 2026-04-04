@@ -1,13 +1,17 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, PrismaClient, UserRole } from '@prisma/client';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma, ShopRequestStatus, UserRole } from '@prisma/client';
 
+import { CloudinaryService } from '../auth/cloudinary.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateProfileDto, UpdateSellerProfileDto } from './dto/update-profile.dto';
 import { presentPublicSellerProfile, presentUserProfile } from './profile.presenter';
 
 @Injectable()
 export class ProfilesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cloudinaryService: CloudinaryService,
+  ) {}
 
   async getCurrentUserProfile(userId: string) {
     const user = await this.findUserProfileById(userId, this.prisma);
@@ -65,6 +69,110 @@ export class ProfilesService {
     return presentPublicSellerProfile(sellerProfile);
   }
 
+  async updateCurrentUserAvatarImage(
+    userId: string,
+    file: Express.Multer.File | undefined,
+  ) {
+    return this.updateCurrentUserImage(userId, file, 'avatar');
+  }
+
+  async updateCurrentUserCoverImage(
+    userId: string,
+    file: Express.Multer.File | undefined,
+  ) {
+    return this.updateCurrentUserImage(userId, file, 'cover');
+  }
+
+  async submitShopRequest(userId: string) {
+    const user = await this.findUserProfileById(userId, this.prisma);
+
+    if (user.role === UserRole.SELLER) {
+      throw new BadRequestException('Ce compte est deja une boutique.');
+    }
+
+    if (user.shopRequestStatus === ShopRequestStatus.PENDING) {
+      return presentUserProfile(user);
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        shopRequestStatus: ShopRequestStatus.PENDING,
+        shopRequestSubmittedAt: new Date(),
+        shopRequestReviewedAt: null,
+      },
+    });
+
+    return this.getCurrentUserProfile(userId);
+  }
+
+  async listPendingShopRequests() {
+    const users = await this.prisma.user.findMany({
+      where: {
+        shopRequestStatus: ShopRequestStatus.PENDING,
+      },
+      orderBy: {
+        shopRequestSubmittedAt: 'asc',
+      },
+      include: {
+        sellerProfile: true,
+      },
+    });
+
+    return users.map((user) => ({
+      id: user.id,
+      displayName: user.displayName,
+      phoneE164: user.phoneE164,
+      avatarUrl: user.avatarUrl,
+      coverImageUrl: user.coverImageUrl,
+      locationLabel: user.locationLabel,
+      role: user.role,
+      isVerified: user.isVerified,
+      shopRequestStatus: user.shopRequestStatus,
+      shopRequestSubmittedAt: user.shopRequestSubmittedAt?.toISOString() ?? null,
+      createdAt: user.createdAt.toISOString(),
+      sellerProfile: user.sellerProfile
+        ? {
+            id: user.sellerProfile.id,
+            studioName: user.sellerProfile.studioName,
+            description: user.sellerProfile.description,
+            city: user.sellerProfile.city,
+            country: user.sellerProfile.country,
+          }
+        : null,
+    }));
+  }
+
+  async approveShopRequest(userId: string) {
+    const user = await this.findUserProfileById(userId, this.prisma);
+
+    if (user.shopRequestStatus !== ShopRequestStatus.PENDING) {
+      throw new BadRequestException('No pending shop request found for this user.');
+    }
+
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.user.update({
+        where: { id: userId },
+        data: {
+          role: UserRole.SELLER,
+          shopRequestStatus: ShopRequestStatus.APPROVED,
+          shopRequestReviewedAt: new Date(),
+        },
+      });
+
+      if (!user.sellerProfile) {
+        await transaction.sellerProfile.create({
+          data: {
+            userId,
+            studioName: user.displayName,
+          },
+        });
+      }
+    });
+
+    return this.getCurrentUserProfile(userId);
+  }
+
   private async findUserProfileById(userId: string, client: PrismaService | Prisma.TransactionClient) {
     const user = await client.user.findUnique({
       where: { id: userId },
@@ -92,6 +200,30 @@ export class ProfilesService {
 
     if (dto.avatarUrl !== undefined) {
       userData.avatarUrl = dto.avatarUrl;
+    }
+
+    if (dto.coverImageUrl !== undefined) {
+      userData.coverImageUrl = dto.coverImageUrl;
+    }
+
+    if (dto.locationLabel !== undefined) {
+      userData.locationLabel = dto.locationLabel;
+    }
+
+    if (dto.locationLatitude !== undefined) {
+      userData.locationLatitude = dto.locationLatitude;
+    }
+
+    if (dto.locationLongitude !== undefined) {
+      userData.locationLongitude = dto.locationLongitude;
+    }
+
+    if (
+      dto.locationLabel !== undefined ||
+      dto.locationLatitude !== undefined ||
+      dto.locationLongitude !== undefined
+    ) {
+      userData.locationUpdatedAt = new Date();
     }
 
     if (dto.preferredLanguage !== undefined) {
@@ -134,5 +266,39 @@ export class ProfilesService {
     }
 
     return Object.keys(sellerProfileData).length > 0 ? sellerProfileData : null;
+  }
+
+  private async updateCurrentUserImage(
+    userId: string,
+    file: Express.Multer.File | undefined,
+    variant: 'avatar' | 'cover',
+  ) {
+    if (!file) {
+      throw new BadRequestException('Profile image file is required');
+    }
+
+    const user = await this.findUserProfileById(userId, this.prisma);
+    const uploadResult = await this.cloudinaryService.uploadUserImage(
+      file,
+      user.phoneE164,
+      variant,
+    );
+
+    const data: Prisma.UserUpdateInput =
+      variant === 'cover'
+        ? { coverImageUrl: uploadResult.imageUrl }
+        : { avatarUrl: uploadResult.imageUrl };
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data,
+    });
+
+    return {
+      originalUrl: uploadResult.originalUrl,
+      publicId: uploadResult.publicId,
+      imageUrl: uploadResult.imageUrl,
+      profile: await this.getCurrentUserProfile(userId),
+    };
   }
 }

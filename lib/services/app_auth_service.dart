@@ -123,8 +123,47 @@ class AppAuthService {
     return avatarUrl;
   }
 
+  Future<String> uploadAvatarImage({required File imageFile}) {
+    return _uploadAuthenticatedProfileImage(
+      endpointPath: '/profiles/me/avatar-image',
+      imageFile: imageFile,
+      responseKey: 'imageUrl',
+    );
+  }
+
+  Future<String> uploadCoverImage({required File imageFile}) {
+    return _uploadAuthenticatedProfileImage(
+      endpointPath: '/profiles/me/cover-image',
+      imageFile: imageFile,
+      responseKey: 'imageUrl',
+    );
+  }
+
   Future<Map<String, dynamic>> fetchCurrentUser() async {
     final data = await _client.get('/auth/me', authenticated: true);
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<Map<String, dynamic>> updateCurrentLocation({
+    required String locationLabel,
+    required double latitude,
+    required double longitude,
+  }) async {
+    final data = await _client.patch(
+      '/profiles/me',
+      authenticated: true,
+      body: {
+        'locationLabel': locationLabel,
+        'locationLatitude': latitude,
+        'locationLongitude': longitude,
+      },
+    );
+
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<Map<String, dynamic>> submitShopRequest() async {
+    final data = await _client.post('/profiles/me/shop-request', authenticated: true);
     return Map<String, dynamic>.from(data as Map);
   }
 
@@ -179,5 +218,50 @@ class AppAuthService {
             debugPrint('Unable to finish push bootstrap after auth: $error');
           }
         });
+  }
+
+  Future<String> _uploadAuthenticatedProfileImage({
+    required String endpointPath,
+    required File imageFile,
+    required String responseKey,
+  }) async {
+    final accessToken = await _sessionStorage.getAccessToken();
+    if (accessToken == null || accessToken.isEmpty) {
+      throw AppApiException('Session invalide');
+    }
+
+    final uri = Uri.parse('${ApiConfig.baseUrl}$endpointPath');
+    final request = http.MultipartRequest('POST', uri)
+      ..headers['Authorization'] = 'Bearer $accessToken'
+      ..files.add(await http.MultipartFile.fromPath('image', imageFile.path));
+
+    http.StreamedResponse streamedResponse;
+
+    try {
+      streamedResponse = await request.send();
+    } catch (_) {
+      throw AppApiException('Impossible de joindre le serveur Bahibo');
+    }
+
+    final response = await http.Response.fromStream(streamedResponse);
+    final decoded = response.body.isEmpty
+        ? <String, dynamic>{}
+        : jsonDecode(response.body) as Map<String, dynamic>;
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final message = (decoded['message'] as String?) ?? 'Erreur serveur';
+      throw AppApiException(message, statusCode: response.statusCode);
+    }
+
+    final data = Map<String, dynamic>.from(
+      (decoded['data'] as Map?) ?? const <String, dynamic>{},
+    );
+    final imageUrl = data[responseKey] as String?;
+
+    if (imageUrl == null || imageUrl.isEmpty) {
+      throw AppApiException('URL Cloudinary invalide');
+    }
+
+    return imageUrl;
   }
 }

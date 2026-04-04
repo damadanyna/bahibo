@@ -200,7 +200,10 @@ export class AuthService {
     return {
       success: true,
       message: 'Profile image uploaded successfully',
-      data: uploadResult,
+      data: {
+        ...uploadResult,
+        avatarUrl: uploadResult.imageUrl,
+      },
     };
   }
 

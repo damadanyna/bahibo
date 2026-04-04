@@ -213,6 +213,7 @@ export class SearchService {
             user.avatarUrl ??
             'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600',
           coverImageUrl:
+            user.coverImageUrl ??
             'https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?w=1600',
           roleLabel: user.sellerProfile != null ? 'Vendeur certifie' : 'Utilisateur verifie',
           responseLabel: 'Profil actif',

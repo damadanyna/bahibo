@@ -2,6 +2,8 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
 
+type UserImageVariant = 'avatar' | 'cover';
+
 @Injectable()
 export class CloudinaryService {
   constructor(private readonly configService: ConfigService) {
@@ -28,16 +30,26 @@ export class CloudinaryService {
   }
 
   async uploadProfileImage(file: Express.Multer.File, phoneE164: string) {
+    return this.uploadUserImage(file, phoneE164, 'avatar');
+  }
+
+  async uploadUserImage(
+    file: Express.Multer.File,
+    identifier: string,
+    variant: UserImageVariant,
+  ) {
     if (!this.isConfigured()) {
       throw new BadRequestException('Cloudinary is not configured');
     }
 
-    const sanitizedPhone = phoneE164.replace(/[^a-zA-Z0-9]/g, '');
+    const sanitizedIdentifier = identifier.replace(/[^a-zA-Z0-9]/g, '');
+    const folder =
+      variant === 'cover' ? 'bahibo/profile-covers' : 'bahibo/profile-avatars';
     const uploadResult = await new Promise<UploadApiResponse>((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
         {
-          folder: 'bahibo/profile-avatars',
-          public_id: `${sanitizedPhone}-${Date.now()}`,
+          folder,
+          public_id: `${sanitizedIdentifier}-${variant}-${Date.now()}`,
           resource_type: 'image',
           overwrite: true,
         },
@@ -54,25 +66,42 @@ export class CloudinaryService {
       stream.end(file.buffer);
     });
 
-    const transformedAvatarUrl = cloudinary.url(uploadResult.public_id, {
+    const transformedImageUrl = cloudinary.url(uploadResult.public_id, {
       secure: true,
       version: uploadResult.version,
-      transformation: [
+      transformation: this.buildTransformation(variant),
+    });
+
+    return {
+      originalUrl: uploadResult.secure_url,
+      imageUrl: transformedImageUrl,
+      publicId: uploadResult.public_id,
+    };
+  }
+
+  private buildTransformation(variant: UserImageVariant) {
+    if (variant === 'cover') {
+      return [
         {
-          width: 512,
-          height: 512,
+          width: 1600,
+          height: 900,
           crop: 'fill',
           gravity: 'auto',
           fetch_format: 'auto',
           quality: 'auto:good',
         },
-      ],
-    });
+      ];
+    }
 
-    return {
-      originalUrl: uploadResult.secure_url,
-      avatarUrl: transformedAvatarUrl,
-      publicId: uploadResult.public_id,
-    };
+    return [
+      {
+        width: 512,
+        height: 512,
+        crop: 'fill',
+        gravity: 'auto',
+        fetch_format: 'auto',
+        quality: 'auto:good',
+      },
+    ];
   }
 }

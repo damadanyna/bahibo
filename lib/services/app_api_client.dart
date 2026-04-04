@@ -42,6 +42,14 @@ class AppApiClient {
     return _request('POST', path, body: body, authenticated: authenticated);
   }
 
+  Future<dynamic> patch(
+    String path, {
+    Map<String, dynamic>? body,
+    bool authenticated = false,
+  }) {
+    return _request('PATCH', path, body: body, authenticated: authenticated);
+  }
+
   Future<dynamic> delete(String path, {bool authenticated = false}) {
     return _request('DELETE', path, authenticated: authenticated);
   }
@@ -75,6 +83,11 @@ class AppApiClient {
       response = switch (method) {
         'GET' => await http.get(uri, headers: headers),
         'POST' => await http.post(
+          uri,
+          headers: headers,
+          body: jsonEncode(body ?? <String, dynamic>{}),
+        ),
+        'PATCH' => await http.patch(
           uri,
           headers: headers,
           body: jsonEncode(body ?? <String, dynamic>{}),
