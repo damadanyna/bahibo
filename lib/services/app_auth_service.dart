@@ -162,6 +162,20 @@ class AppAuthService {
     return Map<String, dynamic>.from(data as Map);
   }
 
+  Future<Map<String, dynamic>> updateDisplayName({
+    required String displayName,
+  }) async {
+    final data = await _client.patch(
+      '/profiles/me',
+      authenticated: true,
+      body: {
+        'displayName': displayName,
+      },
+    );
+
+    return Map<String, dynamic>.from(data as Map);
+  }
+
   Future<Map<String, dynamic>> submitShopRequest() async {
     final data = await _client.post('/profiles/me/shop-request', authenticated: true);
     return Map<String, dynamic>.from(data as Map);

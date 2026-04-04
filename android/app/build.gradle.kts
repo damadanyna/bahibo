@@ -9,6 +9,7 @@ plugins {
 android {
     namespace = "com.example.bahibo"
     compileSdk = flutter.compileSdkVersion
+    buildToolsVersion = "35.0.0"
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

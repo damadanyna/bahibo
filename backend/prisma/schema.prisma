@@ -48,6 +48,7 @@ model User {
   countryName     String?
   countryDialCode String?
   displayName     String
+  displayNameChangedAt DateTime?
   passwordHash    String
   avatarUrl       String?
   coverImageUrl   String?

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:bahibo/component/app_network_image.dart';
@@ -5,6 +6,7 @@ import 'package:bahibo/component/ui/dinamic_icon_button.dart';
 import 'package:bahibo/page/image_viewer_page.dart';
 import 'package:bahibo/services/app_api_client.dart';
 import 'package:bahibo/services/app_auth_service.dart';
+import 'package:bahibo/services/chat_realtime_service.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -25,14 +27,18 @@ class MainSimpleUser extends StatefulWidget {
 class _MainSimpleUserState extends State<MainSimpleUser> {
   final AppAuthService _authService = AppAuthService();
   final ImagePicker _imagePicker = ImagePicker();
+  StreamSubscription<Map<String, dynamic>>? _realtimeEventsSubscription;
 
   bool _isLoading = true;
   bool _isUploadingImage = false;
+  bool _isUpdatingDisplayName = false;
   bool _isSubmittingShopRequest = false;
   bool _isLoadingLocation = true;
   bool _isSavingLocation = false;
-  String? _errorMessage;
+  String? _profileLoadError;
   String? _locationLabel;
+  DateTime? _displayNameChangedAt;
+  DateTime? _nextDisplayNameChangeAt;
   String _displayName = 'Utilisateur Bahibo';
   String _avatarUrl = '';
   String _coverImageUrl = '';
@@ -44,6 +50,13 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
     super.initState();
     _loadProfile();
     _loadCurrentLocation();
+    _bindRealtimeProfileUpdates();
+  }
+
+  @override
+  void dispose() {
+    _realtimeEventsSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadProfile() async {
@@ -60,11 +73,17 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
       final role = (user['role'] as String?)?.trim() ?? 'CUSTOMER';
       final shopRequestStatus =
           (user['shopRequestStatus'] as String?)?.trim() ?? 'NONE';
+      final displayNameChangedAt = _parseApiDateTime(user['displayNameChangedAt']);
+      final nextDisplayNameChangeAt = _parseApiDateTime(
+        user['nextDisplayNameChangeAt'],
+      );
       setState(() {
         _displayName =
             (user['displayName'] as String?)?.trim().isNotEmpty == true
             ? (user['displayName'] as String).trim()
             : _displayName;
+        _displayNameChangedAt = displayNameChangedAt;
+        _nextDisplayNameChangeAt = nextDisplayNameChangeAt;
         _avatarUrl = avatarUrl;
         _coverImageUrl = coverImageUrl;
         _userRole = role;
@@ -74,7 +93,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
           _isLoadingLocation = false;
         }
         _isLoading = false;
-        _errorMessage = null;
+        _profileLoadError = null;
       });
     } on AppApiException catch (error) {
       if (!mounted) {
@@ -83,8 +102,196 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
 
       setState(() {
         _isLoading = false;
-        _errorMessage = error.message;
+        _profileLoadError = error.message;
       });
+    }
+  }
+
+  void _bindRealtimeProfileUpdates() {
+    ChatRealtimeService.instance.ensureConnected();
+    _realtimeEventsSubscription?.cancel();
+    _realtimeEventsSubscription = ChatRealtimeService.instance.events.listen((
+      event,
+    ) {
+      if (event['type'] != 'profile:shop-request-updated') {
+        return;
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      unawaited(_loadProfile());
+    });
+  }
+
+  DateTime? _parseApiDateTime(Object? rawValue) {
+    if (rawValue is! String || rawValue.trim().isEmpty) {
+      return null;
+    }
+
+    return DateTime.tryParse(rawValue.trim())?.toLocal();
+  }
+
+  bool get _canUpdateDisplayName {
+    final nextChangeAt = _nextDisplayNameChangeAt;
+    if (nextChangeAt == null) {
+      return true;
+    }
+
+    return !DateTime.now().isBefore(nextChangeAt);
+  }
+
+  String _formatDate(DateTime value) {
+    final day = value.day.toString().padLeft(2, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    final year = value.year.toString();
+    return '$day/$month/$year';
+  }
+
+  String get _displayNamePolicyLabel {
+    final nextChangeAt = _nextDisplayNameChangeAt;
+    if (nextChangeAt == null) {
+      return 'Vous pouvez modifier votre nom maintenant. Apres chaque modification, le prochain changement sera disponible dans 3 mois.';
+    }
+
+    if (_canUpdateDisplayName) {
+      return 'Vous pouvez modifier votre nom maintenant. Le nom utilisateur ne peut etre modifie qu\'une fois tous les 3 mois.';
+    }
+
+    return 'Le nom utilisateur ne peut etre modifie qu\'une fois tous les 3 mois. Prochaine date autorisee: ${_formatDate(nextChangeAt)}.';
+  }
+
+  Future<void> _showDisplayNameEditor() async {
+    final nextChangeAt = _nextDisplayNameChangeAt;
+    if (!_canUpdateDisplayName) {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('Modification limitee'),
+            content: Text(
+              'Le nom utilisateur ne peut etre modifie qu\'une fois tous les 3 mois. Vous pourrez le changer a nouveau a partir du ${_formatDate(nextChangeAt!)}.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Fermer'),
+              ),
+            ],
+          );
+        },
+      );
+      return;
+    }
+
+    final controller = TextEditingController(text: _displayName);
+    final nextChangeHint = _displayNameChangedAt == null
+        ? 'Apres cette modification, vous devrez attendre 3 mois avant de pouvoir rechanger ce nom.'
+        : 'Le prochain changement sera disponible 3 mois apres cette modification.';
+
+    final nextName = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Modifier le nom'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: controller,
+                maxLength: 120,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: 'Nom utilisateur',
+                  hintText: 'Entrez votre nouveau nom',
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                nextChangeHint,
+                style: Theme.of(dialogContext).textTheme.bodySmall,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Annuler'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(controller.text.trim()),
+              child: const Text('Enregistrer'),
+            ),
+          ],
+        );
+      },
+    );
+
+    controller.dispose();
+
+    if (nextName == null || nextName.isEmpty || nextName == _displayName) {
+      return;
+    }
+
+    await _updateDisplayName(nextName);
+  }
+
+  Future<void> _updateDisplayName(String displayName) async {
+    if (_isUpdatingDisplayName) {
+      return;
+    }
+
+    setState(() {
+      _isUpdatingDisplayName = true;
+    });
+
+    try {
+      final updatedProfile = await _authService.updateDisplayName(
+        displayName: displayName,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _displayName =
+            (updatedProfile['displayName'] as String?)?.trim().isNotEmpty == true
+            ? (updatedProfile['displayName'] as String).trim()
+            : _displayName;
+        _displayNameChangedAt = _parseApiDateTime(
+          updatedProfile['displayNameChangedAt'],
+        );
+        _nextDisplayNameChangeAt = _parseApiDateTime(
+          updatedProfile['nextDisplayNameChangeAt'],
+        );
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _nextDisplayNameChangeAt == null
+                ? 'Nom utilisateur mis a jour.'
+                : 'Nom utilisateur mis a jour. Prochain changement possible le ${_formatDate(_nextDisplayNameChangeAt!)}.',
+          ),
+        ),
+      );
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUpdatingDisplayName = false;
+        });
+      }
     }
   }
 
@@ -118,8 +325,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
       }
 
       final accuracyStatus = await Geolocator.getLocationAccuracy();
-      final resolvedAccuracy =
-          accuracyStatus == LocationAccuracyStatus.precise
+      final resolvedAccuracy = accuracyStatus == LocationAccuracyStatus.precise
           ? LocationAccuracy.best
           : LocationAccuracy.medium;
 
@@ -284,7 +490,6 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
   ) async {
     setState(() {
       _isUploadingImage = true;
-      _errorMessage = null;
     });
 
     try {
@@ -317,10 +522,6 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
       if (!mounted) {
         return;
       }
-
-      setState(() {
-        _errorMessage = error.message;
-      });
 
       ScaffoldMessenger.of(
         context,
@@ -381,7 +582,6 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
 
     setState(() {
       _isSubmittingShopRequest = true;
-      _errorMessage = null;
     });
 
     try {
@@ -409,10 +609,6 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
       if (!mounted) {
         return;
       }
-
-      setState(() {
-        _errorMessage = error.message;
-      });
 
       ScaffoldMessenger.of(
         context,
@@ -799,12 +995,40 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                                 ),
                               )
                             else ...[
-                              Text(
-                                _displayName,
-                                style: theme.textTheme.headlineSmall?.copyWith(
-                                  color: titleColor,
-                                  fontWeight: FontWeight.w900,
-                                ),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      _displayName,
+                                      style: theme.textTheme.headlineSmall?.copyWith(
+                                        color: titleColor,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  TextButton.icon(
+                                    onPressed: _isUpdatingDisplayName
+                                        ? null
+                                        : _showDisplayNameEditor,
+                                    icon: _isUpdatingDisplayName
+                                        ? SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: theme.colorScheme.primary,
+                                            ),
+                                          )
+                                        : const Icon(Icons.edit_outlined, size: 18),
+                                    label: Text(
+                                      _canUpdateDisplayName
+                                          ? 'Modifier'
+                                          : 'Voir la regle',
+                                    ),
+                                  ),
+                                ],
                               ),
                               const SizedBox(height: 8),
                               Row(
@@ -834,17 +1058,18 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'Nom saisi lors de la creation du compte',
+                                _displayNamePolicyLabel,
                                 style: theme.textTheme.bodyMedium?.copyWith(
                                   color: subtitleColor,
                                   fontWeight: FontWeight.w600,
+                                  height: 1.35,
                                 ),
                               ),
                             ],
-                            if (_errorMessage != null) ...[
+                            if (_profileLoadError != null) ...[
                               const SizedBox(height: 16),
                               Text(
-                                _errorMessage!,
+                                _profileLoadError!,
                                 style: theme.textTheme.bodyMedium?.copyWith(
                                   color: theme.colorScheme.error,
                                   fontWeight: FontWeight.w700,

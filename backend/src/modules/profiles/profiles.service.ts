@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma, ShopRequestStatus, UserRole } from '@prisma/client';
 
 import { CloudinaryService } from '../auth/cloudinary.service';
+import { ConversationsRealtimeGateway } from '../conversations/realtime/conversations-realtime.gateway';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateProfileDto, UpdateSellerProfileDto } from './dto/update-profile.dto';
 import { presentPublicSellerProfile, presentUserProfile } from './profile.presenter';
@@ -11,6 +12,7 @@ export class ProfilesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cloudinaryService: CloudinaryService,
+    private readonly conversationsRealtimeGateway: ConversationsRealtimeGateway,
   ) {}
 
   async getCurrentUserProfile(userId: string) {
@@ -91,7 +93,9 @@ export class ProfilesService {
     }
 
     if (user.shopRequestStatus === ShopRequestStatus.PENDING) {
-      return presentUserProfile(user);
+      const profile = await this.getCurrentUserProfile(userId);
+      this.emitShopRequestProfileUpdate(profile);
+      return profile;
     }
 
     await this.prisma.user.update({
@@ -103,7 +107,9 @@ export class ProfilesService {
       },
     });
 
-    return this.getCurrentUserProfile(userId);
+    const profile = await this.getCurrentUserProfile(userId);
+    this.emitShopRequestProfileUpdate(profile);
+    return profile;
   }
 
   async listPendingShopRequests() {
@@ -170,7 +176,83 @@ export class ProfilesService {
       }
     });
 
-    return this.getCurrentUserProfile(userId);
+    const profile = await this.getCurrentUserProfile(userId);
+    this.emitShopRequestProfileUpdate(profile);
+    return profile;
+  }
+
+  async resetShopRequestToPending(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        sellerProfile: {
+          include: {
+            _count: {
+              select: {
+                products: true,
+                orders: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User profile not found');
+    }
+
+    if (user.shopRequestStatus === ShopRequestStatus.PENDING) {
+      const profile = await this.getCurrentUserProfile(userId);
+      this.emitShopRequestProfileUpdate(profile);
+      return profile;
+    }
+
+    if (
+      user.sellerProfile &&
+      (user.sellerProfile._count.products > 0 || user.sellerProfile._count.orders > 0)
+    ) {
+      throw new BadRequestException(
+        'Impossible de remettre cette demande en attente car la boutique a deja des produits ou des commandes.',
+      );
+    }
+
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.user.update({
+        where: { id: userId },
+        data: {
+          role: UserRole.CUSTOMER,
+          shopRequestStatus: ShopRequestStatus.PENDING,
+          shopRequestSubmittedAt: user.shopRequestSubmittedAt ?? new Date(),
+          shopRequestReviewedAt: null,
+        },
+      });
+
+      if (user.sellerProfile) {
+        await transaction.sellerProfile.delete({
+          where: { userId },
+        });
+      }
+    });
+
+    const profile = await this.getCurrentUserProfile(userId);
+    this.emitShopRequestProfileUpdate(profile);
+    return profile;
+  }
+
+  private emitShopRequestProfileUpdate(profile: Awaited<ReturnType<ProfilesService['getCurrentUserProfile']>>) {
+    this.conversationsRealtimeGateway.emitProfileEvent(profile.id, {
+      type: 'profile:shop-request-updated',
+      userId: profile.id,
+      profile: {
+        id: profile.id,
+        role: profile.role,
+        shopRequestStatus: profile.shopRequestStatus,
+        shopRequestSubmittedAt: profile.shopRequestSubmittedAt,
+        shopRequestReviewedAt: profile.shopRequestReviewedAt,
+        sellerProfile: profile.sellerProfile,
+      },
+    });
   }
 
   private async findUserProfileById(userId: string, client: PrismaService | Prisma.TransactionClient) {
@@ -195,7 +277,27 @@ export class ProfilesService {
     const userData: Prisma.UserUpdateInput = {};
 
     if (dto.displayName !== undefined) {
-      userData.displayName = dto.displayName;
+      const normalizedDisplayName = dto.displayName.trim();
+
+      if (normalizedDisplayName.length < 2 || normalizedDisplayName.length > 120) {
+        throw new BadRequestException('Le nom utilisateur doit contenir entre 2 et 120 caracteres.');
+      }
+
+      if (normalizedDisplayName !== existingUser.displayName.trim()) {
+        const now = new Date();
+        const nextAllowedChangeAt = this.getNextDisplayNameChangeAt(
+          existingUser.displayNameChangedAt,
+        );
+
+        if (nextAllowedChangeAt != null && nextAllowedChangeAt.getTime() > now.getTime()) {
+          throw new BadRequestException(
+            `Le nom utilisateur ne peut etre modifie qu'une fois tous les 3 mois. Prochaine date autorisee: ${this.formatDisplayNameCooldownDate(nextAllowedChangeAt)}.`,
+          );
+        }
+
+        userData.displayName = normalizedDisplayName;
+        userData.displayNameChangedAt = now;
+      }
     }
 
     if (dto.avatarUrl !== undefined) {
@@ -266,6 +368,23 @@ export class ProfilesService {
     }
 
     return Object.keys(sellerProfileData).length > 0 ? sellerProfileData : null;
+  }
+
+  private getNextDisplayNameChangeAt(displayNameChangedAt: Date | null) {
+    if (displayNameChangedAt == null) {
+      return null;
+    }
+
+    const nextAllowedChangeAt = new Date(displayNameChangedAt);
+    nextAllowedChangeAt.setMonth(nextAllowedChangeAt.getMonth() + 3);
+    return nextAllowedChangeAt;
+  }
+
+  private formatDisplayNameCooldownDate(date: Date) {
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
   }
 
   private async updateCurrentUserImage(

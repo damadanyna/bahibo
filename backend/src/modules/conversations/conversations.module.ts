@@ -23,6 +23,6 @@ import { ConversationsService } from './conversations.service';
   ],
   controllers: [ConversationsController],
   providers: [ConversationsService, ConversationsRealtimeGateway],
-  exports: [ConversationsService],
+  exports: [ConversationsService, ConversationsRealtimeGateway],
 })
 export class ConversationsModule {}

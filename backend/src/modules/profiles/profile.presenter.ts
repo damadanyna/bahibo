@@ -17,13 +17,27 @@ type PublicSellerProfileRecord = Prisma.SellerProfileGetPayload<{
   };
 }>;
 
+function addMonths(date: Date, months: number) {
+  const nextDate = new Date(date);
+  nextDate.setMonth(nextDate.getMonth() + months);
+  return nextDate;
+}
+
 export function presentUserProfile(user: UserProfileRecord) {
+  const nextDisplayNameChangeAt = user.displayNameChangedAt != null
+    ? addMonths(user.displayNameChangedAt, 3)
+    : null;
+
   return {
     id: user.id,
     phoneE164: user.phoneE164,
     countryName: user.countryName,
     countryDialCode: user.countryDialCode,
     displayName: user.displayName,
+    displayNameChangedAt: user.displayNameChangedAt?.toISOString() ?? null,
+    nextDisplayNameChangeAt: nextDisplayNameChangeAt?.toISOString() ?? null,
+    canChangeDisplayName:
+      nextDisplayNameChangeAt == null || nextDisplayNameChangeAt.getTime() <= Date.now(),
     avatarUrl: user.avatarUrl,
     coverImageUrl: user.coverImageUrl,
     locationLabel: user.locationLabel,

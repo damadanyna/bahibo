@@ -90,6 +90,21 @@ export class ProfilesController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post('admin/shop-requests/:userId/pending')
+  async resetShopRequestToPending(
+    @Req() req: { user: { userId: string; role: string } },
+    @Param('userId') userId: string,
+  ) {
+    this.ensureAdminAccess(req.user.role);
+
+    return {
+      success: true,
+      message: 'Shop request moved back to pending successfully',
+      data: await this.profilesService.resetShopRequestToPending(userId),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post('me/avatar-image')
   @UseInterceptors(FileInterceptor('image'))
   async uploadAvatarImage(

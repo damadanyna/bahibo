@@ -25,6 +25,27 @@ type ConversationTypingPayload = {
   isTyping: boolean;
 };
 
+type ProfileRealtimePayload = {
+  type: 'profile:updated' | 'profile:shop-request-updated';
+  userId: string;
+  profile: {
+    id: string;
+    role: string;
+    shopRequestStatus: string;
+    shopRequestSubmittedAt: string | null;
+    shopRequestReviewedAt: string | null;
+    sellerProfile: {
+      id: string;
+      studioName: string;
+      description: string | null;
+      city: string | null;
+      country: string | null;
+      createdAt: string;
+      updatedAt: string;
+    } | null;
+  };
+};
+
 @Injectable()
 @WebSocketGateway({
   cors: {
@@ -134,6 +155,14 @@ export class ConversationsRealtimeGateway
     for (const userId of uniqueUserIds) {
       this.server.to(this.userRoom(userId)).emit('conversations:updated', payload);
     }
+  }
+
+  emitProfileEvent(userId: string, payload: ProfileRealtimePayload) {
+    if (!this.server) {
+      return;
+    }
+
+    this.server.to(this.userRoom(userId)).emit('profiles:updated', payload);
   }
 
   isUserConnected(userId: string) {
