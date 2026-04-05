@@ -8,6 +8,7 @@ import { Prisma } from '@prisma/client';
 import { CloudinaryService } from '../auth/cloudinary.service';
 import { ConversationsRealtimeGateway } from '../conversations/realtime/conversations-realtime.gateway';
 import { PrismaService } from '../prisma/prisma.service';
+import { PushNotificationsService } from '../push-notifications/push-notifications.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductEntity } from './entities/product.entity';
@@ -39,6 +40,7 @@ export class ProductsService {
     private readonly prisma: PrismaService,
     private readonly cloudinaryService: CloudinaryService,
     private readonly conversationsRealtimeGateway: ConversationsRealtimeGateway,
+    private readonly pushNotificationsService: PushNotificationsService,
   ) {}
 
   async create(
@@ -102,6 +104,15 @@ export class ProductsService {
     });
 
     await this.emitSellerProfileUpdatedByProfileId(sellerProfile.id);
+    await this.pushNotificationsService.sendProductPublishedNotification({
+      sellerProfileId: sellerProfile.id,
+      sellerUserId: sellerProfile.userId,
+      sellerDisplayName: sellerProfile.studioName,
+      sellerAvatarUrl: sellerProfile.user.avatarUrl ?? undefined,
+      productId: product.id,
+      productTitle: product.title,
+      productImageUrl: product.imageUrl,
+    });
     return this.toEntity(product);
   }
 
@@ -666,6 +677,7 @@ export class ProductsService {
       categoryId: product.categoryId,
       seller: {
         id: product.sellerProfile.id,
+        userId: product.sellerProfile.userId,
         name: product.sellerProfile.studioName,
         avatarUrl:
           product.sellerProfile.user.avatarUrl ??

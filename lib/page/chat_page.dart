@@ -7,6 +7,7 @@ import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/ui/chat_message_input.dart';
 import 'package:bahibo/formatter/price_formatter.dart';
 import 'package:bahibo/services/app_api_client.dart';
+import 'package:bahibo/services/catalog_api_service.dart';
 import 'package:bahibo/services/chat_realtime_service.dart';
 import 'package:bahibo/services/conversations_api_service.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
@@ -62,6 +63,7 @@ class _ChatPageState extends State<ChatPage>
   static const Duration _typingStopDelay = Duration(milliseconds: 1200);
   final ConversationsApiService _conversationsApiService =
       ConversationsApiService();
+  final CatalogApiService _catalogApiService = CatalogApiService();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<_ChatMessage> _messages = [];
@@ -295,6 +297,11 @@ class _ChatPageState extends State<ChatPage>
   }
 
   Future<Map<String, dynamic>> _fetchConversationData() {
+    if (widget.conversationUserId?.isNotEmpty ?? false) {
+      return _conversationsApiService.fetchConversationForUser(
+        widget.conversationUserId!,
+      );
+    }
     if (_conversationId != null) {
       return _conversationsApiService.fetchConversationById(_conversationId!);
     }
@@ -303,9 +310,7 @@ class _ChatPageState extends State<ChatPage>
         widget.conversationProductId!,
       );
     }
-    return _conversationsApiService.fetchConversationForUser(
-      widget.conversationUserId!,
-    );
+    return _conversationsApiService.fetchConversationById(_conversationId!);
   }
 
   Future<void> _refreshConversationSilently() async {
@@ -356,13 +361,7 @@ class _ChatPageState extends State<ChatPage>
       if (!_initialMessageHandled) {
         _initialMessageHandled = true;
         final initialMessage = widget.initialMessage?.trim() ?? '';
-        final alreadyExists = initialMessage.isEmpty
-            ? true
-            : _messages.any(
-                (message) =>
-                    message.isMine && message.message == initialMessage,
-              );
-        if (!alreadyExists && initialMessage.isNotEmpty) {
+        if (initialMessage.isNotEmpty) {
           await _sendMessage(initialMessage);
           return;
         }
@@ -397,6 +396,7 @@ class _ChatPageState extends State<ChatPage>
             message: (message['content'] as String?) ?? '',
             time: _formatMessageTime(message['createdAt'] as String?),
             isMine: message['isMine'] == true,
+            product: _ChatMessageProduct.fromApi(message['product']),
           ),
         ),
       );
@@ -424,18 +424,23 @@ class _ChatPageState extends State<ChatPage>
     _emitTyping(false);
     setState(() => _isSending = true);
     try {
-      final data = _conversationId != null
-          ? await _conversationsApiService.sendMessage(
-              conversationId: _conversationId!,
-              content: content,
-            )
-          : (widget.conversationProductId?.isNotEmpty ?? false)
+      final data = (widget.conversationProductId?.isNotEmpty ?? false)
           ? await _conversationsApiService.sendProductMessage(
               productId: widget.conversationProductId!,
               content: content,
             )
-          : await _conversationsApiService.sendUserMessage(
+          : (widget.conversationUserId?.isNotEmpty ?? false)
+          ? await _conversationsApiService.sendUserMessage(
               targetUserId: widget.conversationUserId!,
+              content: content,
+            )
+          : _conversationId != null
+          ? await _conversationsApiService.sendMessage(
+              conversationId: _conversationId!,
+              content: content,
+            )
+          : await _conversationsApiService.sendMessage(
+              conversationId: _conversationId!,
               content: content,
             );
       _applyConversation(data);
@@ -497,6 +502,56 @@ class _ChatPageState extends State<ChatPage>
           builder: (_) => productPageBuilder(product, openedFromChat: true),
         ),
       );
+    }
+  }
+
+  Future<void> _openMessageProductCard(_ChatMessageProduct product) async {
+    final productPageBuilder = widget.productPageBuilder;
+    if (productPageBuilder == null) {
+      return;
+    }
+
+    final productId = product.id?.trim() ?? '';
+    if (productId.isEmpty) {
+      return;
+    }
+
+    final currentProduct = _productValue;
+    final currentProductId = currentProduct?['id']?.toString().trim() ?? '';
+    if (currentProduct != null && currentProductId == productId) {
+      if (!mounted) {
+        return;
+      }
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => productPageBuilder(currentProduct, openedFromChat: true),
+        ),
+      );
+      return;
+    }
+
+    try {
+      final fetchedProduct = await _catalogApiService.fetchProductById(productId);
+      if (!mounted) {
+        return;
+      }
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => productPageBuilder(fetchedProduct, openedFromChat: true),
+        ),
+      );
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
     }
   }
 
@@ -612,6 +667,12 @@ class _ChatPageState extends State<ChatPage>
                                         message: chat.message,
                                         time: chat.time,
                                         isMine: chat.isMine,
+                                        product: chat.product,
+                                        onProductTap: chat.product == null
+                                            ? null
+                                            : () => _openMessageProductCard(
+                                                chat.product!,
+                                              ),
                                         avatarUrl: avatarUrl,
                                         isDark: isDark,
                                         primary: primary,
@@ -835,19 +896,68 @@ class _ChatMessage {
   final String message;
   final String time;
   final bool isMine;
+  final _ChatMessageProduct? product;
 
   const _ChatMessage({
     this.id,
     required this.message,
     required this.time,
     required this.isMine,
+    this.product,
   });
+}
+
+class _ChatMessageProduct {
+  final String? id;
+  final String title;
+  final String subtitle;
+  final String priceLabel;
+  final String imageUrl;
+
+  const _ChatMessageProduct({
+    required this.id,
+    required this.title,
+    required this.subtitle,
+    required this.priceLabel,
+    required this.imageUrl,
+  });
+
+  static _ChatMessageProduct? fromApi(dynamic value) {
+    if (value is! Map) {
+      return null;
+    }
+
+    final title = (value['title'] as String? ?? '').trim();
+    final subtitle = (value['subtitle'] as String? ?? '').trim();
+    final priceLabel = (value['priceLabel'] as String? ?? '').trim();
+    final imageUrl = (value['imageUrl'] as String? ?? '').trim();
+    final id = value['id']?.toString().trim();
+
+    if (
+        title.isEmpty &&
+        subtitle.isEmpty &&
+        priceLabel.isEmpty &&
+        imageUrl.isEmpty &&
+        (id == null || id.isEmpty)) {
+      return null;
+    }
+
+    return _ChatMessageProduct(
+      id: id,
+      title: title,
+      subtitle: subtitle,
+      priceLabel: priceLabel,
+      imageUrl: imageUrl,
+    );
+  }
 }
 
 class _ChatBubble extends StatelessWidget {
   final String message;
   final String time;
   final bool isMine;
+  final _ChatMessageProduct? product;
+  final VoidCallback? onProductTap;
   final String avatarUrl;
   final bool isDark;
   final Color primary;
@@ -858,6 +968,8 @@ class _ChatBubble extends StatelessWidget {
     required this.message,
     required this.time,
     required this.isMine,
+    this.product,
+    this.onProductTap,
     required this.avatarUrl,
     required this.isDark,
     required this.primary,
@@ -911,6 +1023,17 @@ class _ChatBubble extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (product != null) ...[
+                    _InlineProductSnapshotCard(
+                      product: product!,
+                      isMine: isMine,
+                      primary: primary,
+                      cardColor: cardColor,
+                      subtleText: metaColor,
+                      onTap: onProductTap,
+                    ),
+                    const SizedBox(height: 10),
+                  ],
                   Text(
                     message,
                     style: TextStyle(
@@ -947,6 +1070,113 @@ class _ChatBubble extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _InlineProductSnapshotCard extends StatelessWidget {
+  final _ChatMessageProduct product;
+  final bool isMine;
+  final Color primary;
+  final Color cardColor;
+  final Color subtleText;
+  final VoidCallback? onTap;
+
+  const _InlineProductSnapshotCard({
+    required this.product,
+    required this.isMine,
+    required this.primary,
+    required this.cardColor,
+    required this.subtleText,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaceColor = isMine
+        ? Colors.white.withValues(alpha: 0.14)
+        : Theme.of(context).appColors.panelBackground;
+    final borderColor = isMine
+        ? Colors.white.withValues(alpha: 0.24)
+        : Theme.of(context).appColors.inputBorder;
+    final titleColor = isMine
+        ? Theme.of(context).appColors.heroForeground
+        : Theme.of(context).colorScheme.onSurface;
+    final priceColor = isMine ? Colors.white : primary;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Ink(
+          width: double.infinity,
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: surfaceColor,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: borderColor),
+          ),
+          child: Row(
+            children: [
+              if (product.imageUrl.isNotEmpty)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: AppNetworkImage(
+                    imageUrl: product.imageUrl,
+                    width: 58,
+                    height: 58,
+                    fit: BoxFit.cover,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              if (product.imageUrl.isNotEmpty) const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (product.title.isNotEmpty)
+                      Text(
+                        product.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: titleColor,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                        ),
+                      ),
+                    if (product.subtitle.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        product.subtitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: subtleText,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                    if (product.priceLabel.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        product.priceLabel,
+                        style: TextStyle(
+                          color: priceColor,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

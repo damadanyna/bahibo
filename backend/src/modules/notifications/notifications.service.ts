@@ -16,6 +16,18 @@ export class NotificationsService {
     });
 
     const latestProducts = await this.prisma.product.findMany({
+      where: {
+        sellerProfile: {
+          followers: {
+            some: {
+              followerUserId: userId,
+            },
+          },
+          userId: {
+            not: userId,
+          },
+        },
+      },
       include: {
         sellerProfile: {
           include: {
@@ -101,10 +113,14 @@ export class NotificationsService {
       }),
     ]);
 
-    const productLikeNotifications = this.buildProductLikeNotifications(recentProductLikes);
+    const productLikeNotifications = this.buildProductLikeNotifications(
+      recentProductLikes,
+      userId,
+    );
     const profileViewNotifications = this.buildProfileViewNotifications(
       sellerProfile,
       recentProfileViews,
+      userId,
     );
 
     return [...productLikeNotifications, ...profileViewNotifications, ...productNotifications]
@@ -133,6 +149,7 @@ export class NotificationsService {
         };
       };
     }>,
+    currentUserId: string,
   ): NotificationEntity[] {
     const groupedByProduct = new Map<string, typeof recentProductLikes>();
 
@@ -142,17 +159,25 @@ export class NotificationsService {
       groupedByProduct.set(productLike.product.id, group);
     }
 
-    return Array.from(groupedByProduct.entries()).map((entry) => {
+    const notifications: NotificationEntity[] = [];
+
+    for (const entry of Array.from(groupedByProduct.entries())) {
       const likes = entry[1];
       const productLike = likes[0];
-      const actors = likes.map((like) => ({
-        id: like.user.id,
-        name: like.user.displayName,
-        avatarUrl: like.user.avatarUrl ?? 'https://i.pravatar.cc/240?img=12',
-        timeLabel: this.buildRelativeTimeLabel(like.createdAt),
-      }));
+      const actors = likes
+        .filter((like) => like.user.id !== currentUserId)
+        .map((like) => ({
+          id: like.user.id,
+          name: like.user.displayName,
+          avatarUrl: like.user.avatarUrl ?? 'https://i.pravatar.cc/240?img=12',
+          timeLabel: this.buildRelativeTimeLabel(like.createdAt),
+        }));
 
-      return {
+      if (actors.length === 0) {
+        continue;
+      }
+
+      notifications.push({
         id: `notif-like-${productLike.product.id}`,
         type: 'product_like',
         title: 'Nouveaux likes sur votre produit',
@@ -179,8 +204,10 @@ export class NotificationsService {
           imageUrl: productLike.product.imageUrl,
         },
         actors,
-      };
-    });
+      });
+    }
+
+    return notifications;
   }
 
   private buildProfileViewNotifications(
@@ -200,13 +227,14 @@ export class NotificationsService {
         avatarUrl: string | null;
       } | null;
     }>,
+    currentUserId: string,
   ): NotificationEntity[] {
     if (recentProfileViews.length === 0) {
       return [];
     }
 
     const actors = recentProfileViews
-      .filter((view) => view.viewer != null)
+      .filter((view) => view.viewer != null && view.viewer!.id !== currentUserId)
       .map((view) => ({
         id: view.viewer!.id,
         name: view.viewer!.displayName,

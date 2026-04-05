@@ -66,6 +66,35 @@ type ConversationListItem = Prisma.ChatConversationGetPayload<{
   include: typeof conversationListInclude;
 }>;
 
+type ConversationThreadMessage = {
+  id: string;
+  content: string;
+  createdAt: string;
+  isMine: boolean;
+  sender: {
+    id: string;
+    displayName: string;
+    avatarUrl: string | null;
+  };
+  product: ConversationMessageProductSnapshot | null;
+};
+
+type ConversationMessageProductSnapshot = {
+  id: string | null;
+  title: string;
+  subtitle: string;
+  priceLabel: string;
+  imageUrl: string;
+};
+
+type MessageProductSnapshotFields = {
+  productId: string | null;
+  productTitle: string | null;
+  productSubtitle: string | null;
+  productPriceLabel: string | null;
+  productImageUrl: string | null;
+};
+
 @Injectable()
 export class ConversationsService {
   constructor(
@@ -198,30 +227,58 @@ export class ConversationsService {
 
     const directKey = this.buildDirectConversationKey(userId, targetUserId);
 
-    const existingConversation = await this.prisma.chatConversation.findFirst({
+    let directConversation = await this.prisma.chatConversation.findFirst({
       where: { directKey },
       include: conversationDetailInclude,
     });
 
-    if (existingConversation) {
-      const readCount = await this.markConversationAsRead(existingConversation.id, userId);
-      if (readCount > 0) {
-        this.emitConversationRead(existingConversation, userId);
-      }
-      return this.presentConversationDetail(existingConversation, userId);
+    if (!directConversation) {
+      directConversation = await this.prisma.chatConversation.create({
+        data: {
+          buyerUserId: userId,
+          sellerUserId: targetUserId,
+          kind: 'DIRECT',
+          directKey,
+        },
+        include: conversationDetailInclude,
+      });
     }
 
-    const conversation = await this.prisma.chatConversation.create({
-      data: {
-        buyerUserId: userId,
-        sellerUserId: targetUserId,
-        kind: 'DIRECT',
-        directKey,
+    const conversations = await this.prisma.chatConversation.findMany({
+      where: {
+        OR: [
+          {
+            buyerUserId: userId,
+            sellerUserId: targetUserId,
+          },
+          {
+            buyerUserId: targetUserId,
+            sellerUserId: userId,
+          },
+        ],
       },
       include: conversationDetailInclude,
+      orderBy: {
+        lastMessageAt: 'asc',
+      },
     });
 
-    return this.presentConversationDetail(conversation, userId);
+    const readCounts = await Promise.all(
+      conversations.map((conversation) =>
+        this.markConversationAsRead(conversation.id, userId),
+      ),
+    );
+    for (var index = 0; index < conversations.length; index += 1) {
+      if (readCounts[index] > 0) {
+        this.emitConversationRead(conversations[index], userId);
+      }
+    }
+
+    return this.presentConversationThreadDetail(
+      directConversation,
+      conversations,
+      userId,
+    );
   }
 
   async getConversation(userId: string, conversationId: string) {
@@ -245,7 +302,15 @@ export class ConversationsService {
       userId,
       productId,
     );
-    return this.sendMessage(userId, conversation.id, dto);
+    return this.sendMessage(userId, conversation.id, dto, {
+      id: conversation.product?.id ?? null,
+      title: conversation.product?.title ?? '',
+      subtitle: conversation.product?.subtitle ?? '',
+      priceLabel: conversation.product
+        ? `${conversation.product.price} ${conversation.product.currency}`
+        : '',
+      imageUrl: conversation.product?.imageUrl ?? '',
+    });
   }
 
   async sendMessageForUser(
@@ -260,7 +325,12 @@ export class ConversationsService {
     return this.sendMessage(userId, conversation.id, dto);
   }
 
-  async sendMessage(userId: string, conversationId: string, dto: CreateMessageDto) {
+  async sendMessage(
+    userId: string,
+    conversationId: string,
+    dto: CreateMessageDto,
+    productSnapshot?: ConversationMessageProductSnapshot | null,
+  ) {
     const content = dto.content.trim();
 
     if (!content) {
@@ -287,6 +357,11 @@ export class ConversationsService {
           conversationId: conversation.id,
           senderUserId: userId,
           content,
+          productId: productSnapshot?.id ?? undefined,
+          productTitle: productSnapshot?.title || undefined,
+          productSubtitle: productSnapshot?.subtitle || undefined,
+          productPriceLabel: productSnapshot?.priceLabel || undefined,
+          productImageUrl: productSnapshot?.imageUrl || undefined,
         },
       });
 
@@ -418,9 +493,15 @@ export class ConversationsService {
     };
   }
 
-  private presentConversationDetail(conversation: ConversationDetail, userId: string) {
+  private async presentConversationDetail(
+    conversation: ConversationDetail,
+    userId: string,
+  ) {
     const isBuyer = conversation.buyerUserId === userId;
     const participant = isBuyer ? conversation.seller : conversation.buyer;
+    const currentProductSnapshots = await this.buildCurrentProductSnapshotMap(
+      conversation.messages,
+    );
 
     return {
       id: conversation.id,
@@ -451,10 +532,150 @@ export class ConversationsService {
           displayName: message.sender.displayName,
           avatarUrl: message.sender.avatarUrl,
         },
+        product: this.presentMessageProductSnapshot(
+          message,
+          currentProductSnapshots,
+        ),
       })),
       kind: conversation.kind,
       createdAt: conversation.createdAt.toISOString(),
       lastMessageAt: conversation.lastMessageAt.toISOString(),
+    };
+  }
+
+  private async presentConversationThreadDetail(
+    anchorConversation: ConversationDetail,
+    conversations: ConversationDetail[],
+    userId: string,
+  ) {
+    const anchorIsBuyer = anchorConversation.buyerUserId === userId;
+    const participant = anchorIsBuyer
+      ? anchorConversation.seller
+      : anchorConversation.buyer;
+    const currentProductSnapshots = await this.buildCurrentProductSnapshotMap(
+      conversations.flatMap((conversation) => conversation.messages),
+    );
+
+    const messages = conversations
+      .flatMap((conversation) =>
+        conversation.messages.map<ConversationThreadMessage>((message) => ({
+          id: message.id,
+          content: message.content,
+          createdAt: message.createdAt.toISOString(),
+          isMine: message.senderUserId === userId,
+          sender: {
+            id: message.sender.id,
+            displayName: message.sender.displayName,
+            avatarUrl: message.sender.avatarUrl,
+          },
+          product: this.presentMessageProductSnapshot(
+            message,
+            currentProductSnapshots,
+          ),
+        })),
+      )
+      .sort(
+        (first, second) =>
+          new Date(first.createdAt).getTime() -
+          new Date(second.createdAt).getTime(),
+      );
+
+    const createdAt = conversations
+      .map((conversation) => conversation.createdAt)
+      .sort((first, second) => first.getTime() - second.getTime())[0];
+    const lastMessageAt = conversations
+      .map((conversation) => conversation.lastMessageAt)
+      .sort((first, second) => second.getTime() - first.getTime())[0];
+
+    return {
+      id: anchorConversation.id,
+      participant: {
+        id: participant.id,
+        displayName: participant.displayName,
+        avatarUrl: participant.avatarUrl,
+        roleLabel: this.resolveRoleLabel(participant),
+      },
+      product: null,
+      messages,
+      kind: 'DIRECT',
+      createdAt: createdAt.toISOString(),
+      lastMessageAt: lastMessageAt.toISOString(),
+    };
+  }
+
+  private async buildCurrentProductSnapshotMap(
+    messages: MessageProductSnapshotFields[],
+  ) {
+    const productIds = Array.from(
+      new Set(
+        messages
+          .map((message) => message.productId?.trim() ?? '')
+          .filter((productId) => productId.length > 0),
+      ),
+    );
+
+    if (productIds.length === 0) {
+      return new Map<string, ConversationMessageProductSnapshot>();
+    }
+
+    const products = await this.prisma.product.findMany({
+      where: {
+        id: {
+          in: productIds,
+        },
+      },
+      include: {
+        category: true,
+      },
+    });
+
+    return new Map<string, ConversationMessageProductSnapshot>(
+      products.map((product) => [
+        product.id,
+        {
+          id: product.id,
+          title: product.title,
+          subtitle: `${product.category.name} • ${product.isAvailable ? 'Disponible' : 'Indisponible'}`,
+          priceLabel: `${product.priceAmount.toNumber()} ${product.currencyCode}`,
+          imageUrl: product.imageUrl,
+        },
+      ]),
+    );
+  }
+
+  private presentMessageProductSnapshot(
+    message: MessageProductSnapshotFields,
+    currentProductSnapshots?: Map<string, ConversationMessageProductSnapshot>,
+  ) {
+    const currentProductId = message.productId?.trim() ?? '';
+    if (
+      currentProductId.length > 0 &&
+      currentProductSnapshots?.has(currentProductId) === true
+    ) {
+      return currentProductSnapshots!.get(currentProductId)!;
+    }
+
+    const title = message.productTitle?.trim() ?? '';
+    const subtitle = message.productSubtitle?.trim() ?? '';
+    const priceLabel = message.productPriceLabel?.trim() ?? '';
+    const imageUrl = message.productImageUrl?.trim() ?? '';
+
+    if (
+      title.length === 0 &&
+      subtitle.length === 0 &&
+      priceLabel.length === 0 &&
+      imageUrl.length === 0 &&
+      (message.productId == null || message.productId.trim().length === 0)
+    ) {
+      return null;
+    }
+
+    return {
+      id: message.productId,
+      title,
+      subtitle,
+      priceLabel,
+      imageUrl,
     };
   }
 }

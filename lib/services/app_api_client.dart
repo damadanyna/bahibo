@@ -20,6 +20,7 @@ class AppApiClient {
     : _sessionStorage = sessionStorage ?? SessionStorage();
 
   final SessionStorage _sessionStorage;
+  Future<bool>? _refreshSessionFuture;
 
   Future<dynamic> get(
     String path, {
@@ -60,6 +61,7 @@ class AppApiClient {
     Map<String, String>? queryParameters,
     Map<String, dynamic>? body,
     bool authenticated = false,
+    bool retryOnUnauthorized = true,
   }) async {
     final uri = Uri.parse('${ApiConfig.baseUrl}$path').replace(
       queryParameters: queryParameters?.isEmpty ?? true
@@ -103,11 +105,106 @@ class AppApiClient {
         ? <String, dynamic>{}
         : jsonDecode(response.body) as Map<String, dynamic>;
 
+    if (
+      response.statusCode == 401 &&
+      authenticated &&
+      retryOnUnauthorized &&
+      path != '/auth/refresh'
+    ) {
+      final refreshed = await _refreshSession();
+      if (refreshed) {
+        return _request(
+          method,
+          path,
+          queryParameters: queryParameters,
+          body: body,
+          authenticated: authenticated,
+          retryOnUnauthorized: false,
+        );
+      }
+    }
+
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final message = (decoded['message'] as String?) ?? 'Erreur serveur';
       throw AppApiException(message, statusCode: response.statusCode);
     }
 
     return decoded['data'];
+  }
+
+  Future<bool> _refreshSession() async {
+    final existingRefresh = _refreshSessionFuture;
+    if (existingRefresh != null) {
+      return existingRefresh;
+    }
+
+    final refreshFuture = _performRefreshSession();
+    _refreshSessionFuture = refreshFuture;
+
+    try {
+      return await refreshFuture;
+    } finally {
+      if (identical(_refreshSessionFuture, refreshFuture)) {
+        _refreshSessionFuture = null;
+      }
+    }
+  }
+
+  Future<bool> _performRefreshSession() async {
+    final refreshToken = await _sessionStorage.getRefreshToken();
+    if (refreshToken == null || refreshToken.isEmpty) {
+      await _sessionStorage.clear();
+      return false;
+    }
+
+    final uri = Uri.parse('${ApiConfig.baseUrl}/auth/refresh');
+    http.Response response;
+
+    try {
+      response = await http.post(
+        uri,
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode({'refreshToken': refreshToken}),
+      );
+    } catch (_) {
+      return false;
+    }
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      await _sessionStorage.clear();
+      return false;
+    }
+
+    final decoded = response.body.isEmpty
+        ? <String, dynamic>{}
+        : jsonDecode(response.body) as Map<String, dynamic>;
+    final data = Map<String, dynamic>.from(
+      (decoded['data'] as Map?) ?? const <String, dynamic>{},
+    );
+    final user = Map<String, dynamic>.from(
+      (data['user'] as Map?) ?? const <String, dynamic>{},
+    );
+    final accessToken = data['accessToken'] as String?;
+    final nextRefreshToken = data['refreshToken'] as String?;
+
+    if (
+      accessToken == null ||
+      accessToken.isEmpty ||
+      nextRefreshToken == null ||
+      nextRefreshToken.isEmpty
+    ) {
+      await _sessionStorage.clear();
+      return false;
+    }
+
+    await _sessionStorage.saveSession(
+      accessToken: accessToken,
+      refreshToken: nextRefreshToken,
+      phoneE164: (user['phoneE164'] as String?) ?? '',
+      displayName: (user['displayName'] as String?) ?? '',
+      countryName: user['countryName'] as String?,
+      countryDialCode: user['countryDialCode'] as String?,
+    );
+    return true;
   }
 }

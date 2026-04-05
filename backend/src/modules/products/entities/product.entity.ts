@@ -1,5 +1,6 @@
 export interface SellerSnapshot {
   id: string;
+  userId: string;
   name: string;
   avatarUrl: string;
 }

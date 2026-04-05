@@ -89,6 +89,20 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     return fallback;
   }
 
+  String get _sellerUserIdValue {
+    final seller = product['seller'];
+    if (seller is! Map) {
+      return '';
+    }
+
+    final rawUserId = seller['userId'];
+    if (rawUserId == null) {
+      return '';
+    }
+
+    return rawUserId.toString().trim();
+  }
+
   String _buildProductPriceLabel() {
     final price = (product['price'] as num?)?.toDouble() ?? 0.0;
     final currency = resolveProductCurrency(product);
@@ -112,6 +126,9 @@ class _ProductDetailPageState extends State<ProductDetailPage>
 
     return ChatPage(
       conversationProductId: product['id']?.toString(),
+      conversationUserId: _sellerUserIdValue.isNotEmpty
+          ? _sellerUserIdValue
+          : null,
       sellerName: _resolveStringField([
         'sellerName',
         'vendorName',
@@ -140,7 +157,52 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     );
   }
 
-  void _openSellerChat() {
+  Future<void> _ensureSellerUserIdLoaded() async {
+    if (_sellerUserIdValue.isNotEmpty) {
+      return;
+    }
+
+    final productId = product['id']?.toString().trim() ?? '';
+    if (productId.isEmpty) {
+      return;
+    }
+
+    final refreshedProduct = await CatalogApiService().fetchProductById(productId);
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _productData = Map<String, dynamic>.from(refreshedProduct);
+      _likeCount = _resolveLikeCount(_productData);
+    });
+  }
+
+  Future<void> _openSellerChat() async {
+    try {
+      await _ensureSellerUserIdLoaded();
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+      return;
+    }
+
+    if (_sellerUserIdValue.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Impossible d\'ouvrir cette conversation.')),
+      );
+      return;
+    }
+
     final route = MaterialPageRoute(builder: (_) => _buildSellerChatPage());
 
     if (widget.openedFromChat) {

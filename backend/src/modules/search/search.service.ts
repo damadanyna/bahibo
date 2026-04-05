@@ -120,6 +120,7 @@ export class SearchService {
         categoryId: product.categoryId,
         seller: {
           id: product.sellerProfile.id,
+          userId: product.sellerProfile.userId,
           name: product.sellerProfile.user.displayName,
           avatarUrl: product.sellerProfile.user.avatarUrl,
         },

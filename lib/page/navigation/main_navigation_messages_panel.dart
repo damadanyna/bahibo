@@ -118,6 +118,89 @@ class _MainNavigationMessagesPanelState
     return normalized;
   }
 
+  String? _participantId(Map<String, dynamic> conversation) {
+    final participant = conversation['participant'];
+    if (participant is! Map) {
+      return null;
+    }
+
+    final value = participant['id'];
+    if (value == null) {
+      return null;
+    }
+
+    final normalized = value.toString().trim();
+    if (normalized.isEmpty) {
+      return null;
+    }
+
+    return normalized;
+  }
+
+  DateTime? _conversationLastMessageDate(Map<String, dynamic> conversation) {
+    final value = conversation['lastMessageAt'];
+    if (value is! String || value.trim().isEmpty) {
+      return null;
+    }
+
+    return DateTime.tryParse(value)?.toLocal();
+  }
+
+  List<Map<String, dynamic>> _groupConversationsByParticipant(
+    List<Map<String, dynamic>> conversations,
+  ) {
+    final grouped = <String, Map<String, dynamic>>{};
+
+    for (final conversation in conversations) {
+      final participantId = _participantId(conversation);
+      final conversationId = _conversationId(conversation);
+      final groupKey = participantId ?? conversationId;
+
+      if (groupKey == null) {
+        continue;
+      }
+
+      final existing = grouped[groupKey];
+      if (existing == null) {
+        grouped[groupKey] = Map<String, dynamic>.from(conversation);
+        continue;
+      }
+
+      final existingUnread = ((existing['unreadCount'] as num?)?.toInt()) ?? 0;
+      final currentUnread =
+          ((conversation['unreadCount'] as num?)?.toInt()) ?? 0;
+      final existingDate = _conversationLastMessageDate(existing);
+      final currentDate = _conversationLastMessageDate(conversation);
+      final useCurrentConversation =
+          existingDate == null ||
+          (currentDate != null && currentDate.isAfter(existingDate));
+
+      final merged = Map<String, dynamic>.from(
+        useCurrentConversation ? conversation : existing,
+      );
+      merged['unreadCount'] = existingUnread + currentUnread;
+      grouped[groupKey] = merged;
+    }
+
+    final groupedList = grouped.values.toList();
+    groupedList.sort((first, second) {
+      final secondDate = _conversationLastMessageDate(second);
+      final firstDate = _conversationLastMessageDate(first);
+      if (firstDate == null && secondDate == null) {
+        return 0;
+      }
+      if (firstDate == null) {
+        return 1;
+      }
+      if (secondDate == null) {
+        return -1;
+      }
+      return secondDate.compareTo(firstDate);
+    });
+
+    return groupedList;
+  }
+
   bool _conversationIsTyping(Map<String, dynamic> conversation) {
     final conversationId = _conversationId(conversation);
     if (conversationId == null) {
@@ -274,11 +357,13 @@ class _MainNavigationMessagesPanelState
   }
 
   void _openConversation(Map<String, dynamic> conversation) {
+    final participantId = _participantId(conversation);
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => ChatPage(
-          conversationId: conversation['id']?.toString(),
+          conversationId: participantId == null ? conversation['id']?.toString() : null,
+          conversationUserId: participantId,
           sellerName: _conversationName(conversation),
           sellerRole:
               ((conversation['participant'] as Map?)?['roleLabel']
@@ -300,10 +385,13 @@ class _MainNavigationMessagesPanelState
     final searchFillColor = appColors.panelBackground;
     final titleColor = theme.colorScheme.onSurface;
     final mutedColor = appColors.mutedText;
+    final groupedConversations = _groupConversationsByParticipant(
+      _conversations,
+    );
     final normalizedQuery = _searchQuery.trim().toLowerCase();
     final filteredConversations = normalizedQuery.isEmpty
-        ? _conversations
-        : _conversations.where((conversation) {
+      ? groupedConversations
+      : groupedConversations.where((conversation) {
             final name = _conversationName(conversation).toLowerCase();
             final preview = _conversationPreview(conversation).toLowerCase();
             return name.contains(normalizedQuery) ||
