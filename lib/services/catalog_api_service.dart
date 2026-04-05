@@ -40,6 +40,11 @@ class CatalogApiService {
     return Map<String, dynamic>.from(data as Map);
   }
 
+  Future<Map<String, dynamic>> fetchProductById(String productId) async {
+    final data = await _client.get('/products/$productId');
+    return Map<String, dynamic>.from(data as Map);
+  }
+
   Future<Map<String, dynamic>> fetchSellerProfile(
     String sellerProfileId,
   ) async {

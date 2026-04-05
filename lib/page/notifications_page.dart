@@ -1,14 +1,21 @@
 import 'package:bahibo/auth/phoneNumber.dart';
+import 'package:bahibo/component/app_comments_sheet.dart';
+import 'package:bahibo/component/app_likes_sheet.dart';
 import 'package:bahibo/component/app_network_image.dart';
+import 'package:bahibo/component/profile_models.dart';
+import 'package:bahibo/component/user_list_page.dart';
+import 'package:bahibo/page/productDetail.dart';
 import 'package:bahibo/component/theme_menu_button.dart';
 import 'package:bahibo/services/app_api_client.dart';
 import 'package:bahibo/services/app_auth_service.dart';
+import 'package:bahibo/services/catalog_api_service.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
 class NotificationsPage extends StatelessWidget {
   final List<Map<String, dynamic>> notifications;
   static final AppAuthService _authService = AppAuthService();
+  static final CatalogApiService _catalogApiService = CatalogApiService();
 
   const NotificationsPage({super.key, required this.notifications});
 
@@ -106,9 +113,7 @@ class NotificationsPage extends StatelessWidget {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Deconnexion'),
-        content: const Text(
-          'Voulez-vous vraiment deconnecter ce compte ?',
-        ),
+        content: const Text('Voulez-vous vraiment deconnecter ce compte ?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -199,6 +204,184 @@ class NotificationsPage extends StatelessWidget {
     }
   }
 
+  Future<void> _openNotification(
+    BuildContext context,
+    Map<String, dynamic> notification,
+  ) async {
+    final type = (notification['type'] as String? ?? '').trim();
+
+    switch (type) {
+      case 'product_added':
+        await _openProductNotification(context, notification);
+        return;
+      case 'product_comment':
+        await _openProductNotification(
+          context,
+          notification,
+          initialAction: ProductDetailInitialAction.comments,
+        );
+        return;
+      case 'product_like':
+        await _openProductNotification(
+          context,
+          notification,
+          initialAction: ProductDetailInitialAction.likes,
+        );
+        return;
+      case 'profile_view':
+        await _openProfileViewers(context, notification);
+        return;
+      default:
+        await _openProductNotification(context, notification);
+        return;
+    }
+  }
+
+  Future<void> _openProductNotification(
+    BuildContext context,
+    Map<String, dynamic> notification, {
+    ProductDetailInitialAction initialAction = ProductDetailInitialAction.none,
+  }) async {
+    final productId = (notification['productId'] as String? ?? '').trim();
+    if (productId.isEmpty) {
+      _showNotificationActionUnavailable(context);
+      return;
+    }
+
+    try {
+      final product = await _catalogApiService.fetchProductById(productId);
+      if (!context.mounted) {
+        return;
+      }
+
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ProductDetailPage(
+            product: product,
+            initialAction: initialAction,
+            initialLikes: _buildLikeItems(notification),
+            initialComments: _buildCommentItems(notification),
+            initialLikeCount: _readInt(notification['likeCount']),
+            initialCommentCount: _readInt(notification['commentCount']),
+          ),
+        ),
+      );
+    } on AppApiException catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
+  Future<void> _openProfileViewers(
+    BuildContext context,
+    Map<String, dynamic> notification,
+  ) async {
+    final actors = ((notification['actors'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((actor) => Map<String, dynamic>.from(actor))
+        .toList();
+
+    if (actors.isEmpty) {
+      _showNotificationActionUnavailable(context);
+      return;
+    }
+
+    final users = actors
+        .map(
+          (actor) => UserListItemData(
+            name: (actor['name'] as String?) ?? 'Utilisateur Bahibo',
+            subtitle: 'A consulte votre profil',
+            imageUrl: (actor['avatarUrl'] as String?) ?? '',
+            trailingText: (actor['timeLabel'] as String?) ?? 'recent',
+            profileData: buildProfileFromUser(
+              userId: actor['id'] as String?,
+              name: (actor['name'] as String?) ?? 'Utilisateur Bahibo',
+              avatarUrl: (actor['avatarUrl'] as String?) ?? '',
+              subtitle: 'A consulte votre profil Bahibo',
+            ),
+          ),
+        )
+        .toList();
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => UserListPage(title: 'Vues du profil', users: users),
+      ),
+    );
+  }
+
+  List<AppLikeItem> _buildLikeItems(Map<String, dynamic> notification) {
+    final actors = ((notification['actors'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((actor) => Map<String, dynamic>.from(actor))
+        .toList();
+
+    if (actors.isEmpty) {
+      return defaultAppLikes();
+    }
+
+    return actors
+        .map(
+          (actor) => AppLikeItem(
+            authorName: (actor['name'] as String?) ?? 'Utilisateur Bahibo',
+            avatarUrl: (actor['avatarUrl'] as String?) ?? '',
+            timeLabel: (actor['timeLabel'] as String?) ?? 'recent',
+          ),
+        )
+        .toList();
+  }
+
+  List<AppCommentItem> _buildCommentItems(Map<String, dynamic> notification) {
+    final actors = ((notification['actors'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((actor) => Map<String, dynamic>.from(actor))
+        .toList();
+
+    if (actors.isEmpty) {
+      return defaultAppComments();
+    }
+
+    final productName =
+        (notification['productName'] as String?) ?? 'ce produit';
+    return actors
+        .map(
+          (actor) => AppCommentItem(
+            authorName: (actor['name'] as String?) ?? 'Utilisateur Bahibo',
+            avatarUrl: (actor['avatarUrl'] as String?) ?? '',
+            timeLabel: (actor['timeLabel'] as String?) ?? 'recent',
+            message: 'A commente $productName.',
+          ),
+        )
+        .toList();
+  }
+
+  int? _readInt(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    if (value is String) {
+      return int.tryParse(value);
+    }
+    return null;
+  }
+
+  void _showNotificationActionUnavailable(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Les details de cette notification ne sont pas disponibles.',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -277,6 +460,8 @@ class NotificationsPage extends StatelessWidget {
               (entry) => _NotificationSection(
                 title: entry.key,
                 notifications: entry.value,
+                onNotificationTap: (notification) =>
+                    _openNotification(context, notification),
               ),
             )
             .toList(),
@@ -288,10 +473,13 @@ class NotificationsPage extends StatelessWidget {
 class _NotificationSection extends StatelessWidget {
   final String title;
   final List<Map<String, dynamic>> notifications;
+  final Future<void> Function(Map<String, dynamic> notification)
+  onNotificationTap;
 
   const _NotificationSection({
     required this.title,
     required this.notifications,
+    required this.onNotificationTap,
   });
 
   @override
@@ -312,7 +500,10 @@ class _NotificationSection extends StatelessWidget {
           ),
         ),
         ...notifications.map(
-          (notification) => _NotificationTile(notification: notification),
+          (notification) => _NotificationTile(
+            notification: notification,
+            onTap: () => onNotificationTap(notification),
+          ),
         ),
       ],
     );
@@ -321,8 +512,9 @@ class _NotificationSection extends StatelessWidget {
 
 class _NotificationTile extends StatelessWidget {
   final Map<String, dynamic> notification;
+  final Future<void> Function() onTap;
 
-  const _NotificationTile({required this.notification});
+  const _NotificationTile({required this.notification, required this.onTap});
 
   String _resolveNotificationDescription({
     required String channel,
@@ -355,11 +547,56 @@ class _NotificationTile extends StatelessWidget {
       return 'Mise en ligne : $content';
     }
 
+    if ((notification['title'] as String?)?.trim().isNotEmpty == true) {
+      return (notification['title'] as String).trim();
+    }
+
     if (productName.trim().isNotEmpty) {
       return 'Mise en ligne : $productName';
     }
 
     return 'Mise en ligne : nouvelle activite';
+  }
+
+  String _formatRelativeTime(String value) {
+    final normalizedValue = value.trim();
+    if (normalizedValue.isEmpty) {
+      return 'recent';
+    }
+
+    final createdAt = DateTime.tryParse(normalizedValue)?.toLocal();
+    if (createdAt == null) {
+      return normalizedValue;
+    }
+
+    final difference = DateTime.now().difference(createdAt);
+
+    if (difference.inMinutes < 1) {
+      return 'il y a quelques secondes';
+    }
+
+    if (difference.inMinutes < 60) {
+      return 'il y a ${difference.inMinutes} min';
+    }
+
+    if (difference.inHours < 24) {
+      return 'il y a ${difference.inHours} h';
+    }
+
+    if (difference.inDays < 7) {
+      return 'il y a ${difference.inDays} j';
+    }
+
+    if (difference.inDays < 30) {
+      return 'il y a ${(difference.inDays / 7).floor()} sem';
+    }
+
+    if (difference.inDays < 365) {
+      return 'il y a ${(difference.inDays / 30).floor()} mois';
+    }
+
+    final years = (difference.inDays / 365).floor();
+    return 'il y a $years an${years > 1 ? 's' : ''}';
   }
 
   @override
@@ -371,6 +608,7 @@ class _NotificationTile extends StatelessWidget {
     final description = notification['description'] as String? ?? '';
     final productName = notification['productName'] as String? ?? '';
     final time = notification['time'] as String? ?? '';
+    final relativeTime = _formatRelativeTime(time);
     final avatarUrl = notification['avatarUrl'] as String? ?? '';
     final thumbnailUrl = notification['thumbnailUrl'] as String? ?? '';
     final isUnread = notification['unread'] == true;
@@ -387,7 +625,7 @@ class _NotificationTile extends StatelessWidget {
     );
 
     return InkWell(
-      onTap: () {},
+      onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
         child: Row(
@@ -444,7 +682,7 @@ class _NotificationTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    time,
+                    relativeTime,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: colorScheme.onSurface.withValues(alpha: 0.52),
                       fontWeight: FontWeight.w500,

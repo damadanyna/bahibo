@@ -1,4 +1,5 @@
 import 'package:bahibo/component/app_comments_sheet.dart';
+import 'package:bahibo/component/app_likes_sheet.dart';
 import 'package:bahibo/component/profile_models.dart';
 import 'package:bahibo/component/seller_profile_page.dart';
 import 'package:bahibo/component/app_share_sheet.dart';
@@ -15,14 +16,26 @@ import 'package:bahibo/page/chat_page.dart';
 import 'package:bahibo/page/image_viewer_page.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 
+enum ProductDetailInitialAction { none, comments, likes }
+
 class ProductDetailPage extends StatefulWidget {
   final Map<String, dynamic> product;
   final bool openedFromChat;
+  final ProductDetailInitialAction initialAction;
+  final List<AppLikeItem>? initialLikes;
+  final List<AppCommentItem>? initialComments;
+  final int? initialLikeCount;
+  final int? initialCommentCount;
 
   const ProductDetailPage({
     super.key,
     required this.product,
     this.openedFromChat = false,
+    this.initialAction = ProductDetailInitialAction.none,
+    this.initialLikes,
+    this.initialComments,
+    this.initialLikeCount,
+    this.initialCommentCount,
   });
 
   @override
@@ -33,23 +46,64 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     with AppPageRefreshMixin<ProductDetailPage> {
   static const String _defaultAvailabilityMessage =
       'Cet article est toujours disponible ?';
-  static const String _sellerName = 'John Doe';
-  static const String _sellerBadge = 'En ligne';
-  static const String _sellerImageUrl =
-      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600';
+  static const String _defaultSellerAvatarUrl =
+    'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600';
   final CatalogApiService _catalogApiService = CatalogApiService();
 
   late PageController _pageController;
   late Map<String, dynamic> _productData;
   final TextEditingController _availabilityController = TextEditingController();
+  late final List<AppLikeItem> _likes;
   int _likeCount = 0;
   int _commentCount = 64;
   bool _showEntrySkeleton = true;
   bool _isLiked = false;
   bool _isLikeSubmitting = false;
-  final List<AppCommentItem> _comments = defaultAppComments();
+  late final List<AppCommentItem> _comments;
+  bool _didOpenInitialAction = false;
 
   Map<String, dynamic> get product => _productData;
+
+  Map<String, dynamic> get _sellerMap {
+    final rawSeller = product['seller'];
+    if (rawSeller is Map) {
+      return Map<String, dynamic>.from(rawSeller);
+    }
+    return const <String, dynamic>{};
+  }
+
+  String get _sellerProfileIdValue {
+    final rawId = _sellerMap['id'];
+    if (rawId == null) {
+      return '';
+    }
+    return rawId.toString().trim();
+  }
+
+  String get _sellerNameValue {
+    final sellerName = _sellerMap['name'];
+    if (sellerName is String && sellerName.trim().isNotEmpty) {
+      return sellerName.trim();
+    }
+
+    return _resolveStringField(['sellerName', 'vendorName'], 'Vendeur Bahibo');
+  }
+
+  String get _sellerAvatarUrlValue {
+    final sellerAvatarUrl = _sellerMap['avatarUrl'];
+    if (sellerAvatarUrl is String && sellerAvatarUrl.trim().isNotEmpty) {
+      return sellerAvatarUrl.trim();
+    }
+
+    return _resolveStringField(
+      ['sellerAvatarUrl', 'sellerImageUrl', 'avatarUrl'],
+      _defaultSellerAvatarUrl,
+    );
+  }
+
+  String get _sellerBadgeValue {
+    return _resolveStringField(['sellerRole', 'sellerBadge'], 'Vendeur');
+  }
 
   @override
   void initState() {
@@ -57,10 +111,16 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     initializePageRefresh();
     _pageController = PageController();
     _productData = Map<String, dynamic>.from(widget.product);
-    _likeCount = _resolveLikeCount(_productData);
+    _likes = List<AppLikeItem>.from(widget.initialLikes ?? defaultAppLikes());
+    _comments = List<AppCommentItem>.from(
+      widget.initialComments ?? defaultAppComments(),
+    );
+    _likeCount = widget.initialLikeCount ?? _resolveLikeCount(_productData);
+    _commentCount = widget.initialCommentCount ?? _commentCount;
     Future.delayed(const Duration(milliseconds: 260), () {
       if (!mounted) return;
       setState(() => _showEntrySkeleton = false);
+      _openInitialActionIfNeeded();
     });
   }
 
@@ -80,6 +140,30 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     await Future.delayed(const Duration(milliseconds: 450));
     if (!mounted) return;
     setState(() => _showEntrySkeleton = false);
+  }
+
+  void _openInitialActionIfNeeded() {
+    if (_didOpenInitialAction || !mounted) {
+      return;
+    }
+
+    _didOpenInitialAction = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+
+      switch (widget.initialAction) {
+        case ProductDetailInitialAction.comments:
+          _showCommentsSheet();
+          break;
+        case ProductDetailInitialAction.likes:
+          _showLikesSheet();
+          break;
+        case ProductDetailInitialAction.none:
+          break;
+      }
+    });
   }
 
   String _resolveStringField(List<String> keys, String fallback) {
@@ -108,6 +192,99 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     return '$category • $status';
   }
 
+  String _buildPublicationLabel() {
+    final rawCreatedAt = product['createdAt'];
+    if (rawCreatedAt is! String || rawCreatedAt.trim().isEmpty) {
+      return 'Date de publication indisponible';
+    }
+
+    final createdAt = DateTime.tryParse(rawCreatedAt)?.toLocal();
+    if (createdAt == null) {
+      return 'Date de publication indisponible';
+    }
+
+    final now = DateTime.now();
+    final difference = now.difference(createdAt);
+
+    if (difference.inMinutes < 1) {
+      return 'Publie il y a quelques secondes';
+    }
+
+    if (difference.inMinutes < 60) {
+      final minutes = difference.inMinutes;
+      return 'Publie il y a $minutes min';
+    }
+
+    if (difference.inHours < 24) {
+      final hours = difference.inHours;
+      return 'Publie il y a $hours h';
+    }
+
+    if (difference.inDays < 7) {
+      final days = difference.inDays;
+      return 'Publie il y a $days j';
+    }
+
+    if (difference.inDays < 30) {
+      final weeks = (difference.inDays / 7).floor();
+      return 'Publie il y a $weeks sem';
+    }
+
+    if (difference.inDays < 365) {
+      final months = (difference.inDays / 30).floor();
+      return 'Publie il y a $months mois';
+    }
+
+    final years = (difference.inDays / 365).floor();
+    return 'Publie il y a $years an${years > 1 ? 's' : ''}';
+  }
+
+  Future<void> _openSellerProfile() async {
+    final sellerProfileId = _sellerProfileIdValue;
+    if (sellerProfileId.isEmpty) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => SellerProfilePage(
+            profile: buildProfileFromUser(
+              userId: null,
+              name: _sellerNameValue,
+              avatarUrl: _sellerAvatarUrlValue,
+              subtitle: _sellerBadgeValue,
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    try {
+      final sellerProfile = await _catalogApiService.fetchSellerProfile(
+        sellerProfileId,
+      );
+      if (!mounted) {
+        return;
+      }
+
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => SellerProfilePage(
+            profile: buildSellerProfileFromApi(sellerProfile),
+          ),
+        ),
+      );
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
   ChatPage _buildSellerChatPage({String? initialMessage}) {
     final images =
         (product['images'] as List?)?.whereType<String>().toList() ??
@@ -115,19 +292,9 @@ class _ProductDetailPageState extends State<ProductDetailPage>
 
     return ChatPage(
       conversationProductId: product['id']?.toString(),
-      sellerName: _resolveStringField([
-        'sellerName',
-        'vendorName',
-      ], _sellerName),
-      sellerRole: _resolveStringField([
-        'sellerRole',
-        'sellerBadge',
-      ], _sellerBadge),
-      avatarUrl: _resolveStringField([
-        'sellerAvatarUrl',
-        'sellerImageUrl',
-        'avatarUrl',
-      ], _sellerImageUrl),
+      sellerName: _sellerNameValue,
+      sellerRole: _sellerBadgeValue,
+      avatarUrl: _sellerAvatarUrlValue,
       product: Map<String, dynamic>.from(product),
       productPageBuilder: (product, {openedFromChat = false}) =>
           ProductDetailPage(product: product, openedFromChat: openedFromChat),
@@ -139,7 +306,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       productPriceLabel: _buildProductPriceLabel(),
       productImageUrl: images.isNotEmpty
           ? images.first
-          : _resolveStringField(['thumbnail', 'imageUrl'], _sellerImageUrl),
+          : _resolveStringField(['thumbnail', 'imageUrl'], _defaultSellerAvatarUrl),
       initialMessage: initialMessage,
       embedProductContextInInitialMessage: initialMessage != null,
     );
@@ -201,6 +368,10 @@ class _ProductDetailPageState extends State<ProductDetailPage>
         setState(() => _isLikeSubmitting = false);
       }
     }
+  }
+
+  void _showLikesSheet() {
+    showAppLikesSheet(context, currentLikeCount: _likeCount, likes: _likes);
   }
 
   @override
@@ -387,7 +558,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                         ),
                                         const SizedBox(width: 4),
                                         Text(
-                                          'Publié il y a plus d\'une semaine · Antananarivo',
+                                          _buildPublicationLabel(),
                                           style: TextStyle(
                                             fontSize: 12,
                                             color: detailSecondaryTextColor,
@@ -444,16 +615,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
 
                               // ── Carte vendeur ──
                               GestureDetector(
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => SellerProfilePage(
-                                        profile: defaultSellerProfileData(),
-                                      ),
-                                    ),
-                                  );
-                                },
+                                onTap: _openSellerProfile,
                                 child: Container(
                                   margin: const EdgeInsets.symmetric(
                                     horizontal: 12,
@@ -473,24 +635,14 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                                 context,
                                                 MaterialPageRoute(
                                                   builder: (_) => ImageViewerPage(
-                                                    imageUrls: const [
-                                                      _sellerImageUrl,
+                                                    imageUrls: [
+                                                      _sellerAvatarUrlValue,
                                                     ],
                                                     initialIndex: 0,
                                                     heroTag:
                                                         'seller-avatar-detail',
-                                                    onSellerTap: () {
-                                                      Navigator.push(
-                                                        context,
-                                                        MaterialPageRoute(
-                                                          builder: (_) =>
-                                                              SellerProfilePage(
-                                                                profile:
-                                                                    defaultSellerProfileData(),
-                                                              ),
-                                                        ),
-                                                      );
-                                                    },
+                                                    onSellerTap:
+                                                        _openSellerProfile,
                                                     onSellerMessageTap: () {
                                                       _openSellerChat();
                                                     },
@@ -498,10 +650,12 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                                       title: 'Profil vendeur',
                                                       description:
                                                           'Vendeur actif sur Bahibo, disponible pour des photos et details supplementaires.',
-                                                      sellerName: _sellerName,
+                                                      sellerName:
+                                                          _sellerNameValue,
                                                       sellerAvatarUrl:
-                                                          _sellerImageUrl,
-                                                      sellerBadge: _sellerBadge,
+                                                          _sellerAvatarUrlValue,
+                                                      sellerBadge:
+                                                          _sellerBadgeValue,
                                                     ),
                                                   ),
                                                 ),
@@ -511,7 +665,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                               tag: 'seller-avatar-detail',
                                               child: AppCircleNetworkAvatar(
                                                 radius: 28,
-                                                imageUrl: _sellerImageUrl,
+                                                imageUrl: _sellerAvatarUrlValue,
                                               ),
                                             ),
                                           ),
@@ -540,7 +694,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                               CrossAxisAlignment.start,
                                           children: [
                                             Text(
-                                              _sellerName,
+                                              _sellerNameValue,
                                               style: TextStyle(
                                                 fontWeight: FontWeight.bold,
                                                 fontSize: 15,
@@ -597,17 +751,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                       ),
                                       // Bouton voir profil
                                       OutlinedButton(
-                                        onPressed: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) => SellerProfilePage(
-                                                profile:
-                                                    defaultSellerProfileData(),
-                                              ),
-                                            ),
-                                          );
-                                        },
+                                        onPressed: _openSellerProfile,
                                         style: OutlinedButton.styleFrom(
                                           foregroundColor:
                                               theme.colorScheme.primary,
@@ -842,9 +986,9 @@ class _ProductDetailPageState extends State<ProductDetailPage>
             description:
                 product['description'] as String? ??
                 'Aucune description disponible.',
-            sellerName: _sellerName,
-            sellerAvatarUrl: _sellerImageUrl,
-            sellerBadge: _sellerBadge,
+            sellerName: _sellerNameValue,
+            sellerAvatarUrl: _sellerAvatarUrlValue,
+            sellerBadge: _sellerBadgeValue,
           ),
         ),
       ),
