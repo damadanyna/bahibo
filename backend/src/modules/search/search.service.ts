@@ -235,7 +235,9 @@ export class SearchService {
           coverImageUrl:
             user.coverImageUrl ??
             'https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?w=1600',
-          roleLabel: user.sellerProfile != null ? 'Vendeur certifie' : 'Utilisateur verifie',
+          roleLabel: user.sellerProfile != null
+              ? (user.isSellerCertified ? 'Vendeur certifie' : 'Vendeur')
+              : (user.isVerified ? 'Utilisateur verifie' : 'Utilisateur'),
           responseLabel: 'Profil actif',
           headline,
           about: description,

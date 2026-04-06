@@ -3,6 +3,7 @@ export interface SellerSnapshot {
   userId: string;
   name: string;
   avatarUrl: string;
+  isSellerCertified: boolean;
 }
 
 export interface ProductEntity {

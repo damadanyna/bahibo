@@ -440,7 +440,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
           ),
           content: Text(
             _isSubscribed
-                ? 'Vous ne recevrez plus les nouveautes de la chaine de ${profile.name}.'
+                ? 'Si vous vous desabonnez, vous risquez de ne plus recevoir de notification sur la prochaine activite de ${profile.name}.'
                 : 'Vous recevrez les nouveautes et actualites de la chaine de ${profile.name}.',
             style: TextStyle(color: appColors.mutedText, height: 1.4),
           ),
@@ -911,14 +911,14 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                                   : () => _showSubscribeConfirmation(context),
                               icon: Icon(
                                 _isSubscribed
-                                    ? Icons.how_to_reg_rounded
-                                    : Icons.person_add_alt_1,
+                                    ? Icons.notifications_active_rounded
+                                    : Icons.person_add_alt_1_rounded,
                                 size: 18,
                               ),
-                              label: Text(_isSubscribed ? 'Abonne' : "S'abonner"),
+                              label: Text(_isSubscribed ? 'Abonné' : "S'abonner"),
                               style: OutlinedButton.styleFrom(
-                                foregroundColor: appColors.heroForeground,
-                                side: BorderSide(color: appColors.heroBorder),
+                                foregroundColor: Colors.white,
+                                side: const BorderSide(color: Colors.white),
                                 padding: const EdgeInsets.symmetric(vertical: 14),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(16),

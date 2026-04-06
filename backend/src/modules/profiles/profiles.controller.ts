@@ -62,6 +62,20 @@ export class ProfilesController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post('me/seller-verification-request')
+  async submitSellerVerificationRequest(
+    @Req() req: { user: { userId: string } },
+  ) {
+    return {
+      success: true,
+      message: 'Seller verification request submitted successfully',
+      data: await this.profilesService.submitSellerVerificationRequest(
+        req.user.userId,
+      ),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('admin/shop-requests/pending')
   async listPendingShopRequests(
     @Req() req: { user: { userId: string; role: string } },
@@ -106,6 +120,52 @@ export class ProfilesController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('admin/seller-verification-requests/pending')
+  async listPendingSellerVerificationRequests(
+    @Req() req: { user: { userId: string; role: string } },
+  ) {
+    this.ensureAdminAccess(req.user.role);
+
+    return {
+      success: true,
+      message: 'Pending seller verification requests fetched successfully',
+      data: await this.profilesService.listPendingSellerVerificationRequests(),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('admin/seller-verification-requests/:userId/approve')
+  async approveSellerVerificationRequest(
+    @Req() req: { user: { userId: string; role: string } },
+    @Param('userId') userId: string,
+  ) {
+    this.ensureAdminAccess(req.user.role);
+
+    return {
+      success: true,
+      message: 'Seller verification request approved successfully',
+      data: await this.profilesService.approveSellerVerificationRequest(userId),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('admin/seller-verification-requests/:userId/pending')
+  async resetSellerVerificationRequestToPending(
+    @Req() req: { user: { userId: string; role: string } },
+    @Param('userId') userId: string,
+  ) {
+    this.ensureAdminAccess(req.user.role);
+
+    return {
+      success: true,
+      message: 'Seller verification request moved back to pending successfully',
+      data: await this.profilesService.resetSellerVerificationRequestToPending(
+        userId,
+      ),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post('me/avatar-image')
   @UseInterceptors(FileInterceptor('image'))
   async uploadAvatarImage(
@@ -145,6 +205,22 @@ export class ProfilesController {
       success: true,
       message: 'Seller profile fetched successfully',
       data: await this.profilesService.getPublicSellerProfile(sellerProfileId),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('sellers/:sellerProfileId/viewer')
+  async getSellerProfileForViewer(
+    @Req() req: { user: { userId: string } },
+    @Param('sellerProfileId') sellerProfileId: string,
+  ) {
+    return {
+      success: true,
+      message: 'Seller profile for viewer fetched successfully',
+      data: await this.profilesService.getPublicSellerProfileForViewer(
+        sellerProfileId,
+        req.user.userId,
+      ),
     };
   }
 

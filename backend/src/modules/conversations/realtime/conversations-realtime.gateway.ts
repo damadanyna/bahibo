@@ -34,6 +34,10 @@ type ProfileRealtimePayload = {
     shopRequestStatus: string;
     shopRequestSubmittedAt: string | null;
     shopRequestReviewedAt: string | null;
+    sellerVerificationRequestStatus?: string;
+    sellerVerificationRequestedAt?: string | null;
+    sellerVerificationReviewedAt?: string | null;
+    isSellerCertified?: boolean;
     sellerProfile: Record<string, unknown> | null;
   };
 };

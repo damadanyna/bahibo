@@ -9,6 +9,7 @@ import 'package:bahibo/component/app_back_button.dart';
 import 'package:bahibo/component/ui/chat_message_input_not_plus.dart';
 import 'package:bahibo/formatter/price_formatter.dart';
 import 'package:bahibo/services/app_api_client.dart';
+import 'package:bahibo/services/app_auth_service.dart';
 import 'package:bahibo/services/catalog_api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:bahibo/component/app_network_image.dart';
@@ -48,6 +49,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       'Cet article est toujours disponible ?';
   static const String _defaultSellerAvatarUrl =
       'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600';
+    final AppAuthService _authService = AppAuthService();
   final CatalogApiService _catalogApiService = CatalogApiService();
 
   late PageController _pageController;
@@ -61,8 +63,12 @@ class _ProductDetailPageState extends State<ProductDetailPage>
   bool _isLiked = false;
   bool _isLikeSubmitting = false;
   bool _isShareSubmitting = false;
+  bool _isSubscribed = false;
+  bool _isSubscriptionSubmitting = false;
   late final List<AppCommentItem> _comments;
   bool _didOpenInitialAction = false;
+  String? _currentViewerUserId;
+  UserProfileData? _sellerProfileData;
 
   Map<String, dynamic> get product => _productData;
 
@@ -113,7 +119,27 @@ class _ProductDetailPageState extends State<ProductDetailPage>
   }
 
   String get _sellerBadgeValue {
+    final isSellerCertified = _sellerMap['isSellerCertified'] == true;
+    if (isSellerCertified) {
+      return 'Vendeur certifie';
+    }
     return _resolveStringField(['sellerRole', 'sellerBadge'], 'Vendeur');
+  }
+
+  String get _resolvedSellerBadge {
+    final sellerBadge = _sellerProfileData?.roleLabel.trim() ?? '';
+    if (sellerBadge.isNotEmpty) {
+      return sellerBadge;
+    }
+    return _sellerBadgeValue;
+  }
+
+  bool get _isOwnSeller {
+    final currentViewerUserId = _currentViewerUserId?.trim() ?? '';
+    final sellerUserId = _sellerUserIdValue;
+    return currentViewerUserId.isNotEmpty &&
+        sellerUserId.isNotEmpty &&
+        currentViewerUserId == sellerUserId;
   }
 
   @override
@@ -130,7 +156,12 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     _commentCount =
         widget.initialCommentCount ?? _resolveCount(_productData, 'commentsCount');
     _shareCount = _resolveCount(_productData, 'sharesCount');
+    _isSubscribed =
+      (_sellerMap['isFollowing'] as bool?) ??
+      (widget.product['isFollowing'] as bool?) ??
+      false;
     _loadLikeStatus();
+    _loadSellerContext();
     Future.delayed(const Duration(milliseconds: 260), () {
       if (!mounted) return;
       setState(() => _showEntrySkeleton = false);
@@ -164,6 +195,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
           });
         }
         await _loadLikeStatus();
+        await _refreshSellerProfileState();
       } on AppApiException {
         await Future.delayed(const Duration(milliseconds: 450));
       }
@@ -271,6 +303,161 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     return 'Publie il y a $years an${years > 1 ? 's' : ''}';
   }
 
+  Future<void> _loadSellerContext() async {
+    try {
+      final user = await _authService.fetchCurrentUser();
+      final sellerProfileId = _sellerProfileIdValue;
+      UserProfileData? nextSellerProfile;
+
+      if (sellerProfileId.isNotEmpty) {
+        final sellerProfile = await _catalogApiService.fetchSellerProfile(
+          sellerProfileId,
+        );
+        nextSellerProfile = buildSellerProfileFromApi(sellerProfile);
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _currentViewerUserId = user['id']?.toString().trim();
+        _sellerProfileData = nextSellerProfile;
+        if (nextSellerProfile != null) {
+          _isSubscribed = nextSellerProfile.isFollowing;
+        }
+      });
+    } on AppApiException {
+      // Keep product detail usable even when seller profile refresh fails.
+    }
+  }
+
+  Future<void> _refreshSellerProfileState() async {
+    final sellerProfileId = _sellerProfileIdValue;
+    if (sellerProfileId.isEmpty) {
+      return;
+    }
+
+    try {
+      final sellerProfile = await _catalogApiService.fetchSellerProfile(
+        sellerProfileId,
+      );
+      final nextSellerProfile = buildSellerProfileFromApi(sellerProfile);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _sellerProfileData = nextSellerProfile;
+        _isSubscribed = nextSellerProfile.isFollowing;
+      });
+    } on AppApiException {
+      // Ignore silent seller follow-state refresh errors here.
+    }
+  }
+
+  Future<void> _toggleSubscription() async {
+    final sellerProfileId = _sellerProfileIdValue;
+    if (sellerProfileId.isEmpty || _isSubscriptionSubmitting) {
+      return;
+    }
+
+    if (_isOwnSeller) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vous ne pouvez pas vous abonner a votre propre boutique.'),
+        ),
+      );
+      return;
+    }
+
+    final wasSubscribed = _isSubscribed;
+    setState(() => _isSubscriptionSubmitting = true);
+
+    try {
+      final data = wasSubscribed
+          ? await _catalogApiService.unfollowSeller(sellerProfileId)
+          : await _catalogApiService.followSeller(sellerProfileId);
+      final nextProfile = buildSellerProfileFromApi(data);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _sellerProfileData = nextProfile;
+        _isSubscribed = nextProfile.isFollowing;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            wasSubscribed
+                ? 'Vous etes desabonne de la chaine de ${nextProfile.name}.'
+                : 'Vous etes abonne a la chaine de ${nextProfile.name}.',
+          ),
+        ),
+      );
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) {
+        setState(() => _isSubscriptionSubmitting = false);
+      }
+    }
+  }
+
+  Future<void> _showSubscribeConfirmation() async {
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: theme.cardColor,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          title: Text(
+            _isSubscribed
+                ? 'Se desabonner de cette chaine ?'
+                : 'S\'abonner a la chaine de $_sellerNameValue ?',
+            style: TextStyle(
+              color: theme.colorScheme.onSurface,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          content: Text(
+            _isSubscribed
+                ? 'Si vous vous desabonnez, vous risquez de ne plus recevoir de notification sur la prochaine activite de $_sellerNameValue.'
+                : 'Vous recevrez les nouveautes et actualites de la chaine de $_sellerNameValue.',
+            style: TextStyle(color: appColors.mutedText, height: 1.4),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Annuler'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.of(dialogContext).pop();
+                await _toggleSubscription();
+              },
+              style: ElevatedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text(_isSubscribed ? 'Confirmer' : 'S\'abonner'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> _openSellerProfile() async {
     final sellerProfileId = _sellerProfileIdValue;
     if (sellerProfileId.isEmpty) {
@@ -330,7 +517,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
           : null,
       showProductContextCard: shouldShowProductContextCard,
       sellerName: _sellerNameValue,
-      sellerRole: _sellerBadgeValue,
+      sellerRole: _resolvedSellerBadge,
       avatarUrl: _sellerAvatarUrlValue,
       product: Map<String, dynamic>.from(product),
       productPageBuilder: (product, {openedFromChat = false}) =>
@@ -871,7 +1058,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                                       sellerAvatarUrl:
                                                           _sellerAvatarUrlValue,
                                                       sellerBadge:
-                                                          _sellerBadgeValue,
+                                                          _resolvedSellerBadge,
                                                       isUserProfileImage: true,
                                                     ),
                                                   ),
@@ -925,7 +1112,14 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                                   child: Row(
                                                     children: [
                                                       Icon(
-                                                        Icons.verified,
+                                                        _resolvedSellerBadge
+                                                                .toLowerCase()
+                                                                .contains(
+                                                                  'certifie',
+                                                                )
+                                                            ? Icons.verified
+                                                            : Icons
+                                                                  .storefront_rounded,
                                                         size: 12,
                                                         color: theme
                                                             .colorScheme
@@ -933,7 +1127,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                                       ),
                                                       const SizedBox(width: 3),
                                                       Text(
-                                                        'Vendeur Vérifié',
+                                                        _resolvedSellerBadge,
                                                         style: TextStyle(
                                                           color: theme
                                                               .colorScheme
@@ -951,9 +1145,16 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                           ],
                                         ),
                                       ),
-                                      // Bouton voir profil
-                                      OutlinedButton(
-                                        onPressed: _openSellerProfile,
+                                      OutlinedButton.icon(
+                                        onPressed: _isSubscriptionSubmitting
+                                            ? null
+                                            : _showSubscribeConfirmation,
+                                        icon: Icon(
+                                          _isSubscribed
+                                              ? Icons.notifications_active_rounded
+                                              : Icons.person_add_alt_1,
+                                          size: 18,
+                                        ),
                                         style: OutlinedButton.styleFrom(
                                           foregroundColor:
                                               theme.colorScheme.primary,
@@ -962,17 +1163,21 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                           ),
                                           shape: RoundedRectangleBorder(
                                             borderRadius: BorderRadius.circular(
-                                              20,
+                                              16,
                                             ),
                                           ),
                                           padding: const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 8,
+                                            horizontal: 14,
+                                            vertical: 14,
                                           ),
                                         ),
-                                        child: const Text(
-                                          'Profil',
-                                          style: TextStyle(fontSize: 12),
+                                        label: Text(
+                                          _isSubscriptionSubmitting
+                                              ? '...'
+                                              : (_isSubscribed
+                                                    ? 'Abonné'
+                                                    : "S'abonner"),
+                                          style: const TextStyle(fontSize: 12),
                                         ),
                                       ),
                                     ],
@@ -1191,7 +1396,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
             sellerName: _sellerNameValue,
             sellerUserId: _sellerUserIdValue,
             sellerAvatarUrl: _sellerAvatarUrlValue,
-            sellerBadge: _sellerBadgeValue,
+            sellerBadge: _resolvedSellerBadge,
           ),
         ),
       ),

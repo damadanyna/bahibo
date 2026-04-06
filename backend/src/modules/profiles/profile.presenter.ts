@@ -123,6 +123,12 @@ export function presentUserProfile(user: UserProfileRecord, sellerStats?: Seller
     shopRequestReviewedAt: user.shopRequestReviewedAt?.toISOString() ?? null,
     sellerStats: resolvedSellerStats,
     isVerified: user.isVerified,
+    isSellerCertified: user.isSellerCertified,
+    sellerVerificationRequestStatus: user.sellerVerificationRequestStatus,
+    sellerVerificationRequestedAt:
+      user.sellerVerificationRequestedAt?.toISOString() ?? null,
+    sellerVerificationReviewedAt:
+      user.sellerVerificationReviewedAt?.toISOString() ?? null,
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
     sellerProfile: user.sellerProfile
@@ -181,6 +187,7 @@ export function presentPublicSellerProfile(
       createdAt: product.createdAt.toISOString(),
     })),
     isVerified: profile.user.isVerified,
+    isSellerCertified: profile.user.isSellerCertified,
     owner: {
       userId: profile.user.id,
       displayName: profile.user.displayName,
@@ -214,6 +221,7 @@ export function presentPublicUserProfile(
     locationLabel: user.locationLabel,
     role: user.role,
     isVerified: user.isVerified,
+    isSellerCertified: user.isSellerCertified,
     createdAt: user.createdAt.toISOString(),
     sellerStats: resolvedSellerStats,
     sellerProfile: user.sellerProfile

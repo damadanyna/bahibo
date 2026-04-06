@@ -48,7 +48,13 @@ class CatalogApiService {
   Future<Map<String, dynamic>> fetchSellerProfile(
     String sellerProfileId,
   ) async {
-    final data = await _client.get('/profiles/sellers/$sellerProfileId');
+    final hasValidSession = await _sessionStorage.hasValidSession();
+    final data = await _client.get(
+      hasValidSession
+          ? '/profiles/sellers/$sellerProfileId/viewer'
+          : '/profiles/sellers/$sellerProfileId',
+      authenticated: hasValidSession,
+    );
     return Map<String, dynamic>.from(data as Map);
   }
 

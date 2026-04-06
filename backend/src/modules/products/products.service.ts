@@ -823,6 +823,7 @@ export class ProductsService {
         avatarUrl:
           product.sellerProfile.user.avatarUrl ??
           'https://i.pravatar.cc/240?img=12',
+        isSellerCertified: product.sellerProfile.user.isSellerCertified,
       },
       images: imageUrls,
       thumbnail: imageUrls[0],

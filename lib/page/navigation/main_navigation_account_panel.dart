@@ -18,6 +18,7 @@ import 'package:bahibo/page/dashboard_page.dart';
 import 'package:bahibo/page/live/live_preview_page.dart';
 import 'package:bahibo/page/productDetailSeller.dart' as seller_detail;
 import 'package:bahibo/services/app_api_client.dart';
+import 'package:bahibo/services/app_auth_service.dart';
 import 'package:bahibo/services/catalog_api_service.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
@@ -47,6 +48,7 @@ class MainNavigationAccountPanel extends StatefulWidget {
 class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     with AppPageRefreshMixin<MainNavigationAccountPanel> {
   bool _showEntrySkeleton = true;
+  final AppAuthService _authService = AppAuthService();
   final CatalogApiService _catalogApiService = CatalogApiService();
   final ImagePicker _imagePicker = ImagePicker();
   final TextEditingController _searchController = TextEditingController();
@@ -61,6 +63,9 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   String? _activeLiveTitle;
   String? _activeLiveCategory;
   String? _activeLiveStartedLabel;
+  bool _isSellerCertified = false;
+  bool _isSubmittingSellerCertificationRequest = false;
+  String _sellerVerificationRequestStatus = 'NONE';
 
   UserProfileData get profile => widget.profile ?? defaultSellerProfileData();
 
@@ -451,6 +456,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     super.initState();
     initializePageRefresh();
     _hydrateStudioFields();
+    _syncSellerVerificationState();
     _searchController.addListener(_handleSearchChanged);
     Future.delayed(const Duration(milliseconds: 240), () {
       if (!mounted) return;
@@ -464,7 +470,13 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
 
     if (oldWidget.profile != widget.profile && widget.profile != null) {
       _hydrateStudioFields(forceFromProfile: true);
+      _syncSellerVerificationState();
     }
+  }
+
+  void _syncSellerVerificationState() {
+    _isSellerCertified = profile.isSellerCertified;
+    _sellerVerificationRequestStatus = profile.sellerVerificationRequestStatus;
   }
 
   void _handleSearchChanged() {
@@ -510,6 +522,216 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     await Future.delayed(const Duration(milliseconds: 450));
     if (!mounted) return;
     setState(() => _showEntrySkeleton = false);
+  }
+
+  Future<void> _submitSellerCertificationRequest() async {
+    if (_isSubmittingSellerCertificationRequest || _isSellerCertified) {
+      return;
+    }
+
+    if (_sellerVerificationRequestStatus == 'PENDING') {
+      return;
+    }
+
+    final dialogTheme = Theme.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Demander la certification'),
+          content: const Text(
+            'Envoyer une demande pour que l\'administrateur verifie et valide la certification de votre boutique ?',
+          ),
+          actions: [
+            DynamicIconButton(
+              text: 'Annuler',
+              icon: const Icon(Icons.close_rounded, size: 18),
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              expanded: false,
+              backgroundColor: dialogTheme.colorScheme.surfaceContainerHighest,
+              foregroundColor: dialogTheme.colorScheme.onSurface,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              borderRadius: 18,
+            ),
+            DynamicIconButton(
+              text: 'Envoyer',
+              icon: const Icon(Icons.workspace_premium_outlined, size: 18),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              expanded: false,
+              backgroundColor: dialogTheme.colorScheme.primary,
+              foregroundColor: dialogTheme.colorScheme.onPrimary,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              borderRadius: 18,
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _isSubmittingSellerCertificationRequest = true;
+    });
+
+    try {
+      final updatedProfile = await _authService.submitSellerVerificationRequest();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isSellerCertified =
+            updatedProfile['isSellerCertified'] as bool? ?? _isSellerCertified;
+        _sellerVerificationRequestStatus =
+            (updatedProfile['sellerVerificationRequestStatus'] as String?)
+                ?.trim() ??
+            'PENDING';
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Demande de certification envoyee. Un administrateur doit maintenant la valider.',
+          ),
+        ),
+      );
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmittingSellerCertificationRequest = false;
+        });
+      }
+    }
+  }
+
+  Widget _buildSellerCertificationCard(
+    ThemeData theme,
+    Color panelColor,
+    Color mutedColor,
+  ) {
+    final isPending = _sellerVerificationRequestStatus == 'PENDING';
+    final isRejected = _sellerVerificationRequestStatus == 'REJECTED';
+
+    final title = _isSellerCertified
+        ? 'Boutique certifiee'
+        : isPending
+        ? 'Certification en attente'
+        : isRejected
+        ? 'Demande a renvoyer'
+        : 'Certification vendeur';
+
+    final description = _isSellerCertified
+        ? 'Votre boutique a deja ete validee par l\'administration et le badge vendeur certifie est actif.'
+        : isPending
+        ? 'Votre demande est en attente. L\'administrateur doit verifier votre boutique avant d\'activer le badge vendeur certifie.'
+        : isRejected
+        ? 'Votre precedente demande n\'a pas encore ete retenue. Vous pouvez renvoyer une nouvelle demande de certification.'
+        : 'Par defaut, une boutique n\'est pas certifiee. Envoyez une demande pour que l\'administrateur valide votre certification.';
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: panelColor,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.workspace_premium_rounded,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: theme.colorScheme.onSurface,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            description,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: mutedColor,
+              fontWeight: FontWeight.w600,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: DynamicIconButton(
+              text: _isSellerCertified
+                  ? 'Certification active'
+                  : isPending
+                  ? 'Demande en attente'
+                  : isRejected
+                  ? 'Renvoyer la demande'
+                  : 'Demander la certification',
+              icon: _isSubmittingSellerCertificationRequest
+                  ? SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.1,
+                        color: theme.colorScheme.onPrimary,
+                      ),
+                    )
+                  : Icon(
+                      _isSellerCertified
+                          ? Icons.verified_rounded
+                          : isRejected
+                          ? Icons.refresh_rounded
+                          : Icons.workspace_premium_outlined,
+                      size: 18,
+                    ),
+              onPressed: (_isSellerCertified ||
+                      isPending ||
+                      _isSubmittingSellerCertificationRequest)
+                  ? null
+                  : _submitSellerCertificationRequest,
+              backgroundColor: (_isSellerCertified || isPending)
+                  ? theme.colorScheme.primary.withValues(alpha: 0.72)
+                  : theme.colorScheme.primary,
+              foregroundColor: Colors.white,
+              borderRadius: 18,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 18,
+                vertical: 14,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _pickProfileImage(
@@ -1925,6 +2147,15 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                       const SizedBox(height: 18),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: _buildSellerCertificationCard(
+                          theme,
+                          panelColor,
+                          mutedColor,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: _buildMetricsGrid(
                           theme,
                           panelColor,
@@ -2125,12 +2356,10 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                               runSpacing: 8,
                               children: [
                                 _buildHeroPill(
-                                  icon: Icons.verified_rounded,
+                                  icon: _isSellerCertified
+                                      ? Icons.verified_rounded
+                                      : Icons.storefront_rounded,
                                   label: profile.roleLabel,
-                                ),
-                                _buildHeroPill(
-                                  icon: Icons.bolt_rounded,
-                                  label: 'Actif aujourd\'hui',
                                 ),
                               ],
                             ),

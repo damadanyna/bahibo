@@ -457,6 +457,39 @@ export class ProfilesService {
     return profile;
   }
 
+  async submitSellerVerificationRequest(userId: string) {
+    const user = await this.findUserProfileById(userId, this.prisma);
+
+    if (user.role !== UserRole.SELLER) {
+      throw new BadRequestException('La certification est reservee aux boutiques.');
+    }
+
+    if (user.isSellerCertified) {
+      const profile = await this.getCurrentUserProfile(userId);
+      this.emitProfileUpdated(profile);
+      return profile;
+    }
+
+    if (user.sellerVerificationRequestStatus === ShopRequestStatus.PENDING) {
+      const profile = await this.getCurrentUserProfile(userId);
+      this.emitProfileUpdated(profile);
+      return profile;
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        sellerVerificationRequestStatus: ShopRequestStatus.PENDING,
+        sellerVerificationRequestedAt: new Date(),
+        sellerVerificationReviewedAt: null,
+      },
+    });
+
+    const profile = await this.getCurrentUserProfile(userId);
+    this.emitProfileUpdated(profile);
+    return profile;
+  }
+
   async listPendingShopRequests() {
     const users = await this.prisma.user.findMany({
       where: {
@@ -481,6 +514,46 @@ export class ProfilesService {
       isVerified: user.isVerified,
       shopRequestStatus: user.shopRequestStatus,
       shopRequestSubmittedAt: user.shopRequestSubmittedAt?.toISOString() ?? null,
+      createdAt: user.createdAt.toISOString(),
+      sellerProfile: user.sellerProfile
+        ? {
+            id: user.sellerProfile.id,
+            studioName: user.sellerProfile.studioName,
+            description: user.sellerProfile.description,
+            city: user.sellerProfile.city,
+            country: user.sellerProfile.country,
+          }
+        : null,
+    }));
+  }
+
+  async listPendingSellerVerificationRequests() {
+    const users = await this.prisma.user.findMany({
+      where: {
+        role: UserRole.SELLER,
+        sellerVerificationRequestStatus: ShopRequestStatus.PENDING,
+      },
+      orderBy: {
+        sellerVerificationRequestedAt: 'asc',
+      },
+      include: {
+        sellerProfile: true,
+      },
+    });
+
+    return users.map((user) => ({
+      id: user.id,
+      displayName: user.displayName,
+      phoneE164: user.phoneE164,
+      avatarUrl: user.avatarUrl,
+      coverImageUrl: user.coverImageUrl,
+      locationLabel: user.locationLabel,
+      role: user.role,
+      isVerified: user.isVerified,
+      isSellerCertified: user.isSellerCertified,
+      sellerVerificationRequestStatus: user.sellerVerificationRequestStatus,
+      sellerVerificationRequestedAt:
+        user.sellerVerificationRequestedAt?.toISOString() ?? null,
       createdAt: user.createdAt.toISOString(),
       sellerProfile: user.sellerProfile
         ? {
@@ -523,6 +596,33 @@ export class ProfilesService {
 
     const profile = await this.getCurrentUserProfile(userId);
     this.emitShopRequestProfileUpdate(profile);
+    return profile;
+  }
+
+  async approveSellerVerificationRequest(userId: string) {
+    const user = await this.findUserProfileById(userId, this.prisma);
+
+    if (user.role !== UserRole.SELLER) {
+      throw new BadRequestException('Ce compte n\'est pas une boutique.');
+    }
+
+    if (user.sellerVerificationRequestStatus !== ShopRequestStatus.PENDING) {
+      throw new BadRequestException(
+        'No pending seller verification request found for this user.',
+      );
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        isSellerCertified: true,
+        sellerVerificationRequestStatus: ShopRequestStatus.APPROVED,
+        sellerVerificationReviewedAt: new Date(),
+      },
+    });
+
+    const profile = await this.getCurrentUserProfile(userId);
+    this.emitProfileUpdated(profile);
     return profile;
   }
 
@@ -585,6 +685,34 @@ export class ProfilesService {
     return profile;
   }
 
+  async resetSellerVerificationRequestToPending(userId: string) {
+    const user = await this.findUserProfileById(userId, this.prisma);
+
+    if (user.role !== UserRole.SELLER) {
+      throw new BadRequestException('Ce compte n\'est pas une boutique.');
+    }
+
+    if (user.sellerVerificationRequestStatus === ShopRequestStatus.PENDING) {
+      const profile = await this.getCurrentUserProfile(userId);
+      this.emitProfileUpdated(profile);
+      return profile;
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        isSellerCertified: false,
+        sellerVerificationRequestStatus: ShopRequestStatus.PENDING,
+        sellerVerificationRequestedAt: user.sellerVerificationRequestedAt ?? new Date(),
+        sellerVerificationReviewedAt: null,
+      },
+    });
+
+    const profile = await this.getCurrentUserProfile(userId);
+    this.emitProfileUpdated(profile);
+    return profile;
+  }
+
   private emitShopRequestProfileUpdate(profile: Awaited<ReturnType<ProfilesService['getCurrentUserProfile']>>) {
     this.conversationsRealtimeGateway.emitProfileEvent(profile.id, {
       type: 'profile:shop-request-updated',
@@ -595,6 +723,10 @@ export class ProfilesService {
         shopRequestStatus: profile.shopRequestStatus,
         shopRequestSubmittedAt: profile.shopRequestSubmittedAt,
         shopRequestReviewedAt: profile.shopRequestReviewedAt,
+        sellerVerificationRequestStatus: profile.sellerVerificationRequestStatus,
+        sellerVerificationRequestedAt: profile.sellerVerificationRequestedAt,
+        sellerVerificationReviewedAt: profile.sellerVerificationReviewedAt,
+        isSellerCertified: profile.isSellerCertified,
         sellerProfile: profile.sellerProfile,
       },
     });
@@ -610,6 +742,10 @@ export class ProfilesService {
         shopRequestStatus: profile.shopRequestStatus,
         shopRequestSubmittedAt: profile.shopRequestSubmittedAt,
         shopRequestReviewedAt: profile.shopRequestReviewedAt,
+        sellerVerificationRequestStatus: profile.sellerVerificationRequestStatus,
+        sellerVerificationRequestedAt: profile.sellerVerificationRequestedAt,
+        sellerVerificationReviewedAt: profile.sellerVerificationReviewedAt,
+        isSellerCertified: profile.isSellerCertified,
         sellerProfile: profile.sellerProfile,
       },
     });

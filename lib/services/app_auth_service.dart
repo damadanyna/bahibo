@@ -181,6 +181,14 @@ class AppAuthService {
     return Map<String, dynamic>.from(data as Map);
   }
 
+  Future<Map<String, dynamic>> submitSellerVerificationRequest() async {
+    final data = await _client.post(
+      '/profiles/me/seller-verification-request',
+      authenticated: true,
+    );
+    return Map<String, dynamic>.from(data as Map);
+  }
+
   Future<bool> restoreSession() async {
     final hasValidSession = await _sessionStorage.hasValidSession();
 

@@ -16,6 +16,11 @@ class UserProfileData {
   final String totalLikesCount;
   final String rating;
   final bool isFollowing;
+  final bool isVerified;
+  final bool isSellerCertified;
+  final String sellerVerificationRequestStatus;
+  final String? sellerVerificationRequestedAt;
+  final String? sellerVerificationReviewedAt;
   final List<Map<String, dynamic>> products;
 
   const UserProfileData({
@@ -36,6 +41,11 @@ class UserProfileData {
     this.totalLikesCount = '0',
     required this.rating,
     this.isFollowing = false,
+    this.isVerified = false,
+    this.isSellerCertified = false,
+    this.sellerVerificationRequestStatus = 'NONE',
+    this.sellerVerificationRequestedAt,
+    this.sellerVerificationReviewedAt,
     required this.products,
   });
 }
@@ -57,6 +67,7 @@ UserProfileData buildSellerProfileFromApi(Map<String, dynamic> data) {
     city,
     country,
   ].where((value) => value.isNotEmpty).toList();
+  final isSellerCertified = data['isSellerCertified'] as bool? ?? false;
 
   return UserProfileData(
     userId: owner['userId'] as String?,
@@ -70,7 +81,7 @@ UserProfileData buildSellerProfileFromApi(Map<String, dynamic> data) {
               : 'Boutique Bahibo'),
     avatarUrl: (owner['avatarUrl'] as String?) ?? '',
     coverImageUrl: (owner['coverImageUrl'] as String?) ?? '',
-    roleLabel: (data['isVerified'] as bool? ?? false)
+    roleLabel: isSellerCertified
         ? 'Vendeur certifie'
         : 'Vendeur',
     responseLabel: 'Profil actif',
@@ -86,6 +97,8 @@ UserProfileData buildSellerProfileFromApi(Map<String, dynamic> data) {
     totalLikesCount: '${sellerStats['totalLikesCount'] ?? 0}',
     rating: '0.0',
     isFollowing: data['isFollowing'] as bool? ?? false,
+    isVerified: data['isVerified'] as bool? ?? false,
+    isSellerCertified: isSellerCertified,
     products: products,
   );
 }
@@ -99,6 +112,14 @@ UserProfileData buildSellerAccountProfileFromCurrentUser(
   final locationLabel = (user['locationLabel'] as String?)?.trim() ?? '';
   final sellerProfile = user['sellerProfile'];
   final sellerStats = user['sellerStats'];
+  final isVerified = user['isVerified'] as bool? ?? false;
+  final isSellerCertified = user['isSellerCertified'] as bool? ?? false;
+  final sellerVerificationRequestStatus =
+      (user['sellerVerificationRequestStatus'] as String?)?.trim() ?? 'NONE';
+  final sellerVerificationRequestedAt =
+      user['sellerVerificationRequestedAt'] as String?;
+  final sellerVerificationReviewedAt =
+      user['sellerVerificationReviewedAt'] as String?;
 
   String about = 'Boutique Bahibo active sur la plateforme.';
   String displayLabel = displayName;
@@ -136,7 +157,7 @@ UserProfileData buildSellerAccountProfileFromCurrentUser(
         name: displayLabel.isNotEmpty ? displayLabel : 'Boutique Bahibo',
         avatarUrl: avatarUrl,
         coverImageUrl: coverImageUrl,
-        roleLabel: 'Vendeur certifie',
+        roleLabel: isSellerCertified ? 'Vendeur certifie' : 'Vendeur',
         responseLabel: 'Profil actif',
         headline: locationLabel.isNotEmpty
             ? locationLabel
@@ -148,6 +169,11 @@ UserProfileData buildSellerAccountProfileFromCurrentUser(
         totalLikesCount: totalLikesCount,
         rating: '0.0',
         isFollowing: false,
+        isVerified: isVerified,
+        isSellerCertified: isSellerCertified,
+        sellerVerificationRequestStatus: sellerVerificationRequestStatus,
+        sellerVerificationRequestedAt: sellerVerificationRequestedAt,
+        sellerVerificationReviewedAt: sellerVerificationReviewedAt,
         products: sellerProducts
             .whereType<Map>()
             .map((product) => Map<String, dynamic>.from(product))
@@ -168,7 +194,7 @@ UserProfileData buildSellerAccountProfileFromCurrentUser(
     name: displayLabel.isNotEmpty ? displayLabel : 'Boutique Bahibo',
     avatarUrl: avatarUrl,
     coverImageUrl: coverImageUrl,
-    roleLabel: 'Vendeur certifie',
+    roleLabel: isSellerCertified ? 'Vendeur certifie' : 'Vendeur',
     responseLabel: 'Profil actif',
     headline: locationLabel.isNotEmpty
         ? locationLabel
@@ -180,6 +206,11 @@ UserProfileData buildSellerAccountProfileFromCurrentUser(
     totalLikesCount: totalLikesCount,
     rating: '0.0',
     isFollowing: false,
+    isVerified: isVerified,
+    isSellerCertified: isSellerCertified,
+    sellerVerificationRequestStatus: sellerVerificationRequestStatus,
+    sellerVerificationRequestedAt: sellerVerificationRequestedAt,
+    sellerVerificationReviewedAt: sellerVerificationReviewedAt,
     products: const [],
   );
 }
@@ -191,6 +222,7 @@ UserProfileData buildPublicUserProfileFromApi(Map<String, dynamic> data) {
   final sellerProfile = data['sellerProfile'];
   final role = (data['role'] as String?)?.trim() ?? 'CUSTOMER';
   final isVerified = data['isVerified'] as bool? ?? false;
+  final isSellerCertified = data['isSellerCertified'] as bool? ?? false;
   final locationLabel = (data['locationLabel'] as String?)?.trim() ?? '';
   final sellerDescription = sellerProfile is Map
       ? (sellerProfile['description'] as String?)?.trim() ?? ''
@@ -209,7 +241,7 @@ UserProfileData buildPublicUserProfileFromApi(Map<String, dynamic> data) {
     avatarUrl: (data['avatarUrl'] as String?) ?? '',
     coverImageUrl: (data['coverImageUrl'] as String?) ?? '',
     roleLabel: role == 'SELLER'
-        ? (isVerified ? 'Vendeur certifie' : 'Vendeur')
+        ? (isSellerCertified ? 'Vendeur certifie' : 'Vendeur')
         : (isVerified ? 'Utilisateur verifie' : 'Utilisateur'),
     responseLabel: 'Profil actif',
     headline: locationLabel.isNotEmpty
@@ -224,6 +256,8 @@ UserProfileData buildPublicUserProfileFromApi(Map<String, dynamic> data) {
     totalLikesCount: '${sellerStats['totalLikesCount'] ?? 0}',
     rating: '0.0',
     isFollowing: false,
+    isVerified: isVerified,
+    isSellerCertified: isSellerCertified,
     products: const [],
   );
 }
@@ -236,7 +270,7 @@ UserProfileData defaultSellerProfileData() {
         'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600',
     coverImageUrl:
         'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=1600',
-    roleLabel: 'Vendeur certifie',
+    roleLabel: 'Vendeur',
     responseLabel: 'Repond vite',
     headline: 'Marketplace mobile · Antananarivo · En ligne aujourd\'hui',
     about:
@@ -247,6 +281,7 @@ UserProfileData defaultSellerProfileData() {
     totalLikesCount: '9.2k',
     rating: '4.9',
     isFollowing: false,
+    isSellerCertified: false,
     products: [
       {
         'title': 'Samsung Galaxy S20',
@@ -296,6 +331,7 @@ UserProfileData buildProfileFromUser({
     totalLikesCount: '0',
     rating: '4.7',
     isFollowing: false,
+    isVerified: true,
     products: [
       {
         'title': 'iPhone 13 Mini',

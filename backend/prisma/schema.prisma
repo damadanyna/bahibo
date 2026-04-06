@@ -62,6 +62,10 @@ model User {
   shopRequestSubmittedAt DateTime?
   shopRequestReviewedAt DateTime?
   isVerified      Boolean        @default(false)
+  isSellerCertified Boolean      @default(false)
+  sellerVerificationRequestStatus ShopRequestStatus @default(NONE)
+  sellerVerificationRequestedAt DateTime?
+  sellerVerificationReviewedAt DateTime?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   refreshTokens   RefreshToken[]
