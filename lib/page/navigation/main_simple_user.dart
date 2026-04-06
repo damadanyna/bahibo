@@ -799,6 +799,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
           overlay: ImageViewerOverlayData(
             sellerName: _displayName,
             sellerAvatarUrl: _avatarUrl,
+            isUserProfileImage: true,
           ),
         ),
       ),

@@ -10,12 +10,14 @@ import 'package:bahibo/component/seller_profile_page.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 
 class AppCommentItem {
+  final String? authorId;
   final String authorName;
   final String avatarUrl;
   final String timeLabel;
   final String message;
 
   const AppCommentItem({
+    this.authorId,
     required this.authorName,
     required this.avatarUrl,
     required this.timeLabel,
@@ -54,6 +56,7 @@ Future<void> showAppCommentsSheet(
   required int currentCommentCount,
   required List<AppCommentItem> comments,
   required ValueChanged<int> onCommentCountChanged,
+  Future<AppCommentItem?> Function(String message)? onSubmitComment,
 }) {
   final appColors = Theme.of(context).appColors;
 
@@ -69,6 +72,7 @@ Future<void> showAppCommentsSheet(
       initialCommentCount: currentCommentCount,
       comments: comments,
       onCommentCountChanged: onCommentCountChanged,
+      onSubmitComment: onSubmitComment,
     ),
   );
 }
@@ -77,11 +81,13 @@ class _AppCommentsSheetContent extends StatefulWidget {
   final int initialCommentCount;
   final List<AppCommentItem> comments;
   final ValueChanged<int> onCommentCountChanged;
+  final Future<AppCommentItem?> Function(String message)? onSubmitComment;
 
   const _AppCommentsSheetContent({
     required this.initialCommentCount,
     required this.comments,
     required this.onCommentCountChanged,
+    this.onSubmitComment,
   });
 
   @override
@@ -93,6 +99,7 @@ class _AppCommentsSheetContentState extends State<_AppCommentsSheetContent> {
   late final TextEditingController _commentController;
   final ImagePicker _imagePicker = ImagePicker();
   late int _commentCount;
+  bool _isSubmitting = false;
 
   @override
   void initState() {
@@ -143,7 +150,16 @@ class _AppCommentsSheetContentState extends State<_AppCommentsSheetContent> {
     final file = await _imagePicker.pickImage(source: ImageSource.gallery);
     if (file == null) return;
 
-    _addComment(message: 'Photo ajoutee depuis la galerie: ${file.name}');
+    final text = 'Photo ajoutee depuis la galerie: ${file.name}';
+    if (widget.onSubmitComment != null) {
+      _commentController
+        ..text = text
+        ..selection = TextSelection.collapsed(offset: text.length);
+      setState(() {});
+      return;
+    }
+
+    _addComment(message: text);
   }
 
   Future<void> _pickCommentDocumentFromFiles() async {
@@ -157,17 +173,48 @@ class _AppCommentsSheetContentState extends State<_AppCommentsSheetContent> {
     if (result == null || result.files.isEmpty) return;
 
     final file = result.files.single;
-    _addComment(
-      message:
-          'Document ajoute depuis le gestionnaire de fichiers: ${file.name}',
-    );
+    final text =
+        'Document ajoute depuis le gestionnaire de fichiers: ${file.name}';
+    if (widget.onSubmitComment != null) {
+      _commentController
+        ..text = text
+        ..selection = TextSelection.collapsed(offset: text.length);
+      setState(() {});
+      return;
+    }
+
+    _addComment(message: text);
   }
 
-  void _submitComment() {
+  Future<void> _submitComment() async {
     final text = _commentController.text.trim();
-    if (text.isEmpty) return;
-    _addComment(message: text);
-    _commentController.clear();
+    if (text.isEmpty || _isSubmitting) return;
+
+    if (widget.onSubmitComment == null) {
+      _addComment(message: text);
+      _commentController.clear();
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+    try {
+      final addedComment = await widget.onSubmitComment!(text);
+      if (!mounted) {
+        return;
+      }
+      if (addedComment != null) {
+        setState(() {
+          widget.comments.insert(0, addedComment);
+          _commentCount += 1;
+        });
+        widget.onCommentCountChanged(_commentCount);
+        _commentController.clear();
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
   }
 
   void _addComment({required String message}) {
@@ -227,112 +274,125 @@ class _AppCommentsSheetContentState extends State<_AppCommentsSheetContent> {
               Text(
                 '$_commentCount reactions de la communaute',
                 style: TextStyle(
-                  color: theme.colorScheme.primary.withOpacity(0.72),
+                  color: theme.colorScheme.primary.withValues(alpha: 0.72),
                   fontSize: 12.5,
                   fontWeight: FontWeight.w500,
                 ),
               ),
               const SizedBox(height: 16),
               Expanded(
-                child: ListView.separated(
-                  itemCount: widget.comments.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    final comment = widget.comments[index];
-                    return Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: appColors.heroSurface,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: appColors.heroBorder),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: () => _openCommentAuthorProfile(comment),
-                              customBorder: const CircleBorder(),
-                              child: Container(
-                                padding: const EdgeInsets.all(1.5),
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: appColors.success.withOpacity(0.32),
-                                    width: 1.5,
-                                  ),
-                                ),
-                                child: AppCircleNetworkAvatar(
-                                  radius: 18,
-                                  imageUrl: comment.avatarUrl,
-                                ),
-                              ),
-                            ),
+                child: widget.comments.isEmpty
+                    ? Center(
+                        child: Text(
+                          'Aucun commentaire pour le moment.',
+                          style: TextStyle(
+                            color: appColors.mutedText,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
+                        ),
+                      )
+                    : ListView.separated(
+                        itemCount: widget.comments.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          final comment = widget.comments[index];
+                          return Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: appColors.heroSurface,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: appColors.heroBorder),
+                            ),
+                            child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Material(
-                                        color: Colors.transparent,
-                                        child: InkWell(
-                                          onTap: () =>
-                                              _openCommentAuthorProfile(
-                                                comment,
-                                              ),
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                          child: Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                              vertical: 2,
-                                            ),
-                                            child: Text(
-                                              comment.authorName,
-                                              style: TextStyle(
-                                                color:
-                                                    theme.colorScheme.primary,
-                                                fontSize: 13.5,
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                            ),
-                                          ),
+                                Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: () => _openCommentAuthorProfile(comment),
+                                    customBorder: const CircleBorder(),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(1.5),
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: appColors.success.withValues(alpha: 0.32),
+                                          width: 1.5,
                                         ),
                                       ),
-                                    ),
-                                    Text(
-                                      comment.timeLabel,
-                                      style: TextStyle(
-                                        color: theme.colorScheme.primary
-                                            .withOpacity(0.52),
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
+                                      child: AppCircleNetworkAvatar(
+                                        radius: 18,
+                                        imageUrl: comment.avatarUrl,
                                       ),
                                     ),
-                                  ],
+                                  ),
                                 ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  comment.message,
-                                  style: TextStyle(
-                                    color: appColors.heroForeground,
-                                    fontSize: 13,
-                                    height: 1.35,
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Material(
+                                              color: Colors.transparent,
+                                              child: InkWell(
+                                                onTap: () =>
+                                                    _openCommentAuthorProfile(
+                                                      comment,
+                                                    ),
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                                child: Padding(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        vertical: 2,
+                                                      ),
+                                                  child: Text(
+                                                    comment.authorName,
+                                                    style: TextStyle(
+                                                      color: theme
+                                                          .colorScheme
+                                                          .primary,
+                                                      fontSize: 13.5,
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          Text(
+                                            comment.timeLabel,
+                                            style: TextStyle(
+                                              color: theme.colorScheme.primary
+                                                  .withValues(alpha: 0.52),
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        comment.message,
+                                        style: TextStyle(
+                                          color: appColors.heroForeground,
+                                          fontSize: 13,
+                                          height: 1.35,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
                             ),
-                          ),
-                        ],
+                          );
+                        },
                       ),
-                    );
-                  },
-                ),
               ),
               const SizedBox(height: 14),
               const SizedBox.shrink(),

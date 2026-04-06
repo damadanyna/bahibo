@@ -76,6 +76,39 @@ class CatalogApiService {
     return Map<String, dynamic>.from(data as Map);
   }
 
+  Future<List<Map<String, dynamic>>> fetchSellerFollowers(String sellerProfileId) async {
+    final data = await _client.get(
+      '/profiles/sellers/$sellerProfileId/followers',
+      authenticated: true,
+    );
+    return (data as List)
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
+  Future<List<Map<String, dynamic>>> fetchSellerProfileViews(String sellerProfileId) async {
+    final data = await _client.get(
+      '/profiles/sellers/$sellerProfileId/views',
+      authenticated: true,
+    );
+    return (data as List)
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
+  Future<List<Map<String, dynamic>>> fetchSellerLikeUsers(String sellerProfileId) async {
+    final data = await _client.get(
+      '/profiles/sellers/$sellerProfileId/likes',
+      authenticated: true,
+    );
+    return (data as List)
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
   Future<Map<String, dynamic>> likeProduct(String productId) async {
     final data = await _client.post(
       '/products/$productId/like',
@@ -87,6 +120,49 @@ class CatalogApiService {
   Future<Map<String, dynamic>> unlikeProduct(String productId) async {
     final data = await _client.post(
       '/products/$productId/unlike',
+      authenticated: true,
+    );
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<bool> hasLikedProduct(String productId) async {
+    final hasSession = await _sessionStorage.hasValidSession();
+    if (!hasSession) {
+      return false;
+    }
+
+    final data = await _client.get(
+      '/products/$productId/liked',
+      authenticated: true,
+    );
+
+    final payload = Map<String, dynamic>.from(data as Map);
+    return payload['isLiked'] == true;
+  }
+
+  Future<List<Map<String, dynamic>>> fetchProductComments(String productId) async {
+    final data = await _client.get('/products/$productId/comments');
+    return (data as List)
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> addProductComment({
+    required String productId,
+    required String content,
+  }) async {
+    final data = await _client.post(
+      '/products/$productId/comments',
+      body: {'content': content},
+      authenticated: true,
+    );
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<Map<String, dynamic>> shareProduct(String productId) async {
+    final data = await _client.post(
+      '/products/$productId/share',
       authenticated: true,
     );
     return Map<String, dynamic>.from(data as Map);

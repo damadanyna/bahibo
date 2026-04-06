@@ -594,6 +594,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                                     sellerName: profile.name,
                                     sellerAvatarUrl: _profileAvatarUrl,
                                     sellerBadge: profile.roleLabel,
+                                    isUserProfileImage: true,
                                   ),
                                 ),
                               ),
@@ -912,81 +913,9 @@ class _SellerProfilePageState extends State<SellerProfilePage>
     Color mutedColor,
     Color primaryGreen,
   ) {
-    final followers = _metricCountValue(profile.followerCount) <= 0
-        ? <UserListItemData>[]
-        : [
-            _userItem(
-              name: 'Miora Andrianiaina',
-              subtitle: 'Suit la boutique depuis 8 mois',
-              imageUrl:
-                  'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200',
-              trailingText: 'Abonne',
-            ),
-            _userItem(
-              name: 'Toky Rajaonarison',
-              subtitle: 'Acheteur regulier',
-              imageUrl:
-                  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200',
-              trailingText: 'Abonne',
-            ),
-            _userItem(
-              name: 'Aina Ravelona',
-              subtitle: 'Suit les nouveautes smartphone',
-              imageUrl:
-                  'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200',
-              trailingText: 'Abonne',
-            ),
-          ];
-
-    final visitors = _metricCountValue(profile.visitorCount) <= 0
-        ? <UserListItemData>[]
-        : [
-            _userItem(
-              name: 'Feno Nantenaina',
-              subtitle: 'A visite le profil aujourd\'hui',
-              imageUrl:
-                  'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=200',
-              trailingText: 'Aujourd\'hui',
-            ),
-            _userItem(
-              name: 'Sarah R.',
-              subtitle: 'A consulte 3 annonces cette semaine',
-              imageUrl:
-                  'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=200',
-              trailingText: '3 vues',
-            ),
-            _userItem(
-              name: 'Kevin M.',
-              subtitle: 'Interesse par les iPhone',
-              imageUrl:
-                  'https://images.unsplash.com/photo-1504593811423-6dd665756598?w=200',
-              trailingText: 'Recurrent',
-            ),
-          ];
-
-    final ratings = [
-      _userItem(
-        name: 'Nadia',
-        subtitle: 'Transaction rapide et produit conforme',
-        imageUrl:
-            'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=200',
-        trailingText: '5.0',
-      ),
-      _userItem(
-        name: 'Bryan',
-        subtitle: 'Tres bon vendeur, communication claire',
-        imageUrl:
-            'https://images.unsplash.com/photo-1504257432389-52343af06ae3?w=200',
-        trailingText: '4.8',
-      ),
-      _userItem(
-        name: 'Elinah',
-        subtitle: 'Telephone nickel, recommande',
-        imageUrl:
-            'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=200',
-        trailingText: '4.9',
-      ),
-    ];
+    final followers = _buildMetricUsers('Abonnes');
+    final profileViews = _buildMetricUsers('Vues profil');
+    final totalLikes = _buildMetricUsers('Likes total');
 
     return Row(
       children: [
@@ -1008,13 +937,13 @@ class _SellerProfilePageState extends State<SellerProfilePage>
           child: _statCard(
             context: context,
             surfaceColor: surfaceColor,
-            label: 'Visiteurs',
+            label: 'Vues profil',
             value: profile.visitorCount,
             icon: Icons.visibility_outlined,
             accent: Theme.of(context).appColors.success,
             mutedColor: mutedColor,
-            pageTitle: 'Visiteurs',
-            users: visitors,
+            pageTitle: 'Vues profil',
+            users: profileViews,
           ),
         ),
         const SizedBox(width: 10),
@@ -1022,17 +951,105 @@ class _SellerProfilePageState extends State<SellerProfilePage>
           child: _statCard(
             context: context,
             surfaceColor: surfaceColor,
-            label: 'Note',
-            value: profile.rating,
-            icon: Icons.star_outline,
+            label: 'Likes total',
+            value: profile.totalLikesCount,
+            icon: Icons.favorite_outline,
             accent: Theme.of(context).colorScheme.tertiary,
             mutedColor: mutedColor,
-            pageTitle: 'Avis et notes',
-            users: ratings,
+            pageTitle: 'Likes total',
+            users: totalLikes,
           ),
         ),
       ],
     );
+  }
+
+  List<UserListItemData> _buildMetricUsers(String metricLabel) {
+    final metricCount = switch (metricLabel) {
+      'Abonnes' => _metricCountValue(profile.followerCount),
+      'Vues profil' => _metricCountValue(profile.visitorCount),
+      'Likes total' => _metricCountValue(profile.totalLikesCount),
+      _ => 0,
+    };
+
+    if (metricCount <= 0) {
+      return const <UserListItemData>[];
+    }
+
+    final metricUsers = switch (metricLabel) {
+      'Abonnes' => [
+          _userItem(
+            name: 'Miora Andrianiaina',
+            subtitle: 'Suit la boutique depuis 8 mois',
+            imageUrl:
+                'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200',
+            trailingText: 'Abonne',
+          ),
+          _userItem(
+            name: 'Toky Rajaonarison',
+            subtitle: 'Acheteur regulier',
+            imageUrl:
+                'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200',
+            trailingText: 'Abonne',
+          ),
+          _userItem(
+            name: 'Aina Ravelona',
+            subtitle: 'Suit les nouveautes smartphone',
+            imageUrl:
+                'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200',
+            trailingText: 'Abonne',
+          ),
+        ],
+      'Vues profil' => [
+          _userItem(
+            name: 'Feno Nantenaina',
+            subtitle: 'A visite le profil aujourd\'hui',
+            imageUrl:
+                'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=200',
+            trailingText: 'Vue',
+          ),
+          _userItem(
+            name: 'Sarah R.',
+            subtitle: 'A consulte 3 annonces cette semaine',
+            imageUrl:
+                'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=200',
+            trailingText: '3 vues',
+          ),
+          _userItem(
+            name: 'Kevin M.',
+            subtitle: 'Interesse par les iPhone',
+            imageUrl:
+                'https://images.unsplash.com/photo-1504593811423-6dd665756598?w=200',
+            trailingText: 'Recente',
+          ),
+        ],
+      'Likes total' => [
+          _userItem(
+            name: 'Nadia',
+            subtitle: 'A beaucoup aime les annonces de la boutique',
+            imageUrl:
+                'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=200',
+            trailingText: 'Like',
+          ),
+          _userItem(
+            name: 'Bryan',
+            subtitle: 'Reagit souvent aux produits publies',
+            imageUrl:
+                'https://images.unsplash.com/photo-1504257432389-52343af06ae3?w=200',
+            trailingText: 'Like',
+          ),
+          _userItem(
+            name: 'Elinah',
+            subtitle: 'Interagit regulierement avec la boutique',
+            imageUrl:
+                'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=200',
+            trailingText: 'Like',
+          ),
+        ],
+      _ => const <UserListItemData>[],
+    };
+
+    return metricUsers;
   }
 
   UserListItemData _userItem({

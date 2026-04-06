@@ -18,5 +18,7 @@ export interface ProductEntity {
   thumbnail: string;
   isAvailable: boolean;
   likesCount: number;
+  commentsCount: number;
+  sharesCount: number;
   createdAt: string;
 }

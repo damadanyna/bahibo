@@ -14,6 +14,7 @@ import {
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CreateProductCommentDto } from './dto/create-product-comment.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductsService } from './products.service';
@@ -116,6 +117,28 @@ export class ProductsController {
     };
   }
 
+  @Get(':id/comments')
+  async findComments(@Param('id') id: string) {
+    return {
+      success: true,
+      message: 'Product comments fetched successfully',
+      data: await this.productsService.findComments(id),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':id/liked')
+  async hasLikedProduct(
+    @Req() req: { user: { userId: string } },
+    @Param('id') id: string,
+  ) {
+    return {
+      success: true,
+      message: 'Product like status fetched successfully',
+      data: await this.productsService.hasLikedProduct(req.user.userId, id),
+    };
+  }
+
   @UseGuards(JwtAuthGuard)
   @Post(':id/like')
   async likeProduct(
@@ -139,6 +162,33 @@ export class ProductsController {
       success: true,
       message: 'Product unliked successfully',
       data: await this.productsService.unlikeProduct(req.user.userId, id),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/comments')
+  async addComment(
+    @Req() req: { user: { userId: string } },
+    @Param('id') id: string,
+    @Body() dto: CreateProductCommentDto,
+  ) {
+    return {
+      success: true,
+      message: 'Product comment added successfully',
+      data: await this.productsService.addComment(req.user.userId, id, dto),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/share')
+  async shareProduct(
+    @Req() req: { user: { userId: string } },
+    @Param('id') id: string,
+  ) {
+    return {
+      success: true,
+      message: 'Product share recorded successfully',
+      data: await this.productsService.shareProduct(req.user.userId, id),
     };
   }
 }

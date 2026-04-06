@@ -38,6 +38,12 @@ type ProfileRealtimePayload = {
   };
 };
 
+type NotificationRealtimePayload = {
+  type: 'notifications:updated';
+  userId: string;
+  reason: 'product_like' | 'product_comment';
+};
+
 @Injectable()
 @WebSocketGateway({
   cors: {
@@ -155,6 +161,14 @@ export class ConversationsRealtimeGateway
     }
 
     this.server.to(this.userRoom(userId)).emit('profiles:updated', payload);
+  }
+
+  emitNotificationEvent(userId: string, payload: NotificationRealtimePayload) {
+    if (!this.server) {
+      return;
+    }
+
+    this.server.to(this.userRoom(userId)).emit('notifications:updated', payload);
   }
 
   isUserConnected(userId: string) {

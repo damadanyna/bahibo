@@ -1,7 +1,8 @@
+import 'dart:async';
+
 import 'package:bahibo/auth/phoneNumber.dart';
 import 'package:bahibo/component/app_comments_sheet.dart';
 import 'package:bahibo/component/app_likes_sheet.dart';
-import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/component/profile_models.dart';
 import 'package:bahibo/component/user_list_page.dart';
 import 'package:bahibo/page/productDetail.dart';
@@ -9,15 +10,72 @@ import 'package:bahibo/component/theme_menu_button.dart';
 import 'package:bahibo/services/app_api_client.dart';
 import 'package:bahibo/services/app_auth_service.dart';
 import 'package:bahibo/services/catalog_api_service.dart';
+import 'package:bahibo/services/chat_realtime_service.dart';
+import 'package:bahibo/services/notifications_api_service.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
-class NotificationsPage extends StatelessWidget {
+class NotificationsPage extends StatefulWidget {
   final List<Map<String, dynamic>> notifications;
-  static final AppAuthService _authService = AppAuthService();
-  static final CatalogApiService _catalogApiService = CatalogApiService();
 
   const NotificationsPage({super.key, required this.notifications});
+
+  @override
+  State<NotificationsPage> createState() => _NotificationsPageState();
+}
+
+class _NotificationsPageState extends State<NotificationsPage> {
+  static final AppAuthService _authService = AppAuthService();
+  static final CatalogApiService _catalogApiService = CatalogApiService();
+  static final NotificationsApiService _notificationsApiService =
+      NotificationsApiService();
+
+  final List<Map<String, dynamic>> _notifications = [];
+  StreamSubscription<Map<String, dynamic>>? _realtimeEventsSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _notifications.addAll(widget.notifications);
+    _bindRealtimeNotifications();
+  }
+
+  @override
+  void dispose() {
+    _realtimeEventsSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _bindRealtimeNotifications() {
+    ChatRealtimeService.instance.ensureConnected();
+    _realtimeEventsSubscription?.cancel();
+    _realtimeEventsSubscription = ChatRealtimeService.instance.events.listen((
+      event,
+    ) {
+      final type = event['type']?.toString();
+      if (type != 'notifications:updated') {
+        return;
+      }
+
+      unawaited(_refreshNotifications());
+    });
+  }
+
+  Future<void> _refreshNotifications() async {
+    try {
+      final data = await _notificationsApiService.fetchNotifications();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _notifications
+          ..clear()
+          ..addAll(data);
+      });
+    } on AppApiException {
+      // Ignore transient refresh failures for realtime updates.
+    }
+  }
 
   Future<void> _showInfoSheet(
     BuildContext context, {
@@ -389,7 +447,7 @@ class NotificationsPage extends StatelessWidget {
     final colorScheme = theme.colorScheme;
     final groupedNotifications = <String, List<Map<String, dynamic>>>{};
 
-    for (final notification in notifications) {
+    for (final notification in _notifications) {
       final section = notification['section'] as String? ?? 'Recents';
       groupedNotifications.putIfAbsent(section, () => []).add(notification);
     }

@@ -9,6 +9,7 @@ import { CloudinaryService } from '../auth/cloudinary.service';
 import { ConversationsRealtimeGateway } from '../conversations/realtime/conversations-realtime.gateway';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushNotificationsService } from '../push-notifications/push-notifications.service';
+import { CreateProductCommentDto } from './dto/create-product-comment.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductEntity } from './entities/product.entity';
@@ -19,6 +20,8 @@ type ProductWithRelations = Prisma.ProductGetPayload<{
     _count: {
       select: {
         likes: true;
+        comments: true;
+        shares: true;
       };
     };
     productImages: {
@@ -88,6 +91,8 @@ export class ProductsService {
         _count: {
           select: {
             likes: true,
+            comments: true,
+            shares: true,
           },
         },
         productImages: {
@@ -140,6 +145,8 @@ export class ProductsService {
         _count: {
           select: {
             likes: true,
+            comments: true,
+            shares: true,
           },
         },
         productImages: {
@@ -206,6 +213,8 @@ export class ProductsService {
         _count: {
           select: {
             likes: true,
+            comments: true,
+            shares: true,
           },
         },
         productImages: {
@@ -233,6 +242,8 @@ export class ProductsService {
         _count: {
           select: {
             likes: true,
+            comments: true,
+            shares: true,
           },
         },
         productImages: {
@@ -268,6 +279,16 @@ export class ProductsService {
 
     const updatedProduct = await this.findProductWithRelations(productId);
     await this.emitSellerProfileUpdatedByProfileId(updatedProduct.sellerProfile.id);
+    if (product.sellerProfile.userId !== currentUserId) {
+      this.conversationsRealtimeGateway.emitNotificationEvent(
+        product.sellerProfile.userId,
+        {
+          type: 'notifications:updated',
+          userId: product.sellerProfile.userId,
+          reason: 'product_like',
+        },
+      );
+    }
     return this.toEntity(updatedProduct);
   }
 
@@ -283,6 +304,116 @@ export class ProductsService {
 
     const updatedProduct = await this.findProductWithRelations(productId);
     await this.emitSellerProfileUpdatedByProfileId(updatedProduct.sellerProfile.id);
+    return this.toEntity(updatedProduct);
+  }
+
+  async findComments(productId: string) {
+    await this.findProductWithRelations(productId);
+
+    const comments = await this.prisma.productComment.findMany({
+      where: { productId },
+      include: {
+        user: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return comments.map((comment) => ({
+      id: comment.id,
+      content: comment.content,
+      createdAt: comment.createdAt.toISOString(),
+      author: {
+        id: comment.user.id,
+        displayName: comment.user.displayName,
+        avatarUrl:
+          comment.user.avatarUrl ??
+          'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600',
+      },
+    }));
+  }
+
+  async hasLikedProduct(currentUserId: string, productId: string) {
+    await this.findProductWithRelations(productId);
+
+    const existingLike = await this.prisma.productLike.findUnique({
+      where: {
+        userId_productId: {
+          userId: currentUserId,
+          productId,
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    return {
+      isLiked: existingLike != null,
+    };
+  }
+
+  async addComment(
+    currentUserId: string,
+    productId: string,
+    dto: CreateProductCommentDto,
+  ) {
+    const product = await this.findProductWithRelations(productId);
+
+    const comment = await this.prisma.productComment.create({
+      data: {
+        userId: currentUserId,
+        productId,
+        content: dto.content.trim(),
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    const updatedProduct = await this.findProductWithRelations(productId);
+    await this.emitSellerProfileUpdatedByProfileId(product.sellerProfile.id);
+    if (product.sellerProfile.userId !== currentUserId) {
+      this.conversationsRealtimeGateway.emitNotificationEvent(
+        product.sellerProfile.userId,
+        {
+          type: 'notifications:updated',
+          userId: product.sellerProfile.userId,
+          reason: 'product_comment',
+        },
+      );
+    }
+
+    return {
+      product: this.toEntity(updatedProduct),
+      comment: {
+        id: comment.id,
+        content: comment.content,
+        createdAt: comment.createdAt.toISOString(),
+        author: {
+          id: comment.user.id,
+          displayName: comment.user.displayName,
+          avatarUrl:
+            comment.user.avatarUrl ??
+            'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600',
+        },
+      },
+    };
+  }
+
+  async shareProduct(currentUserId: string, productId: string) {
+    const product = await this.findProductWithRelations(productId);
+
+    await this.prisma.productShare.create({
+      data: {
+        userId: currentUserId,
+        productId,
+      },
+    });
+
+    const updatedProduct = await this.findProductWithRelations(productId);
+    await this.emitSellerProfileUpdatedByProfileId(product.sellerProfile.id);
     return this.toEntity(updatedProduct);
   }
 
@@ -312,6 +443,8 @@ export class ProductsService {
           _count: {
             select: {
               likes: true,
+              comments: true,
+              shares: true,
             },
           },
           productImages: {
@@ -350,6 +483,8 @@ export class ProductsService {
         _count: {
           select: {
             likes: true,
+            comments: true,
+            shares: true,
           },
         },
         productImages: {
@@ -547,6 +682,8 @@ export class ProductsService {
         _count: {
           select: {
             likes: true,
+            comments: true,
+            shares: true,
           },
         },
         productImages: {
@@ -585,6 +722,8 @@ export class ProductsService {
             _count: {
               select: {
                 likes: true,
+                comments: true,
+                shares: true,
               },
             },
             productImages: {
@@ -651,6 +790,8 @@ export class ProductsService {
             category: product.category.name,
             categoryId: product.categoryId,
             likesCount: product._count.likes,
+            commentsCount: product._count.comments,
+            sharesCount: product._count.shares,
             createdAt: product.createdAt.toISOString(),
             images:
               product.productImages.length > 0
@@ -687,6 +828,8 @@ export class ProductsService {
       thumbnail: imageUrls[0],
       isAvailable: product.isAvailable,
       likesCount: product._count.likes,
+      commentsCount: product._count.comments,
+      sharesCount: product._count.shares,
       createdAt: product.createdAt.toISOString(),
     };
   }

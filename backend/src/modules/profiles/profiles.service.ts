@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma, ShopRequestStatus, UserRole } from '@prisma/client';
 
 import { CloudinaryService } from '../auth/cloudinary.service';
@@ -232,6 +237,161 @@ export class ProfilesService {
     return this.getPublicSellerProfileForViewer(sellerProfileId, viewerUserId);
   }
 
+  async getSellerFollowers(currentUserId: string, sellerProfileId: string) {
+    await this.assertSellerOwnership(currentUserId, sellerProfileId);
+
+    const followerLinks = await this.prisma.sellerFollow.findMany({
+      where: { sellerProfileId },
+      include: {
+        follower: {
+          include: {
+            sellerProfile: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return followerLinks.map((link) => ({
+      id: link.follower.id,
+      userId: link.follower.id,
+      sellerProfileId: link.follower.sellerProfile?.id ?? null,
+      displayName: link.follower.displayName,
+      avatarUrl: link.follower.avatarUrl,
+      subtitle: this.buildMetricUserSubtitle({
+        locationLabel: link.follower.locationLabel,
+        sellerProfileDescription: link.follower.sellerProfile?.description,
+        fallback: 'Abonne a votre boutique',
+      }),
+      trailingText: 'Abonne',
+    }));
+  }
+
+  async getSellerProfileViews(currentUserId: string, sellerProfileId: string) {
+    await this.assertSellerOwnership(currentUserId, sellerProfileId);
+
+    const rawViews = await this.prisma.sellerProfileView.findMany({
+      where: {
+        sellerProfileId,
+        viewerUserId: {
+          not: null,
+        },
+      },
+      include: {
+        viewer: {
+          include: {
+            sellerProfile: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    const uniqueViews = new Map<string, (typeof rawViews)[number]>();
+    for (const view of rawViews) {
+      if (view.viewer == null) {
+        continue;
+      }
+      if (!uniqueViews.has(view.viewer.id)) {
+        uniqueViews.set(view.viewer.id, view);
+      }
+    }
+
+    return Array.from(uniqueViews.values()).map((view) => ({
+      id: view.viewer!.id,
+      userId: view.viewer!.id,
+      sellerProfileId: view.viewer!.sellerProfile?.id ?? null,
+      displayName: view.viewer!.displayName,
+      avatarUrl: view.viewer!.avatarUrl,
+      subtitle: this.buildMetricUserSubtitle({
+        locationLabel: view.viewer!.locationLabel,
+        sellerProfileDescription: view.viewer!.sellerProfile?.description,
+        fallback: 'A visite votre profil recemment',
+      }),
+      trailingText: 'Vu',
+    }));
+  }
+
+  async getSellerLikeUsers(currentUserId: string, sellerProfileId: string) {
+    await this.assertSellerOwnership(currentUserId, sellerProfileId);
+
+    const likes = await this.prisma.productLike.findMany({
+      where: {
+        product: {
+          sellerProfileId,
+        },
+      },
+      include: {
+        user: {
+          include: {
+            sellerProfile: true,
+          },
+        },
+        product: {
+          select: {
+            title: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    const likesByUser = new Map<
+      string,
+      {
+        userId: string;
+        sellerProfileId: string | null;
+        displayName: string;
+        avatarUrl: string | null;
+        locationLabel: string | null;
+        sellerProfileDescription: string | null;
+        latestProductTitle: string;
+        count: number;
+      }
+    >();
+
+    for (const like of likes) {
+      const existingEntry = likesByUser.get(like.user.id);
+      if (existingEntry == null) {
+        likesByUser.set(like.user.id, {
+          userId: like.user.id,
+          sellerProfileId: like.user.sellerProfile?.id ?? null,
+          displayName: like.user.displayName,
+          avatarUrl: like.user.avatarUrl,
+          locationLabel: like.user.locationLabel,
+          sellerProfileDescription: like.user.sellerProfile?.description ?? null,
+          latestProductTitle: like.product.title,
+          count: 1,
+        });
+        continue;
+      }
+
+      existingEntry.count += 1;
+    }
+
+    return Array.from(likesByUser.values()).map((entry) => ({
+      id: entry.userId,
+      userId: entry.userId,
+      sellerProfileId: entry.sellerProfileId,
+      displayName: entry.displayName,
+      avatarUrl: entry.avatarUrl,
+      subtitle: entry.latestProductTitle.trim() !== ''
+          ? 'A aime ${entry.latestProductTitle}'
+          : this.buildMetricUserSubtitle({
+              locationLabel: entry.locationLabel,
+              sellerProfileDescription: entry.sellerProfileDescription,
+              fallback: 'A aime vos produits',
+            }),
+      trailingText: entry.count > 1 ? '${entry.count} likes' : 'Like',
+    }));
+  }
+
   async updateCurrentUserAvatarImage(
     userId: string,
     file: Express.Multer.File | undefined,
@@ -434,6 +594,44 @@ export class ProfilesService {
   async emitSellerMetricsProfileUpdate(userId: string) {
     const profile = await this.getCurrentUserProfile(userId);
     this.emitProfileUpdated(profile);
+  }
+
+  private async assertSellerOwnership(currentUserId: string, sellerProfileId: string) {
+    const sellerProfile = await this.prisma.sellerProfile.findUnique({
+      where: { id: sellerProfileId },
+      select: {
+        id: true,
+        userId: true,
+      },
+    });
+
+    if (!sellerProfile) {
+      throw new NotFoundException('Seller profile not found');
+    }
+
+    if (sellerProfile.userId !== currentUserId) {
+      throw new ForbiddenException('Access denied to this seller metrics list');
+    }
+
+    return sellerProfile;
+  }
+
+  private buildMetricUserSubtitle(params: {
+    locationLabel?: string | null;
+    sellerProfileDescription?: string | null;
+    fallback: string;
+  }) {
+    const locationLabel = params.locationLabel?.trim() ?? '';
+    if (locationLabel !== '') {
+      return locationLabel;
+    }
+
+    const sellerProfileDescription = params.sellerProfileDescription?.trim() ?? '';
+    if (sellerProfileDescription !== '') {
+      return sellerProfileDescription;
+    }
+
+    return params.fallback;
   }
 
   private async buildSellerStats(sellerProfileId: string) {

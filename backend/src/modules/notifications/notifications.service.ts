@@ -66,8 +66,34 @@ export class NotificationsService {
       return productNotifications;
     }
 
-    const [recentProductLikes, recentProfileViews] = await Promise.all([
+    const [recentProductLikes, recentProductComments, recentProfileViews] = await Promise.all([
       this.prisma.productLike.findMany({
+        where: {
+          product: {
+            sellerProfileId: sellerProfile.id,
+          },
+          NOT: {
+            userId,
+          },
+        },
+        include: {
+          user: true,
+          product: {
+            include: {
+              sellerProfile: {
+                include: {
+                  user: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        take: 30,
+      }),
+      this.prisma.productComment.findMany({
         where: {
           product: {
             sellerProfileId: sellerProfile.id,
@@ -117,13 +143,22 @@ export class NotificationsService {
       recentProductLikes,
       userId,
     );
+    const productCommentNotifications = this.buildProductCommentNotifications(
+      recentProductComments,
+      userId,
+    );
     const profileViewNotifications = this.buildProfileViewNotifications(
       sellerProfile,
       recentProfileViews,
       userId,
     );
 
-    return [...productLikeNotifications, ...profileViewNotifications, ...productNotifications]
+    return [
+      ...productCommentNotifications,
+      ...productLikeNotifications,
+      ...profileViewNotifications,
+      ...productNotifications,
+    ]
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   }
 
@@ -202,6 +237,90 @@ export class NotificationsService {
           id: productLike.product.id,
           title: productLike.product.title,
           imageUrl: productLike.product.imageUrl,
+        },
+        actors,
+      });
+    }
+
+    return notifications;
+  }
+
+  private buildProductCommentNotifications(
+    recentProductComments: Array<{
+      id: string;
+      content: string;
+      createdAt: Date;
+      user: {
+        id: string;
+        displayName: string;
+        avatarUrl: string | null;
+      };
+      product: {
+        id: string;
+        title: string;
+        imageUrl: string;
+        sellerProfile: {
+          id: string;
+          studioName: string;
+          user: {
+            avatarUrl: string | null;
+          };
+        };
+      };
+    }>,
+    currentUserId: string,
+  ): NotificationEntity[] {
+    const groupedByProduct = new Map<string, typeof recentProductComments>();
+
+    for (const productComment of recentProductComments) {
+      const group = groupedByProduct.get(productComment.product.id) ?? [];
+      group.push(productComment);
+      groupedByProduct.set(productComment.product.id, group);
+    }
+
+    const notifications: NotificationEntity[] = [];
+
+    for (const entry of Array.from(groupedByProduct.entries())) {
+      const comments = entry[1];
+      const latestComment = comments[0];
+      const actors = comments
+        .filter((comment) => comment.user.id !== currentUserId)
+        .map((comment) => ({
+          id: comment.user.id,
+          name: comment.user.displayName,
+          avatarUrl: comment.user.avatarUrl ?? 'https://i.pravatar.cc/240?img=12',
+          timeLabel: this.buildRelativeTimeLabel(comment.createdAt),
+        }));
+
+      if (actors.length === 0) {
+        continue;
+      }
+
+      notifications.push({
+        id: `notif-comment-${latestComment.product.id}`,
+        type: 'product_comment',
+        title: 'Nouveaux commentaires sur votre produit',
+        body: comments.length == 1
+            ? `${latestComment.user.displayName} a commente ${latestComment.product.title}.`
+            : `${comments.length} utilisateurs ont commente ${latestComment.product.title}.`,
+        isRead: false,
+        createdAt: latestComment.createdAt.toISOString(),
+        commentCount: comments.length,
+        sellerProfile: {
+          id: latestComment.product.sellerProfile.id,
+          studioName: latestComment.product.sellerProfile.studioName,
+        },
+        seller: {
+          id: latestComment.product.sellerProfile.id,
+          name: latestComment.product.sellerProfile.studioName,
+          avatarUrl:
+              latestComment.product.sellerProfile.user.avatarUrl ??
+              'https://i.pravatar.cc/240?img=12',
+        },
+        product: {
+          id: latestComment.product.id,
+          title: latestComment.product.title,
+          imageUrl: latestComment.product.imageUrl,
         },
         actors,
       });

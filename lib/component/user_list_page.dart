@@ -28,12 +28,14 @@ class UserListItemData {
 class UserListPage extends StatefulWidget {
   final String title;
   final List<UserListItemData> users;
+  final int? totalCount;
   final Widget Function(UserListItemData user)? onUserTapBuilder;
 
   const UserListPage({
     super.key,
     required this.title,
     required this.users,
+    this.totalCount,
     this.onUserTapBuilder,
   });
 
@@ -90,6 +92,9 @@ class _UserListPageState extends State<UserListPage>
       if (normalizedQuery.isEmpty) return true;
       return user.name.toLowerCase().contains(normalizedQuery);
     }).toList();
+    final displayedCount = _searchQuery.trim().isEmpty
+        ? (widget.totalCount ?? filteredUsers.length)
+        : filteredUsers.length;
     final hasSourceUsers = widget.users.isNotEmpty;
     final itemCount = filteredUsers.isEmpty ? 2 : filteredUsers.length + 1;
 
@@ -142,7 +147,7 @@ class _UserListPageState extends State<UserListPage>
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                '${filteredUsers.length} profils disponibles',
+                                '$displayedCount profils disponibles',
                                 style: TextStyle(
                                   color: mutedColor,
                                   fontSize: 14,

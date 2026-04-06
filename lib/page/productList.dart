@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:bahibo/component/app_page_refresh.dart';
 import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/page/notifications_page.dart';
 import 'package:bahibo/services/catalog_api_service.dart';
+import 'package:bahibo/services/chat_realtime_service.dart';
 import 'package:bahibo/services/notifications_api_service.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 import 'package:flutter/foundation.dart';
@@ -26,6 +29,7 @@ class _ProductlistState extends State<Productlist>
   final NotificationsApiService _notificationsApiService =
       NotificationsApiService();
   final List<Map<String, dynamic>> _notifications = [];
+  StreamSubscription<Map<String, dynamic>>? _realtimeEventsSubscription;
 
   final ScrollController _scrollController = ScrollController();
 
@@ -76,15 +80,32 @@ class _ProductlistState extends State<Productlist>
     fetchCategories();
     fetchProducts();
     fetchNotifications();
+    _bindRealtimeNotifications();
     _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
     disposePageRefresh();
+    _realtimeEventsSubscription?.cancel();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _bindRealtimeNotifications() {
+    ChatRealtimeService.instance.ensureConnected();
+    _realtimeEventsSubscription?.cancel();
+    _realtimeEventsSubscription = ChatRealtimeService.instance.events.listen((
+      event,
+    ) {
+      final type = event['type']?.toString();
+      if (type != 'notifications:updated') {
+        return;
+      }
+
+      unawaited(fetchNotifications());
+    });
   }
 
   void _onScroll() {

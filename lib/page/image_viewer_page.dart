@@ -20,6 +20,7 @@ class ImageViewerOverlayData {
   final String? likesCount;
   final String? commentsCount;
   final String? sharesCount;
+  final bool isUserProfileImage;
 
   const ImageViewerOverlayData({
     this.title,
@@ -33,6 +34,7 @@ class ImageViewerOverlayData {
     this.likesCount,
     this.commentsCount,
     this.sharesCount,
+    this.isUserProfileImage = false,
   });
 
   bool get hasContent =>
@@ -408,8 +410,13 @@ class _ImageViewerOverlay extends StatelessWidget {
     final showSeller =
         (overlay.sellerName?.trim().isNotEmpty ?? false) ||
         (overlay.sellerAvatarUrl?.trim().isNotEmpty ?? false);
-    final showTitle = overlay.title?.trim().isNotEmpty ?? false;
-    final showDescription = overlay.description?.trim().isNotEmpty ?? false;
+    final showTitle =
+      !overlay.isUserProfileImage &&
+      (overlay.title?.trim().isNotEmpty ?? false);
+    final showDescription =
+      !overlay.isUserProfileImage &&
+      (overlay.description?.trim().isNotEmpty ?? false);
+    final showInfoCard = showTitle || showDescription;
     final sellerAvatarUrl = overlay.sellerAvatarUrl?.trim();
     final title = overlay.title?.trim();
     final description = overlay.description?.trim();
@@ -417,6 +424,9 @@ class _ImageViewerOverlay extends StatelessWidget {
     final likesCount = overlay.likesCount?.trim();
     final sharesCount = overlay.sharesCount?.trim();
     final isSellerOnline = _isOnlineStatus(overlay.sellerBadge, postedAtLabel);
+    final showMessageAction = !overlay.isUserProfileImage;
+    final showLikeAction = !overlay.isUserProfileImage;
+    final showCommentAction = !overlay.isUserProfileImage;
     final actionLikes = likesCount?.isNotEmpty == true ? likesCount! : '6 374';
     final actionComments = commentCountLabel;
     final actionShares = sharesCount?.isNotEmpty == true
@@ -424,73 +434,78 @@ class _ImageViewerOverlay extends StatelessWidget {
         : 'Partager';
 
     return Row(
+      mainAxisAlignment: showInfoCard
+          ? MainAxisAlignment.start
+          : MainAxisAlignment.end,
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        Expanded(
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: onDescriptionTap,
-              borderRadius: BorderRadius.circular(22),
-              child: Ink(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: isDescriptionExpanded
-                      ? appColors.scrimSoft
-                      : appColors.overlaySurface,
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: appColors.overlayBorder),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (showTitle)
-                      Text(
-                        title ?? '',
-                        maxLines: isDescriptionExpanded ? null : 2,
-                        overflow: isDescriptionExpanded
-                            ? TextOverflow.visible
-                            : TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          height: 1.18,
+        if (showInfoCard)
+          Expanded(
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onDescriptionTap,
+                borderRadius: BorderRadius.circular(22),
+                child: Ink(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: isDescriptionExpanded
+                        ? appColors.scrimSoft
+                        : appColors.overlaySurface,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: appColors.overlayBorder),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (showTitle)
+                        Text(
+                          title ?? '',
+                          maxLines: isDescriptionExpanded ? null : 2,
+                          overflow: isDescriptionExpanded
+                              ? TextOverflow.visible
+                              : TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.primary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            height: 1.18,
+                          ),
                         ),
-                      ),
-                    if (showTitle && showDescription) const SizedBox(height: 8),
-                    if (showDescription)
-                      Text(
-                        description ?? '',
-                        maxLines: isDescriptionExpanded ? null : 3,
-                        overflow: isDescriptionExpanded
-                            ? TextOverflow.visible
-                            : TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: appColors.heroForegroundMuted,
-                          fontSize: 13.5,
-                          height: 1.35,
+                      if (showTitle && showDescription)
+                        const SizedBox(height: 8),
+                      if (showDescription)
+                        Text(
+                          description ?? '',
+                          maxLines: isDescriptionExpanded ? null : 3,
+                          overflow: isDescriptionExpanded
+                              ? TextOverflow.visible
+                              : TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: appColors.heroForegroundMuted,
+                            fontSize: 13.5,
+                            height: 1.35,
+                          ),
                         ),
-                      ),
-                    if (showDescription) const SizedBox(height: 6),
-                    if (showDescription)
-                      Text(
-                        isDescriptionExpanded ? 'Voir moins' : 'Voir plus',
-                        style: TextStyle(
-                          color: appColors.onlineStatus,
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w700,
+                      if (showDescription) const SizedBox(height: 6),
+                      if (showDescription)
+                        Text(
+                          isDescriptionExpanded ? 'Voir moins' : 'Voir plus',
+                          style: TextStyle(
+                            color: appColors.onlineStatus,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
         if (showSeller) ...[
-          const SizedBox(width: 10),
+          if (showInfoCard) const SizedBox(width: 10),
           Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -507,19 +522,23 @@ class _ImageViewerOverlay extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 8),
-              _ViewerSocialActionCard(
-                icon: Icons.favorite,
-                label: actionLikes,
-                iconColor: appColors.favoriteAccent,
-              ),
-              const SizedBox(height: 8),
-              _ViewerSocialActionCard(
-                icon: Icons.chat_bubble,
-                label: actionComments,
-                iconColor: appColors.heroForeground,
-                onTap: onCommentTap,
-              ),
+              if (showLikeAction) ...[
+                const SizedBox(height: 8),
+                _ViewerSocialActionCard(
+                  icon: Icons.favorite,
+                  label: actionLikes,
+                  iconColor: appColors.favoriteAccent,
+                ),
+              ],
+              if (showCommentAction) ...[
+                const SizedBox(height: 8),
+                _ViewerSocialActionCard(
+                  icon: Icons.chat_bubble,
+                  label: actionComments,
+                  iconColor: appColors.heroForeground,
+                  onTap: onCommentTap,
+                ),
+              ],
               const SizedBox(height: 8),
               _ViewerSocialActionCard(
                 icon: Icons.reply_rounded,
@@ -527,8 +546,10 @@ class _ImageViewerOverlay extends StatelessWidget {
                 iconColor: appColors.heroForeground,
                 onTap: onShareTap,
               ),
-              const SizedBox(height: 8),
-              _MessageActionCard(onTap: onSellerMessageTap),
+              if (showMessageAction) ...[
+                const SizedBox(height: 8),
+                _MessageActionCard(onTap: onSellerMessageTap),
+              ],
             ],
           ),
         ],

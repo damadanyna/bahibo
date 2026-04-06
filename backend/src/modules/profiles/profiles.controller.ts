@@ -188,4 +188,52 @@ export class ProfilesController {
       ),
     };
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('sellers/:sellerProfileId/followers')
+  async getSellerFollowers(
+    @Req() req: { user: { userId: string } },
+    @Param('sellerProfileId') sellerProfileId: string,
+  ) {
+    return {
+      success: true,
+      message: 'Seller followers fetched successfully',
+      data: await this.profilesService.getSellerFollowers(
+        req.user.userId,
+        sellerProfileId,
+      ),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('sellers/:sellerProfileId/views')
+  async getSellerProfileViews(
+    @Req() req: { user: { userId: string } },
+    @Param('sellerProfileId') sellerProfileId: string,
+  ) {
+    return {
+      success: true,
+      message: 'Seller profile views fetched successfully',
+      data: await this.profilesService.getSellerProfileViews(
+        req.user.userId,
+        sellerProfileId,
+      ),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('sellers/:sellerProfileId/likes')
+  async getSellerLikeUsers(
+    @Req() req: { user: { userId: string } },
+    @Param('sellerProfileId') sellerProfileId: string,
+  ) {
+    return {
+      success: true,
+      message: 'Seller like users fetched successfully',
+      data: await this.profilesService.getSellerLikeUsers(
+        req.user.userId,
+        sellerProfileId,
+      ),
+    };
+  }
 }

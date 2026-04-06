@@ -120,55 +120,63 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     };
   }
 
-  List<UserListItemData> _buildMetricUsers({required String metricLabel}) {
-    if (_metricValueByLabel(metricLabel) <= 0) {
-      return const [];
+  UserListItemData _mapMetricUserItem(Map<String, dynamic> rawUser) {
+    final sellerProfileId = rawUser['sellerProfileId']?.toString().trim();
+    final userId = rawUser['userId']?.toString().trim();
+    final name = rawUser['displayName']?.toString().trim();
+    final avatarUrl = rawUser['avatarUrl']?.toString().trim() ?? '';
+    final subtitle = rawUser['subtitle']?.toString().trim();
+    final trailingText = rawUser['trailingText']?.toString().trim() ?? '';
+
+    final previewProfile = buildProfileFromUser(
+      userId: userId != null && userId.isNotEmpty ? userId : null,
+      name: name != null && name.isNotEmpty ? name : 'Membre Bahibo',
+      avatarUrl: avatarUrl,
+      subtitle: subtitle != null && subtitle.isNotEmpty
+          ? subtitle
+          : 'Membre de la communaute Bahibo',
+    );
+
+    return UserListItemData(
+      name: previewProfile.name,
+      subtitle: previewProfile.headline,
+      imageUrl: previewProfile.avatarUrl,
+      trailingText: trailingText,
+      profileData: previewProfile,
+      destinationBuilder: sellerProfileId != null && sellerProfileId.isNotEmpty
+          ? (_) => FutureBuilder<Map<String, dynamic>>(
+                future: _catalogApiService.fetchSellerProfile(sellerProfileId),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return Scaffold(
+                      backgroundColor: Theme.of(context).appColors.backgroundBase,
+                      body: const Center(child: CircularProgressIndicator()),
+                    );
+                  }
+
+                  return SellerProfilePage(
+                    profile: buildSellerProfileFromApi(snapshot.data!),
+                  );
+                },
+              )
+          : (_) => SellerProfilePage(profile: previewProfile),
+    );
+  }
+
+  Future<List<UserListItemData>> _fetchMetricUsers({required String metricLabel}) async {
+    final sellerProfileId = profile.sellerProfileId?.trim() ?? '';
+    if (sellerProfileId.isEmpty || _metricValueByLabel(metricLabel) <= 0) {
+      return const <UserListItemData>[];
     }
 
-    final users = [
-      buildProfileFromUser(
-        name: 'Miora Andriam',
-        avatarUrl:
-            'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=600',
-        subtitle: 'Cliente fidele de la boutique',
-      ),
-      buildProfileFromUser(
-        name: 'Tahina Rak',
-        avatarUrl:
-            'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=600',
-        subtitle: 'Acheteur actif sur Bahibo',
-      ),
-      buildProfileFromUser(
-        name: 'Aina Store',
-        avatarUrl:
-            'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=600',
-        subtitle: 'Revendeur partenaire',
-      ),
-      buildProfileFromUser(
-        name: 'Kanto Mobile',
-        avatarUrl:
-            'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600',
-        subtitle: 'Passionne tech et accessoires',
-      ),
-    ];
+    final rawUsers = switch (metricLabel) {
+      'Abonnes' => await _catalogApiService.fetchSellerFollowers(sellerProfileId),
+      'Vues profil' => await _catalogApiService.fetchSellerProfileViews(sellerProfileId),
+      'Likes total' => await _catalogApiService.fetchSellerLikeUsers(sellerProfileId),
+      _ => const <Map<String, dynamic>>[],
+    };
 
-    return users.map((user) {
-      final trailingText = switch (metricLabel) {
-        'Abonnes' => 'Abonne',
-        'Vues profil' => 'Vu',
-        'Likes total' => 'Like',
-        _ => 'Profil',
-      };
-
-      return UserListItemData(
-        name: user.name,
-        subtitle: user.headline,
-        imageUrl: user.avatarUrl,
-        trailingText: trailingText,
-        profileData: user,
-        destinationBuilder: (_) => SellerProfilePage(profile: user),
-      );
-    }).toList();
+    return rawUsers.map(_mapMetricUserItem).toList();
   }
 
   Future<void> _openMetricUsers(String metricLabel) async {
@@ -193,14 +201,30 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
       _ => metricLabel,
     };
 
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => UserListPage(
-          title: title,
-          users: _buildMetricUsers(metricLabel: metricLabel),
+    try {
+      final users = await _fetchMetricUsers(metricLabel: metricLabel);
+
+      if (!mounted) {
+        return;
+      }
+
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => UserListPage(
+            title: title,
+            totalCount: _metricValueByLabel(metricLabel),
+            users: users,
+          ),
         ),
-      ),
-    );
+      );
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    }
   }
 
   Future<void> _openFullDashboard() async {

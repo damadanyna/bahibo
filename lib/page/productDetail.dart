@@ -47,7 +47,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
   static const String _defaultAvailabilityMessage =
       'Cet article est toujours disponible ?';
   static const String _defaultSellerAvatarUrl =
-    'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600';
+      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600';
   final CatalogApiService _catalogApiService = CatalogApiService();
 
   late PageController _pageController;
@@ -55,10 +55,12 @@ class _ProductDetailPageState extends State<ProductDetailPage>
   final TextEditingController _availabilityController = TextEditingController();
   late final List<AppLikeItem> _likes;
   int _likeCount = 0;
-  int _commentCount = 64;
+  int _commentCount = 0;
+  int _shareCount = 0;
   bool _showEntrySkeleton = true;
   bool _isLiked = false;
   bool _isLikeSubmitting = false;
+  bool _isShareSubmitting = false;
   late final List<AppCommentItem> _comments;
   bool _didOpenInitialAction = false;
 
@@ -103,10 +105,11 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       return sellerAvatarUrl.trim();
     }
 
-    return _resolveStringField(
-      ['sellerAvatarUrl', 'sellerImageUrl', 'avatarUrl'],
-      _defaultSellerAvatarUrl,
-    );
+    return _resolveStringField([
+      'sellerAvatarUrl',
+      'sellerImageUrl',
+      'avatarUrl',
+    ], _defaultSellerAvatarUrl);
   }
 
   String get _sellerBadgeValue {
@@ -121,10 +124,13 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     _productData = Map<String, dynamic>.from(widget.product);
     _likes = List<AppLikeItem>.from(widget.initialLikes ?? defaultAppLikes());
     _comments = List<AppCommentItem>.from(
-      widget.initialComments ?? defaultAppComments(),
+      widget.initialComments ?? const <AppCommentItem>[],
     );
     _likeCount = widget.initialLikeCount ?? _resolveLikeCount(_productData);
-    _commentCount = widget.initialCommentCount ?? _commentCount;
+    _commentCount =
+        widget.initialCommentCount ?? _resolveCount(_productData, 'commentsCount');
+    _shareCount = _resolveCount(_productData, 'sharesCount');
+    _loadLikeStatus();
     Future.delayed(const Duration(milliseconds: 260), () {
       if (!mounted) return;
       setState(() => _showEntrySkeleton = false);
@@ -145,7 +151,25 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     if (mounted) {
       setState(() => _showEntrySkeleton = true);
     }
-    await Future.delayed(const Duration(milliseconds: 450));
+    final productId = product['id']?.toString().trim() ?? '';
+    if (productId.isNotEmpty) {
+      try {
+        final refreshedProduct = await _catalogApiService.fetchProductById(productId);
+        if (mounted) {
+          setState(() {
+            _productData = Map<String, dynamic>.from(refreshedProduct);
+            _likeCount = _resolveLikeCount(_productData);
+            _commentCount = _resolveCount(_productData, 'commentsCount');
+            _shareCount = _resolveCount(_productData, 'sharesCount');
+          });
+        }
+        await _loadLikeStatus();
+      } on AppApiException {
+        await Future.delayed(const Duration(milliseconds: 450));
+      }
+    } else {
+      await Future.delayed(const Duration(milliseconds: 450));
+    }
     if (!mounted) return;
     setState(() => _showEntrySkeleton = false);
   }
@@ -317,7 +341,10 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       productPriceLabel: _buildProductPriceLabel(),
       productImageUrl: images.isNotEmpty
           ? images.first
-          : _resolveStringField(['thumbnail', 'imageUrl'], _defaultSellerAvatarUrl),
+          : _resolveStringField([
+              'thumbnail',
+              'imageUrl',
+            ], _defaultSellerAvatarUrl),
       initialMessage: initialMessage,
       embedProductContextInInitialMessage: initialMessage != null,
     );
@@ -333,7 +360,9 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       return;
     }
 
-    final refreshedProduct = await _catalogApiService.fetchProductById(productId);
+    final refreshedProduct = await _catalogApiService.fetchProductById(
+      productId,
+    );
     if (!mounted) {
       return;
     }
@@ -341,7 +370,30 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     setState(() {
       _productData = Map<String, dynamic>.from(refreshedProduct);
       _likeCount = _resolveLikeCount(_productData);
+      _commentCount = _resolveCount(_productData, 'commentsCount');
+      _shareCount = _resolveCount(_productData, 'sharesCount');
     });
+    await _loadLikeStatus();
+  }
+
+  Future<void> _loadLikeStatus() async {
+    final productId = product['id']?.toString().trim() ?? '';
+    if (productId.isEmpty) {
+      return;
+    }
+
+    try {
+      final isLiked = await _catalogApiService.hasLikedProduct(productId);
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isLiked = isLiked);
+    } on AppApiException {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isLiked = false);
+    }
   }
 
   Future<void> _openSellerChat({String? initialMessage}) async {
@@ -364,7 +416,9 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Impossible d\'ouvrir cette conversation.')),
+        const SnackBar(
+          content: Text('Impossible d\'ouvrir cette conversation.'),
+        ),
       );
       return;
     }
@@ -382,14 +436,116 @@ class _ProductDetailPageState extends State<ProductDetailPage>
   }
 
   int _resolveLikeCount(Map<String, dynamic> currentProduct) {
-    final likesCount = currentProduct['likesCount'];
-    if (likesCount is int) {
-      return likesCount;
+    return _resolveCount(currentProduct, 'likesCount');
+  }
+
+  String _formatActionCount(int value) {
+    return value <= 0 ? '' : value.toString();
+  }
+
+  int _resolveCount(Map<String, dynamic> currentProduct, String key) {
+    final rawValue = currentProduct[key];
+    if (rawValue is int) {
+      return rawValue;
     }
-    if (likesCount is num) {
-      return likesCount.toInt();
+    if (rawValue is num) {
+      return rawValue.toInt();
     }
     return 0;
+  }
+
+  String _formatRelativeTime(DateTime value) {
+    final difference = DateTime.now().difference(value.toLocal());
+    if (difference.inMinutes < 1) {
+      return 'maintenant';
+    }
+    if (difference.inMinutes < 60) {
+      return 'il y a ${difference.inMinutes} min';
+    }
+    if (difference.inHours < 24) {
+      return 'il y a ${difference.inHours} h';
+    }
+    if (difference.inDays < 7) {
+      return 'il y a ${difference.inDays} j';
+    }
+    if (difference.inDays < 30) {
+      return 'il y a ${(difference.inDays / 7).floor()} sem';
+    }
+    if (difference.inDays < 365) {
+      return 'il y a ${(difference.inDays / 30).floor()} mois';
+    }
+    final years = (difference.inDays / 365).floor();
+    return 'il y a $years an${years > 1 ? 's' : ''}';
+  }
+
+  AppCommentItem _mapCommentItem(Map<String, dynamic> rawComment) {
+    final rawAuthor = rawComment['author'];
+    final author = rawAuthor is Map<String, dynamic>
+        ? rawAuthor
+        : rawAuthor is Map
+            ? Map<String, dynamic>.from(rawAuthor)
+            : const <String, dynamic>{};
+    final createdAt = DateTime.tryParse(rawComment['createdAt']?.toString() ?? '');
+
+    return AppCommentItem(
+      authorId: author['id']?.toString(),
+      authorName: (author['displayName']?.toString().trim().isNotEmpty ?? false)
+          ? author['displayName'].toString().trim()
+          : 'Membre Bahibo',
+      avatarUrl: (author['avatarUrl']?.toString().trim().isNotEmpty ?? false)
+          ? author['avatarUrl'].toString().trim()
+          : _defaultSellerAvatarUrl,
+      timeLabel: createdAt == null ? 'maintenant' : _formatRelativeTime(createdAt),
+      message: rawComment['content']?.toString().trim() ?? '',
+    );
+  }
+
+  Future<void> _loadComments() async {
+    final productId = product['id']?.toString().trim() ?? '';
+    if (productId.isEmpty) {
+      return;
+    }
+
+    final rawComments = await _catalogApiService.fetchProductComments(productId);
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _comments
+        ..clear()
+        ..addAll(rawComments.map(_mapCommentItem));
+      _commentCount = _comments.length;
+    });
+  }
+
+  Future<AppCommentItem?> _submitComment(String message) async {
+    final productId = product['id']?.toString().trim() ?? '';
+    if (productId.isEmpty) {
+      return null;
+    }
+
+    final response = await _catalogApiService.addProductComment(
+      productId: productId,
+      content: message,
+    );
+    final updatedProduct = response['product'];
+    final createdComment = response['comment'];
+
+    if (updatedProduct is Map && mounted) {
+      setState(() {
+        _productData = Map<String, dynamic>.from(updatedProduct);
+        _likeCount = _resolveLikeCount(_productData);
+        _commentCount = _resolveCount(_productData, 'commentsCount');
+        _shareCount = _resolveCount(_productData, 'sharesCount');
+      });
+    }
+
+    if (createdComment is Map) {
+      return _mapCommentItem(Map<String, dynamic>.from(createdComment));
+    }
+
+    return null;
   }
 
   Future<void> _toggleLike() async {
@@ -410,6 +566,8 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       setState(() {
         _productData = updatedProduct;
         _likeCount = _resolveLikeCount(updatedProduct);
+        _commentCount = _resolveCount(updatedProduct, 'commentsCount');
+        _shareCount = _resolveCount(updatedProduct, 'sharesCount');
         _isLiked = !_isLiked;
       });
     } on AppApiException catch (error) {
@@ -498,7 +656,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                               // ── Actions ──
                               Padding(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
+                                  horizontal: 0,
                                   vertical: 12,
                                 ),
                                 child: Row(
@@ -509,19 +667,19 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                       icon: _isLiked
                                           ? Icons.favorite
                                           : Icons.favorite_border,
-                                      label: '$_likeCount',
+                                      label: _formatActionCount(_likeCount),
                                       iconColor: appColors.favoriteAccent,
                                       onTap: _toggleLike,
                                     ),
                                     _socialActionCard(
                                       icon: Icons.chat,
-                                      label: _commentCount.toString(),
+                                      label: _formatActionCount(_commentCount),
                                       iconColor: actionIconColor,
                                       onTap: _showCommentsSheet,
                                     ),
                                     _socialActionCard(
                                       icon: Icons.reply_rounded,
-                                      label: 'Partager',
+                                      label: _formatActionCount(_shareCount),
                                       iconColor: actionIconColor,
                                       onTap: _showShareSuggestions,
                                     ),
@@ -712,6 +870,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                                           _sellerAvatarUrlValue,
                                                       sellerBadge:
                                                           _sellerBadgeValue,
+                                                      isUserProfileImage: true,
                                                     ),
                                                   ),
                                                 ),
@@ -1051,20 +1210,64 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     );
   }
 
-  void _showShareSuggestions() {
-    showAppShareSheet(context);
+  Future<void> _showShareSuggestions() async {
+    final productId = product['id']?.toString().trim() ?? '';
+    if (productId.isEmpty || _isShareSubmitting) {
+      showAppShareSheet(context);
+      return;
+    }
+
+    setState(() => _isShareSubmitting = true);
+    try {
+      final updatedProduct = await _catalogApiService.shareProduct(productId);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _productData = updatedProduct;
+        _likeCount = _resolveLikeCount(updatedProduct);
+        _commentCount = _resolveCount(updatedProduct, 'commentsCount');
+        _shareCount = _resolveCount(updatedProduct, 'sharesCount');
+      });
+      showAppShareSheet(context);
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) {
+        setState(() => _isShareSubmitting = false);
+      }
+    }
   }
 
-  void _showCommentsSheet() {
-    showAppCommentsSheet(
-      context,
-      currentCommentCount: _commentCount,
-      comments: _comments,
-      onCommentCountChanged: (value) {
-        if (!mounted) return;
-        setState(() => _commentCount = value);
-      },
-    );
+  Future<void> _showCommentsSheet() async {
+    try {
+      await _loadComments();
+      if (!mounted) {
+        return;
+      }
+      await showAppCommentsSheet(
+        context,
+        currentCommentCount: _commentCount,
+        comments: _comments,
+        onCommentCountChanged: (value) {
+          if (!mounted) return;
+          setState(() => _commentCount = value);
+        },
+        onSubmitComment: _submitComment,
+      );
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    }
   }
 
   Widget _imageItem(String url, {VoidCallback? onTap}) {
@@ -1128,6 +1331,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     required Color iconColor,
     VoidCallback? onTap,
   }) {
+    final hasLabel = label.trim().isNotEmpty;
     final theme = Theme.of(context);
     final appColors = theme.appColors;
     final isDark = theme.brightness == Brightness.dark;
@@ -1147,27 +1351,34 @@ class _ProductDetailPageState extends State<ProductDetailPage>
         onTap: onTap,
         borderRadius: BorderRadius.circular(22),
         child: Ink(
-          width: 88,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+          width: 108,
+          padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 7),
           decoration: BoxDecoration(
             color: actionCardColor,
             borderRadius: BorderRadius.circular(22),
             border: Border.all(color: actionBorderColor),
           ),
-          child: Column(
+          child: Row(
             mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(icon, size: 22, color: iconColor),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: actionTextColor,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
+              if (hasLabel) ...[
+                const SizedBox(width: 7),
+                Flexible(
+                  child: Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: actionTextColor,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),

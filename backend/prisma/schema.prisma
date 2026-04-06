@@ -75,6 +75,8 @@ model User {
   sellerFollows       SellerFollow[]     @relation("SellerFollowFollower")
   sellerProfileViews  SellerProfileView[] @relation("SellerProfileViewViewer")
   productLikes        ProductLike[]
+  productComments     ProductComment[]
+  productShares       ProductShare[]
 }
 
 model UserDeviceToken {
@@ -156,6 +158,8 @@ model Product {
   category        Category    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   productImages   ProductImage[]
   likes           ProductLike[]
+  comments        ProductComment[]
+  shares          ProductShare[]
   cartItems       CartItem[]
   orderItems      OrderItem[]
   conversations   ChatConversation[]
@@ -195,6 +199,32 @@ model ProductLike {
 
   @@unique([userId, productId])
   @@index([productId, createdAt])
+}
+
+model ProductComment {
+  id        String   @id @default(uuid())
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    String
+  productId String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model ProductShare {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  userId    String
+  productId String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, createdAt])
+  @@index([userId, createdAt])
 }
 
 model ProductImage {
