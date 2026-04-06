@@ -4,10 +4,12 @@ import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
 import 'package:bahibo/component/profile_models.dart';
+import 'package:bahibo/component/user_profile_page.dart';
 import 'package:bahibo/component/user_list_page.dart';
 import 'package:bahibo/page/chat_page.dart';
 import 'package:bahibo/page/image_viewer_page.dart';
 import 'package:bahibo/services/app_api_client.dart';
+import 'package:bahibo/services/app_auth_service.dart';
 import 'package:bahibo/services/catalog_api_service.dart';
 import 'package:flutter/material.dart';
 
@@ -28,10 +30,12 @@ class _SellerProfilePageState extends State<SellerProfilePage>
       'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600';
   static const String _defaultCoverImageUrl =
       'https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?w=1600';
+  final AppAuthService _authService = AppAuthService();
   final CatalogApiService _catalogApiService = CatalogApiService();
   bool _showEntrySkeleton = true;
   bool _isSubscribed = false;
   bool _isSubscriptionSubmitting = false;
+  String? _currentViewerUserId;
   late UserProfileData _currentProfile;
 
   UserProfileData get profile => _currentProfile;
@@ -49,57 +53,33 @@ class _SellerProfilePageState extends State<SellerProfilePage>
     return _defaultCoverImageUrl;
   }
 
-  Map<String, dynamic>? get _messageProduct {
-    for (final product in profile.products) {
-      final productId = product['id']?.toString().trim() ?? '';
-      if (productId.isNotEmpty) {
-        return product;
-      }
-    }
-    return null;
+  bool get _isOwnSellerProfile {
+    final currentViewerUserId = _currentViewerUserId?.trim() ?? '';
+    final sellerUserId = profile.userId?.trim() ?? '';
+    return currentViewerUserId.isNotEmpty &&
+        sellerUserId.isNotEmpty &&
+        currentViewerUserId == sellerUserId;
   }
 
   void _openMessageThread() {
-    final product = _messageProduct;
-    final productId = product?['id']?.toString().trim() ?? '';
-    final recipientUserId = profile.userId?.trim() ?? '';
+    if (_isOwnSellerProfile) {
+      return;
+    }
 
-    // if (productId.isEmpty) {
-    //   ScaffoldMessenger.of(context).showSnackBar(
-    //     const SnackBar(
-    //       content: Text(
-    //         'Aucune annonce disponible pour ouvrir une conversation.',
-    //       ),
-    //     ),
-    //   );
-    //   return;
-    // }
+    final recipientUserId = profile.userId?.trim() ?? '';
 
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => ChatPage(
-          conversationProductId: productId.isNotEmpty ? productId : null,
           conversationUserId: recipientUserId.isNotEmpty
               ? recipientUserId
               : null,
+          showProductContextCard: false,
+          showInlineProductSnapshots: false,
           sellerName: profile.name,
           sellerRole: profile.roleLabel,
           avatarUrl: _profileAvatarUrl,
-          product: product,
-          productTitle: (product?['title'] as String?)?.trim() ?? '',
-          productSubtitle: (product?['category'] as String?)?.trim() ?? '',
-          productPriceLabel: product?['price'] == null
-              ? ''
-              : '${product!['price']} MGA',
-          productImageUrl:
-              ((product?['thumbnail'] as String?)?.trim().isNotEmpty ?? false)
-              ? (product?['thumbnail'] as String).trim()
-              : ((((product?['images'] as List?) ?? const [])
-                            .whereType<String>()
-                            .firstOrNull)
-                        ?.trim() ??
-                    ''),
         ),
       ),
     );
@@ -111,6 +91,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
     initializePageRefresh();
     _currentProfile = widget.profile;
     _isSubscribed = widget.profile.isFollowing;
+    _loadCurrentViewerUser();
     _refreshSellerProfile(recordView: true);
     Future.delayed(const Duration(milliseconds: 240), () {
       if (!mounted) return;
@@ -173,6 +154,22 @@ class _SellerProfilePageState extends State<SellerProfilePage>
       } else {
         debugPrint('Unable to refresh seller profile: ${error.message}');
       }
+    }
+  }
+
+  Future<void> _loadCurrentViewerUser() async {
+    try {
+      final user = await _authService.fetchCurrentUser();
+      final userId = user['id']?.toString().trim();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _currentViewerUserId =
+            userId != null && userId.isNotEmpty ? userId : null;
+      });
+    } catch (_) {
+      // Keep page usable when current user cannot be resolved.
     }
   }
 
@@ -336,6 +333,10 @@ class _SellerProfilePageState extends State<SellerProfilePage>
   Future<void> _showAboutDialog(BuildContext context) async {
     final theme = Theme.of(context);
     final appColors = theme.appColors;
+    final locationLabel = profile.headline.trim().isNotEmpty
+        ? profile.headline.trim()
+        : 'Localisation indisponible';
+    final accountCreatedLabel = _buildAccountCreatedLabel();
 
     await showDialog<void>(
       context: context,
@@ -363,21 +364,23 @@ class _SellerProfilePageState extends State<SellerProfilePage>
               const SizedBox(height: 16),
               _dialogInfoRow(
                 Icons.location_on_outlined,
-                'Antananarivo, Madagascar',
+                locationLabel,
                 context,
               ),
               const SizedBox(height: 10),
               _dialogInfoRow(
                 Icons.schedule_outlined,
-                'Repond generalement en moins de 15 min',
+                profile.responseLabel,
                 context,
               ),
-              const SizedBox(height: 10),
-              _dialogInfoRow(
-                Icons.verified_user_outlined,
-                'Profil actif depuis 2022',
-                context,
-              ),
+              if (accountCreatedLabel != null) ...[
+                const SizedBox(height: 10),
+                _dialogInfoRow(
+                  Icons.verified_user_outlined,
+                  accountCreatedLabel,
+                  context,
+                ),
+              ],
             ],
           ),
           actions: [
@@ -394,6 +397,24 @@ class _SellerProfilePageState extends State<SellerProfilePage>
         );
       },
     );
+  }
+
+  String? _buildAccountCreatedLabel() {
+    final rawValue =
+        profile.accountCreatedAt?.trim() ?? profile.profileCreatedAt?.trim();
+    if (rawValue == null || rawValue.isEmpty) {
+      return null;
+    }
+
+    final parsedDate = DateTime.tryParse(rawValue)?.toLocal();
+    if (parsedDate == null) {
+      return null;
+    }
+
+    final day = parsedDate.day.toString().padLeft(2, '0');
+    final month = parsedDate.month.toString().padLeft(2, '0');
+    final year = parsedDate.year.toString();
+    return 'Compte cree le $day/$month/$year';
   }
 
   Future<void> _showSubscribeConfirmation(BuildContext context) async {
@@ -465,10 +486,111 @@ class _SellerProfilePageState extends State<SellerProfilePage>
     );
   }
 
+  void _openProductImageViewer(
+    Map<String, dynamic> product, {
+    required int productIndex,
+    int initialImageIndex = 0,
+  }) {
+    String? resolveProductText(
+      Map<String, dynamic> sourceProduct,
+      List<String> keys,
+    ) {
+      for (final key in keys) {
+        final rawValue = sourceProduct[key];
+        if (rawValue is String && rawValue.trim().isNotEmpty) {
+          return rawValue.trim();
+        }
+      }
+      return null;
+    }
+
+    List<String> resolveViewerImages(Map<String, dynamic> sourceProduct) {
+      final imageUrls =
+          (sourceProduct['images'] as List?)
+              ?.whereType<String>()
+              .map((imageUrl) => imageUrl.trim())
+              .where((imageUrl) => imageUrl.isNotEmpty)
+              .toList() ??
+          <String>[];
+      final thumbnail = (sourceProduct['thumbnail'] as String?)?.trim() ?? '';
+      return imageUrls.isNotEmpty
+          ? imageUrls
+          : (thumbnail.isNotEmpty ? <String>[thumbnail] : <String>[]);
+    }
+
+    final viewerEntries = <ImageViewerEntry>[];
+    var selectedEntryIndex = 0;
+    for (var index = 0; index < profile.products.length; index++) {
+      final sellerProduct = profile.products[index];
+      final viewerImages = resolveViewerImages(sellerProduct);
+      if (viewerImages.isEmpty) {
+        continue;
+      }
+
+      final title = resolveProductText(sellerProduct, const [
+        'title',
+        'name',
+        'productTitle',
+      ]);
+      final description = resolveProductText(sellerProduct, const [
+        'description',
+        'subtitle',
+        'content',
+        'details',
+        'productDescription',
+      ]);
+      final initialIndex = index == productIndex ? initialImageIndex : 0;
+      if (index == productIndex) {
+        selectedEntryIndex = viewerEntries.length;
+      }
+      viewerEntries.add(
+        ImageViewerEntry(
+          imageUrls: viewerImages,
+          initialIndex: initialIndex,
+          overlay: ImageViewerOverlayData(
+            title: title,
+            description: description,
+            sellerName: profile.name,
+            sellerUserId: profile.userId,
+            sellerAvatarUrl: _profileAvatarUrl,
+            sellerBadge: profile.roleLabel,
+          ),
+        ),
+      );
+    }
+
+    if (viewerEntries.isEmpty) {
+      return;
+    }
+
+    final safeEntryIndex = selectedEntryIndex.clamp(0, viewerEntries.length - 1);
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ImageViewerPage(
+          imageUrls: const <String>[],
+          entries: viewerEntries,
+          initialEntryIndex: safeEntryIndex,
+          onSellerMessageTap: _isOwnSellerProfile ? null : _openMessageThread,
+        ),
+      ),
+    );
+  }
+
   List<Widget> _buildProductCards() {
     final widgets = <Widget>[];
     for (var index = 0; index < profile.products.length; index++) {
-      widgets.add(ProductCard(product: profile.products[index]));
+      widgets.add(
+        ProductCard(
+          product: profile.products[index],
+          onTap: (initialImageIndex) => _openProductImageViewer(
+            profile.products[index],
+            productIndex: index,
+            initialImageIndex: initialImageIndex,
+          ),
+        ),
+      );
       if (index != profile.products.length - 1) {
         widgets.add(const SizedBox(height: 10));
       }
@@ -587,11 +709,14 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                                   imageUrls: [_profileAvatarUrl],
                                   initialIndex: 0,
                                   heroTag: 'profile-avatar-${profile.name}',
-                                  onSellerMessageTap: _openMessageThread,
+                                  onSellerMessageTap: _isOwnSellerProfile
+                                      ? null
+                                      : _openMessageThread,
                                   overlay: ImageViewerOverlayData(
                                     title: profile.name,
                                     description: profile.headline,
                                     sellerName: profile.name,
+                                    sellerUserId: profile.userId,
                                     sellerAvatarUrl: _profileAvatarUrl,
                                     sellerBadge: profile.roleLabel,
                                     isUserProfileImage: true,
@@ -612,6 +737,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                               child: AppCircleNetworkAvatar(
                                 radius: 34,
                                 imageUrl: _profileAvatarUrl,
+                                userId: profile.userId,
                               ),
                             ),
                           ),
@@ -756,52 +882,53 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                       ),
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: _openMessageThread,
-                            icon: const Icon(Icons.message_outlined, size: 18),
-                            label: const Text('Message'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: appColors.heroForeground,
-                              foregroundColor: theme.colorScheme.primary,
-                              elevation: 0,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
+                  if (!_isOwnSellerProfile)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: _openMessageThread,
+                              icon: const Icon(Icons.message_outlined, size: 18),
+                              label: const Text('Message'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: appColors.heroForeground,
+                                foregroundColor: theme.colorScheme.primary,
+                                elevation: 0,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: _isSubscriptionSubmitting
-                                ? null
-                                : () => _showSubscribeConfirmation(context),
-                            icon: Icon(
-                              _isSubscribed
-                                  ? Icons.how_to_reg_rounded
-                                  : Icons.person_add_alt_1,
-                              size: 18,
-                            ),
-                            label: Text(_isSubscribed ? 'Abonne' : "S'abonner"),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: appColors.heroForeground,
-                              side: BorderSide(color: appColors.heroBorder),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _isSubscriptionSubmitting
+                                  ? null
+                                  : () => _showSubscribeConfirmation(context),
+                              icon: Icon(
+                                _isSubscribed
+                                    ? Icons.how_to_reg_rounded
+                                    : Icons.person_add_alt_1,
+                                size: 18,
+                              ),
+                              label: Text(_isSubscribed ? 'Abonne' : "S'abonner"),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: appColors.heroForeground,
+                                side: BorderSide(color: appColors.heroBorder),
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -913,10 +1040,6 @@ class _SellerProfilePageState extends State<SellerProfilePage>
     Color mutedColor,
     Color primaryGreen,
   ) {
-    final followers = _buildMetricUsers('Abonnes');
-    final profileViews = _buildMetricUsers('Vues profil');
-    final totalLikes = _buildMetricUsers('Likes total');
-
     return Row(
       children: [
         Expanded(
@@ -929,7 +1052,6 @@ class _SellerProfilePageState extends State<SellerProfilePage>
             accent: primaryGreen,
             mutedColor: mutedColor,
             pageTitle: 'Abonnes',
-            users: followers,
           ),
         ),
         const SizedBox(width: 10),
@@ -943,7 +1065,6 @@ class _SellerProfilePageState extends State<SellerProfilePage>
             accent: Theme.of(context).appColors.success,
             mutedColor: mutedColor,
             pageTitle: 'Vues profil',
-            users: profileViews,
           ),
         ),
         const SizedBox(width: 10),
@@ -957,121 +1078,151 @@ class _SellerProfilePageState extends State<SellerProfilePage>
             accent: Theme.of(context).colorScheme.tertiary,
             mutedColor: mutedColor,
             pageTitle: 'Likes total',
-            users: totalLikes,
           ),
         ),
       ],
     );
   }
 
-  List<UserListItemData> _buildMetricUsers(String metricLabel) {
-    final metricCount = switch (metricLabel) {
+  int _metricValueByLabel(String metricLabel) {
+    return switch (metricLabel) {
       'Abonnes' => _metricCountValue(profile.followerCount),
       'Vues profil' => _metricCountValue(profile.visitorCount),
       'Likes total' => _metricCountValue(profile.totalLikesCount),
       _ => 0,
     };
-
-    if (metricCount <= 0) {
-      return const <UserListItemData>[];
-    }
-
-    final metricUsers = switch (metricLabel) {
-      'Abonnes' => [
-          _userItem(
-            name: 'Miora Andrianiaina',
-            subtitle: 'Suit la boutique depuis 8 mois',
-            imageUrl:
-                'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200',
-            trailingText: 'Abonne',
-          ),
-          _userItem(
-            name: 'Toky Rajaonarison',
-            subtitle: 'Acheteur regulier',
-            imageUrl:
-                'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200',
-            trailingText: 'Abonne',
-          ),
-          _userItem(
-            name: 'Aina Ravelona',
-            subtitle: 'Suit les nouveautes smartphone',
-            imageUrl:
-                'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200',
-            trailingText: 'Abonne',
-          ),
-        ],
-      'Vues profil' => [
-          _userItem(
-            name: 'Feno Nantenaina',
-            subtitle: 'A visite le profil aujourd\'hui',
-            imageUrl:
-                'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=200',
-            trailingText: 'Vue',
-          ),
-          _userItem(
-            name: 'Sarah R.',
-            subtitle: 'A consulte 3 annonces cette semaine',
-            imageUrl:
-                'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=200',
-            trailingText: '3 vues',
-          ),
-          _userItem(
-            name: 'Kevin M.',
-            subtitle: 'Interesse par les iPhone',
-            imageUrl:
-                'https://images.unsplash.com/photo-1504593811423-6dd665756598?w=200',
-            trailingText: 'Recente',
-          ),
-        ],
-      'Likes total' => [
-          _userItem(
-            name: 'Nadia',
-            subtitle: 'A beaucoup aime les annonces de la boutique',
-            imageUrl:
-                'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=200',
-            trailingText: 'Like',
-          ),
-          _userItem(
-            name: 'Bryan',
-            subtitle: 'Reagit souvent aux produits publies',
-            imageUrl:
-                'https://images.unsplash.com/photo-1504257432389-52343af06ae3?w=200',
-            trailingText: 'Like',
-          ),
-          _userItem(
-            name: 'Elinah',
-            subtitle: 'Interagit regulierement avec la boutique',
-            imageUrl:
-                'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=200',
-            trailingText: 'Like',
-          ),
-        ],
-      _ => const <UserListItemData>[],
-    };
-
-    return metricUsers;
   }
 
-  UserListItemData _userItem({
-    required String name,
-    required String subtitle,
-    required String imageUrl,
-    required String trailingText,
-  }) {
-    final nextProfile = buildProfileFromUser(
-      name: name,
-      avatarUrl: imageUrl,
-      subtitle: subtitle,
+  UserListItemData _mapMetricUserItem(Map<String, dynamic> rawUser) {
+    final sellerProfileId = rawUser['sellerProfileId']?.toString().trim();
+    final userId = rawUser['userId']?.toString().trim();
+    final role = rawUser['role']?.toString().trim().toUpperCase() ?? 'CUSTOMER';
+    final name = rawUser['displayName']?.toString().trim();
+    final avatarUrl = rawUser['avatarUrl']?.toString().trim() ?? '';
+    final subtitle = rawUser['subtitle']?.toString().trim();
+    final trailingText = rawUser['trailingText']?.toString().trim() ?? '';
+    final count = rawUser['count'] is num
+        ? (rawUser['count'] as num).toInt()
+        : int.tryParse(rawUser['count']?.toString() ?? '');
+    final metricLabel = rawUser['metricLabel']?.toString().trim();
+
+    final previewProfile = buildProfileFromUser(
+      userId: userId != null && userId.isNotEmpty ? userId : null,
+      name: name != null && name.isNotEmpty ? name : 'Membre Bahibo',
+      avatarUrl: avatarUrl,
+      subtitle: metricLabel == 'Likes total' && count != null && count > 0
+          ? count > 1
+                ? 'A laisse $count likes sur vos produits'
+                : 'A laisse 1 like sur votre produit'
+          : subtitle != null && subtitle.isNotEmpty
+          ? subtitle
+          : 'Membre de la communaute Bahibo',
     );
 
     return UserListItemData(
-      name: name,
-      subtitle: subtitle,
-      imageUrl: imageUrl,
-      trailingText: trailingText,
-      profileData: nextProfile,
-      destinationBuilder: (_) => SellerProfilePage(profile: nextProfile),
+      name: previewProfile.name,
+      subtitle: previewProfile.headline,
+      imageUrl: previewProfile.avatarUrl,
+      trailingText: metricLabel == 'Likes total' && count != null && count > 0
+          ? count > 1
+                ? '$count likes'
+                : '1 like'
+          : trailingText,
+      userId: previewProfile.userId,
+      profileData: previewProfile,
+      destinationBuilder:
+          role == 'SELLER' &&
+              sellerProfileId != null &&
+              sellerProfileId.isNotEmpty
+          ? (_) => FutureBuilder<Map<String, dynamic>>(
+              future: _catalogApiService.fetchSellerProfile(sellerProfileId),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return Scaffold(
+                    backgroundColor: Theme.of(context).appColors.backgroundBase,
+                    body: const Center(child: CircularProgressIndicator()),
+                  );
+                }
+
+                return SellerProfilePage(
+                  profile: buildSellerProfileFromApi(snapshot.data!),
+                );
+              },
+            )
+          : userId != null && userId.isNotEmpty
+          ? (_) => FutureBuilder<Map<String, dynamic>>(
+              future: _catalogApiService.fetchUserProfile(userId),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return Scaffold(
+                    backgroundColor: Theme.of(context).appColors.backgroundBase,
+                    body: const Center(child: CircularProgressIndicator()),
+                  );
+                }
+
+                return UserProfilePage(
+                  profile: buildPublicUserProfileFromApi(snapshot.data!),
+                );
+              },
+            )
+          : (_) => UserProfilePage(profile: previewProfile),
     );
+  }
+
+  Future<List<UserListItemData>> _fetchMetricUsers({
+    required String metricLabel,
+  }) async {
+    final sellerProfileId = profile.sellerProfileId?.trim() ?? '';
+    if (sellerProfileId.isEmpty || _metricValueByLabel(metricLabel) <= 0) {
+      return const <UserListItemData>[];
+    }
+
+    final rawUsers = switch (metricLabel) {
+      'Abonnes' => await _catalogApiService.fetchSellerFollowers(
+        sellerProfileId,
+      ),
+      'Vues profil' => await _catalogApiService.fetchSellerProfileViews(
+        sellerProfileId,
+      ),
+      'Likes total' => await _catalogApiService.fetchSellerLikeUsers(
+        sellerProfileId,
+      ),
+      _ => const <Map<String, dynamic>>[],
+    };
+
+    return rawUsers
+        .map(
+          (user) => _mapMetricUserItem({...user, 'metricLabel': metricLabel}),
+        )
+        .toList();
+  }
+
+  Future<void> _openMetricUsers(String metricLabel) async {
+    try {
+      final users = await _fetchMetricUsers(metricLabel: metricLabel);
+
+      if (!mounted) {
+        return;
+      }
+
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => UserListPage(
+            title: metricLabel,
+            totalCount: _metricValueByLabel(metricLabel),
+            users: users,
+          ),
+        ),
+      );
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    }
   }
 
   int _metricCountValue(String value) {
@@ -1103,17 +1254,9 @@ class _SellerProfilePageState extends State<SellerProfilePage>
     required Color accent,
     required Color mutedColor,
     required String pageTitle,
-    required List<UserListItemData> users,
   }) {
     return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => UserListPage(title: pageTitle, users: users),
-          ),
-        );
-      },
+      onTap: () => _openMetricUsers(pageTitle),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
         decoration: BoxDecoration(

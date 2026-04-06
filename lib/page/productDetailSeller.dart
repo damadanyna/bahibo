@@ -129,6 +129,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       conversationUserId: _sellerUserIdValue.isNotEmpty
           ? _sellerUserIdValue
           : null,
+      showProductContextCard: false,
       sellerName: _resolveStringField([
         'sellerName',
         'vendorName',
@@ -679,6 +680,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                 product['description'] as String? ??
                 'Aucune description disponible.',
             sellerName: _sellerName,
+            sellerUserId: _sellerUserIdValue,
             sellerAvatarUrl: _sellerImageUrl,
             sellerBadge: _sellerBadge,
           ),

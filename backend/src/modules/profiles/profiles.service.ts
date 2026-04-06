@@ -10,7 +10,11 @@ import { CloudinaryService } from '../auth/cloudinary.service';
 import { ConversationsRealtimeGateway } from '../conversations/realtime/conversations-realtime.gateway';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateProfileDto, UpdateSellerProfileDto } from './dto/update-profile.dto';
-import { presentPublicSellerProfile, presentUserProfile } from './profile.presenter';
+import {
+  presentPublicSellerProfile,
+  presentPublicUserProfile,
+  presentUserProfile,
+} from './profile.presenter';
 
 @Injectable()
 export class ProfilesService {
@@ -154,6 +158,32 @@ export class ProfilesService {
     );
   }
 
+  async getPublicUserProfile(userId: string) {
+    const user = await this.findUserProfileById(userId, this.prisma);
+    const sellerStats = user.sellerProfile
+      ? await this.buildSellerStats(user.sellerProfile.id)
+      : undefined;
+    return presentPublicUserProfile(user, sellerStats);
+  }
+
+  async getUsersPresence(rawUserIds: string | undefined) {
+    if (rawUserIds == null || rawUserIds.trim().length === 0) {
+      return [];
+    }
+
+    const userIds = [...new Set(
+      rawUserIds
+        .split(',')
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0),
+    )];
+
+    return userIds.map((userId) => ({
+      userId,
+      isOnline: this.conversationsRealtimeGateway.isUserConnected(userId),
+    }));
+  }
+
   async followSeller(viewerUserId: string, sellerProfileId: string) {
     const sellerProfile = await this.prisma.sellerProfile.findUnique({
       where: { id: sellerProfileId },
@@ -238,8 +268,6 @@ export class ProfilesService {
   }
 
   async getSellerFollowers(currentUserId: string, sellerProfileId: string) {
-    await this.assertSellerOwnership(currentUserId, sellerProfileId);
-
     const followerLinks = await this.prisma.sellerFollow.findMany({
       where: { sellerProfileId },
       include: {
@@ -258,6 +286,7 @@ export class ProfilesService {
       id: link.follower.id,
       userId: link.follower.id,
       sellerProfileId: link.follower.sellerProfile?.id ?? null,
+      role: link.follower.role,
       displayName: link.follower.displayName,
       avatarUrl: link.follower.avatarUrl,
       subtitle: this.buildMetricUserSubtitle({
@@ -270,8 +299,6 @@ export class ProfilesService {
   }
 
   async getSellerProfileViews(currentUserId: string, sellerProfileId: string) {
-    await this.assertSellerOwnership(currentUserId, sellerProfileId);
-
     const rawViews = await this.prisma.sellerProfileView.findMany({
       where: {
         sellerProfileId,
@@ -305,6 +332,7 @@ export class ProfilesService {
       id: view.viewer!.id,
       userId: view.viewer!.id,
       sellerProfileId: view.viewer!.sellerProfile?.id ?? null,
+      role: view.viewer!.role,
       displayName: view.viewer!.displayName,
       avatarUrl: view.viewer!.avatarUrl,
       subtitle: this.buildMetricUserSubtitle({
@@ -317,8 +345,6 @@ export class ProfilesService {
   }
 
   async getSellerLikeUsers(currentUserId: string, sellerProfileId: string) {
-    await this.assertSellerOwnership(currentUserId, sellerProfileId);
-
     const likes = await this.prisma.productLike.findMany({
       where: {
         product: {
@@ -379,16 +405,14 @@ export class ProfilesService {
       id: entry.userId,
       userId: entry.userId,
       sellerProfileId: entry.sellerProfileId,
+      role: entry.sellerProfileId != null ? UserRole.SELLER : UserRole.CUSTOMER,
       displayName: entry.displayName,
       avatarUrl: entry.avatarUrl,
-      subtitle: entry.latestProductTitle.trim() !== ''
-          ? 'A aime ${entry.latestProductTitle}'
-          : this.buildMetricUserSubtitle({
-              locationLabel: entry.locationLabel,
-              sellerProfileDescription: entry.sellerProfileDescription,
-              fallback: 'A aime vos produits',
-            }),
-      trailingText: entry.count > 1 ? '${entry.count} likes' : 'Like',
+      count: entry.count,
+      subtitle: entry.count > 1
+          ? 'A laisse ${entry.count} likes sur vos produits'
+          : 'A laisse 1 like sur votre produit',
+      trailingText: entry.count > 1 ? '${entry.count} likes' : '1 like',
     }));
   }
 
@@ -635,12 +659,18 @@ export class ProfilesService {
   }
 
   private async buildSellerStats(sellerProfileId: string) {
-    const [followerCount, profileViewCount, totalLikesCount, productCount] = await Promise.all([
+    const [followerCount, uniqueProfileViews, totalLikesCount, productCount] = await Promise.all([
       this.prisma.sellerFollow.count({
         where: { sellerProfileId },
       }),
-      this.prisma.sellerProfileView.count({
-        where: { sellerProfileId },
+      this.prisma.sellerProfileView.groupBy({
+        by: ['viewerUserId'],
+        where: {
+          sellerProfileId,
+          viewerUserId: {
+            not: null,
+          },
+        },
       }),
       this.prisma.productLike.count({
         where: {
@@ -656,7 +686,7 @@ export class ProfilesService {
 
     return {
       followerCount,
-      profileViewCount,
+      profileViewCount: uniqueProfileViews.length,
       productCount,
       totalLikesCount,
     };

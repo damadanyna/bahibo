@@ -71,10 +71,14 @@ class ConversationsApiService {
   Future<Map<String, dynamic>> sendUserMessage({
     required String targetUserId,
     required String content,
+    Map<String, dynamic>? productSnapshot,
   }) async {
     final data = await _client.post(
       '/conversations/user/$targetUserId/messages',
-      body: {'content': content},
+      body: {
+        'content': content,
+        if (productSnapshot != null) ...productSnapshot,
+      },
       authenticated: true,
     );
     return Map<String, dynamic>.from(data as Map);

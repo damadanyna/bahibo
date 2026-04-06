@@ -85,6 +85,7 @@ class _NavigationMessageSearchBarState
 class NavigationMessageStoryAvatar extends StatelessWidget {
   final String name;
   final String avatarUrl;
+  final String? userId;
   final bool isActive;
   final Color primary;
   final Color labelColor;
@@ -95,6 +96,7 @@ class NavigationMessageStoryAvatar extends StatelessWidget {
     super.key,
     required this.name,
     required this.avatarUrl,
+    this.userId,
     required this.isActive,
     required this.primary,
     required this.labelColor,
@@ -104,8 +106,6 @@ class NavigationMessageStoryAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final successColor = Theme.of(context).appColors.success;
-
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -136,22 +136,9 @@ class NavigationMessageStoryAvatar extends StatelessWidget {
                     child: AppCircleNetworkAvatar(
                       radius: 26,
                       imageUrl: avatarUrl,
+                      userId: userId,
                     ),
                   ),
-                  if (isActive)
-                    Positioned(
-                      right: 0,
-                      bottom: 0,
-                      child: Container(
-                        width: 14,
-                        height: 14,
-                        decoration: BoxDecoration(
-                          color: successColor,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: haloColor, width: 2),
-                        ),
-                      ),
-                    ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -179,6 +166,7 @@ class NavigationConversationTile extends StatelessWidget {
   final String preview;
   final String time;
   final String avatarUrl;
+  final String? userId;
   final bool isTyping;
   final bool unread;
   final Color primary;
@@ -191,6 +179,7 @@ class NavigationConversationTile extends StatelessWidget {
     required this.preview,
     required this.time,
     required this.avatarUrl,
+    this.userId,
     this.isTyping = false,
     required this.unread,
     required this.primary,
@@ -255,19 +244,7 @@ class NavigationConversationTile extends StatelessWidget {
                     child: AppCircleNetworkAvatar(
                       radius: 28,
                       imageUrl: avatarUrl,
-                    ),
-                  ),
-                  Positioned(
-                    right: 0,
-                    bottom: 1,
-                    child: Container(
-                      width: 14,
-                      height: 14,
-                      decoration: BoxDecoration(
-                        color: appColors.success,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: surfaceColor, width: 2),
-                      ),
+                      userId: userId,
                     ),
                   ),
                 ],

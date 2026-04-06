@@ -385,6 +385,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
     return actors
         .map(
           (actor) => AppLikeItem(
+            authorId: actor['id']?.toString(),
             authorName: (actor['name'] as String?) ?? 'Utilisateur Bahibo',
             avatarUrl: (actor['avatarUrl'] as String?) ?? '',
             timeLabel: (actor['timeLabel'] as String?) ?? 'recent',

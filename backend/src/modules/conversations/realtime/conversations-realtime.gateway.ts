@@ -44,6 +44,12 @@ type NotificationRealtimePayload = {
   reason: 'product_like' | 'product_comment';
 };
 
+type PresenceRealtimePayload = {
+  type: 'presence:updated';
+  userId: string;
+  isOnline: boolean;
+};
+
 @Injectable()
 @WebSocketGateway({
   cors: {
@@ -94,6 +100,11 @@ export class ConversationsRealtimeGateway
 
       client.data.userId = payload.sub;
       await client.join(this.userRoom(payload.sub));
+      this.emitPresenceEvent({
+        type: 'presence:updated',
+        userId: payload.sub,
+        isOnline: true,
+      });
       this.logger.debug(`Socket connected for user ${payload.sub}`);
     } catch {
       client.disconnect();
@@ -103,6 +114,11 @@ export class ConversationsRealtimeGateway
   handleDisconnect(client: Socket) {
     const userId = client.data.userId as string | undefined;
     if (userId != null) {
+      this.emitPresenceEvent({
+        type: 'presence:updated',
+        userId,
+        isOnline: this.isUserConnected(userId),
+      });
       this.logger.debug(`Socket disconnected for user ${userId}`);
     }
   }
@@ -169,6 +185,14 @@ export class ConversationsRealtimeGateway
     }
 
     this.server.to(this.userRoom(userId)).emit('notifications:updated', payload);
+  }
+
+  emitPresenceEvent(payload: PresenceRealtimePayload) {
+    if (!this.server) {
+      return;
+    }
+
+    this.server.emit('presence:updated', payload);
   }
 
   isUserConnected(userId: string) {

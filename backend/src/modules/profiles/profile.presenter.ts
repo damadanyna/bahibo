@@ -170,6 +170,7 @@ export function presentPublicSellerProfile(
     products: profile.products.map((product) => ({
       id: product.id,
       title: product.title,
+      description: product.description,
       category: product.category.name,
       price: product.priceAmount.toNumber(),
       images: product.productImages.length > 0
@@ -185,6 +186,44 @@ export function presentPublicSellerProfile(
       displayName: profile.user.displayName,
       avatarUrl: profile.user.avatarUrl,
       coverImageUrl: profile.user.coverImageUrl,
+      createdAt: profile.user.createdAt.toISOString(),
     },
+  };
+}
+
+export function presentPublicUserProfile(
+  user: UserProfileRecord,
+  sellerStats?: SellerStats,
+) {
+  const productCount = user.sellerProfile?._count.products ?? 0;
+  const resolvedSellerStats: SellerStats = sellerStats ?? {
+    followerCount: 0,
+    profileViewCount: 0,
+    productCount,
+    totalLikesCount: user.sellerProfile?.products.reduce(
+      (sum, product) => sum + product._count.likes,
+      0,
+    ) ?? 0,
+  };
+
+  return {
+    id: user.id,
+    displayName: user.displayName,
+    avatarUrl: user.avatarUrl,
+    coverImageUrl: user.coverImageUrl,
+    locationLabel: user.locationLabel,
+    role: user.role,
+    isVerified: user.isVerified,
+    createdAt: user.createdAt.toISOString(),
+    sellerStats: resolvedSellerStats,
+    sellerProfile: user.sellerProfile
+      ? {
+          id: user.sellerProfile.id,
+          studioName: user.sellerProfile.studioName,
+          description: user.sellerProfile.description,
+          city: user.sellerProfile.city,
+          country: user.sellerProfile.country,
+        }
+      : null,
   };
 }

@@ -6,11 +6,13 @@ import 'package:bahibo/component/seller_profile_page.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 
 class AppLikeItem {
+  final String? authorId;
   final String authorName;
   final String avatarUrl;
   final String timeLabel;
 
   const AppLikeItem({
+    this.authorId,
     required this.authorName,
     required this.avatarUrl,
     required this.timeLabel,
@@ -160,6 +162,7 @@ class _AppLikesSheetContent extends StatelessWidget {
                                 child: AppCircleNetworkAvatar(
                                   radius: 18,
                                   imageUrl: like.avatarUrl,
+                                  userId: like.authorId,
                                 ),
                               ),
                             ),

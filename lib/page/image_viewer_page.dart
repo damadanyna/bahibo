@@ -12,6 +12,7 @@ class ImageViewerOverlayData {
   final String? title;
   final String? description;
   final String? sellerName;
+  final String? sellerUserId;
   final String? sellerAvatarUrl;
   final String? sellerBadge;
   final String? sellerHandle;
@@ -26,6 +27,7 @@ class ImageViewerOverlayData {
     this.title,
     this.description,
     this.sellerName,
+    this.sellerUserId,
     this.sellerAvatarUrl,
     this.sellerBadge,
     this.sellerHandle,
@@ -41,6 +43,7 @@ class ImageViewerOverlayData {
       (title != null && title!.trim().isNotEmpty) ||
       (description != null && description!.trim().isNotEmpty) ||
       (sellerName != null && sellerName!.trim().isNotEmpty) ||
+      (sellerUserId != null && sellerUserId!.trim().isNotEmpty) ||
       (sellerAvatarUrl != null && sellerAvatarUrl!.trim().isNotEmpty) ||
       (sellerBadge != null && sellerBadge!.trim().isNotEmpty) ||
       (sellerHandle != null && sellerHandle!.trim().isNotEmpty) ||
@@ -51,11 +54,27 @@ class ImageViewerOverlayData {
       (sharesCount != null && sharesCount!.trim().isNotEmpty);
 }
 
-class ImageViewerPage extends StatefulWidget {
+class ImageViewerEntry {
   final List<String> imageUrls;
   final int initialIndex;
   final String? heroTag;
   final ImageViewerOverlayData? overlay;
+
+  const ImageViewerEntry({
+    required this.imageUrls,
+    this.initialIndex = 0,
+    this.heroTag,
+    this.overlay,
+  });
+}
+
+class ImageViewerPage extends StatefulWidget {
+  final List<String> imageUrls;
+  final int initialIndex;
+  final int initialEntryIndex;
+  final String? heroTag;
+  final ImageViewerOverlayData? overlay;
+  final List<ImageViewerEntry>? entries;
   final VoidCallback? onSellerTap;
   final VoidCallback? onSellerMessageTap;
 
@@ -63,8 +82,10 @@ class ImageViewerPage extends StatefulWidget {
     super.key,
     required this.imageUrls,
     this.initialIndex = 0,
+    this.initialEntryIndex = 0,
     this.heroTag,
     this.overlay,
+    this.entries,
     this.onSellerTap,
     this.onSellerMessageTap,
   });
@@ -75,7 +96,10 @@ class ImageViewerPage extends StatefulWidget {
 
 class _ImageViewerPageState extends State<ImageViewerPage>
     with AppPageRefreshMixin<ImageViewerPage> {
-  late final PageController _pageController;
+  late final PageController _entryPageController;
+  late final List<ImageViewerEntry> _entries;
+  final Map<int, int> _entryImageIndexes = <int, int>{};
+  late int _currentEntryIndex;
   late int _currentIndex;
   int _commentCount = 64;
   bool _showEntrySkeleton = true;
@@ -87,12 +111,24 @@ class _ImageViewerPageState extends State<ImageViewerPage>
   void initState() {
     super.initState();
     initializePageRefresh();
-    _currentIndex = widget.initialIndex.clamp(
-      0,
-      widget.imageUrls.isEmpty ? 0 : widget.imageUrls.length - 1,
-    );
-    _commentCount = _parseCompactCount(widget.overlay?.commentsCount) ?? 64;
-    _pageController = PageController(initialPage: _currentIndex);
+    _entries =
+        widget.entries != null && widget.entries!.isNotEmpty
+            ? widget.entries!
+            : <ImageViewerEntry>[
+              ImageViewerEntry(
+                imageUrls: widget.imageUrls,
+                initialIndex: widget.initialIndex,
+                heroTag: widget.heroTag,
+                overlay: widget.overlay,
+              ),
+            ];
+    _currentEntryIndex = widget.initialEntryIndex.clamp(0, _entries.length - 1);
+    _currentIndex = _safeImageIndex(_currentEntryIndex);
+    _entryImageIndexes[_currentEntryIndex] = _currentIndex;
+    _commentCount =
+        _parseCompactCount(_entries[_currentEntryIndex].overlay?.commentsCount) ??
+        64;
+    _entryPageController = PageController(initialPage: _currentEntryIndex);
     Future.delayed(const Duration(milliseconds: 180), () {
       if (!mounted) return;
       setState(() => _showEntrySkeleton = false);
@@ -102,7 +138,9 @@ class _ImageViewerPageState extends State<ImageViewerPage>
   @override
   void didUpdateWidget(covariant ImageViewerPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final updatedCount = _parseCompactCount(widget.overlay?.commentsCount);
+    final updatedCount = _parseCompactCount(
+      _entries[_currentEntryIndex].overlay?.commentsCount,
+    );
     if (updatedCount != null && updatedCount != _commentCount) {
       _commentCount = updatedCount;
     }
@@ -111,7 +149,7 @@ class _ImageViewerPageState extends State<ImageViewerPage>
   @override
   void dispose() {
     disposePageRefresh();
-    _pageController.dispose();
+    _entryPageController.dispose();
     super.dispose();
   }
 
@@ -127,10 +165,11 @@ class _ImageViewerPageState extends State<ImageViewerPage>
 
   @override
   Widget build(BuildContext context) {
-    final images = widget.imageUrls
+    final activeEntry = _entries[_currentEntryIndex];
+    final images = activeEntry.imageUrls
         .map(CloudinaryImageUrl.forViewer)
         .toList(growable: false);
-    final overlay = widget.overlay;
+    final overlay = activeEntry.overlay;
     final bottomOverlayOffset = isOffline ? 74.0 : 28.0;
     final appColors = Theme.of(context).appColors;
 
@@ -155,33 +194,12 @@ class _ImageViewerPageState extends State<ImageViewerPage>
             )
           else
             PageView.builder(
-              controller: _pageController,
-              itemCount: images.length,
-              onPageChanged: (index) {
-                setState(() => _currentIndex = index);
-              },
-              itemBuilder: (context, index) {
-                Widget image = AppNetworkImage(
-                  imageUrl: images[index],
-                  fit: BoxFit.contain,
-                  filterQuality: FilterQuality.high,
-                  errorChild: Icon(
-                    Icons.broken_image,
-                    color: appColors.heroForegroundMuted,
-                    size: 80,
-                  ),
-                );
-
-                if (widget.heroTag != null && index == widget.initialIndex) {
-                  image = Hero(tag: widget.heroTag!, child: image);
-                }
-
-                return _ZoomableViewer(
-                  onTap: () {
-                    setState(() => _showChrome = !_showChrome);
-                  },
-                  child: Center(child: image),
-                );
+              controller: _entryPageController,
+              scrollDirection: Axis.vertical,
+              itemCount: _entries.length,
+              onPageChanged: _handleEntryPageChanged,
+              itemBuilder: (context, entryIndex) {
+                return _buildEntryPage(context, entryIndex);
               },
             ),
           Positioned.fill(
@@ -235,9 +253,7 @@ class _ImageViewerPageState extends State<ImageViewerPage>
                           border: Border.all(color: appColors.overlayBorder),
                         ),
                         child: Text(
-                          images.isEmpty
-                              ? 'Image'
-                              : '${_currentIndex + 1}/${images.length}',
+                          _buildCounterLabel(),
                           style: TextStyle(
                             color: appColors.heroForeground,
                             fontSize: 13,
@@ -270,9 +286,7 @@ class _ImageViewerPageState extends State<ImageViewerPage>
                     onShareTap: _showShareSuggestions,
                     isDescriptionExpanded: _isDescriptionExpanded,
                     commentCountLabel: _commentCount.toString(),
-                    indexLabel: images.isEmpty
-                        ? 'Image'
-                        : '${_currentIndex + 1}/${images.length}',
+                    indexLabel: _buildCounterLabel(),
                   ),
                 ),
               ),
@@ -285,6 +299,116 @@ class _ImageViewerPageState extends State<ImageViewerPage>
 
   void _toggleDescription() {
     setState(() => _isDescriptionExpanded = !_isDescriptionExpanded);
+  }
+
+  int _safeImageIndex(int entryIndex) {
+    final entry = _entries[entryIndex];
+    if (entry.imageUrls.isEmpty) {
+      return 0;
+    }
+    final candidateIndex = _entryImageIndexes[entryIndex] ?? entry.initialIndex;
+    return candidateIndex.clamp(0, entry.imageUrls.length - 1);
+  }
+
+  void _handleEntryPageChanged(int entryIndex) {
+    final nextEntry = _entries[entryIndex];
+    final nextImageIndex = _safeImageIndex(entryIndex);
+    final nextCommentCount = _parseCompactCount(nextEntry.overlay?.commentsCount);
+
+    setState(() {
+      _currentEntryIndex = entryIndex;
+      _currentIndex = nextImageIndex;
+      _isDescriptionExpanded = false;
+      _commentCount = nextCommentCount ?? 64;
+    });
+  }
+
+  String _buildCounterLabel() {
+    final activeEntry = _entries[_currentEntryIndex];
+    final imageCount = activeEntry.imageUrls.length;
+    if (imageCount == 0) {
+      return _entries.length > 1
+          ? 'Produit ${_currentEntryIndex + 1}/${_entries.length}'
+          : 'Image';
+    }
+
+    if (_entries.length <= 1) {
+      return '${_currentIndex + 1}/$imageCount';
+    }
+
+    return 'Produit ${_currentEntryIndex + 1}/${_entries.length}';
+  }
+
+  Widget _buildEntryPage(BuildContext context, int entryIndex) {
+    final entry = _entries[entryIndex];
+    final images = entry.imageUrls.map(CloudinaryImageUrl.forViewer).toList(
+      growable: false,
+    );
+    final appColors = Theme.of(context).appColors;
+
+    if (images.isEmpty) {
+      return Center(
+        child: Icon(
+          Icons.broken_image,
+          color: appColors.heroForegroundMuted,
+          size: 80,
+        ),
+      );
+    }
+
+    return _ImageViewerEntryPage(
+      entry: entry,
+      entryIndex: entryIndex,
+      images: images,
+      initialImageIndex: _safeImageIndex(entryIndex),
+      isInitiallySelectedEntry: entryIndex == widget.initialEntryIndex,
+      onImageChanged: (imageIndex) {
+        _entryImageIndexes[entryIndex] = imageIndex;
+        if (entryIndex != _currentEntryIndex) {
+          return;
+        }
+        setState(() => _currentIndex = imageIndex);
+      },
+      buildImage: ({
+        required imageUrl,
+        required heroTag,
+        required isInitialHero,
+      }) => _buildZoomableImage(
+        imageUrl: imageUrl,
+        heroTag: heroTag,
+        isInitialHero: isInitialHero,
+      ),
+    );
+  }
+
+  Widget _buildZoomableImage({
+    required String imageUrl,
+    required String? heroTag,
+    required bool isInitialHero,
+  }) {
+    final appColors = Theme.of(context).appColors;
+
+    Widget image = AppNetworkImage(
+      imageUrl: imageUrl,
+      fit: BoxFit.contain,
+      filterQuality: FilterQuality.high,
+      errorChild: Icon(
+        Icons.broken_image,
+        color: appColors.heroForegroundMuted,
+        size: 80,
+      ),
+    );
+
+    if (heroTag != null && isInitialHero) {
+      image = Hero(tag: heroTag, child: image);
+    }
+
+    return _ZoomableViewer(
+      onTap: () {
+        setState(() => _showChrome = !_showChrome);
+      },
+      child: Center(child: image),
+    );
   }
 
   void _showCommentsSheet() {
@@ -308,6 +432,87 @@ class _ImageViewerPageState extends State<ImageViewerPage>
 
   void _showShareSuggestions() {
     showAppShareSheet(context);
+  }
+}
+
+class _ImageViewerEntryPage extends StatefulWidget {
+  final ImageViewerEntry entry;
+  final int entryIndex;
+  final List<String> images;
+  final int initialImageIndex;
+  final bool isInitiallySelectedEntry;
+  final ValueChanged<int> onImageChanged;
+  final Widget Function({
+    required String imageUrl,
+    required String? heroTag,
+    required bool isInitialHero,
+  }) buildImage;
+
+  const _ImageViewerEntryPage({
+    required this.entry,
+    required this.entryIndex,
+    required this.images,
+    required this.initialImageIndex,
+    required this.isInitiallySelectedEntry,
+    required this.onImageChanged,
+    required this.buildImage,
+  });
+
+  @override
+  State<_ImageViewerEntryPage> createState() => _ImageViewerEntryPageState();
+}
+
+class _ImageViewerEntryPageState extends State<_ImageViewerEntryPage> {
+  late final PageController _pageController;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(initialPage: widget.initialImageIndex);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ImageViewerEntryPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialImageIndex != widget.initialImageIndex &&
+        _pageController.hasClients) {
+      _pageController.jumpToPage(widget.initialImageIndex);
+    }
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.images.length == 1) {
+      return widget.buildImage(
+        imageUrl: widget.images.first,
+        heroTag: widget.entry.heroTag,
+        isInitialHero:
+            widget.isInitiallySelectedEntry && widget.entry.initialIndex == 0,
+      );
+    }
+
+    return PageView.builder(
+      controller: _pageController,
+      key: ValueKey('viewer-entry-${widget.entryIndex}'),
+      itemCount: widget.images.length,
+      onPageChanged: widget.onImageChanged,
+      itemBuilder: (context, imageIndex) {
+        return widget.buildImage(
+          imageUrl: widget.images[imageIndex],
+          heroTag: widget.entry.heroTag,
+          isInitialHero:
+              widget.isInitiallySelectedEntry &&
+              imageIndex == widget.entry.initialIndex &&
+              widget.initialImageIndex == widget.entry.initialIndex,
+        );
+      },
+    );
   }
 }
 
@@ -418,6 +623,7 @@ class _ImageViewerOverlay extends StatelessWidget {
       (overlay.description?.trim().isNotEmpty ?? false);
     final showInfoCard = showTitle || showDescription;
     final sellerAvatarUrl = overlay.sellerAvatarUrl?.trim();
+    final sellerUserId = overlay.sellerUserId?.trim();
     final title = overlay.title?.trim();
     final description = overlay.description?.trim();
     final postedAtLabel = overlay.postedAtLabel?.trim();
@@ -478,24 +684,12 @@ class _ImageViewerOverlay extends StatelessWidget {
                       if (showDescription)
                         Text(
                           description ?? '',
-                          maxLines: isDescriptionExpanded ? null : 3,
-                          overflow: isDescriptionExpanded
-                              ? TextOverflow.visible
-                              : TextOverflow.ellipsis,
+                          maxLines: null,
+                          overflow: TextOverflow.visible,
                           style: TextStyle(
                             color: appColors.heroForegroundMuted,
                             fontSize: 13.5,
                             height: 1.35,
-                          ),
-                        ),
-                      if (showDescription) const SizedBox(height: 6),
-                      if (showDescription)
-                        Text(
-                          isDescriptionExpanded ? 'Voir moins' : 'Voir plus',
-                          style: TextStyle(
-                            color: appColors.onlineStatus,
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w700,
                           ),
                         ),
                     ],
@@ -516,6 +710,7 @@ class _ImageViewerOverlay extends StatelessWidget {
                   child: GestureDetector(
                     onTap: onSellerTap,
                     child: _SellerStatusAvatar(
+                      sellerUserId: sellerUserId,
                       sellerAvatarUrl: sellerAvatarUrl,
                       isOnline: isSellerOnline,
                     ),
@@ -666,10 +861,15 @@ class _MessageActionCard extends StatelessWidget {
 }
 
 class _SellerStatusAvatar extends StatelessWidget {
+  final String? sellerUserId;
   final String? sellerAvatarUrl;
   final bool isOnline;
 
-  const _SellerStatusAvatar({this.sellerAvatarUrl, required this.isOnline});
+  const _SellerStatusAvatar({
+    this.sellerUserId,
+    this.sellerAvatarUrl,
+    required this.isOnline,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -687,7 +887,11 @@ class _SellerStatusAvatar extends StatelessWidget {
             border: Border.all(color: appColors.heroBorder),
           ),
           child: sellerAvatarUrl?.isNotEmpty == true
-              ? AppCircleNetworkAvatar(radius: 23, imageUrl: sellerAvatarUrl!)
+              ? AppCircleNetworkAvatar(
+                  radius: 23,
+                  imageUrl: sellerAvatarUrl!,
+                  userId: sellerUserId,
+                )
               : Container(
                   decoration: BoxDecoration(
                     color: appColors.heroSurface,
@@ -695,19 +899,6 @@ class _SellerStatusAvatar extends StatelessWidget {
                   ),
                   child: Icon(Icons.person, color: appColors.heroForeground),
                 ),
-        ),
-        Positioned(
-          right: -1,
-          bottom: -1,
-          child: Container(
-            width: 14,
-            height: 14,
-            decoration: BoxDecoration(
-              color: isOnline ? appColors.onlineStatus : appColors.mutedText,
-              shape: BoxShape.circle,
-              border: Border.all(color: appColors.heroForeground, width: 2),
-            ),
-          ),
         ),
       ],
     );

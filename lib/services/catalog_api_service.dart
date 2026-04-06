@@ -52,6 +52,30 @@ class CatalogApiService {
     return Map<String, dynamic>.from(data as Map);
   }
 
+  Future<Map<String, dynamic>> fetchUserProfile(String userId) async {
+    final data = await _client.get('/profiles/users/$userId');
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<List<Map<String, dynamic>>> fetchUsersPresence(List<String> userIds) async {
+    if (userIds.isEmpty) {
+      return const <Map<String, dynamic>>[];
+    }
+
+    final data = await _client.get(
+      '/profiles/presence',
+      authenticated: true,
+      queryParameters: {
+        'userIds': userIds.map((userId) => userId.trim()).where((userId) => userId.isNotEmpty).join(','),
+      },
+    );
+
+    return (data as List)
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
   Future<Map<String, dynamic>> followSeller(String sellerProfileId) async {
     final data = await _client.post(
       '/profiles/sellers/$sellerProfileId/follow',
@@ -76,7 +100,9 @@ class CatalogApiService {
     return Map<String, dynamic>.from(data as Map);
   }
 
-  Future<List<Map<String, dynamic>>> fetchSellerFollowers(String sellerProfileId) async {
+  Future<List<Map<String, dynamic>>> fetchSellerFollowers(
+    String sellerProfileId,
+  ) async {
     final data = await _client.get(
       '/profiles/sellers/$sellerProfileId/followers',
       authenticated: true,
@@ -87,7 +113,9 @@ class CatalogApiService {
         .toList();
   }
 
-  Future<List<Map<String, dynamic>>> fetchSellerProfileViews(String sellerProfileId) async {
+  Future<List<Map<String, dynamic>>> fetchSellerProfileViews(
+    String sellerProfileId,
+  ) async {
     final data = await _client.get(
       '/profiles/sellers/$sellerProfileId/views',
       authenticated: true,
@@ -98,7 +126,9 @@ class CatalogApiService {
         .toList();
   }
 
-  Future<List<Map<String, dynamic>>> fetchSellerLikeUsers(String sellerProfileId) async {
+  Future<List<Map<String, dynamic>>> fetchSellerLikeUsers(
+    String sellerProfileId,
+  ) async {
     final data = await _client.get(
       '/profiles/sellers/$sellerProfileId/likes',
       authenticated: true,
@@ -140,7 +170,9 @@ class CatalogApiService {
     return payload['isLiked'] == true;
   }
 
-  Future<List<Map<String, dynamic>>> fetchProductComments(String productId) async {
+  Future<List<Map<String, dynamic>>> fetchProductComments(
+    String productId,
+  ) async {
     final data = await _client.get('/products/$productId/comments');
     return (data as List)
         .whereType<Map>()

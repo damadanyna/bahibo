@@ -1,6 +1,8 @@
 class UserProfileData {
   final String? userId;
   final String? sellerProfileId;
+  final String? profileCreatedAt;
+  final String? accountCreatedAt;
   final String name;
   final String avatarUrl;
   final String coverImageUrl;
@@ -19,6 +21,8 @@ class UserProfileData {
   const UserProfileData({
     this.userId,
     this.sellerProfileId,
+    this.profileCreatedAt,
+    this.accountCreatedAt,
     required this.name,
     required this.avatarUrl,
     required this.coverImageUrl,
@@ -57,6 +61,8 @@ UserProfileData buildSellerProfileFromApi(Map<String, dynamic> data) {
   return UserProfileData(
     userId: owner['userId'] as String?,
     sellerProfileId: data['id'] as String?,
+    profileCreatedAt: data['createdAt'] as String?,
+    accountCreatedAt: owner['createdAt'] as String?,
     name: (data['studioName'] as String?)?.trim().isNotEmpty == true
         ? (data['studioName'] as String).trim()
         : ((owner['displayName'] as String?)?.trim().isNotEmpty == true
@@ -125,6 +131,8 @@ UserProfileData buildSellerAccountProfileFromCurrentUser(
       return UserProfileData(
         userId: user['id'] as String?,
         sellerProfileId: sellerProfile['id'] as String?,
+        profileCreatedAt: sellerProfile['createdAt'] as String?,
+        accountCreatedAt: user['createdAt'] as String?,
         name: displayLabel.isNotEmpty ? displayLabel : 'Boutique Bahibo',
         avatarUrl: avatarUrl,
         coverImageUrl: coverImageUrl,
@@ -153,6 +161,10 @@ UserProfileData buildSellerAccountProfileFromCurrentUser(
     sellerProfileId: sellerProfile is Map
         ? sellerProfile['id'] as String?
         : null,
+    profileCreatedAt: sellerProfile is Map
+      ? sellerProfile['createdAt'] as String?
+      : null,
+    accountCreatedAt: user['createdAt'] as String?,
     name: displayLabel.isNotEmpty ? displayLabel : 'Boutique Bahibo',
     avatarUrl: avatarUrl,
     coverImageUrl: coverImageUrl,
@@ -166,6 +178,50 @@ UserProfileData buildSellerAccountProfileFromCurrentUser(
     visitorCount: visitorCount,
     productCount: productCount,
     totalLikesCount: totalLikesCount,
+    rating: '0.0',
+    isFollowing: false,
+    products: const [],
+  );
+}
+
+UserProfileData buildPublicUserProfileFromApi(Map<String, dynamic> data) {
+  final sellerStats = Map<String, dynamic>.from(
+    (data['sellerStats'] as Map?) ?? const <String, dynamic>{},
+  );
+  final sellerProfile = data['sellerProfile'];
+  final role = (data['role'] as String?)?.trim() ?? 'CUSTOMER';
+  final isVerified = data['isVerified'] as bool? ?? false;
+  final locationLabel = (data['locationLabel'] as String?)?.trim() ?? '';
+  final sellerDescription = sellerProfile is Map
+      ? (sellerProfile['description'] as String?)?.trim() ?? ''
+      : '';
+
+  return UserProfileData(
+    userId: data['id'] as String?,
+    sellerProfileId: sellerProfile is Map
+        ? sellerProfile['id'] as String?
+        : null,
+    profileCreatedAt: data['createdAt'] as String?,
+    accountCreatedAt: data['createdAt'] as String?,
+    name: (data['displayName'] as String?)?.trim().isNotEmpty == true
+        ? (data['displayName'] as String).trim()
+        : 'Utilisateur Bahibo',
+    avatarUrl: (data['avatarUrl'] as String?) ?? '',
+    coverImageUrl: (data['coverImageUrl'] as String?) ?? '',
+    roleLabel: role == 'SELLER'
+        ? (isVerified ? 'Vendeur certifie' : 'Vendeur')
+        : (isVerified ? 'Utilisateur verifie' : 'Utilisateur'),
+    responseLabel: 'Profil actif',
+    headline: locationLabel.isNotEmpty
+        ? locationLabel
+        : 'Membre de la communaute Bahibo',
+    about: sellerDescription.isNotEmpty
+        ? sellerDescription
+        : 'Membre Bahibo actif sur la plateforme.',
+    followerCount: '${sellerStats['followerCount'] ?? 0}',
+    visitorCount: '${sellerStats['profileViewCount'] ?? 0}',
+    productCount: '${sellerStats['productCount'] ?? 0}',
+    totalLikesCount: '${sellerStats['totalLikesCount'] ?? 0}',
     rating: '0.0',
     isFollowing: false,
     products: const [],

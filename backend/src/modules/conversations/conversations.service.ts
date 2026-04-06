@@ -322,7 +322,28 @@ export class ConversationsService {
       userId,
       targetUserId,
     );
-    return this.sendMessage(userId, conversation.id, dto);
+
+    const hasProductSnapshot =
+      (dto.productId?.trim().length ?? 0) > 0 ||
+      (dto.productTitle?.trim().length ?? 0) > 0 ||
+      (dto.productSubtitle?.trim().length ?? 0) > 0 ||
+      (dto.productPriceLabel?.trim().length ?? 0) > 0 ||
+      (dto.productImageUrl?.trim().length ?? 0) > 0;
+
+    return this.sendMessage(
+      userId,
+      conversation.id,
+      dto,
+      hasProductSnapshot
+        ? {
+            id: dto.productId?.trim() || null,
+            title: dto.productTitle?.trim() ?? '',
+            subtitle: dto.productSubtitle?.trim() ?? '',
+            priceLabel: dto.productPriceLabel?.trim() ?? '',
+            imageUrl: dto.productImageUrl?.trim() ?? '',
+          }
+        : undefined,
+    );
   }
 
   async sendMessage(

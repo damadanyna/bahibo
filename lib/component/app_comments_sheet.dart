@@ -324,6 +324,7 @@ class _AppCommentsSheetContentState extends State<_AppCommentsSheetContent> {
                                       child: AppCircleNetworkAvatar(
                                         radius: 18,
                                         imageUrl: comment.avatarUrl,
+                                        userId: comment.authorId,
                                       ),
                                     ),
                                   ),

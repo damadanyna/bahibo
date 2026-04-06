@@ -90,13 +90,12 @@ class CategoryBlockSkeleton extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 20),
         const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: EdgeInsets.fromLTRB(16, 8, 16, 8),
           child: SkeletonBox(width: 170, height: 18),
         ),
         SizedBox(
-          height: 200,
+          height: 150,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -124,7 +123,6 @@ class CategoryBlockSkeleton extends StatelessWidget {
             },
           ),
         ),
-        const SizedBox(height: 40),
       ],
     );
   }

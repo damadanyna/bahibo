@@ -32,6 +32,8 @@ class ChatPage extends StatefulWidget {
   final String productImageUrl;
   final String? initialMessage;
   final bool embedProductContextInInitialMessage;
+  final bool showProductContextCard;
+  final bool showInlineProductSnapshots;
 
   const ChatPage({
     super.key,
@@ -51,6 +53,8 @@ class ChatPage extends StatefulWidget {
     this.productImageUrl = '',
     this.initialMessage,
     this.embedProductContextInInitialMessage = false,
+    this.showProductContextCard = false,
+    this.showInlineProductSnapshots = true,
   });
 
   @override
@@ -76,6 +80,7 @@ class _ChatPageState extends State<ChatPage>
   bool _isParticipantTyping = false;
   bool _isTypingEventActive = false;
   bool _initialMessageHandled = false;
+  bool _initialProductContextSent = false;
   String? _conversationId;
   String? _loadError;
   Map<String, dynamic>? _conversation;
@@ -420,11 +425,30 @@ class _ChatPageState extends State<ChatPage>
       return;
     }
 
+    final shouldAttachInitialProductContext =
+        widget.embedProductContextInInitialMessage &&
+        !_initialProductContextSent &&
+        _productTitleValue.isNotEmpty;
+
     _typingStopTimer?.cancel();
     _emitTyping(false);
     setState(() => _isSending = true);
     try {
-      final data = (widget.conversationProductId?.isNotEmpty ?? false)
+      final data = shouldAttachInitialProductContext &&
+              (widget.conversationUserId?.isNotEmpty ?? false)
+          ? await _conversationsApiService.sendUserMessage(
+              targetUserId: widget.conversationUserId!,
+              content: content,
+              productSnapshot: {
+                'productId': widget.conversationProductId,
+                'productTitle': _productTitleValue,
+                'productSubtitle': _productSubtitleValue,
+                'productPriceLabel': _productPriceLabelValue,
+                'productImageUrl': _productImageUrlValue,
+              },
+            )
+          : (widget.conversationProductId?.isNotEmpty ?? false) &&
+              (widget.conversationUserId?.isNotEmpty ?? false) == false
           ? await _conversationsApiService.sendProductMessage(
               productId: widget.conversationProductId!,
               content: content,
@@ -446,6 +470,7 @@ class _ChatPageState extends State<ChatPage>
       _applyConversation(data);
       if (!mounted) return;
       _messageController.clear();
+      _initialProductContextSent = true;
       setState(() => _showEntrySkeleton = false);
       WidgetsBinding.instance.addPostFrameCallback((_) => _animateToBottom());
     } on AppApiException catch (error) {
@@ -609,8 +634,10 @@ class _ChatPageState extends State<ChatPage>
                                   sellerName: sellerName,
                                   sellerRole: sellerRole,
                                   avatarUrl: avatarUrl,
+                                  userId: _participantUserId,
                                 ),
-                                if (_productTitleValue.isNotEmpty) ...[
+                                if (widget.showProductContextCard &&
+                                    _productTitleValue.isNotEmpty) ...[
                                   const SizedBox(height: 10),
                                   _ProductContextCard(
                                     primary: primary,
@@ -668,12 +695,15 @@ class _ChatPageState extends State<ChatPage>
                                         time: chat.time,
                                         isMine: chat.isMine,
                                         product: chat.product,
-                                        onProductTap: chat.product == null
+                                        onProductTap:
+                                          !widget.showInlineProductSnapshots ||
+                                            chat.product == null
                                             ? null
                                             : () => _openMessageProductCard(
                                                 chat.product!,
                                               ),
                                         avatarUrl: avatarUrl,
+                                        participantUserId: _participantUserId,
                                         isDark: isDark,
                                         primary: primary,
                                         cardColor: cardColor,
@@ -685,6 +715,7 @@ class _ChatPageState extends State<ChatPage>
                                   const SizedBox(height: 6),
                                   _TypingIndicatorBubble(
                                     avatarUrl: avatarUrl,
+                                    userId: _participantUserId,
                                     cardColor: cardColor,
                                     subtleText: subtleText,
                                   ),
@@ -723,6 +754,7 @@ class _ChatHeader extends StatelessWidget {
   final String sellerName;
   final String sellerRole;
   final String avatarUrl;
+  final String? userId;
 
   const _ChatHeader({
     required this.primary,
@@ -731,6 +763,7 @@ class _ChatHeader extends StatelessWidget {
     required this.sellerName,
     required this.sellerRole,
     required this.avatarUrl,
+    this.userId,
   });
 
   @override
@@ -755,7 +788,11 @@ class _ChatHeader extends StatelessWidget {
               shape: BoxShape.circle,
               border: Border.all(color: appColors.heroBorder),
             ),
-            child: AppCircleNetworkAvatar(radius: 26, imageUrl: avatarUrl),
+            child: AppCircleNetworkAvatar(
+              radius: 26,
+              imageUrl: avatarUrl,
+              userId: userId,
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -959,6 +996,7 @@ class _ChatBubble extends StatelessWidget {
   final _ChatMessageProduct? product;
   final VoidCallback? onProductTap;
   final String avatarUrl;
+  final String? participantUserId;
   final bool isDark;
   final Color primary;
   final Color cardColor;
@@ -971,6 +1009,7 @@ class _ChatBubble extends StatelessWidget {
     this.product,
     this.onProductTap,
     required this.avatarUrl,
+    this.participantUserId,
     required this.isDark,
     required this.primary,
     required this.cardColor,
@@ -999,7 +1038,11 @@ class _ChatBubble extends StatelessWidget {
           if (!isMine) ...[
             Padding(
               padding: const EdgeInsets.only(top: 2, right: 10),
-              child: AppCircleNetworkAvatar(radius: 16, imageUrl: avatarUrl),
+              child: AppCircleNetworkAvatar(
+                radius: 16,
+                imageUrl: avatarUrl,
+                userId: participantUserId,
+              ),
             ),
           ],
           ConstrainedBox(
@@ -1023,7 +1066,7 @@ class _ChatBubble extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (product != null) ...[
+                  if (product != null && onProductTap != null) ...[
                     _InlineProductSnapshotCard(
                       product: product!,
                       isMine: isMine,
@@ -1213,11 +1256,13 @@ class _ChatInfoCard extends StatelessWidget {
 
 class _TypingIndicatorBubble extends StatefulWidget {
   final String avatarUrl;
+  final String? userId;
   final Color cardColor;
   final Color subtleText;
 
   const _TypingIndicatorBubble({
     required this.avatarUrl,
+    this.userId,
     required this.cardColor,
     required this.subtleText,
   });
@@ -1260,6 +1305,7 @@ class _TypingIndicatorBubbleState extends State<_TypingIndicatorBubble>
             child: AppCircleNetworkAvatar(
               radius: 16,
               imageUrl: widget.avatarUrl,
+              userId: widget.userId,
             ),
           ),
           Container(

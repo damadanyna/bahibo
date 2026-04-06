@@ -68,7 +68,8 @@ class ChatRealtimeService {
       ..off('conversations:updated')
       ..off('conversations:typing')
       ..off('profiles:updated')
-      ..off('notifications:updated');
+      ..off('notifications:updated')
+      ..off('presence:updated');
 
     _socket!
       ..on('connect', (_) {
@@ -96,6 +97,11 @@ class ChatRealtimeService {
         }
       })
       ..on('notifications:updated', (payload) {
+        if (payload is Map) {
+          _eventsController.add(Map<String, dynamic>.from(payload));
+        }
+      })
+      ..on('presence:updated', (payload) {
         if (payload is Map) {
           _eventsController.add(Map<String, dynamic>.from(payload));
         }

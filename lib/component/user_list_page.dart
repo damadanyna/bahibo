@@ -5,6 +5,7 @@ import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
 import 'package:bahibo/component/app_text_input.dart';
 import 'package:bahibo/component/profile_models.dart';
+import 'package:bahibo/services/app_auth_service.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 
 class UserListItemData {
@@ -12,6 +13,7 @@ class UserListItemData {
   final String subtitle;
   final String imageUrl;
   final String trailingText;
+  final String? userId;
   final UserProfileData? profileData;
   final WidgetBuilder? destinationBuilder;
 
@@ -20,6 +22,7 @@ class UserListItemData {
     required this.subtitle,
     required this.imageUrl,
     required this.trailingText,
+    this.userId,
     this.profileData,
     this.destinationBuilder,
   });
@@ -45,18 +48,49 @@ class UserListPage extends StatefulWidget {
 
 class _UserListPageState extends State<UserListPage>
     with AppPageRefreshMixin<UserListPage> {
+  final AppAuthService _authService = AppAuthService();
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   bool _showEntrySkeleton = true;
+  String? _currentUserId;
 
   @override
   void initState() {
     super.initState();
     initializePageRefresh();
+    _loadCurrentUser();
     Future.delayed(const Duration(milliseconds: 220), () {
       if (!mounted) return;
       setState(() => _showEntrySkeleton = false);
     });
+  }
+
+  Future<void> _loadCurrentUser() async {
+    try {
+      final user = await _authService.fetchCurrentUser();
+      final userId = user['id']?.toString().trim();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _currentUserId = userId != null && userId.isNotEmpty ? userId : null;
+      });
+    } catch (_) {
+      // Keep the list usable even if the current user cannot be resolved.
+    }
+  }
+
+  String _resolveDisplayName(UserListItemData user) {
+    final currentUserId = _currentUserId;
+    final listedUserId = user.profileData?.userId?.trim();
+    if (currentUserId != null &&
+        listedUserId != null &&
+        listedUserId.isNotEmpty &&
+        listedUserId == currentUserId) {
+      return 'Vous';
+    }
+
+    return user.name;
   }
 
   @override
@@ -293,6 +327,7 @@ class _UserListPageState extends State<UserListPage>
                 child: AppCircleNetworkAvatar(
                   radius: 28,
                   imageUrl: user.imageUrl,
+                  userId: user.userId ?? user.profileData?.userId,
                 ),
               ),
               const SizedBox(width: 14),
@@ -304,7 +339,7 @@ class _UserListPageState extends State<UserListPage>
                       children: [
                         Expanded(
                           child: Text(
-                            user.name,
+                            _resolveDisplayName(user),
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w800,

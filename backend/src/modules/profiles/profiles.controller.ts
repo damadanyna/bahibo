@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UploadedFile,
   UseGuards,
@@ -144,6 +145,27 @@ export class ProfilesController {
       success: true,
       message: 'Seller profile fetched successfully',
       data: await this.profilesService.getPublicSellerProfile(sellerProfileId),
+    };
+  }
+
+  @Get('users/:userId')
+  async getUserProfile(@Param('userId') userId: string) {
+    return {
+      success: true,
+      message: 'User profile fetched successfully',
+      data: await this.profilesService.getPublicUserProfile(userId),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('presence')
+  async getUsersPresence(
+    @Query('userIds') rawUserIds: string | undefined,
+  ) {
+    return {
+      success: true,
+      message: 'Users presence fetched successfully',
+      data: await this.profilesService.getUsersPresence(rawUserIds),
     };
   }
 

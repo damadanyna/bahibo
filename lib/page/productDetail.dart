@@ -321,12 +321,14 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     final images =
         (product['images'] as List?)?.whereType<String>().toList() ??
         const <String>[];
+    final shouldShowProductContextCard = initialMessage != null;
 
     return ChatPage(
       conversationProductId: product['id']?.toString(),
       conversationUserId: _sellerUserIdValue.isNotEmpty
           ? _sellerUserIdValue
           : null,
+      showProductContextCard: shouldShowProductContextCard,
       sellerName: _sellerNameValue,
       sellerRole: _sellerBadgeValue,
       avatarUrl: _sellerAvatarUrlValue,
@@ -881,22 +883,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                               child: AppCircleNetworkAvatar(
                                                 radius: 28,
                                                 imageUrl: _sellerAvatarUrlValue,
-                                              ),
-                                            ),
-                                          ),
-                                          Positioned(
-                                            bottom: 0,
-                                            right: 0,
-                                            child: Container(
-                                              width: 14,
-                                              height: 14,
-                                              decoration: BoxDecoration(
-                                                color: appColors.success,
-                                                shape: BoxShape.circle,
-                                                border: Border.all(
-                                                  color: detailCardColor,
-                                                  width: 2,
-                                                ),
+                                                userId: _sellerUserIdValue,
                                               ),
                                             ),
                                           ),
@@ -1202,6 +1189,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                 product['description'] as String? ??
                 'Aucune description disponible.',
             sellerName: _sellerNameValue,
+            sellerUserId: _sellerUserIdValue,
             sellerAvatarUrl: _sellerAvatarUrlValue,
             sellerBadge: _sellerBadgeValue,
           ),

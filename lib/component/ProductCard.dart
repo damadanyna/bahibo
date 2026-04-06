@@ -9,8 +9,14 @@ import '../page/productDetail.dart';
 class ProductCard extends StatelessWidget {
   final Map<String, dynamic> product;
   final Widget Function(Map<String, dynamic> product)? detailPageBuilder;
+  final ValueChanged<int>? onTap;
 
-  const ProductCard({super.key, required this.product, this.detailPageBuilder});
+  const ProductCard({
+    super.key,
+    required this.product,
+    this.detailPageBuilder,
+    this.onTap,
+  });
 
   Widget _buildDetailPage() {
     if (detailPageBuilder != null) {
@@ -18,6 +24,18 @@ class ProductCard extends StatelessWidget {
     }
 
     return ProductDetailPage(product: product);
+  }
+
+  void _handleTap(BuildContext context, {int initialImageIndex = 0}) {
+    if (onTap != null) {
+      onTap!(initialImageIndex);
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => _buildDetailPage()),
+    );
   }
 
   @override
@@ -34,12 +52,7 @@ class ProductCard extends StatelessWidget {
     final currency = resolveProductCurrency(product);
 
     return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => _buildDetailPage()),
-        );
-      },
+      onTap: () => _handleTap(context),
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
@@ -146,18 +159,15 @@ class ProductCard extends StatelessWidget {
     final String placeholder =
         product['thumbnail'] as String? ?? 'https://via.placeholder.com/150';
 
-    void openProductDetail() {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => _buildDetailPage()),
-      );
+    void openProductDetail([int initialImageIndex = 0]) {
+      _handleTap(context, initialImageIndex: initialImageIndex);
     }
 
     // images vide → thumbnail seul
     if (images.isEmpty) {
       return SizedBox(
         height: 170,
-        child: _imageItem(context, placeholder, onTap: openProductDetail),
+        child: _imageItem(context, placeholder, onTap: () => openProductDetail()),
       );
     }
 
@@ -166,7 +176,7 @@ class ProductCard extends StatelessWidget {
       final [first] = images;
       return SizedBox(
         height: 170,
-        child: _imageItem(context, first, onTap: openProductDetail),
+        child: _imageItem(context, first, onTap: () => openProductDetail()),
       );
     }
 
@@ -178,11 +188,19 @@ class ProductCard extends StatelessWidget {
         child: Row(
           children: [
             Expanded(
-              child: _imageItem(context, first, onTap: openProductDetail),
+              child: _imageItem(
+                context,
+                first,
+                onTap: () => openProductDetail(0),
+              ),
             ),
             const SizedBox(width: 2),
             Expanded(
-              child: _imageItem(context, second, onTap: openProductDetail),
+              child: _imageItem(
+                context,
+                second,
+                onTap: () => openProductDetail(1),
+              ),
             ),
           ],
         ),
@@ -197,7 +215,11 @@ class ProductCard extends StatelessWidget {
         child: Row(
           children: [
             Expanded(
-              child: _imageItem(context, first, onTap: openProductDetail),
+              child: _imageItem(
+                context,
+                first,
+                onTap: () => openProductDetail(0),
+              ),
             ),
             const SizedBox(width: 2),
             Expanded(
@@ -207,12 +229,16 @@ class ProductCard extends StatelessWidget {
                     child: _imageItem(
                       context,
                       second,
-                      onTap: openProductDetail,
+                      onTap: () => openProductDetail(1),
                     ),
                   ),
                   const SizedBox(height: 2),
                   Expanded(
-                    child: _imageItem(context, third, onTap: openProductDetail),
+                    child: _imageItem(
+                      context,
+                      third,
+                      onTap: () => openProductDetail(2),
+                    ),
                   ),
                 ],
               ),
@@ -234,11 +260,19 @@ class ProductCard extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: _imageItem(context, first, onTap: openProductDetail),
+                  child: _imageItem(
+                    context,
+                    first,
+                    onTap: () => openProductDetail(0),
+                  ),
                 ),
                 const SizedBox(width: 2),
                 Expanded(
-                  child: _imageItem(context, second, onTap: openProductDetail),
+                  child: _imageItem(
+                    context,
+                    second,
+                    onTap: () => openProductDetail(1),
+                  ),
                 ),
               ],
             ),
@@ -248,14 +282,22 @@ class ProductCard extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: _imageItem(context, third, onTap: openProductDetail),
+                  child: _imageItem(
+                    context,
+                    third,
+                    onTap: () => openProductDetail(2),
+                  ),
                 ),
                 const SizedBox(width: 2),
                 Expanded(
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      _imageItem(context, fourth, onTap: openProductDetail),
+                      _imageItem(
+                        context,
+                        fourth,
+                        onTap: () => openProductDetail(3),
+                      ),
                       if (extra > 0)
                         Container(
                           decoration: BoxDecoration(

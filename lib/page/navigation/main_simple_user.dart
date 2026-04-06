@@ -42,6 +42,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
   String _displayName = 'Utilisateur Bahibo';
   String _avatarUrl = '';
   String _coverImageUrl = '';
+  String? _currentUserId;
   String _userRole = 'CUSTOMER';
   String _shopRequestStatus = 'NONE';
 
@@ -78,6 +79,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
         user['nextDisplayNameChangeAt'],
       );
       setState(() {
+        _currentUserId = user['id']?.toString().trim();
         _displayName =
             (user['displayName'] as String?)?.trim().isNotEmpty == true
             ? (user['displayName'] as String).trim()
@@ -798,6 +800,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
           heroTag: heroTag,
           overlay: ImageViewerOverlayData(
             sellerName: _displayName,
+            sellerUserId: _currentUserId,
             sellerAvatarUrl: _avatarUrl,
             isUserProfileImage: true,
           ),
@@ -939,6 +942,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                                             ? AppCircleNetworkAvatar(
                                                 imageUrl: _avatarUrl,
                                                 radius: 44,
+                                                userId: _currentUserId,
                                               )
                                             : Container(
                                                 width: 88,

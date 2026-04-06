@@ -8,6 +8,7 @@ import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/product_list_page.dart';
 import 'package:bahibo/component/profile_models.dart';
 import 'package:bahibo/component/seller_profile_page.dart';
+import 'package:bahibo/component/user_profile_page.dart';
 import 'package:bahibo/component/ui/dinamic_icon_button.dart';
 import 'package:bahibo/component/ui/dinamic_icon_combobox.dart';
 import 'package:bahibo/component/ui/dinamic_icon_input.dart';
@@ -123,16 +124,25 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   UserListItemData _mapMetricUserItem(Map<String, dynamic> rawUser) {
     final sellerProfileId = rawUser['sellerProfileId']?.toString().trim();
     final userId = rawUser['userId']?.toString().trim();
+    final role = rawUser['role']?.toString().trim().toUpperCase() ?? 'CUSTOMER';
     final name = rawUser['displayName']?.toString().trim();
     final avatarUrl = rawUser['avatarUrl']?.toString().trim() ?? '';
     final subtitle = rawUser['subtitle']?.toString().trim();
     final trailingText = rawUser['trailingText']?.toString().trim() ?? '';
+    final count = rawUser['count'] is num
+        ? (rawUser['count'] as num).toInt()
+        : int.tryParse(rawUser['count']?.toString() ?? '');
+    final metricLabel = rawUser['metricLabel']?.toString().trim();
 
     final previewProfile = buildProfileFromUser(
       userId: userId != null && userId.isNotEmpty ? userId : null,
       name: name != null && name.isNotEmpty ? name : 'Membre Bahibo',
       avatarUrl: avatarUrl,
-      subtitle: subtitle != null && subtitle.isNotEmpty
+      subtitle: metricLabel == 'Likes total' && count != null && count > 0
+          ? count > 1
+                ? 'A laisse $count likes sur vos produits'
+                : 'A laisse 1 like sur votre produit'
+          : subtitle != null && subtitle.isNotEmpty
           ? subtitle
           : 'Membre de la communaute Bahibo',
     );
@@ -141,42 +151,77 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
       name: previewProfile.name,
       subtitle: previewProfile.headline,
       imageUrl: previewProfile.avatarUrl,
-      trailingText: trailingText,
+      trailingText: metricLabel == 'Likes total' && count != null && count > 0
+          ? count > 1
+                ? '$count likes'
+                : '1 like'
+          : trailingText,
       profileData: previewProfile,
-      destinationBuilder: sellerProfileId != null && sellerProfileId.isNotEmpty
+      destinationBuilder:
+          role == 'SELLER' &&
+              sellerProfileId != null &&
+              sellerProfileId.isNotEmpty
           ? (_) => FutureBuilder<Map<String, dynamic>>(
-                future: _catalogApiService.fetchSellerProfile(sellerProfileId),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return Scaffold(
-                      backgroundColor: Theme.of(context).appColors.backgroundBase,
-                      body: const Center(child: CircularProgressIndicator()),
-                    );
-                  }
-
-                  return SellerProfilePage(
-                    profile: buildSellerProfileFromApi(snapshot.data!),
+              future: _catalogApiService.fetchSellerProfile(sellerProfileId),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return Scaffold(
+                    backgroundColor: Theme.of(context).appColors.backgroundBase,
+                    body: const Center(child: CircularProgressIndicator()),
                   );
-                },
-              )
-          : (_) => SellerProfilePage(profile: previewProfile),
+                }
+
+                return SellerProfilePage(
+                  profile: buildSellerProfileFromApi(snapshot.data!),
+                );
+              },
+            )
+          : userId != null && userId.isNotEmpty
+          ? (_) => FutureBuilder<Map<String, dynamic>>(
+              future: _catalogApiService.fetchUserProfile(userId),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return Scaffold(
+                    backgroundColor: Theme.of(context).appColors.backgroundBase,
+                    body: const Center(child: CircularProgressIndicator()),
+                  );
+                }
+
+                return UserProfilePage(
+                  profile: buildPublicUserProfileFromApi(snapshot.data!),
+                );
+              },
+            )
+          : (_) => UserProfilePage(profile: previewProfile),
     );
   }
 
-  Future<List<UserListItemData>> _fetchMetricUsers({required String metricLabel}) async {
+  Future<List<UserListItemData>> _fetchMetricUsers({
+    required String metricLabel,
+  }) async {
     final sellerProfileId = profile.sellerProfileId?.trim() ?? '';
     if (sellerProfileId.isEmpty || _metricValueByLabel(metricLabel) <= 0) {
       return const <UserListItemData>[];
     }
 
     final rawUsers = switch (metricLabel) {
-      'Abonnes' => await _catalogApiService.fetchSellerFollowers(sellerProfileId),
-      'Vues profil' => await _catalogApiService.fetchSellerProfileViews(sellerProfileId),
-      'Likes total' => await _catalogApiService.fetchSellerLikeUsers(sellerProfileId),
+      'Abonnes' => await _catalogApiService.fetchSellerFollowers(
+        sellerProfileId,
+      ),
+      'Vues profil' => await _catalogApiService.fetchSellerProfileViews(
+        sellerProfileId,
+      ),
+      'Likes total' => await _catalogApiService.fetchSellerLikeUsers(
+        sellerProfileId,
+      ),
       _ => const <Map<String, dynamic>>[],
     };
 
-    return rawUsers.map(_mapMetricUserItem).toList();
+    return rawUsers
+        .map(
+          (user) => _mapMetricUserItem({...user, 'metricLabel': metricLabel}),
+        )
+        .toList();
   }
 
   Future<void> _openMetricUsers(String metricLabel) async {
@@ -634,13 +679,16 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     );
   }
 
-  Future<void> _showCreateProductSheet({Map<String, dynamic>? initialProduct}) async {
+  Future<void> _showCreateProductSheet({
+    Map<String, dynamic>? initialProduct,
+  }) async {
     final isEditingProduct = initialProduct != null;
     final initialImageUrls =
-        ((initialProduct?['images'] as List?)?.whereType<String>()
-                .where((imageUrl) => imageUrl.trim().isNotEmpty)
-                .toList() ??
-            <String>[]);
+        ((initialProduct?['images'] as List?)
+            ?.whereType<String>()
+            .where((imageUrl) => imageUrl.trim().isNotEmpty)
+            .toList() ??
+        <String>[]);
     if (initialImageUrls.isEmpty) {
       final fallbackThumbnail = (initialProduct?['thumbnail'] ?? '').toString();
       if (fallbackThumbnail.trim().isNotEmpty) {
@@ -672,8 +720,8 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     BuildContext? uploadDialogContext;
     Completer<void>? uploadDialogClosedCompleter;
     final productImages = initialImageUrls
-      .map(_SelectedProductImage.remote)
-      .toList();
+        .map(_SelectedProductImage.remote)
+        .toList();
     var isFormattingPrice = false;
 
     void formatPriceInput() {
@@ -886,302 +934,313 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                      Center(
-                        child: Container(
-                          width: 42,
-                          height: 5,
-                          decoration: BoxDecoration(
-                            color: theme.dividerColor,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      Text(
-                        isEditingProduct ? 'Modifier le produit' : 'Creer un produit',
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        isEditingProduct
-                            ? 'Mets a jour les informations principales du produit avant validation.'
-                            : 'Renseigne les informations principales du produit avant publication.',
-                        style: TextStyle(color: theme.appColors.mutedText),
-                      ),
-                      if (isPublishingProduct) ...[
-                        const SizedBox(height: 14),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: accentColor.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: accentColor.withValues(alpha: 0.16),
+                        Center(
+                          child: Container(
+                            width: 42,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: theme.dividerColor,
+                              borderRadius: BorderRadius.circular(999),
                             ),
                           ),
-                          child: Row(
-                            children: [
-                              SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.1,
-                                  color: accentColor,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  'Publication du produit en cours. L\'image est en cours d\'upload.',
-                                  style: TextStyle(
-                                    color: accentColor,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
                         ),
-                      ],
-                      const SizedBox(height: 18),
-                      DynamicIconInput(
-                        controller: nameController,
-                        primary: accentColor,
-                        panelColor: panelColor,
-                        borderColor: accentColor.withValues(alpha: 0.12),
-                        hintText: 'Nom produit',
-                        leadingIcon: Icon(
-                          Icons.inventory_2_outlined,
-                          color: accentColor,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      DynamicIconInput(
-                        controller: categoryController,
-                        primary: accentColor,
-                        panelColor: panelColor,
-                        borderColor: accentColor.withValues(alpha: 0.12),
-                        hintText: 'Categorie',
-                        leadingIcon: Icon(
-                          Icons.category_outlined,
-                          color: accentColor,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      DynamicIconInput(
-                        controller: priceController,
-                        primary: accentColor,
-                        panelColor: panelColor,
-                        borderColor: accentColor.withValues(alpha: 0.12),
-                        hintText: 'Prix',
-                        keyboardType: const TextInputType.numberWithOptions(),
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                        ],
-                        leadingIcon: Icon(
-                          Icons.payments_outlined,
-                          color: accentColor,
-                        ),
-                        trailingIcon: Text(
-                          'MGA',
-                          style: TextStyle(
-                            color: accentColor,
+                        const SizedBox(height: 18),
+                        Text(
+                          isEditingProduct
+                              ? 'Modifier le produit'
+                              : 'Creer un produit',
+                          style: theme.textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.w800,
                           ),
                         ),
-                        trailingSize: 34,
-                      ),
-                      const SizedBox(height: 12),
-                      DynamicIconComboBox<String>(
-                        value: availability,
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'Disponible',
-                            child: Text('Disponible'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Rupture',
-                            child: Text('Rupture'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Precommande',
-                            child: Text('Precommande'),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          if (value == null) return;
-                          setModalState(() {
-                            availability = value;
-                          });
-                        },
-                        primary: accentColor,
-                        panelColor: panelColor,
-                        borderColor: accentColor.withValues(alpha: 0.12),
-                        hintText: 'Etat',
-                        leadingIcon: Icon(
-                          Icons.sell_outlined,
-                          color: accentColor,
+                        const SizedBox(height: 6),
+                        Text(
+                          isEditingProduct
+                              ? 'Mets a jour les informations principales du produit avant validation.'
+                              : 'Renseigne les informations principales du produit avant publication.',
+                          style: TextStyle(color: theme.appColors.mutedText),
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      DynamicIconComboBox<String>(
-                        value: productCondition,
-                        items: const [
-                          DropdownMenuItem(value: 'Neuf', child: Text('Neuf')),
-                          DropdownMenuItem(
-                            value: 'Occasion',
-                            child: Text('Occasion'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Reconditionne',
-                            child: Text('Reconditionne'),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          if (value == null) return;
-                          setModalState(() {
-                            productCondition = value;
-                          });
-                        },
-                        primary: accentColor,
-                        panelColor: panelColor,
-                        borderColor: accentColor.withValues(alpha: 0.12),
-                        hintText: 'Etat du produit',
-                        leadingIcon: Icon(
-                          Icons.verified_outlined,
-                          color: accentColor,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      DynamicIconTextArea(
-                        controller: descriptionController,
-                        primary: accentColor,
-                        panelColor: panelColor,
-                        borderColor: accentColor.withValues(alpha: 0.12),
-                        labelText: 'Description',
-                        hintText: 'Description du produit',
-                        leadingIcon: Icon(
-                          Icons.notes_rounded,
-                          color: accentColor,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Photo du produit',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Selection multiple depuis la galerie ou ajout progressif photo par photo.',
-                        style: TextStyle(color: theme.appColors.mutedText),
-                      ),
-                      const SizedBox(height: 10),
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: panelColor,
-                          borderRadius: BorderRadius.circular(22),
-                          border: Border.all(
-                            color: theme.appColors.inputBorder,
-                          ),
-                        ),
-                        child: productImages.isEmpty
-                            ? Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  onTap: chooseProductImage,
-                                  borderRadius: BorderRadius.circular(18),
-                                  child: SizedBox(
-                                    height: 144,
-                                    child: Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Icon(
-                                          Icons.add_photo_alternate_outlined,
-                                          color: accentColor,
-                                          size: 34,
-                                        ),
-                                        const SizedBox(height: 10),
-                                        Text(
-                                          'Ajouter des photos produit',
-                                          style: TextStyle(
-                                            color: accentColor,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          'Mode multi-selection',
-                                          style: TextStyle(
-                                            color: theme.appColors.mutedText,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ],
+                        if (isPublishingProduct) ...[
+                          const SizedBox(height: 14),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: accentColor.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: accentColor.withValues(alpha: 0.16),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.1,
+                                    color: accentColor,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'Publication du produit en cours. L\'image est en cours d\'upload.',
+                                    style: TextStyle(
+                                      color: accentColor,
+                                      fontWeight: FontWeight.w700,
                                     ),
                                   ),
                                 ),
-                              )
-                            : Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 6,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: accentColor.withValues(
-                                            alpha: 0.14,
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                            999,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          '${productImages.length} photo${productImages.length > 1 ? 's' : ''}',
-                                          style: TextStyle(
+                              ],
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 18),
+                        DynamicIconInput(
+                          controller: nameController,
+                          primary: accentColor,
+                          panelColor: panelColor,
+                          borderColor: accentColor.withValues(alpha: 0.12),
+                          hintText: 'Nom produit',
+                          leadingIcon: Icon(
+                            Icons.inventory_2_outlined,
+                            color: accentColor,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        DynamicIconInput(
+                          controller: categoryController,
+                          primary: accentColor,
+                          panelColor: panelColor,
+                          borderColor: accentColor.withValues(alpha: 0.12),
+                          hintText: 'Categorie',
+                          leadingIcon: Icon(
+                            Icons.category_outlined,
+                            color: accentColor,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        DynamicIconInput(
+                          controller: priceController,
+                          primary: accentColor,
+                          panelColor: panelColor,
+                          borderColor: accentColor.withValues(alpha: 0.12),
+                          hintText: 'Prix',
+                          keyboardType: const TextInputType.numberWithOptions(),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                          ],
+                          leadingIcon: Icon(
+                            Icons.payments_outlined,
+                            color: accentColor,
+                          ),
+                          trailingIcon: Text(
+                            'MGA',
+                            style: TextStyle(
+                              color: accentColor,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          trailingSize: 34,
+                        ),
+                        const SizedBox(height: 12),
+                        DynamicIconComboBox<String>(
+                          value: availability,
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'Disponible',
+                              child: Text('Disponible'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Rupture',
+                              child: Text('Rupture'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Precommande',
+                              child: Text('Precommande'),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setModalState(() {
+                              availability = value;
+                            });
+                          },
+                          primary: accentColor,
+                          panelColor: panelColor,
+                          borderColor: accentColor.withValues(alpha: 0.12),
+                          hintText: 'Etat',
+                          leadingIcon: Icon(
+                            Icons.sell_outlined,
+                            color: accentColor,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        DynamicIconComboBox<String>(
+                          value: productCondition,
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'Neuf',
+                              child: Text('Neuf'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Occasion',
+                              child: Text('Occasion'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Reconditionne',
+                              child: Text('Reconditionne'),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setModalState(() {
+                              productCondition = value;
+                            });
+                          },
+                          primary: accentColor,
+                          panelColor: panelColor,
+                          borderColor: accentColor.withValues(alpha: 0.12),
+                          hintText: 'Etat du produit',
+                          leadingIcon: Icon(
+                            Icons.verified_outlined,
+                            color: accentColor,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        DynamicIconTextArea(
+                          controller: descriptionController,
+                          primary: accentColor,
+                          panelColor: panelColor,
+                          borderColor: accentColor.withValues(alpha: 0.12),
+                          labelText: 'Description',
+                          hintText: 'Description du produit',
+                          leadingIcon: Icon(
+                            Icons.notes_rounded,
+                            color: accentColor,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Photo du produit',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Selection multiple depuis la galerie ou ajout progressif photo par photo.',
+                          style: TextStyle(color: theme.appColors.mutedText),
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: panelColor,
+                            borderRadius: BorderRadius.circular(22),
+                            border: Border.all(
+                              color: theme.appColors.inputBorder,
+                            ),
+                          ),
+                          child: productImages.isEmpty
+                              ? Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: chooseProductImage,
+                                    borderRadius: BorderRadius.circular(18),
+                                    child: SizedBox(
+                                      height: 144,
+                                      child: Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(
+                                            Icons.add_photo_alternate_outlined,
                                             color: accentColor,
-                                            fontWeight: FontWeight.w800,
+                                            size: 34,
+                                          ),
+                                          const SizedBox(height: 10),
+                                          Text(
+                                            'Ajouter des photos produit',
+                                            style: TextStyle(
+                                              color: accentColor,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            'Mode multi-selection',
+                                            style: TextStyle(
+                                              color: theme.appColors.mutedText,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              : Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 6,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: accentColor.withValues(
+                                              alpha: 0.14,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              999,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            '${productImages.length} photo${productImages.length > 1 ? 's' : ''}',
+                                            style: TextStyle(
+                                              color: accentColor,
+                                              fontWeight: FontWeight.w800,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      const Spacer(),
-                                      TextButton.icon(
-                                        onPressed: isPublishingProduct
-                                            ? null
-                                            : chooseProductImage,
-                                        icon: const Icon(
-                                          Icons.add_photo_alternate_outlined,
+                                        const Spacer(),
+                                        TextButton.icon(
+                                          onPressed: isPublishingProduct
+                                              ? null
+                                              : chooseProductImage,
+                                          icon: const Icon(
+                                            Icons.add_photo_alternate_outlined,
+                                          ),
+                                          label: const Text('Ajouter'),
                                         ),
-                                        label: const Text('Ajouter'),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 10),
-                                  LayoutBuilder(
-                                    builder: (context, constraints) {
-                                      final itemWidth =
-                                          (constraints.maxWidth - 20) / 3;
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+                                    LayoutBuilder(
+                                      builder: (context, constraints) {
+                                        final itemWidth =
+                                            (constraints.maxWidth - 20) / 3;
 
-                                      return Wrap(
-                                        spacing: 10,
-                                        runSpacing: 10,
-                                        children: List.generate(
-                                          productImages.length,
-                                          (index) {
+                                        return Wrap(
+                                          spacing: 10,
+                                          runSpacing: 10,
+                                          children: List.generate(productImages.length, (
+                                            index,
+                                          ) {
                                             final image = productImages[index];
 
                                             return SizedBox(
-                                              width: itemWidth.clamp(92.0, 140.0),
-                                              height: itemWidth.clamp(92.0, 140.0),
+                                              width: itemWidth.clamp(
+                                                92.0,
+                                                140.0,
+                                              ),
+                                              height: itemWidth.clamp(
+                                                92.0,
+                                                140.0,
+                                              ),
                                               child: Stack(
                                                 fit: StackFit.expand,
                                                 children: [
@@ -1227,13 +1286,12 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                                                               isPublishingProduct
                                                               ? () {}
                                                               : () {
-                                                                  setModalState(
-                                                                    () {
-                                                                      productImages.removeAt(
-                                                                        index,
-                                                                      );
-                                                                    },
-                                                                  );
+                                                                  setModalState(() {
+                                                                    productImages
+                                                                        .removeAt(
+                                                                          index,
+                                                                        );
+                                                                  });
                                                                 },
                                                         ),
                                                       ],
@@ -1242,174 +1300,191 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                                                 ],
                                               ),
                                             );
-                                          },
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ],
-                              ),
-                      ),
-                      const SizedBox(height: 18),
-                      SizedBox(
-                        width: double.infinity,
-                        child: DynamicIconButton(
-                          text: isPublishingProduct
-                            ? (isEditingProduct
-                              ? 'Mise a jour en cours...'
-                              : 'Publication en cours...')
-                            : (isEditingProduct
-                              ? 'Mettre a jour le produit'
-                              : 'Publier le produit'),
-                          icon: isPublishingProduct
-                              ? SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2.2,
-                                    color: theme.colorScheme.onPrimary,
-                                  ),
-                                )
-                              : const Icon(
-                                  Icons.check_circle_outline,
-                                  color: Colors.white,
+                                          }),
+                                        );
+                                      },
+                                    ),
+                                  ],
                                 ),
-                          onPressed: isPublishingProduct
-                              ? null
-                              : () async {
-                            final productName = nameController.text.trim();
-                            final productCategory = categoryController.text
-                                .trim();
-                            final productDescription = descriptionController
-                                .text
-                                .trim();
-                            final parsedPrice = _parseProductPrice(
-                              priceController.text,
-                            );
-
-                            if (productName.isEmpty ||
-                                productCategory.isEmpty ||
-                                parsedPrice == null ||
-                                parsedPrice <= 0 ||
-                                productDescription.isEmpty ||
-                                productImages.isEmpty) {
-                              await _showMissingProductFieldsDialog(
-                                sheetContext,
-                              );
-                              return;
-                            }
-
-                            final shouldPublish = isEditingProduct
-                                ? true
-                                : await _showPublishProductConfirmationDialog(
-                                    sheetContext,
-                                    productName: productName,
-                                  );
-
-                            if (!shouldPublish ||
-                                !mounted ||
-                                !sheetContext.mounted) {
-                              return;
-                            }
-
-                            String? successMessage;
-                            String? errorMessage;
-                            var shouldCloseSheetAfterSuccess = false;
-
-                            try {
-                              setModalState(() {
-                                isPublishingProduct = true;
-                              });
-                              showUploadProgressDialog();
-
-                              final localImageFiles = <File>[];
-                              final imageOrder = productImages.map((image) {
-                                if (image.file != null) {
-                                  final uploadIndex = localImageFiles.length;
-                                  localImageFiles.add(image.file!);
-                                  return '__upload__$uploadIndex';
-                                }
-
-                                return image.url ?? '';
-                              }).toList();
-
-                              final createdProduct = isEditingProduct
-                                  ? await _catalogApiService.updateProduct(
-                                      productId:
-                                          (initialProduct['id'] ?? '')
-                                              .toString(),
-                                      title: productName,
-                                      description: productDescription,
-                                      priceAmount: parsedPrice,
-                                      categoryName: productCategory,
-                                      imageFiles: localImageFiles,
-                                      imageOrder: imageOrder,
-                                      isAvailable:
-                                          availability == 'Disponible',
-                                    )
-                                  : await _catalogApiService.createProduct(
-                                      title: productName,
-                                      description: productDescription,
-                                      priceAmount: parsedPrice,
-                                      categoryName: productCategory,
-                                      imageFiles: localImageFiles,
-                                      imageOrder: imageOrder,
+                        ),
+                        const SizedBox(height: 18),
+                        SizedBox(
+                          width: double.infinity,
+                          child: DynamicIconButton(
+                            text: isPublishingProduct
+                                ? (isEditingProduct
+                                      ? 'Mise a jour en cours...'
+                                      : 'Publication en cours...')
+                                : (isEditingProduct
+                                      ? 'Mettre a jour le produit'
+                                      : 'Publier le produit'),
+                            icon: isPublishingProduct
+                                ? SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.2,
+                                      color: theme.colorScheme.onPrimary,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.check_circle_outline,
+                                    color: Colors.white,
+                                  ),
+                            onPressed: isPublishingProduct
+                                ? null
+                                : () async {
+                                    final productName = nameController.text
+                                        .trim();
+                                    final productCategory = categoryController
+                                        .text
+                                        .trim();
+                                    final productDescription =
+                                        descriptionController.text.trim();
+                                    final parsedPrice = _parseProductPrice(
+                                      priceController.text,
                                     );
 
-                              if (!mounted || !sheetContext.mounted) {
-                                return;
-                              }
+                                    if (productName.isEmpty ||
+                                        productCategory.isEmpty ||
+                                        parsedPrice == null ||
+                                        parsedPrice <= 0 ||
+                                        productDescription.isEmpty ||
+                                        productImages.isEmpty) {
+                                      await _showMissingProductFieldsDialog(
+                                        sheetContext,
+                                      );
+                                      return;
+                                    }
 
-                              setState(() {
-                                _upsertProductInState({
-                                  ...createdProduct,
-                                  'description': productDescription,
-                                  'status': availability,
-                                  'condition': productCondition,
-                                  'likesCount':
-                                      (initialProduct?['likesCount'] as num?)
-                                          ?.toInt() ??
-                                      0,
-                                  'isLocalFile': false,
-                                });
-                              });
+                                    final shouldPublish = isEditingProduct
+                                        ? true
+                                        : await _showPublishProductConfirmationDialog(
+                                            sheetContext,
+                                            productName: productName,
+                                          );
 
-                              successMessage = isEditingProduct
-                                  ? '$productName mis a jour dans votre catalogue.'
-                                  : '$productName ajoute au catalogue.';
-                              shouldCloseSheetAfterSuccess = true;
-                            } on AppApiException catch (error) {
-                              if (!mounted || !sheetContext.mounted) {
-                                return;
-                              }
+                                    if (!shouldPublish ||
+                                        !mounted ||
+                                        !sheetContext.mounted) {
+                                      return;
+                                    }
 
-                              errorMessage = error.message;
-                            } finally {
-                              await closeUploadProgressDialog();
-                              if (sheetContext.mounted) {
-                                setModalState(() {
-                                  isPublishingProduct = false;
-                                });
-                              }
+                                    String? successMessage;
+                                    String? errorMessage;
+                                    var shouldCloseSheetAfterSuccess = false;
 
-                              if (shouldCloseSheetAfterSuccess &&
-                                  sheetContext.mounted) {
-                                Navigator.of(sheetContext).pop();
-                              }
+                                    try {
+                                      setModalState(() {
+                                        isPublishingProduct = true;
+                                      });
+                                      showUploadProgressDialog();
 
-                              if (mounted && successMessage != null) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text(successMessage)),
-                                );
-                              } else if (mounted && errorMessage != null) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text(errorMessage)),
-                                );
-                              }
-                            }
-                          },
+                                      final localImageFiles = <File>[];
+                                      final imageOrder = productImages.map((
+                                        image,
+                                      ) {
+                                        if (image.file != null) {
+                                          final uploadIndex =
+                                              localImageFiles.length;
+                                          localImageFiles.add(image.file!);
+                                          return '__upload__$uploadIndex';
+                                        }
+
+                                        return image.url ?? '';
+                                      }).toList();
+
+                                      final createdProduct = isEditingProduct
+                                          ? await _catalogApiService
+                                                .updateProduct(
+                                                  productId:
+                                                      (initialProduct['id'] ??
+                                                              '')
+                                                          .toString(),
+                                                  title: productName,
+                                                  description:
+                                                      productDescription,
+                                                  priceAmount: parsedPrice,
+                                                  categoryName: productCategory,
+                                                  imageFiles: localImageFiles,
+                                                  imageOrder: imageOrder,
+                                                  isAvailable:
+                                                      availability ==
+                                                      'Disponible',
+                                                )
+                                          : await _catalogApiService
+                                                .createProduct(
+                                                  title: productName,
+                                                  description:
+                                                      productDescription,
+                                                  priceAmount: parsedPrice,
+                                                  categoryName: productCategory,
+                                                  imageFiles: localImageFiles,
+                                                  imageOrder: imageOrder,
+                                                );
+
+                                      if (!mounted || !sheetContext.mounted) {
+                                        return;
+                                      }
+
+                                      setState(() {
+                                        _upsertProductInState({
+                                          ...createdProduct,
+                                          'description': productDescription,
+                                          'status': availability,
+                                          'condition': productCondition,
+                                          'likesCount':
+                                              (initialProduct?['likesCount']
+                                                      as num?)
+                                                  ?.toInt() ??
+                                              0,
+                                          'isLocalFile': false,
+                                        });
+                                      });
+
+                                      successMessage = isEditingProduct
+                                          ? '$productName mis a jour dans votre catalogue.'
+                                          : '$productName ajoute au catalogue.';
+                                      shouldCloseSheetAfterSuccess = true;
+                                    } on AppApiException catch (error) {
+                                      if (!mounted || !sheetContext.mounted) {
+                                        return;
+                                      }
+
+                                      errorMessage = error.message;
+                                    } finally {
+                                      await closeUploadProgressDialog();
+                                      if (sheetContext.mounted) {
+                                        setModalState(() {
+                                          isPublishingProduct = false;
+                                        });
+                                      }
+
+                                      if (shouldCloseSheetAfterSuccess &&
+                                          sheetContext.mounted) {
+                                        Navigator.of(sheetContext).pop();
+                                      }
+
+                                      if (mounted && successMessage != null) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(successMessage),
+                                          ),
+                                        );
+                                      } else if (mounted &&
+                                          errorMessage != null) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(content: Text(errorMessage)),
+                                        );
+                                      }
+                                    }
+                                  },
+                          ),
                         ),
-                      ),
                       ],
                     ),
                   ),
@@ -2163,9 +2238,17 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     final supportAccentColor = _supportAccentColor(theme);
     final metrics = [
       _StudioMetric('Abonnes', profile.followerCount, Icons.groups_2_outlined),
-      _StudioMetric('Vues profil', profile.visitorCount, Icons.visibility_outlined),
+      _StudioMetric(
+        'Vues profil',
+        profile.visitorCount,
+        Icons.visibility_outlined,
+      ),
       _StudioMetric('Produits', profile.productCount, Icons.storefront),
-      _StudioMetric('Likes total', profile.totalLikesCount, Icons.favorite_outline),
+      _StudioMetric(
+        'Likes total',
+        profile.totalLikesCount,
+        Icons.favorite_outline,
+      ),
     ];
 
     return GridView.builder(
@@ -2664,7 +2747,11 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
       );
     }
 
-    return AppCircleNetworkAvatar(radius: 41, imageUrl: profile.avatarUrl);
+    return AppCircleNetworkAvatar(
+      radius: 41,
+      imageUrl: profile.avatarUrl,
+      userId: profile.userId,
+    );
   }
 
   Widget _buildImageEditButton({

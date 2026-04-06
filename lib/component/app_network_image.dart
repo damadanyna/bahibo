@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:bahibo/services/presence_service.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 
 class AppImagePlaceholder extends StatelessWidget {
@@ -122,21 +123,69 @@ class AppNetworkImage extends StatelessWidget {
 class AppCircleNetworkAvatar extends StatelessWidget {
   final String imageUrl;
   final double radius;
+  final String? userId;
+  final bool showPresenceBadge;
 
   const AppCircleNetworkAvatar({
     super.key,
     required this.imageUrl,
     required this.radius,
+    this.userId,
+    this.showPresenceBadge = true,
   });
 
   @override
   Widget build(BuildContext context) {
     final diameter = radius * 2;
-    return AppNetworkImage(
+    final normalizedUserId = userId?.trim() ?? '';
+    final shouldShowBadge = showPresenceBadge && normalizedUserId.isNotEmpty;
+
+    if (shouldShowBadge) {
+      PresenceService.instance.watchUser(normalizedUserId);
+    }
+
+    final avatar = AppNetworkImage(
       imageUrl: imageUrl,
       width: diameter,
       height: diameter,
       shape: BoxShape.circle,
+    );
+
+    if (!shouldShowBadge) {
+      return avatar;
+    }
+
+    return ValueListenableBuilder<int>(
+      valueListenable: PresenceService.instance.changes,
+      builder: (context, _, __) {
+        final appColors = Theme.of(context).appColors;
+        final isOnline = PresenceService.instance.presenceOf(normalizedUserId) == true;
+        final badgeSize = radius <= 18 ? 10.0 : 14.0;
+        const offlineBadgeColor = Color(0xFF9E9E9E);
+
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            avatar,
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: Container(
+                width: badgeSize,
+                height: badgeSize,
+                decoration: BoxDecoration(
+                  color: isOnline ? appColors.onlineStatus : offlineBadgeColor,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    width: 2,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
