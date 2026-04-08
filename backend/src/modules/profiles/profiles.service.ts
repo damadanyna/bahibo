@@ -4,7 +4,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Prisma, ShopRequestStatus, UserRole } from '@prisma/client';
+import { AccessToken, TrackSource } from 'livekit-server-sdk';
 
 import { CloudinaryService } from '../auth/cloudinary.service';
 import { ConversationsRealtimeGateway } from '../conversations/realtime/conversations-realtime.gateway';
@@ -22,6 +24,7 @@ export class ProfilesService {
     private readonly prisma: PrismaService,
     private readonly cloudinaryService: CloudinaryService,
     private readonly conversationsRealtimeGateway: ConversationsRealtimeGateway,
+    private readonly configService: ConfigService,
   ) {}
 
   async getCurrentUserProfile(userId: string) {
@@ -30,6 +33,169 @@ export class ProfilesService {
       ? await this.buildSellerStats(user.sellerProfile.id)
       : undefined;
     return presentUserProfile(user, sellerStats);
+  }
+
+  async startCurrentUserLive(
+    userId: string,
+    params: { title: string; category: string },
+  ) {
+    const sellerProfile = await this.prisma.sellerProfile.findUnique({
+      where: { userId },
+      include: {
+        followers: {
+          select: {
+            followerUserId: true,
+          },
+        },
+      },
+    });
+
+    if (!sellerProfile) {
+      throw new NotFoundException('Seller profile not found');
+    }
+
+    const title = params.title.trim();
+    const category = params.category.trim();
+
+    if (title.length === 0) {
+      throw new BadRequestException('Live title is required');
+    }
+
+    const liveSession = await this.prisma.sellerLiveSession.upsert({
+      where: { sellerProfileId: sellerProfile.id },
+      create: {
+        sellerProfileId: sellerProfile.id,
+        title,
+        category: category.length > 0 ? category : 'Live boutique',
+        endedAt: null,
+      },
+      update: {
+        title,
+        category: category.length > 0 ? category : 'Live boutique',
+        startedAt: new Date(),
+        endedAt: null,
+      },
+    });
+
+    this.conversationsRealtimeGateway.emitLiveEvent(
+      [
+        userId,
+        ...sellerProfile.followers.map((follower) => follower.followerUserId),
+      ],
+      {
+        type: 'live:updated',
+        sellerProfileId: sellerProfile.id,
+        isLive: true,
+        title: liveSession.title,
+        category: liveSession.category,
+        startedAt: liveSession.startedAt.toISOString(),
+      },
+    );
+
+    return {
+      sellerProfileId: sellerProfile.id,
+      roomName: this.buildLiveRoomName(sellerProfile.id),
+      url: this.requireLivekitUrl(),
+      token: await this.buildLivekitToken({
+        roomName: this.buildLiveRoomName(sellerProfile.id),
+        identity: `seller-${userId}`,
+        name: sellerProfile.studioName,
+        canPublish: true,
+        canSubscribe: true,
+      }),
+      title: liveSession.title,
+      category: liveSession.category,
+      startedAt: liveSession.startedAt.toISOString(),
+      isLive: true,
+    };
+  }
+
+  async stopCurrentUserLive(userId: string) {
+    const sellerProfile = await this.prisma.sellerProfile.findUnique({
+      where: { userId },
+      include: {
+        followers: {
+          select: {
+            followerUserId: true,
+          },
+        },
+      },
+    });
+
+    if (!sellerProfile) {
+      throw new NotFoundException('Seller profile not found');
+    }
+
+    await this.prisma.sellerLiveSession.updateMany({
+      where: {
+        sellerProfileId: sellerProfile.id,
+        endedAt: null,
+      },
+      data: {
+        endedAt: new Date(),
+      },
+    });
+
+    this.conversationsRealtimeGateway.emitLiveEvent(
+      [
+        userId,
+        ...sellerProfile.followers.map((follower) => follower.followerUserId),
+      ],
+      {
+        type: 'live:updated',
+        sellerProfileId: sellerProfile.id,
+        isLive: false,
+        title: null,
+        category: null,
+        startedAt: null,
+      },
+    );
+
+    return {
+      sellerProfileId: sellerProfile.id,
+      isLive: false,
+    };
+  }
+
+  async getSellerLiveJoinInfo(currentUserId: string, sellerProfileId: string) {
+    const sellerProfile = await this.prisma.sellerProfile.findUnique({
+      where: { id: sellerProfileId },
+      include: {
+        user: true,
+        liveSession: true,
+      },
+    });
+
+    if (!sellerProfile) {
+      throw new NotFoundException('Seller profile not found');
+    }
+
+    const liveSession = sellerProfile.liveSession;
+    if (!liveSession || liveSession.endedAt != null) {
+      throw new NotFoundException('Live session not found');
+    }
+
+    return {
+      sellerProfileId: sellerProfile.id,
+      roomName: this.buildLiveRoomName(sellerProfile.id),
+      url: this.requireLivekitUrl(),
+      token: await this.buildLivekitToken({
+        roomName: this.buildLiveRoomName(sellerProfile.id),
+        identity: `viewer-${currentUserId}-${Date.now()}`,
+        name: `viewer-${currentUserId}`,
+        canPublish: false,
+        canSubscribe: true,
+      }),
+      title: liveSession.title,
+      category: liveSession.category,
+      sellerName:
+          sellerProfile.studioName.trim().length > 0
+            ? sellerProfile.studioName
+            : sellerProfile.user.displayName,
+      sellerAvatarUrl: sellerProfile.user.avatarUrl,
+      startedAt: liveSession.startedAt.toISOString(),
+      isLive: true,
+    };
   }
 
   async updateCurrentUserProfile(userId: string, dto: UpdateProfileDto) {
@@ -297,6 +463,53 @@ export class ProfilesService {
       }),
       trailingText: 'Abonne',
     }));
+  }
+
+  async getCurrentUserFollowing(currentUserId: string) {
+    const followingLinks = await this.prisma.sellerFollow.findMany({
+      where: {
+        followerUserId: currentUserId,
+      },
+      include: {
+        sellerProfile: {
+          include: {
+            user: true,
+            liveSession: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return followingLinks.map((link) => {
+      const liveSession = link.sellerProfile.liveSession;
+      const isLive = liveSession != null && liveSession.endedAt == null;
+
+      return {
+        id: link.sellerProfile.user.id,
+        userId: link.sellerProfile.user.id,
+        sellerProfileId: link.sellerProfile.id,
+        role: link.sellerProfile.user.role,
+        displayName:
+          link.sellerProfile.studioName?.trim() !== ''
+            ? link.sellerProfile.studioName
+            : link.sellerProfile.user.displayName,
+        avatarUrl: link.sellerProfile.user.avatarUrl,
+        subtitle: this.buildMetricUserSubtitle({
+          locationLabel: link.sellerProfile.user.locationLabel,
+          sellerProfileDescription: link.sellerProfile.description,
+          fallback: 'Boutique suivie',
+        }),
+        trailingText: 'Boutique',
+        followedAt: link.createdAt,
+        isLive,
+        liveTitle: isLive ? liveSession.title : null,
+        liveCategory: isLive ? liveSession.category : null,
+        liveStartedAt: isLive ? liveSession.startedAt.toISOString() : null,
+      };
+    });
   }
 
   async getSellerProfileViews(currentUserId: string, sellerProfileId: string) {
@@ -775,6 +988,53 @@ export class ProfilesService {
     }
 
     return sellerProfile;
+  }
+
+  private buildLiveRoomName(sellerProfileId: string) {
+    return `seller-live-${sellerProfileId}`;
+  }
+
+  private requireLivekitUrl() {
+    const livekitUrl = this.configService.get<string>('LIVEKIT_URL')?.trim() ?? '';
+    if (livekitUrl.length === 0) {
+      throw new BadRequestException('LIVEKIT_URL is not configured');
+    }
+
+    return livekitUrl;
+  }
+
+  private async buildLivekitToken(params: {
+    roomName: string;
+    identity: string;
+    name: string;
+    canPublish: boolean;
+    canSubscribe: boolean;
+  }) {
+    const apiKey = this.configService.get<string>('LIVEKIT_API_KEY')?.trim() ?? '';
+    const apiSecret = this.configService.get<string>('LIVEKIT_API_SECRET')?.trim() ?? '';
+
+    if (apiKey.length === 0 || apiSecret.length === 0) {
+      throw new BadRequestException('LiveKit credentials are not configured');
+    }
+
+    const token = new AccessToken(apiKey, apiSecret, {
+      identity: params.identity,
+      name: params.name,
+      ttl: '2h',
+    });
+
+    token.addGrant({
+      roomJoin: true,
+      room: params.roomName,
+      canPublish: params.canPublish,
+      canSubscribe: params.canSubscribe,
+      canPublishData: params.canPublish,
+      canPublishSources: params.canPublish
+        ? [TrackSource.CAMERA, TrackSource.MICROPHONE]
+        : undefined,
+    });
+
+    return token.toJwt();
   }
 
   private buildMetricUserSubtitle(params: {

@@ -28,6 +28,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Bahibo utilise la camera pour lancer un live video.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Bahibo utilise le microphone pour diffuser un live video.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Bahibo utilise votre position pour afficher votre emplacement actuel sur votre profil.</string>
 	<key>UIApplicationSceneManifest</key>

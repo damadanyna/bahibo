@@ -56,6 +56,15 @@ type PresenceRealtimePayload = {
   isOnline: boolean;
 };
 
+type LiveRealtimePayload = {
+  type: 'live:updated';
+  sellerProfileId: string;
+  isLive: boolean;
+  title: string | null;
+  category: string | null;
+  startedAt: string | null;
+};
+
 @Injectable()
 @WebSocketGateway({
   cors: {
@@ -208,6 +217,17 @@ export class ConversationsRealtimeGateway
     }
 
     this.server.emit('presence:updated', payload);
+  }
+
+  emitLiveEvent(userIds: string[], payload: LiveRealtimePayload) {
+    if (!this.server) {
+      return;
+    }
+
+    const uniqueUserIds = [...new Set(userIds)];
+    for (const userId of uniqueUserIds) {
+      this.server.to(this.userRoom(userId)).emit('live:updated', payload);
+    }
   }
 
   isUserConnected(userId: string) {

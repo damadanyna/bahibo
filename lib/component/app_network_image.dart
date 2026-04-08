@@ -52,15 +52,32 @@ class AppNetworkImage extends StatelessWidget {
     this.width,
     this.height,
     this.fit = BoxFit.cover,
-    this.filterQuality = FilterQuality.medium,
+    this.filterQuality = FilterQuality.low,
     this.borderRadius,
     this.shape = BoxShape.rectangle,
     this.errorChild,
   });
 
+  int? _resolveCacheDimension(double? dimension, double devicePixelRatio) {
+    if (dimension == null || !dimension.isFinite || dimension <= 0) {
+      return null;
+    }
+
+    final scaledDimension = dimension * devicePixelRatio;
+    if (!scaledDimension.isFinite || scaledDimension <= 0) {
+      return null;
+    }
+
+    return scaledDimension.round();
+  }
+
   @override
   Widget build(BuildContext context) {
     final appColors = Theme.of(context).appColors;
+    final mediaQuery = MediaQuery.maybeOf(context);
+    final devicePixelRatio = mediaQuery?.devicePixelRatio ?? 1.0;
+    final cacheWidth = _resolveCacheDimension(width, devicePixelRatio);
+    final cacheHeight = _resolveCacheDimension(height, devicePixelRatio);
 
     final image = Image.network(
       imageUrl,
@@ -68,6 +85,8 @@ class AppNetworkImage extends StatelessWidget {
       filterQuality: filterQuality,
       width: width,
       height: height,
+      cacheWidth: cacheWidth != null && cacheWidth > 0 ? cacheWidth : null,
+      cacheHeight: cacheHeight != null && cacheHeight > 0 ? cacheHeight : null,
       loadingBuilder: (context, child, loadingProgress) {
         if (loadingProgress == null) return child;
         return AppImagePlaceholder(
@@ -87,7 +106,7 @@ class AppNetworkImage extends StatelessWidget {
           ),
         );
       },
-      errorBuilder: (_, __, ___) {
+      errorBuilder: (context, error, stackTrace) {
         return AppImagePlaceholder(
           width: width,
           height: height,
@@ -157,9 +176,10 @@ class AppCircleNetworkAvatar extends StatelessWidget {
 
     return ValueListenableBuilder<int>(
       valueListenable: PresenceService.instance.changes,
-      builder: (context, _, __) {
+      builder: (context, value, child) {
         final appColors = Theme.of(context).appColors;
-        final isOnline = PresenceService.instance.presenceOf(normalizedUserId) == true;
+        final isOnline =
+            PresenceService.instance.presenceOf(normalizedUserId) == true;
         final badgeSize = radius <= 18 ? 10.0 : 14.0;
         const offlineBadgeColor = Color(0xFF9E9E9E);
 

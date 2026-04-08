@@ -60,9 +60,6 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   String _studioName = '';
   String _studioAddress = 'Antananarivo, Madagascar';
   String _studioDescription = '';
-  String? _activeLiveTitle;
-  String? _activeLiveCategory;
-  String? _activeLiveStartedLabel;
   bool _isSellerCertified = false;
   bool _isSubmittingSellerCertificationRequest = false;
   String _sellerVerificationRequestStatus = 'NONE';
@@ -577,7 +574,8 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     });
 
     try {
-      final updatedProfile = await _authService.submitSellerVerificationRequest();
+      final updatedProfile = await _authService
+          .submitSellerVerificationRequest();
 
       if (!mounted) {
         return;
@@ -713,7 +711,8 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                           : Icons.workspace_premium_outlined,
                       size: 18,
                     ),
-              onPressed: (_isSellerCertified ||
+              onPressed:
+                  (_isSellerCertified ||
                       isPending ||
                       _isSubmittingSellerCertificationRequest)
                   ? null
@@ -723,10 +722,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                   : theme.colorScheme.primary,
               foregroundColor: Colors.white,
               borderRadius: 18,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 18,
-                vertical: 14,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
             ),
           ),
         ],
@@ -1721,28 +1717,67 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     priceController.removeListener(formatPriceInput);
   }
 
-  void _showStubAction(String label) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('$label sera branche ensuite.')));
-  }
-
   Future<void> _openLivePreview(String title, String category) async {
-    await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => LivePreviewPage(title: title, category: category),
-      ),
-    );
+    Map<String, dynamic>? liveInfo;
+    var liveStarted = false;
+
+    try {
+      liveInfo = await _catalogApiService.startCurrentUserLive(
+        title: title,
+        category: category,
+      );
+      liveStarted = true;
+
+      final liveUrl = liveInfo['url']?.toString().trim() ?? '';
+      final liveToken = liveInfo['token']?.toString().trim() ?? '';
+      final roomName = liveInfo['roomName']?.toString().trim() ?? '';
+
+      if (liveUrl.isEmpty || liveToken.isEmpty || roomName.isEmpty) {
+        throw AppApiException(
+          'La configuration LiveKit du serveur est incomplete.',
+        );
+      }
+
+      await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => LivePreviewPage(
+            title: liveInfo?['title']?.toString() ?? title,
+            category: liveInfo?['category']?.toString() ?? category,
+            liveUrl: liveUrl,
+            liveToken: liveToken,
+            roomName: roomName,
+          ),
+        ),
+      );
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Impossible de demarrer le live pour le moment.'),
+        ),
+      );
+    } finally {
+      if (liveStarted) {
+        try {
+          await _catalogApiService.stopCurrentUserLive();
+        } catch (_) {}
+      }
+    }
 
     if (!mounted) {
       return;
     }
-
-    setState(() {
-      _activeLiveTitle = null;
-      _activeLiveCategory = null;
-      _activeLiveStartedLabel = null;
-    });
   }
 
   Widget _buildProductImageAction({

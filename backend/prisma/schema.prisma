@@ -164,6 +164,21 @@ model SellerProfile {
   orders      Order[]
   followers   SellerFollow[]
   profileViews SellerProfileView[]
+  liveSession SellerLiveSession?
+}
+
+model SellerLiveSession {
+  id              String        @id @default(uuid())
+  sellerProfileId String        @unique
+  title           String
+  category        String
+  startedAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  endedAt         DateTime?
+  sellerProfile   SellerProfile @relation(fields: [sellerProfileId], references: [id], onDelete: Cascade)
+
+  @@index([startedAt])
+  @@index([endedAt])
 }
 
 model Category {

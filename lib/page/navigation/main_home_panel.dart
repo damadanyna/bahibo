@@ -2,8 +2,12 @@ import 'dart:async';
 
 import 'package:bahibo/component/app_page_refresh.dart';
 import 'package:bahibo/component/app_page_skeletons.dart';
-import 'package:bahibo/component/ui/dinamic_categories_h_list.dart';
+import 'package:bahibo/component/profile_models.dart';
+import 'package:bahibo/component/seller_profile_page.dart';
+import 'package:bahibo/component/ui/dinamic_followed_people_h_list.dart';
+import 'package:bahibo/component/user_profile_page.dart';
 import 'package:bahibo/page/notifications_page.dart';
+import 'package:bahibo/page/live/live_watch_page.dart';
 import 'package:bahibo/services/catalog_api_service.dart';
 import 'package:bahibo/services/chat_realtime_service.dart';
 import 'package:bahibo/services/notifications_api_service.dart';
@@ -12,7 +16,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../component/ProductCard.dart';
-import '../category_page.dart';
 
 class MainHomePanel extends StatefulWidget {
   const MainHomePanel({super.key});
@@ -35,14 +38,13 @@ class _MainHomePanelState extends State<MainHomePanel>
   final ScrollController _scrollController = ScrollController();
 
   List<dynamic> products = [];
-  List<Map<String, dynamic>> categories = [];
-  List<dynamic> mixedItems = [];
+  List<Map<String, dynamic>> followedPeople = [];
 
   int skip = 0;
-  final int limit = 10;
+  final int limit = 6;
   bool isLoading = false;
   bool hasMore = true;
-  final int categoryInterval = 15;
+  bool _isLoadingFollowedPeople = true;
 
   int get _unreadNotificationCount =>
       _notifications.where((item) => item['unread'] == true).length;
@@ -51,7 +53,7 @@ class _MainHomePanelState extends State<MainHomePanel>
   void initState() {
     super.initState();
     initializePageRefresh();
-    fetchCategories();
+    fetchFollowedPeople();
     fetchProducts();
     fetchNotifications();
     _bindRealtimeNotifications();
@@ -74,11 +76,13 @@ class _MainHomePanelState extends State<MainHomePanel>
       event,
     ) {
       final type = event['type']?.toString();
-      if (type != 'notifications:updated') {
-        return;
+      if (type == 'notifications:updated') {
+        unawaited(fetchNotifications());
       }
 
-      unawaited(fetchNotifications());
+      if (type == 'live:updated') {
+        unawaited(fetchFollowedPeople());
+      }
     });
   }
 
@@ -93,31 +97,20 @@ class _MainHomePanelState extends State<MainHomePanel>
   Future<void> onPageReload() async {
     setState(() {
       products = [];
-      categories = [];
-      mixedItems = [];
+      followedPeople = [];
       skip = 0;
       hasMore = true;
       isLoading = false;
+      _isLoadingFollowedPeople = true;
     });
 
-    await fetchCategories();
+    await fetchFollowedPeople();
     await fetchProducts();
     await fetchNotifications();
 
     if (_scrollController.hasClients) {
       _scrollController.jumpTo(0);
     }
-  }
-
-  Future<void> fetchCategories() async {
-    try {
-      final data = await _catalogApiService.fetchCategories();
-      if (!mounted) return;
-      setState(() {
-        categories = data;
-        _rebuildMixedItems();
-      });
-    } catch (_) {}
   }
 
   Future<void> fetchProducts() async {
@@ -141,7 +134,6 @@ class _MainHomePanelState extends State<MainHomePanel>
         hasMore =
             products.length < ((data['total'] as int?) ?? products.length);
         isLoading = false;
-        _rebuildMixedItems();
       });
 
       if (kDebugMode) {
@@ -150,6 +142,23 @@ class _MainHomePanelState extends State<MainHomePanel>
     } catch (_) {
       if (!mounted) return;
       setState(() => isLoading = false);
+    }
+  }
+
+  Future<void> fetchFollowedPeople() async {
+    try {
+      final data = await _catalogApiService.fetchCurrentUserFollowing();
+      if (!mounted) return;
+      setState(() {
+        followedPeople = data;
+        _isLoadingFollowedPeople = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        followedPeople = const [];
+        _isLoadingFollowedPeople = false;
+      });
     }
   }
 
@@ -163,17 +172,6 @@ class _MainHomePanelState extends State<MainHomePanel>
           ..addAll(data);
       });
     } catch (_) {}
-  }
-
-  void _rebuildMixedItems() {
-    final List<dynamic> items = [];
-    for (int i = 0; i < products.length; i++) {
-      if (i % categoryInterval == 0) {
-        items.add({'type': 'category_block'});
-      }
-      items.add({'type': 'product', 'data': products[i]});
-    }
-    mixedItems = items;
   }
 
   Future<void> _openNotificationsPage() async {
@@ -200,28 +198,100 @@ class _MainHomePanelState extends State<MainHomePanel>
     await fetchNotifications();
   }
 
-  Future<void> _openCategory(Map<String, dynamic> category) async {
-    final slug = category['slug']?.toString() ?? '';
-    final label = category['name']?.toString() ?? slug;
-    final icon = resolveDinamicCategoryIcon(category);
-    final savedOffset = _scrollController.offset;
+  Future<void> _openFollowedPerson(Map<String, dynamic> person) async {
+    final role = person['role']?.toString().trim().toUpperCase() ?? '';
+    final sellerProfileId = person['sellerProfileId']?.toString().trim() ?? '';
+    final userId =
+        person['userId']?.toString().trim() ??
+        person['id']?.toString().trim() ??
+        '';
 
-    await Navigator.push(
-      context,
+    if (role == 'SELLER' && sellerProfileId.isNotEmpty) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => FutureBuilder<Map<String, dynamic>>(
+            future: _catalogApiService.fetchSellerProfile(sellerProfileId),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return Scaffold(
+                  backgroundColor: Theme.of(context).appColors.backgroundBase,
+                  body: const Center(child: CircularProgressIndicator()),
+                );
+              }
+
+              return SellerProfilePage(
+                profile: buildSellerProfileFromApi(snapshot.data!),
+              );
+            },
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (userId.isEmpty) {
+      return;
+    }
+
+    await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => CategoryPage(
-          categoryName: slug,
-          categoryLabel: label,
-          categoryIcon: icon,
+        builder: (_) => FutureBuilder<Map<String, dynamic>>(
+          future: _catalogApiService.fetchUserProfile(userId),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return Scaffold(
+                backgroundColor: Theme.of(context).appColors.backgroundBase,
+                body: const Center(child: CircularProgressIndicator()),
+              );
+            }
+
+            return UserProfilePage(
+              profile: buildPublicUserProfileFromApi(snapshot.data!),
+            );
+          },
         ),
       ),
     );
+  }
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.jumpTo(savedOffset);
+  Future<void> _openFollowedPersonLive(Map<String, dynamic> person) async {
+    if (person['isLive'] != true) {
+      if (!mounted) {
+        return;
       }
-    });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ce live n\'est plus disponible.')),
+      );
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => LiveWatchPage(
+          sellerProfileId: person['sellerProfileId']?.toString().trim() ?? '',
+          sellerName:
+              person['displayName']?.toString() ??
+              person['name']?.toString() ??
+              'Boutique Bahibo',
+          sellerAvatarUrl: person['avatarUrl']?.toString() ?? '',
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFollowedPeopleSection() {
+    if (_isLoadingFollowedPeople) {
+      return const FollowedPeopleHListSkeleton();
+    }
+
+    return DinamicFollowedPeopleHList(
+      people: followedPeople,
+      title: 'Vos abonnements',
+      emptyTitle: 'Aucun abonnement pour le moment',
+      emptyMessage: 'Abonnez-vous a des boutiques pour les retrouver ici.',
+      onPersonTap: _openFollowedPerson,
+      onLiveTap: _openFollowedPersonLive,
+    );
   }
 
   Widget _buildNotificationButton(ThemeData theme) {
@@ -318,7 +388,7 @@ class _MainHomePanelState extends State<MainHomePanel>
                             ),
                             physics: const AlwaysScrollableScrollPhysics(),
                             children: [
-                              const CategoryBlockSkeleton(),
+                              _buildFollowedPeopleSection(),
                               ...List.generate(
                                 8,
                                 (_) => buildProductCardLoadig(),
@@ -331,9 +401,13 @@ class _MainHomePanelState extends State<MainHomePanel>
                               bottom: _bottomContentPadding,
                             ),
                             physics: const AlwaysScrollableScrollPhysics(),
-                            itemCount: mixedItems.length + 1,
+                            itemCount: products.length + 2,
                             itemBuilder: (context, index) {
-                              if (index == mixedItems.length) {
+                              if (index == 0) {
+                                return _buildFollowedPeopleSection();
+                              }
+
+                              if (index == products.length + 1) {
                                 if (isLoading) {
                                   return Padding(
                                     padding: const EdgeInsets.symmetric(
@@ -358,17 +432,9 @@ class _MainHomePanelState extends State<MainHomePanel>
                                 return const SizedBox.shrink();
                               }
 
-                              final item = mixedItems[index];
-
-                              if (item['type'] == 'category_block') {
-                                return DinamicCategoriesHList(
-                                  categories: categories,
-                                  onCategoryTap: _openCategory,
-                                );
-                              }
-
                               return ProductCard(
-                                product: item['data'] as Map<String, dynamic>,
+                                product:
+                                    products[index - 1] as Map<String, dynamic>,
                               );
                             },
                           ),

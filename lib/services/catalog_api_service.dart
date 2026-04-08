@@ -63,7 +63,9 @@ class CatalogApiService {
     return Map<String, dynamic>.from(data as Map);
   }
 
-  Future<List<Map<String, dynamic>>> fetchUsersPresence(List<String> userIds) async {
+  Future<List<Map<String, dynamic>>> fetchUsersPresence(
+    List<String> userIds,
+  ) async {
     if (userIds.isEmpty) {
       return const <Map<String, dynamic>>[];
     }
@@ -72,7 +74,10 @@ class CatalogApiService {
       '/profiles/presence',
       authenticated: true,
       queryParameters: {
-        'userIds': userIds.map((userId) => userId.trim()).where((userId) => userId.isNotEmpty).join(','),
+        'userIds': userIds
+            .map((userId) => userId.trim())
+            .where((userId) => userId.isNotEmpty)
+            .join(','),
       },
     );
 
@@ -117,6 +122,47 @@ class CatalogApiService {
         .whereType<Map>()
         .map((item) => Map<String, dynamic>.from(item))
         .toList();
+  }
+
+  Future<List<Map<String, dynamic>>> fetchCurrentUserFollowing() async {
+    final data = await _client.get(
+      '/profiles/me/following',
+      authenticated: true,
+    );
+    return (data as List)
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> startCurrentUserLive({
+    required String title,
+    required String category,
+  }) async {
+    final data = await _client.post(
+      '/profiles/me/live/start',
+      authenticated: true,
+      body: {'title': title, 'category': category},
+    );
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<Map<String, dynamic>> stopCurrentUserLive() async {
+    final data = await _client.post(
+      '/profiles/me/live/stop',
+      authenticated: true,
+    );
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<Map<String, dynamic>> fetchSellerLiveJoinInfo(
+    String sellerProfileId,
+  ) async {
+    final data = await _client.get(
+      '/profiles/sellers/$sellerProfileId/live/join',
+      authenticated: true,
+    );
+    return Map<String, dynamic>.from(data as Map);
   }
 
   Future<List<Map<String, dynamic>>> fetchSellerProfileViews(

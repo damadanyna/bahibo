@@ -52,6 +52,48 @@ export class ProfilesController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post('me/live/start')
+  async startCurrentUserLive(
+    @Req() req: { user: { userId: string } },
+    @Body() body: { title?: string; category?: string },
+  ) {
+    return {
+      success: true,
+      message: 'Live started successfully',
+      data: await this.profilesService.startCurrentUserLive(req.user.userId, {
+        title: body.title ?? '',
+        category: body.category ?? '',
+      }),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('me/live/stop')
+  async stopCurrentUserLive(@Req() req: { user: { userId: string } }) {
+    return {
+      success: true,
+      message: 'Live stopped successfully',
+      data: await this.profilesService.stopCurrentUserLive(req.user.userId),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('sellers/:sellerProfileId/live/join')
+  async getSellerLiveJoinInfo(
+    @Req() req: { user: { userId: string } },
+    @Param('sellerProfileId') sellerProfileId: string,
+  ) {
+    return {
+      success: true,
+      message: 'Seller live join info fetched successfully',
+      data: await this.profilesService.getSellerLiveJoinInfo(
+        req.user.userId,
+        sellerProfileId,
+      ),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post('me/shop-request')
   async submitShopRequest(@Req() req: { user: { userId: string } }) {
     return {
@@ -242,6 +284,18 @@ export class ProfilesController {
       success: true,
       message: 'Users presence fetched successfully',
       data: await this.profilesService.getUsersPresence(rawUserIds),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('me/following')
+  async getCurrentUserFollowing(
+    @Req() req: { user: { userId: string } },
+  ) {
+    return {
+      success: true,
+      message: 'Current user following fetched successfully',
+      data: await this.profilesService.getCurrentUserFollowing(req.user.userId),
     };
   }
 
