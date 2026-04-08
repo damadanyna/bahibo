@@ -17,8 +17,13 @@ import 'package:flutter/material.dart';
 
 class NotificationsPage extends StatefulWidget {
   final List<Map<String, dynamic>> notifications;
+  final ValueChanged<List<Map<String, dynamic>>>? onNotificationsChanged;
 
-  const NotificationsPage({super.key, required this.notifications});
+  const NotificationsPage({
+    super.key,
+    required this.notifications,
+    this.onNotificationsChanged,
+  });
 
   @override
   State<NotificationsPage> createState() => _NotificationsPageState();
@@ -72,8 +77,56 @@ class _NotificationsPageState extends State<NotificationsPage> {
           ..clear()
           ..addAll(data);
       });
+      _publishNotificationsChanged();
     } on AppApiException {
       // Ignore transient refresh failures for realtime updates.
+    }
+  }
+
+  void _publishNotificationsChanged() {
+    widget.onNotificationsChanged?.call(
+      _notifications.map(Map<String, dynamic>.from).toList(),
+    );
+  }
+
+  Future<void> _markNotificationAsRead(
+    Map<String, dynamic> notification,
+  ) async {
+    final notificationId = notification['id']?.toString();
+    if (notificationId == null || notificationId.isEmpty) {
+      return;
+    }
+
+    final index = _notifications.indexWhere(
+      (item) => item['id']?.toString() == notificationId,
+    );
+    if (index == -1 || _notifications[index]['unread'] != true) {
+      return;
+    }
+
+    final previousNotification = Map<String, dynamic>.from(
+      _notifications[index],
+    );
+
+    setState(() {
+      _notifications[index] = {..._notifications[index], 'unread': false};
+    });
+    _publishNotificationsChanged();
+
+    try {
+      await _notificationsApiService.markNotificationAsRead(notificationId);
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _notifications[index] = previousNotification;
+      });
+      _publishNotificationsChanged();
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
     }
   }
 
@@ -171,7 +224,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Deconnexion'),
-        content: const Text('Voulez-vous vraiment deconnecter ce compte ?'),
+        content: const Text(
+          'Voulez-vous vraiment vous deconnecter de ce compte ?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -226,10 +281,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
       case _NotificationAppBarAction.conditions:
         await _showInfoSheet(
           context,
-          title: 'Conditions et regle de confidentialite',
+          title: 'Conditions et regles de confidentialite',
           icon: Icons.verified_user_outlined,
           paragraphs: const [
-            'Vos informations restent utilisees uniquement pour ameliorer les recommandations, les notifications et les echanges avec les vendeurs que vous suivez.',
+            'Vos informations sont utilisees uniquement pour ameliorer les recommandations, les notifications et les echanges avec les vendeurs que vous suivez.',
             'Bahibo protege les donnees partagees dans l\'application et limite leur affichage aux actions strictement necessaires a votre experience.',
           ],
         );
@@ -240,19 +295,19 @@ class _NotificationsPageState extends State<NotificationsPage> {
           title: 'Aide',
           icon: Icons.help_outline_rounded,
           paragraphs: const [
-            'Consultez vos notifications pour suivre les nouveaux produits, les activites des fournisseurs et les mises a jour de votre reseau.',
-            'Si une notification semble incomplete, ouvrez la recherche pour retrouver rapidement le vendeur ou le produit concerne.',
+            'Consultez vos notifications pour suivre les nouveaux produits, l\'activite des vendeurs et les mises a jour de votre reseau.',
+            'Si une notification semble incomplete, utilisez la recherche pour retrouver rapidement le vendeur ou le produit concerne.',
           ],
         );
         return;
       case _NotificationAppBarAction.comment:
         await _showInfoSheet(
           context,
-          title: 'Commentaire',
+          title: 'Commentaires',
           icon: Icons.rate_review_outlined,
           paragraphs: const [
-            'Vous pouvez nous envoyer vos remarques sur les notifications, la recherche ou l\'affichage des produits pour ameliorer l\'experience vendeur.',
-            'Les commentaires servent a prioriser les corrections et les nouvelles fonctionnalites dans l\'application.',
+            'Vous pouvez nous envoyer vos remarques sur les notifications, la recherche ou l\'affichage des produits afin d\'ameliorer l\'experience utilisateur.',
+            'Vos commentaires nous aident a prioriser les corrections et les nouvelles fonctionnalites de l\'application.',
           ],
         );
         return;
@@ -266,12 +321,20 @@ class _NotificationsPageState extends State<NotificationsPage> {
     BuildContext context,
     Map<String, dynamic> notification,
   ) async {
+    await _markNotificationAsRead(notification);
+
+    if (!context.mounted) {
+      return;
+    }
+
     final type = (notification['type'] as String? ?? '').trim();
 
     switch (type) {
       case 'product_added':
+      case 'product_updated':
         await _openProductNotification(context, notification);
         return;
+      case 'followed_product_comment':
       case 'product_comment':
         await _openProductNotification(
           context,
@@ -352,14 +415,14 @@ class _NotificationsPageState extends State<NotificationsPage> {
         .map(
           (actor) => UserListItemData(
             name: (actor['name'] as String?) ?? 'Utilisateur Bahibo',
-            subtitle: 'A consulte votre profil',
+            subtitle: 'A consulte votre profil.',
             imageUrl: (actor['avatarUrl'] as String?) ?? '',
             trailingText: (actor['timeLabel'] as String?) ?? 'recent',
             profileData: buildProfileFromUser(
               userId: actor['id'] as String?,
               name: (actor['name'] as String?) ?? 'Utilisateur Bahibo',
               avatarUrl: (actor['avatarUrl'] as String?) ?? '',
-              subtitle: 'A consulte votre profil Bahibo',
+              subtitle: 'A consulte votre profil Bahibo.',
             ),
           ),
         )
@@ -412,7 +475,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
             authorName: (actor['name'] as String?) ?? 'Utilisateur Bahibo',
             avatarUrl: (actor['avatarUrl'] as String?) ?? '',
             timeLabel: (actor['timeLabel'] as String?) ?? 'recent',
-            message: 'A commente $productName.',
+            message: 'A commente le produit $productName.',
           ),
         )
         .toList();
@@ -435,7 +498,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text(
-          'Les details de cette notification ne sont pas disponibles.',
+          'Les details de cette notification ne sont pas disponibles pour le moment.',
         ),
       ),
     );
@@ -483,7 +546,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                 value: _NotificationAppBarAction.conditions,
                 child: _NotificationMenuItem(
                   icon: Icons.shield_outlined,
-                  label: 'Conditions et regle de confidentialite',
+                  label: 'Conditions et regles de confidentialite',
                 ),
               ),
               PopupMenuItem(
@@ -497,7 +560,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                 value: _NotificationAppBarAction.comment,
                 child: _NotificationMenuItem(
                   icon: Icons.rate_review_outlined,
-                  label: 'Commentaire',
+                  label: 'Commentaires',
                 ),
               ),
               PopupMenuItem(
@@ -575,6 +638,46 @@ class _NotificationTile extends StatelessWidget {
 
   const _NotificationTile({required this.notification, required this.onTap});
 
+  _NotificationVisual _resolveVisual(String type) {
+    switch (type) {
+      case 'product_added':
+        return const _NotificationVisual(
+          icon: Icons.add_box_rounded,
+          label: 'Nouveau produit',
+        );
+      case 'product_updated':
+        return const _NotificationVisual(
+          icon: Icons.price_change_rounded,
+          label: 'Produit mis a jour',
+        );
+      case 'followed_product_comment':
+        return const _NotificationVisual(
+          icon: Icons.chat_bubble_rounded,
+          label: 'Commentaire d\'un abonne',
+        );
+      case 'product_comment':
+        return const _NotificationVisual(
+          icon: Icons.mode_comment_rounded,
+          label: 'Nouveaux commentaires',
+        );
+      case 'product_like':
+        return const _NotificationVisual(
+          icon: Icons.favorite_rounded,
+          label: 'Nouveaux likes',
+        );
+      case 'profile_view':
+        return const _NotificationVisual(
+          icon: Icons.visibility_rounded,
+          label: 'Vues du profil',
+        );
+      default:
+        return const _NotificationVisual(
+          icon: Icons.notifications_active_rounded,
+          label: 'Notification',
+        );
+    }
+  }
+
   String _resolveNotificationDescription({
     required String channel,
     required String description,
@@ -595,32 +698,13 @@ class _NotificationTile extends StatelessWidget {
       return '$channel $trimmedContent';
     }
 
-    return 'Nouvelle notification provenant du fournisseur $channel.';
-  }
-
-  String _resolveHeadline({
-    required String content,
-    required String productName,
-  }) {
-    if (content.trim().isNotEmpty) {
-      return 'Mise en ligne : $content';
-    }
-
-    if ((notification['title'] as String?)?.trim().isNotEmpty == true) {
-      return (notification['title'] as String).trim();
-    }
-
-    if (productName.trim().isNotEmpty) {
-      return 'Mise en ligne : $productName';
-    }
-
-    return 'Mise en ligne : nouvelle activite';
+    return 'Nouvelle notification de $channel.';
   }
 
   String _formatRelativeTime(String value) {
     final normalizedValue = value.trim();
     if (normalizedValue.isEmpty) {
-      return 'recent';
+      return 'recemment';
     }
 
     final createdAt = DateTime.tryParse(normalizedValue)?.toLocal();
@@ -663,7 +747,7 @@ class _NotificationTile extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final channel = notification['channel'] as String? ?? '';
-    final content = notification['content'] as String? ?? '';
+    final type = notification['type'] as String? ?? '';
     final description = notification['description'] as String? ?? '';
     final productName = notification['productName'] as String? ?? '';
     final time = notification['time'] as String? ?? '';
@@ -671,15 +755,17 @@ class _NotificationTile extends StatelessWidget {
     final avatarUrl = notification['avatarUrl'] as String? ?? '';
     final thumbnailUrl = notification['thumbnailUrl'] as String? ?? '';
     final isUnread = notification['unread'] == true;
+    final visual = _resolveVisual(type);
     final hasProductPreview = productName.trim().isNotEmpty;
+    final descriptionColor = isUnread
+        ? (theme.brightness == Brightness.dark
+              ? Colors.white
+              : colorScheme.onSurface)
+        : colorScheme.onSurface.withValues(alpha: 0.52);
     final resolvedDescription = _resolveNotificationDescription(
       channel: channel,
       description: description,
-      content: content,
-      productName: productName,
-    );
-    final headline = _resolveHeadline(
-      content: content,
+      content: notification['content'] as String? ?? '',
       productName: productName,
     );
 
@@ -690,59 +776,53 @@ class _NotificationTile extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 20, right: 8),
-              child: Container(
-                width: 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  color: isUnread
-                      ? const Color(0xFF3EA6FF)
-                      : Colors.transparent,
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ),
             _NotificationAvatar(label: channel, imageUrl: avatarUrl),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    channel,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: colorScheme.onSurface,
-                      fontWeight: FontWeight.w800,
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(visual.icon, size: 14, color: colorScheme.primary),
+                        const SizedBox(width: 6),
+                        Text(
+                          visual.label,
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: colorScheme.primary,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 8),
                   Text(
-                    headline,
+                    resolvedDescription,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodyLarge?.copyWith(
-                      color: colorScheme.onSurface,
-                      fontWeight: FontWeight.w600,
-                      height: 1.18,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    resolvedDescription,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurface.withValues(alpha: 0.68),
-                      height: 1.15,
+                      color: descriptionColor,
+                      fontSize: 13,
+                      fontWeight: isUnread ? FontWeight.w800 : FontWeight.w500,
+                      height: 1.24,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     relativeTime,
                     style: theme.textTheme.bodySmall?.copyWith(
+                      fontSize: 12,
                       color: colorScheme.onSurface.withValues(alpha: 0.52),
                       fontWeight: FontWeight.w500,
                     ),
@@ -753,8 +833,8 @@ class _NotificationTile extends StatelessWidget {
             const SizedBox(width: 10),
             _NotificationThumbnail(
               imageUrl: thumbnailUrl,
-              width: 96,
-              height: 72,
+              width: 86,
+              height: 62,
               showPlaceholder: !hasProductPreview,
             ),
           ],
@@ -762,6 +842,13 @@ class _NotificationTile extends StatelessWidget {
       ),
     );
   }
+}
+
+class _NotificationVisual {
+  final IconData icon;
+  final String label;
+
+  const _NotificationVisual({required this.icon, required this.label});
 }
 
 class _NotificationAvatar extends StatelessWidget {
@@ -779,8 +866,8 @@ class _NotificationAvatar extends StatelessWidget {
     final hasImage = imageUrl.trim().isNotEmpty;
 
     return Container(
-      width: 34,
-      height: 34,
+      width: 52,
+      height: 52,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: theme.colorScheme.primary.withValues(alpha: 0.14),
@@ -802,10 +889,10 @@ class _NotificationAvatar extends StatelessWidget {
               )
             : Image.network(
                 imageUrl,
-                width: 34,
-                height: 34,
+                width: 42,
+                height: 42,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Center(
+                errorBuilder: (context, error, stackTrace) => Center(
                   child: Text(
                     fallback,
                     style: theme.textTheme.titleSmall?.copyWith(
@@ -815,48 +902,6 @@ class _NotificationAvatar extends StatelessWidget {
                   ),
                 ),
               ),
-      ),
-    );
-  }
-}
-
-class _NotificationProductPreview extends StatelessWidget {
-  final String productName;
-  final String imageUrl;
-
-  const _NotificationProductPreview({
-    required this.productName,
-    required this.imageUrl,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(
-          alpha: 0.45,
-        ),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          _NotificationThumbnail(imageUrl: imageUrl, width: 68, height: 52),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              productName,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: theme.colorScheme.onSurface,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -899,7 +944,7 @@ class _NotificationThumbnail extends StatelessWidget {
             : Image.network(
                 imageUrl,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Icon(
+                errorBuilder: (context, error, stackTrace) => Icon(
                   Icons.image_not_supported_outlined,
                   color: theme.colorScheme.onSurface.withValues(alpha: 0.42),
                 ),

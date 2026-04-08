@@ -10,12 +10,18 @@ import 'package:bahibo/services/chat_realtime_service.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
 enum _EditableImageTarget { cover, avatar }
+
+enum _LocationAccessBlocker {
+  servicesDisabled,
+  permissionDenied,
+  permissionDeniedForever,
+  preciseLocationRequired,
+}
 
 class MainSimpleUser extends StatefulWidget {
   const MainSimpleUser({super.key});
@@ -35,6 +41,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
   bool _isSubmittingShopRequest = false;
   bool _isLoadingLocation = true;
   bool _isSavingLocation = false;
+  _LocationAccessBlocker? _locationAccessBlocker;
   String? _profileLoadError;
   String? _locationLabel;
   DateTime? _displayNameChangedAt;
@@ -74,7 +81,9 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
       final role = (user['role'] as String?)?.trim() ?? 'CUSTOMER';
       final shopRequestStatus =
           (user['shopRequestStatus'] as String?)?.trim() ?? 'NONE';
-      final displayNameChangedAt = _parseApiDateTime(user['displayNameChangedAt']);
+      final displayNameChangedAt = _parseApiDateTime(
+        user['displayNameChangedAt'],
+      );
       final nextDisplayNameChangeAt = _parseApiDateTime(
         user['nextDisplayNameChangeAt'],
       );
@@ -223,7 +232,8 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
               child: const Text('Annuler'),
             ),
             FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(controller.text.trim()),
+              onPressed: () =>
+                  Navigator.of(dialogContext).pop(controller.text.trim()),
               child: const Text('Enregistrer'),
             ),
           ],
@@ -260,7 +270,8 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
 
       setState(() {
         _displayName =
-            (updatedProfile['displayName'] as String?)?.trim().isNotEmpty == true
+            (updatedProfile['displayName'] as String?)?.trim().isNotEmpty ==
+                true
             ? (updatedProfile['displayName'] as String).trim()
             : _displayName;
         _displayNameChangedAt = _parseApiDateTime(
@@ -301,6 +312,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
     if (kIsWeb) {
       if (mounted) {
         setState(() {
+          _locationAccessBlocker = null;
           _isLoadingLocation = false;
           _locationLabel = 'Localisation indisponible';
         });
@@ -308,10 +320,17 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
       return;
     }
 
+    if (mounted) {
+      setState(() {
+        _isLoadingLocation = true;
+        _locationAccessBlocker = null;
+      });
+    }
+
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        await _closeApplicationForLocationRefusal();
+        _showLocationAccessBlocker(_LocationAccessBlocker.servicesDisabled);
         return;
       }
 
@@ -322,17 +341,23 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
 
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
-        await _closeApplicationForLocationRefusal();
+        _showLocationAccessBlocker(
+          permission == LocationPermission.deniedForever
+              ? _LocationAccessBlocker.permissionDeniedForever
+              : _LocationAccessBlocker.permissionDenied,
+        );
         return;
       }
 
-      final accuracyStatus = await Geolocator.getLocationAccuracy();
-      final resolvedAccuracy = accuracyStatus == LocationAccuracyStatus.precise
-          ? LocationAccuracy.best
-          : LocationAccuracy.medium;
+      final hasPreciseLocation = await _ensurePreciseLocationAccess();
+      if (!hasPreciseLocation) {
+        return;
+      }
 
       final position = await Geolocator.getCurrentPosition(
-        locationSettings: LocationSettings(accuracy: resolvedAccuracy),
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.best,
+        ),
       );
 
       final placemarks = await placemarkFromCoordinates(
@@ -362,6 +387,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
       }
 
       setState(() {
+        _locationAccessBlocker = null;
         _locationLabel = label;
         _isLoadingLocation = false;
       });
@@ -372,29 +398,191 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
         longitude: position.longitude,
       );
     } on PermissionDeniedException {
-      await _closeApplicationForLocationRefusal();
+      final permission = await Geolocator.checkPermission();
+      _showLocationAccessBlocker(
+        permission == LocationPermission.deniedForever
+            ? _LocationAccessBlocker.permissionDeniedForever
+            : _LocationAccessBlocker.permissionDenied,
+      );
     } catch (_) {
       if (!mounted) {
         return;
       }
 
       setState(() {
+        _locationAccessBlocker = null;
         _locationLabel ??= 'Localisation indisponible';
         _isLoadingLocation = false;
       });
     }
   }
 
-  Future<void> _closeApplicationForLocationRefusal() async {
-    if (kIsWeb) {
+  void _showLocationAccessBlocker(_LocationAccessBlocker blocker) {
+    if (!mounted) {
       return;
     }
 
-    await SystemNavigator.pop();
+    setState(() {
+      _locationAccessBlocker = blocker;
+      _isLoadingLocation = false;
+    });
+  }
 
-    if (!Platform.isAndroid) {
-      exit(0);
+  Future<bool> _ensurePreciseLocationAccess() async {
+    final accuracyStatus = await Geolocator.getLocationAccuracy();
+    if (accuracyStatus == LocationAccuracyStatus.precise) {
+      return true;
     }
+
+    _showLocationAccessBlocker(_LocationAccessBlocker.preciseLocationRequired);
+    return false;
+  }
+
+  Future<void> _openLocationSettingsAndRetry() async {
+    await Geolocator.openLocationSettings();
+    await _loadCurrentLocation();
+  }
+
+  Future<void> _openAppSettingsAndRetry() async {
+    await Geolocator.openAppSettings();
+    await _loadCurrentLocation();
+  }
+
+  Widget _buildLocationAccessBlocker(
+    ThemeData theme,
+    _LocationAccessBlocker blocker,
+  ) {
+    final appColors = theme.appColors;
+    final colorScheme = theme.colorScheme;
+
+    final icon = switch (blocker) {
+      _LocationAccessBlocker.servicesDisabled => Icons.location_off_outlined,
+      _LocationAccessBlocker.permissionDenied =>
+        Icons.location_searching_outlined,
+      _LocationAccessBlocker.permissionDeniedForever =>
+        Icons.app_settings_alt_outlined,
+      _LocationAccessBlocker.preciseLocationRequired =>
+        Icons.my_location_outlined,
+    };
+
+    final title = switch (blocker) {
+      _LocationAccessBlocker.servicesDisabled => 'Activez la localisation',
+      _LocationAccessBlocker.permissionDenied => 'Autorisez la localisation',
+      _LocationAccessBlocker.permissionDeniedForever => 'Autorisation requise',
+      _LocationAccessBlocker.preciseLocationRequired =>
+        'Localisation precise requise',
+    };
+
+    final message = switch (blocker) {
+      _LocationAccessBlocker.servicesDisabled =>
+        'Bahibo a besoin que le service de localisation du telephone soit active pour continuer.',
+      _LocationAccessBlocker.permissionDenied =>
+        'Bahibo a besoin de votre position pour fonctionner. Autorisez la localisation pour continuer.',
+      _LocationAccessBlocker.permissionDeniedForever =>
+        'La permission de localisation a ete refusee de facon permanente. Ouvrez les reglages de l\'application pour l\'activer.',
+      _LocationAccessBlocker.preciseLocationRequired =>
+        'Bahibo a besoin d\'une localisation precise. Activez l\'option de localisation precise dans les reglages de l\'application.',
+    };
+
+    final primaryLabel = switch (blocker) {
+      _LocationAccessBlocker.servicesDisabled =>
+        'Ouvrir les reglages de localisation',
+      _LocationAccessBlocker.permissionDenied => 'Autoriser maintenant',
+      _LocationAccessBlocker.permissionDeniedForever =>
+        'Ouvrir les reglages de l\'application',
+      _LocationAccessBlocker.preciseLocationRequired =>
+        'Ouvrir les reglages de l\'application',
+    };
+
+    final primaryAction = switch (blocker) {
+      _LocationAccessBlocker.servicesDisabled => _openLocationSettingsAndRetry,
+      _LocationAccessBlocker.permissionDenied => _loadCurrentLocation,
+      _LocationAccessBlocker.permissionDeniedForever =>
+        _openAppSettingsAndRetry,
+      _LocationAccessBlocker.preciseLocationRequired =>
+        _openAppSettingsAndRetry,
+    };
+
+    return Scaffold(
+      backgroundColor: appColors.backgroundBase,
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: theme.cardColor,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: appColors.inputBorder),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary.withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      alignment: Alignment.center,
+                      child: Icon(icon, size: 34, color: colorScheme.primary),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      title,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        color: colorScheme.onSurface,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      message,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: appColors.mutedText,
+                        fontWeight: FontWeight.w600,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: DynamicIconButton(
+                        text: primaryLabel,
+                        icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+                        onPressed: primaryAction,
+                        backgroundColor: colorScheme.primary,
+                        foregroundColor: colorScheme.onPrimary,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 14,
+                        ),
+                        borderRadius: 20,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _loadCurrentLocation,
+                        icon: const Icon(Icons.refresh_rounded, size: 18),
+                        label: const Text('Reessayer'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _persistCurrentLocation({
@@ -816,6 +1004,11 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
     final titleColor = theme.colorScheme.onSurface;
     final subtitleColor = appColors.mutedText;
 
+    final locationAccessBlocker = _locationAccessBlocker;
+    if (locationAccessBlocker != null) {
+      return _buildLocationAccessBlocker(theme, locationAccessBlocker);
+    }
+
     return Scaffold(
       backgroundColor: appColors.backgroundBase,
       body: SafeArea(
@@ -1006,10 +1199,11 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                                   Expanded(
                                     child: Text(
                                       _displayName,
-                                      style: theme.textTheme.headlineSmall?.copyWith(
-                                        color: titleColor,
-                                        fontWeight: FontWeight.w900,
-                                      ),
+                                      style: theme.textTheme.headlineSmall
+                                          ?.copyWith(
+                                            color: titleColor,
+                                            fontWeight: FontWeight.w900,
+                                          ),
                                     ),
                                   ),
                                   const SizedBox(width: 12),
@@ -1026,7 +1220,10 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                                               color: theme.colorScheme.primary,
                                             ),
                                           )
-                                        : const Icon(Icons.edit_outlined, size: 18),
+                                        : const Icon(
+                                            Icons.edit_outlined,
+                                            size: 18,
+                                          ),
                                     label: Text(
                                       _canUpdateDisplayName
                                           ? 'Modifier'

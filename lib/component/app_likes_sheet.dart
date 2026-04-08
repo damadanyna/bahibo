@@ -119,7 +119,7 @@ class _AppLikesSheetContent extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                '$initialLikeCount personnes ont aime ce produit',
+                '$initialLikeCount personnes ont aimé ce produit',
                 style: TextStyle(
                   color: theme.colorScheme.primary.withOpacity(0.72),
                   fontSize: 12.5,
@@ -223,7 +223,7 @@ class _AppLikesSheetContent extends StatelessWidget {
                                     ),
                                     const SizedBox(width: 6),
                                     Text(
-                                      'A aime ce produit',
+                                      'A aimé ce produit',
                                       style: TextStyle(
                                         color: appColors.heroForeground,
                                         fontSize: 13,

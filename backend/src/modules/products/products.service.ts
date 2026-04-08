@@ -118,6 +118,7 @@ export class ProductsService {
       productTitle: product.title,
       productImageUrl: product.imageUrl,
     });
+    await this.emitNotificationRefreshToSellerFollowers(sellerProfile.id, []);
     return this.toEntity(product);
   }
 
@@ -188,6 +189,17 @@ export class ProductsService {
         : [existingProduct.imageUrl],
     );
 
+    const hasPriceChanged =
+      dto.priceAmount != null && dto.priceAmount.toString() !== existingProduct.priceAmount.toString();
+    const hasAvailabilityChanged =
+      dto.isAvailable != null && dto.isAvailable !== existingProduct.isAvailable;
+    const existingImageUrls = existingProduct.productImages.length > 0
+      ? existingProduct.productImages.map((image) => image.imageUrl)
+      : [existingProduct.imageUrl];
+    const hasImagesChanged =
+      existingImageUrls.length !== imageUrls.length ||
+      existingImageUrls.some((imageUrl, index) => imageUrl !== imageUrls[index]);
+
     const updatedProduct = await this.prisma.product.update({
       where: { id: productId },
       data: {
@@ -231,6 +243,18 @@ export class ProductsService {
     });
 
     await this.emitSellerProfileUpdatedByProfileId(sellerProfile.id);
+    if (hasPriceChanged || hasAvailabilityChanged || hasImagesChanged) {
+      await this.pushNotificationsService.sendProductUpdatedNotification({
+        sellerProfileId: sellerProfile.id,
+        sellerUserId: sellerProfile.userId,
+        sellerDisplayName: sellerProfile.studioName,
+        sellerAvatarUrl: sellerProfile.user.avatarUrl ?? undefined,
+        productId: updatedProduct.id,
+        productTitle: updatedProduct.title,
+        productImageUrl: updatedProduct.imageUrl,
+      });
+      await this.emitNotificationRefreshToSellerFollowers(sellerProfile.id, []);
+    }
     return this.toEntity(updatedProduct);
   }
 
@@ -385,6 +409,33 @@ export class ProductsService {
       );
     }
 
+    const commenterFollowsSeller = await this.prisma.sellerFollow.findUnique({
+      where: {
+        followerUserId_sellerProfileId: {
+          followerUserId: currentUserId,
+          sellerProfileId: product.sellerProfile.id,
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (commenterFollowsSeller != null) {
+      await this.pushNotificationsService.sendFollowedProductCommentNotification({
+        sellerProfileId: product.sellerProfile.id,
+        sellerUserId: product.sellerProfile.userId,
+        commenterUserId: currentUserId,
+        commenterDisplayName: comment.user.displayName,
+        sellerDisplayName: product.sellerProfile.studioName,
+        sellerAvatarUrl: product.sellerProfile.user.avatarUrl ?? undefined,
+        productId: product.id,
+        productTitle: product.title,
+        productImageUrl: product.imageUrl,
+      });
+      await this.emitNotificationRefreshToSellerFollowers(product.sellerProfile.id, [currentUserId]);
+    }
+
     return {
       product: this.toEntity(updatedProduct),
       comment: {
@@ -400,6 +451,34 @@ export class ProductsService {
         },
       },
     };
+  }
+
+  private async emitNotificationRefreshToSellerFollowers(
+    sellerProfileId: string,
+    excludedUserIds: string[],
+  ) {
+    const followerLinks = await this.prisma.sellerFollow.findMany({
+      where: {
+        sellerProfileId,
+        followerUserId: {
+          notIn: excludedUserIds,
+        },
+      },
+      select: {
+        followerUserId: true,
+      },
+    });
+
+    for (const followerLink of followerLinks) {
+      this.conversationsRealtimeGateway.emitNotificationEvent(
+        followerLink.followerUserId,
+        {
+          type: 'notifications:updated',
+          userId: followerLink.followerUserId,
+          reason: 'followed_seller_activity',
+        },
+      );
+    }
   }
 
   async shareProduct(currentUserId: string, productId: string) {

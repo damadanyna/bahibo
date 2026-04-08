@@ -76,11 +76,23 @@ model User {
   soldConversations   ChatConversation[] @relation("ConversationSeller")
   chatMessages        ChatMessage[]      @relation("MessageSender")
   deviceTokens        UserDeviceToken[]
+  notificationReadStates NotificationReadState[]
   sellerFollows       SellerFollow[]     @relation("SellerFollowFollower")
   sellerProfileViews  SellerProfileView[] @relation("SellerProfileViewViewer")
   productLikes        ProductLike[]
   productComments     ProductComment[]
   productShares       ProductShare[]
+}
+
+model NotificationReadState {
+  id             String   @id @default(uuid())
+  notificationId String
+  userId         String
+  readAt         DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, notificationId])
+  @@index([userId, readAt])
 }
 
 model UserDeviceToken {

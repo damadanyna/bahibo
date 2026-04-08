@@ -45,7 +45,7 @@ type ProfileRealtimePayload = {
 type NotificationRealtimePayload = {
   type: 'notifications:updated';
   userId: string;
-  reason: 'product_like' | 'product_comment';
+  reason: 'product_like' | 'product_comment' | 'followed_seller_activity';
 };
 
 type PresenceRealtimePayload = {

@@ -4,7 +4,7 @@ class ApiConfig {
   static const String _configuredBaseUrl = String.fromEnvironment(
     'BAHIBO_API_BASE_URL',
   );
-  static const String _localNetworkBaseUrl = 'http://10.44.12.62:4000/api/v1';
+  static const String _localNetworkBaseUrl = 'http://192.168.60.62:4000/api/v1';
 
   static String get baseUrl {
     if (_configuredBaseUrl.isNotEmpty) {

@@ -202,23 +202,28 @@ class _ProductlistState extends State<Productlist>
     mixedItems = items;
   }
 
-  void _openNotificationsPage() {
-    if (_unreadNotificationCount > 0) {
-      setState(() {
-        for (final notification in _notifications) {
-          notification['unread'] = false;
-        }
-      });
-    }
-
-    Navigator.push(
+  Future<void> _openNotificationsPage() async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => NotificationsPage(
           notifications: List<Map<String, dynamic>>.from(_notifications),
+          onNotificationsChanged: (updatedNotifications) {
+            if (!mounted) {
+              return;
+            }
+
+            setState(() {
+              _notifications
+                ..clear()
+                ..addAll(updatedNotifications);
+            });
+          },
         ),
       ),
     );
+
+    await fetchNotifications();
   }
 
   Widget _buildNotificationButton(ThemeData theme) {

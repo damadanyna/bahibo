@@ -45,4 +45,11 @@ class NotificationsApiService {
       };
     }).toList();
   }
+
+  Future<void> markNotificationAsRead(String notificationId) async {
+    await _client.post(
+      '/notifications/$notificationId/read',
+      authenticated: true,
+    );
+  }
 }

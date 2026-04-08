@@ -28,6 +28,28 @@ type SendProductPublishedNotificationArgs = {
   productImageUrl?: string;
 };
 
+type SendProductUpdatedNotificationArgs = {
+  sellerProfileId: string;
+  sellerUserId: string;
+  sellerDisplayName: string;
+  sellerAvatarUrl?: string;
+  productId: string;
+  productTitle: string;
+  productImageUrl?: string;
+};
+
+type SendFollowedProductCommentNotificationArgs = {
+  sellerProfileId: string;
+  sellerUserId: string;
+  sellerDisplayName: string;
+  sellerAvatarUrl?: string;
+  commenterUserId: string;
+  commenterDisplayName: string;
+  productId: string;
+  productTitle: string;
+  productImageUrl?: string;
+};
+
 @Injectable()
 export class PushNotificationsService {
   private readonly logger = new Logger(PushNotificationsService.name);
@@ -182,10 +204,208 @@ export class PushNotificationsService {
       tokens: deviceTokens.map((deviceToken) => deviceToken.token),
       notification: {
         title: args.sellerDisplayName,
-        body: `a publie ${args.productTitle}.`,
+        body: `a publie un nouveau produit : ${args.productTitle}.`,
       },
       data: {
         type: 'product_added',
+        sellerProfileId: args.sellerProfileId,
+        sellerUserId: args.sellerUserId,
+        sellerName: args.sellerDisplayName,
+        sellerAvatarUrl: args.sellerAvatarUrl ?? '',
+        productId: args.productId,
+        productTitle: args.productTitle,
+        productImageUrl: args.productImageUrl ?? '',
+      },
+      android: {
+        priority: 'high',
+        notification: {
+          channelId: 'bahibo_messages',
+          clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+        },
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: 'default',
+          },
+        },
+      },
+    });
+
+    const invalidTokens = response.responses
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => {
+        const code = item.error?.code;
+        return (
+          code === 'messaging/invalid-registration-token' ||
+          code === 'messaging/registration-token-not-registered'
+        );
+      })
+      .map(({ index }) => deviceTokens[index].token);
+
+    if (invalidTokens.length > 0) {
+      await this.prisma.userDeviceToken.deleteMany({
+        where: {
+          token: {
+            in: invalidTokens,
+          },
+        },
+      });
+    }
+  }
+
+  async sendProductUpdatedNotification(
+    args: SendProductUpdatedNotificationArgs,
+  ) {
+    const followerLinks = await this.prisma.sellerFollow.findMany({
+      where: {
+        sellerProfileId: args.sellerProfileId,
+        followerUserId: {
+          not: args.sellerUserId,
+        },
+      },
+      select: {
+        followerUserId: true,
+      },
+    });
+
+    const recipientUserIds = Array.from(
+      new Set(followerLinks.map((link) => link.followerUserId)),
+    );
+
+    if (recipientUserIds.length === 0) {
+      return;
+    }
+
+    const deviceTokens = await this.prisma.userDeviceToken.findMany({
+      where: {
+        userId: {
+          in: recipientUserIds,
+        },
+      },
+      select: {
+        token: true,
+      },
+    });
+
+    if (deviceTokens.length === 0) {
+      return;
+    }
+
+    if (!this.firebaseApp) {
+      this.logger.warn(
+        `Skipping product update notification for ${args.productId} because Firebase Admin is not configured.`,
+      );
+      return;
+    }
+
+    const response = await getMessaging(this.firebaseApp).sendEachForMulticast({
+      tokens: deviceTokens.map((deviceToken) => deviceToken.token),
+      notification: {
+        title: args.sellerDisplayName,
+        body: `a mis a jour le produit : ${args.productTitle}.`,
+      },
+      data: {
+        type: 'product_updated',
+        sellerProfileId: args.sellerProfileId,
+        sellerUserId: args.sellerUserId,
+        sellerName: args.sellerDisplayName,
+        sellerAvatarUrl: args.sellerAvatarUrl ?? '',
+        productId: args.productId,
+        productTitle: args.productTitle,
+        productImageUrl: args.productImageUrl ?? '',
+      },
+      android: {
+        priority: 'high',
+        notification: {
+          channelId: 'bahibo_messages',
+          clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+        },
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: 'default',
+          },
+        },
+      },
+    });
+
+    const invalidTokens = response.responses
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => {
+        const code = item.error?.code;
+        return (
+          code === 'messaging/invalid-registration-token' ||
+          code === 'messaging/registration-token-not-registered'
+        );
+      })
+      .map(({ index }) => deviceTokens[index].token);
+
+    if (invalidTokens.length > 0) {
+      await this.prisma.userDeviceToken.deleteMany({
+        where: {
+          token: {
+            in: invalidTokens,
+          },
+        },
+      });
+    }
+  }
+
+  async sendFollowedProductCommentNotification(
+    args: SendFollowedProductCommentNotificationArgs,
+  ) {
+    const followerLinks = await this.prisma.sellerFollow.findMany({
+      where: {
+        sellerProfileId: args.sellerProfileId,
+        followerUserId: {
+          notIn: [args.sellerUserId, args.commenterUserId],
+        },
+      },
+      select: {
+        followerUserId: true,
+      },
+    });
+
+    const recipientUserIds = Array.from(
+      new Set(followerLinks.map((link) => link.followerUserId)),
+    );
+
+    if (recipientUserIds.length === 0) {
+      return;
+    }
+
+    const deviceTokens = await this.prisma.userDeviceToken.findMany({
+      where: {
+        userId: {
+          in: recipientUserIds,
+        },
+      },
+      select: {
+        token: true,
+      },
+    });
+
+    if (deviceTokens.length === 0) {
+      return;
+    }
+
+    if (!this.firebaseApp) {
+      this.logger.warn(
+        `Skipping follower comment notification for ${args.productId} because Firebase Admin is not configured.`,
+      );
+      return;
+    }
+
+    const response = await getMessaging(this.firebaseApp).sendEachForMulticast({
+      tokens: deviceTokens.map((deviceToken) => deviceToken.token),
+      notification: {
+        title: args.sellerDisplayName,
+        body: `${args.commenterDisplayName} a commente le produit ${args.productTitle}.`,
+      },
+      data: {
+        type: 'followed_product_comment',
         sellerProfileId: args.sellerProfileId,
         sellerUserId: args.sellerUserId,
         sellerName: args.sellerDisplayName,

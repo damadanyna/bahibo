@@ -1,5 +1,6 @@
 import 'package:bahibo/auth/session_gate.dart';
 import 'package:bahibo/services/chat_realtime_service.dart';
+import 'package:bahibo/services/location_permission_service.dart';
 import 'package:bahibo/providers/theme_provider.dart';
 import 'package:bahibo/services/push_notification_service.dart';
 import 'package:flutter/material.dart';
@@ -40,6 +41,9 @@ class _AppLifecycleBootstrapState extends State<_AppLifecycleBootstrap>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      LocationPermissionService.ensurePermissionRequestedOnLaunch();
+    });
   }
 
   @override

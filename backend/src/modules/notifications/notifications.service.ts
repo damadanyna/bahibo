@@ -15,37 +15,134 @@ export class NotificationsService {
       },
     });
 
-    const latestProducts = await this.prisma.product.findMany({
+    const sellerFollows = await this.prisma.sellerFollow.findMany({
       where: {
-        sellerProfile: {
-          followers: {
-            some: {
-              followerUserId: userId,
+        followerUserId: userId,
+      },
+      select: {
+        sellerProfileId: true,
+        createdAt: true,
+      },
+    });
+
+    const latestProducts = sellerFollows.length === 0
+      ? []
+      : await this.prisma.product.findMany({
+          where: {
+            sellerProfile: {
+              userId: {
+                not: userId,
+              },
+            },
+            OR: sellerFollows.map((sellerFollow) => ({
+              sellerProfileId: sellerFollow.sellerProfileId,
+              createdAt: {
+                gte: sellerFollow.createdAt,
+              },
+            })),
+          },
+          include: {
+            sellerProfile: {
+              include: {
+                user: true,
+              },
             },
           },
-          userId: {
-            not: userId,
+          orderBy: {
+            createdAt: 'desc',
           },
-        },
-      },
-      include: {
-        sellerProfile: {
+          take: 8,
+        });
+
+    const recentUpdatedProducts = sellerFollows.length === 0
+      ? []
+      : await this.prisma.product.findMany({
+          where: {
+            sellerProfile: {
+              userId: {
+                not: userId,
+              },
+            },
+            updatedAt: {
+              gt: this.prisma.product.fields.createdAt,
+            },
+            OR: sellerFollows.map((sellerFollow) => ({
+              sellerProfileId: sellerFollow.sellerProfileId,
+              updatedAt: {
+                gte: sellerFollow.createdAt,
+              },
+            })),
+          },
           include: {
-            user: true,
+            sellerProfile: {
+              include: {
+                user: true,
+              },
+            },
           },
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-      take: 8,
-    });
+          orderBy: {
+            updatedAt: 'desc',
+          },
+          take: 8,
+        });
+
+    const followedSellerIds = sellerFollows.map((sellerFollow) => sellerFollow.sellerProfileId);
+    const recentFollowerComments = followedSellerIds.length === 0
+      ? []
+      : await this.prisma.productComment.findMany({
+          where: {
+            product: {
+              sellerProfile: {
+                userId: {
+                  not: userId,
+                },
+              },
+            },
+            userId: {
+              not: userId,
+            },
+            OR: sellerFollows.map((sellerFollow) => ({
+              product: {
+                sellerProfileId: sellerFollow.sellerProfileId,
+              },
+              createdAt: {
+                gte: sellerFollow.createdAt,
+              },
+            })),
+          },
+          include: {
+            user: {
+              include: {
+                sellerFollows: {
+                  where: {
+                    sellerProfileId: {
+                      in: followedSellerIds,
+                    },
+                  },
+                },
+              },
+            },
+            product: {
+              include: {
+                sellerProfile: {
+                  include: {
+                    user: true,
+                  },
+                },
+              },
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+          take: 30,
+        });
 
     const productNotifications: NotificationEntity[] = latestProducts.map((product, index) => ({
       id: `notif-${product.id}`,
       type: 'product_added',
-      title: 'Nouveau produit publie',
-      body: `${product.sellerProfile.studioName} a ajoute ${product.title}.`,
+      title: 'Nouveau produit',
+      body: `${product.sellerProfile.studioName} a publie un nouveau produit : ${product.title}.`,
       isRead: index > 1,
       createdAt: product.createdAt.toISOString(),
       seller: {
@@ -62,8 +159,42 @@ export class NotificationsService {
       },
     }));
 
+    const productUpdateNotifications = recentUpdatedProducts.map((product) => ({
+      id: `notif-product-update-${product.id}`,
+      type: 'product_updated',
+      title: 'Produit mis a jour',
+      body: `${product.sellerProfile.studioName} a mis a jour ${product.title} : prix, images ou disponibilite.`,
+      isRead: false,
+      createdAt: product.updatedAt.toISOString(),
+      sellerProfile: {
+        id: product.sellerProfile.id,
+        studioName: product.sellerProfile.studioName,
+      },
+      seller: {
+        id: product.sellerProfile.id,
+        name: product.sellerProfile.studioName,
+        avatarUrl:
+          product.sellerProfile.user.avatarUrl ??
+          'https://i.pravatar.cc/240?img=12',
+      },
+      product: {
+        id: product.id,
+        title: product.title,
+        imageUrl: product.imageUrl,
+      },
+    } satisfies NotificationEntity));
+
+    const followerCommentNotifications = this.buildFollowedSellerCommentNotifications(
+      recentFollowerComments,
+      userId,
+    );
+
     if (!sellerProfile) {
-      return productNotifications;
+      return this.applyReadStates(userId, [
+        ...followerCommentNotifications,
+        ...productUpdateNotifications,
+        ...productNotifications,
+      ].sort((left, right) => right.createdAt.localeCompare(left.createdAt)));
     }
 
     const [recentProductLikes, recentProductComments, recentProfileViews] = await Promise.all([
@@ -153,13 +284,155 @@ export class NotificationsService {
       userId,
     );
 
-    return [
+    return this.applyReadStates(userId, [
       ...productCommentNotifications,
       ...productLikeNotifications,
       ...profileViewNotifications,
+      ...followerCommentNotifications,
+      ...productUpdateNotifications,
       ...productNotifications,
     ]
-      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt)));
+  }
+
+  async markAsRead(userId: string, notificationId: string) {
+    return this.prisma.notificationReadState.upsert({
+      where: {
+        userId_notificationId: {
+          userId,
+          notificationId,
+        },
+      },
+      update: {
+        readAt: new Date(),
+      },
+      create: {
+        userId,
+        notificationId,
+      },
+      select: {
+        notificationId: true,
+        readAt: true,
+      },
+    });
+  }
+
+  private async applyReadStates(
+    userId: string,
+    notifications: NotificationEntity[],
+  ): Promise<NotificationEntity[]> {
+    if (notifications.length === 0) {
+      return notifications;
+    }
+
+    const readStates = await this.prisma.notificationReadState.findMany({
+      where: {
+        userId,
+        notificationId: {
+          in: notifications.map((notification) => notification.id),
+        },
+      },
+      select: {
+        notificationId: true,
+      },
+    });
+
+    const readNotificationIds = new Set(
+      readStates.map((readState) => readState.notificationId),
+    );
+
+    return notifications.map((notification) => ({
+      ...notification,
+      isRead: notification.isRead || readNotificationIds.has(notification.id),
+    }));
+  }
+
+  private buildFollowedSellerCommentNotifications(
+    recentFollowerComments: Array<{
+      id: string;
+      content: string;
+      createdAt: Date;
+      user: {
+        id: string;
+        displayName: string;
+        avatarUrl: string | null;
+        sellerFollows: Array<{
+          sellerProfileId: string;
+        }>;
+      };
+      product: {
+        id: string;
+        title: string;
+        imageUrl: string;
+        sellerProfile: {
+          id: string;
+          studioName: string;
+          user: {
+            avatarUrl: string | null;
+          };
+        };
+      };
+    }>,
+    currentUserId: string,
+  ): NotificationEntity[] {
+    const groupedByProduct = new Map<string, typeof recentFollowerComments>();
+
+    for (const comment of recentFollowerComments) {
+      const commenterFollowsSeller = comment.user.sellerFollows.some(
+        (sellerFollow) => sellerFollow.sellerProfileId === comment.product.sellerProfile.id,
+      );
+      if (!commenterFollowsSeller || comment.user.id === currentUserId) {
+        continue;
+      }
+
+      const group = groupedByProduct.get(comment.product.id) ?? [];
+      group.push(comment);
+      groupedByProduct.set(comment.product.id, group);
+    }
+
+    const notifications: NotificationEntity[] = [];
+
+    for (const entry of Array.from(groupedByProduct.entries())) {
+      const comments = entry[1];
+      const latestComment = comments[0];
+      const actors = comments.map((comment) => ({
+        id: comment.user.id,
+        name: comment.user.displayName,
+        avatarUrl: comment.user.avatarUrl ?? 'https://i.pravatar.cc/240?img=12',
+        timeLabel: this.buildRelativeTimeLabel(comment.createdAt),
+      }));
+
+      notifications.push({
+        id: `notif-followed-comment-${latestComment.product.id}`,
+        type: 'followed_product_comment',
+        title: 'Commentaire d\'un abonne',
+        body: comments.length === 1
+          ? `${latestComment.user.displayName} a commente le produit ${latestComment.product.title}.`
+          : `${comments.length} abonnes ont commente le produit ${latestComment.product.title}.`,
+        isRead: false,
+        createdAt: latestComment.createdAt.toISOString(),
+        commentCount: comments.length,
+        sellerProfile: {
+          id: latestComment.product.sellerProfile.id,
+          studioName: latestComment.product.sellerProfile.studioName,
+        },
+        seller: {
+          id: latestComment.product.sellerProfile.id,
+          name: latestComment.product.sellerProfile.studioName,
+          avatarUrl:
+            latestComment.product.sellerProfile.user.avatarUrl ??
+            'https://i.pravatar.cc/240?img=12',
+        },
+        product: {
+          id: latestComment.product.id,
+          title: latestComment.product.title,
+          imageUrl: latestComment.product.imageUrl,
+        },
+        actors,
+      });
+    }
+
+    return notifications;
   }
 
   private buildProductLikeNotifications(
@@ -217,8 +490,8 @@ export class NotificationsService {
         type: 'product_like',
         title: 'Nouveaux likes sur votre produit',
         body: likes.length == 1
-            ? `${productLike.user.displayName} a aime ${productLike.product.title}.`
-            : `${likes.length} utilisateurs ont aime ${productLike.product.title}.`,
+          ? `${productLike.user.displayName} a aimé le produit ${productLike.product.title}.`
+          : `${likes.length} utilisateurs ont aimé le produit ${productLike.product.title}.`,
         isRead: false,
         createdAt: productLike.createdAt.toISOString(),
         likeCount: likes.length,
@@ -301,8 +574,8 @@ export class NotificationsService {
         type: 'product_comment',
         title: 'Nouveaux commentaires sur votre produit',
         body: comments.length == 1
-            ? `${latestComment.user.displayName} a commente ${latestComment.product.title}.`
-            : `${comments.length} utilisateurs ont commente ${latestComment.product.title}.`,
+          ? `${latestComment.user.displayName} a commente le produit ${latestComment.product.title}.`
+          : `${comments.length} utilisateurs ont commente le produit ${latestComment.product.title}.`,
         isRead: false,
         createdAt: latestComment.createdAt.toISOString(),
         commentCount: comments.length,
@@ -352,13 +625,38 @@ export class NotificationsService {
       return [];
     }
 
-    const actors = recentProfileViews
-      .filter((view) => view.viewer != null && view.viewer!.id !== currentUserId)
+    const latestViewsByUser = new Map<string, {
+      id: string;
+      name: string;
+      avatarUrl: string;
+      viewedAt: Date;
+    }>();
+
+    for (const view of recentProfileViews) {
+      if (view.viewer == null || view.viewer.id === currentUserId) {
+        continue;
+      }
+
+      const existingView = latestViewsByUser.get(view.viewer.id);
+      if (existingView != null && existingView.viewedAt >= view.createdAt) {
+        continue;
+      }
+
+      latestViewsByUser.set(view.viewer.id, {
+        id: view.viewer.id,
+        name: view.viewer.displayName,
+        avatarUrl: view.viewer.avatarUrl ?? 'https://i.pravatar.cc/240?img=12',
+        viewedAt: view.createdAt,
+      });
+    }
+
+    const actors = Array.from(latestViewsByUser.values())
+      .sort((left, right) => right.viewedAt.getTime() - left.viewedAt.getTime())
       .map((view) => ({
-        id: view.viewer!.id,
-        name: view.viewer!.displayName,
-        avatarUrl: view.viewer!.avatarUrl ?? 'https://i.pravatar.cc/240?img=12',
-        timeLabel: this.buildRelativeTimeLabel(view.createdAt),
+        id: view.id,
+        name: view.name,
+        avatarUrl: view.avatarUrl,
+        timeLabel: this.buildRelativeTimeLabel(view.viewedAt),
       }));
 
     if (actors.length === 0) {
@@ -371,8 +669,8 @@ export class NotificationsService {
         type: 'profile_view',
         title: 'Nouvelles vues sur votre profil',
         body: actors.length === 1
-          ? `${actors[0].name} a regarde votre profil.`
-            : `${actors.length} utilisateurs ont regarde votre profil.`,
+          ? `${actors[0].name} a consulte votre profil.`
+            : `${actors.length} utilisateurs ont consulte votre profil.`,
         isRead: false,
         createdAt: recentProfileViews[0].createdAt.toISOString(),
         sellerProfile: {
