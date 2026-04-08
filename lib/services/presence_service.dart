@@ -7,11 +7,14 @@ import 'package:flutter/foundation.dart';
 class PresenceService {
   PresenceService._();
 
+  static const Duration _presenceRefreshInterval = Duration(seconds: 30);
+
   static final PresenceService instance = PresenceService._();
 
   final CatalogApiService _catalogApiService = CatalogApiService();
   final ValueNotifier<int> _version = ValueNotifier<int>(0);
   final Map<String, bool> _presenceByUserId = <String, bool>{};
+  final Map<String, DateTime> _lastPresenceFetchByUserId = <String, DateTime>{};
   final Set<String> _pendingUserIds = <String>{};
 
   Timer? _batchTimer;
@@ -35,8 +38,16 @@ class PresenceService {
 
     _ensureInitialized();
 
-    if (_presenceByUserId.containsKey(normalizedUserId) ||
-        _pendingUserIds.contains(normalizedUserId)) {
+    if (_pendingUserIds.contains(normalizedUserId)) {
+      return;
+    }
+
+    final lastFetchedAt = _lastPresenceFetchByUserId[normalizedUserId];
+    final shouldRefresh =
+        lastFetchedAt == null ||
+        DateTime.now().difference(lastFetchedAt) >= _presenceRefreshInterval;
+
+    if (!shouldRefresh && _presenceByUserId.containsKey(normalizedUserId)) {
       return;
     }
 
@@ -65,6 +76,7 @@ class PresenceService {
 
       final isOnline = event['isOnline'] == true;
       final currentValue = _presenceByUserId[userId];
+      _lastPresenceFetchByUserId[userId] = DateTime.now();
       if (currentValue == isOnline) {
         return;
       }
@@ -89,6 +101,7 @@ class PresenceService {
         if (userId.isEmpty) {
           continue;
         }
+        _lastPresenceFetchByUserId[userId] = DateTime.now();
         final isOnline = status['isOnline'] == true;
         if (_presenceByUserId[userId] == isOnline) {
           continue;
@@ -101,10 +114,8 @@ class PresenceService {
         _version.value += 1;
       }
     } catch (_) {
-      for (final userId in userIds) {
-        _presenceByUserId.putIfAbsent(userId, () => false);
-      }
-      _version.value += 1;
+      // Keep previous values on transient errors so a failed fetch does not
+      // permanently force users to appear offline.
     }
   }
 }

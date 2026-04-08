@@ -13,6 +13,8 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
 
+import { PrismaService } from '../../prisma/prisma.service';
+
 type ConversationRealtimePayload = {
   type: 'message:new' | 'conversation:read';
   conversationId: string;
@@ -73,6 +75,7 @@ export class ConversationsRealtimeGateway
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
   ) {}
 
   afterInit() {
@@ -104,6 +107,10 @@ export class ConversationsRealtimeGateway
 
       client.data.userId = payload.sub;
       await client.join(this.userRoom(payload.sub));
+      await this.prisma.user.update({
+        where: { id: payload.sub },
+        data: { lastSeenAt: new Date() },
+      });
       this.emitPresenceEvent({
         type: 'presence:updated',
         userId: payload.sub,
@@ -118,6 +125,10 @@ export class ConversationsRealtimeGateway
   handleDisconnect(client: Socket) {
     const userId = client.data.userId as string | undefined;
     if (userId != null) {
+      void this.prisma.user.update({
+        where: { id: userId },
+        data: { lastSeenAt: new Date() },
+      }).catch(() => undefined);
       this.emitPresenceEvent({
         type: 'presence:updated',
         userId,

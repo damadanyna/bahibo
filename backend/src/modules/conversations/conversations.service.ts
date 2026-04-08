@@ -489,6 +489,8 @@ export class ConversationsService {
         displayName: participant.displayName,
         avatarUrl: participant.avatarUrl,
         roleLabel: this.resolveRoleLabel(participant),
+        isOnline: this.conversationsRealtimeGateway.isUserConnected(participant.id),
+        lastSeenAt: participant.lastSeenAt?.toISOString() ?? null,
       },
       product: conversation.product
         ? {
@@ -531,6 +533,8 @@ export class ConversationsService {
         displayName: participant.displayName,
         avatarUrl: participant.avatarUrl,
         roleLabel: this.resolveRoleLabel(participant),
+        isOnline: this.conversationsRealtimeGateway.isUserConnected(participant.id),
+        lastSeenAt: participant.lastSeenAt?.toISOString() ?? null,
       },
       product: conversation.product
         ? {
@@ -615,6 +619,8 @@ export class ConversationsService {
         displayName: participant.displayName,
         avatarUrl: participant.avatarUrl,
         roleLabel: this.resolveRoleLabel(participant),
+        isOnline: this.conversationsRealtimeGateway.isUserConnected(participant.id),
+        lastSeenAt: participant.lastSeenAt?.toISOString() ?? null,
       },
       product: null,
       messages,

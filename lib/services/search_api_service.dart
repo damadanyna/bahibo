@@ -16,4 +16,33 @@ class SearchApiService {
 
     return Map<String, dynamic>.from(data as Map);
   }
+
+  Future<Map<String, dynamic>?> recordSearchHistory({
+    required String query,
+    required int resultCount,
+  }) async {
+    final data = await _client.post(
+      '/search/history',
+      authenticated: true,
+      body: {'query': query, 'resultCount': resultCount},
+    );
+
+    if (data == null) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<List<Map<String, dynamic>>> fetchNoResultSearchHistory() async {
+    final data = await _client.get(
+      '/search/history/no-results',
+      authenticated: true,
+    );
+
+    return (data as List)
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
 }

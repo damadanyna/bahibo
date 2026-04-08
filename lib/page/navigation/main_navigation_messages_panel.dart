@@ -294,6 +294,66 @@ class _MainNavigationMessagesPanelState
     return 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600';
   }
 
+  bool _conversationParticipantIsOnline(Map<String, dynamic> conversation) {
+    final participant = conversation['participant'];
+    if (participant is! Map) {
+      return false;
+    }
+
+    return participant['isOnline'] == true;
+  }
+
+  DateTime? _conversationParticipantLastSeen(
+    Map<String, dynamic> conversation,
+  ) {
+    final participant = conversation['participant'];
+    if (participant is! Map) {
+      return null;
+    }
+
+    final value = participant['lastSeenAt'];
+    if (value is! String || value.trim().isEmpty) {
+      return null;
+    }
+
+    return DateTime.tryParse(value)?.toLocal();
+  }
+
+  String? _conversationStatusLabel(Map<String, dynamic> conversation) {
+    if (_conversationParticipantIsOnline(conversation)) {
+      return null;
+    }
+
+    final lastSeenAt = _conversationParticipantLastSeen(conversation);
+    if (lastSeenAt == null) {
+      return null;
+    }
+
+    final difference = DateTime.now().difference(lastSeenAt);
+    if (difference.inSeconds < 45) {
+      return 'En ligne il y a quelques secondes';
+    }
+    if (difference.inMinutes < 60) {
+      return 'En ligne il y a ${difference.inMinutes} min';
+    }
+    if (difference.inHours < 24) {
+      return 'En ligne il y a ${difference.inHours} h';
+    }
+    if (difference.inDays < 7) {
+      return 'En ligne il y a ${difference.inDays} j';
+    }
+    final weeks = (difference.inDays / 7).floor();
+    if (weeks < 5) {
+      return 'En ligne il y a $weeks sem';
+    }
+    final months = (difference.inDays / 30).floor();
+    if (months < 12) {
+      return 'En ligne il y a $months mois';
+    }
+    final years = (difference.inDays / 365).floor();
+    return 'En ligne il y a $years an${years > 1 ? 's' : ''}';
+  }
+
   String _conversationPreview(Map<String, dynamic> conversation) {
     final lastMessage = conversation['lastMessage'];
     if (lastMessage is Map) {
@@ -362,7 +422,9 @@ class _MainNavigationMessagesPanelState
       context,
       MaterialPageRoute(
         builder: (_) => ChatPage(
-          conversationId: participantId == null ? conversation['id']?.toString() : null,
+          conversationId: participantId == null
+              ? conversation['id']?.toString()
+              : null,
           conversationUserId: participantId,
           sellerName: _conversationName(conversation),
           sellerRole:
@@ -390,8 +452,8 @@ class _MainNavigationMessagesPanelState
     );
     final normalizedQuery = _searchQuery.trim().toLowerCase();
     final filteredConversations = normalizedQuery.isEmpty
-      ? groupedConversations
-      : groupedConversations.where((conversation) {
+        ? groupedConversations
+        : groupedConversations.where((conversation) {
             final name = _conversationName(conversation).toLowerCase();
             final preview = _conversationPreview(conversation).toLowerCase();
             return name.contains(normalizedQuery) ||
@@ -559,6 +621,7 @@ class _MainNavigationMessagesPanelState
                       child: NavigationConversationTile(
                         name: _conversationName(conversation),
                         preview: _conversationPreview(conversation),
+                        statusLabel: _conversationStatusLabel(conversation),
                         time: _conversationTime(conversation),
                         avatarUrl: _conversationAvatar(conversation),
                         userId: _participantId(conversation),

@@ -181,6 +181,7 @@ export class ProfilesService {
     return userIds.map((userId) => ({
       userId,
       isOnline: this.conversationsRealtimeGateway.isUserConnected(userId),
+      lastSeenAt: null,
     }));
   }
 

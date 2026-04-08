@@ -1,12 +1,15 @@
 import 'dart:async';
 
 import 'package:bahibo/component/app_network_image.dart';
-import 'package:bahibo/component/navigation/navigation_search_chip.dart';
 import 'package:bahibo/component/profile_models.dart';
 import 'package:bahibo/component/seller_profile_page.dart';
+import 'package:bahibo/component/ui/dinamic_categories_h_list.dart';
 import 'package:bahibo/component/ui/dinamic_icon_input.dart';
+import 'package:bahibo/page/category_page.dart';
 import 'package:bahibo/page/productDetail.dart';
 import 'package:bahibo/services/app_api_client.dart';
+import 'package:bahibo/services/catalog_api_service.dart';
+import 'package:bahibo/services/search_history_service.dart';
 import 'package:bahibo/services/search_api_service.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
@@ -20,10 +23,15 @@ class MainNavigationSearchPanel extends StatefulWidget {
 }
 
 class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
+  final CatalogApiService _catalogApiService = CatalogApiService();
+  final SearchHistoryService _searchHistoryService = SearchHistoryService();
   final SearchApiService _searchApiService = SearchApiService();
 
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
+  List<Map<String, dynamic>> _categories = const [];
+  List<String> _searchHistory = const [];
+  final Set<String> _hiddenSearchHistory = <String>{};
   List<_SearchSuggestion> _suggestions = const [];
   Timer? _searchDebounce;
   bool _isSearchingApi = false;
@@ -40,7 +48,33 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
     super.initState();
     _searchController.addListener(_handleSearchChanged);
     _searchFocusNode.addListener(_handleFocusChanged);
+    _loadSearchHistory();
+    _refreshCategories();
     _refreshSearchResults();
+  }
+
+  Future<void> _loadSearchHistory() async {
+    final history = await _searchHistoryService.loadHistory();
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _searchHistory = history;
+    });
+  }
+
+  Future<void> _refreshCategories() async {
+    try {
+      final categories = await _catalogApiService.fetchCategories();
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _categories = categories;
+      });
+    } catch (_) {}
   }
 
   void _handleSearchChanged() {
@@ -149,6 +183,55 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
     _searchFocusNode.unfocus();
   }
 
+  Future<void> _repeatSearchFromHistory(String query) async {
+    _searchController.value = TextEditingValue(
+      text: query,
+      selection: TextSelection.collapsed(offset: query.length),
+    );
+    _searchFocusNode.requestFocus();
+    await _refreshSearchResults();
+  }
+
+  Future<void> _saveQueryToHistory(String query) async {
+    final normalized = query.trim();
+    if (normalized.isEmpty) {
+      return;
+    }
+
+    final updatedHistory = await _searchHistoryService.addQuery(normalized);
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _searchHistory = updatedHistory;
+      _hiddenSearchHistory.removeWhere(
+        (entry) => entry.toLowerCase() == normalized.toLowerCase(),
+      );
+    });
+  }
+
+  void _hideSearchHistoryEntry(String query) {
+    setState(() {
+      _hiddenSearchHistory.add(query.trim().toLowerCase());
+    });
+  }
+
+  Future<void> _openCategoryShortcut(Map<String, dynamic> category) async {
+    FocusScope.of(context).unfocus();
+    final slug = category['slug']?.toString() ?? '';
+    final label = category['name']?.toString() ?? slug;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CategoryPage(
+          categoryName: slug,
+          categoryLabel: label,
+          categoryIcon: resolveDinamicCategoryIcon(category),
+        ),
+      ),
+    );
+  }
+
   UserProfileData _resolveSellerProfile(_SearchSuggestion suggestion) {
     if (suggestion.sellerProfile != null) {
       final profile = suggestion.sellerProfile!;
@@ -192,6 +275,7 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
   }
 
   Future<void> _openSearchResult(_SearchSuggestion suggestion) async {
+    final searchedQuery = _searchController.text.trim();
     _selectSuggestion(suggestion);
 
     if (suggestion.type == _SuggestionType.product &&
@@ -201,6 +285,7 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
           builder: (_) => ProductDetailPage(product: suggestion.productData!),
         ),
       );
+      await _saveQueryToHistory(searchedQuery);
       return;
     }
 
@@ -217,6 +302,7 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
         builder: (_) => SellerProfilePage(profile: sellerProfile),
       ),
     );
+    await _saveQueryToHistory(searchedQuery);
   }
 
   @override
@@ -286,25 +372,103 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
                 if (showSuggestions)
                   Expanded(child: _buildSuggestionsPanel(theme, suggestions))
                 else
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: const [
-                      NavigationSearchChip(label: 'Dior'),
-                      NavigationSearchChip(label: 'Water'),
-                      NavigationSearchChip(label: 'Samsung'),
-                      NavigationSearchChip(label: 'Telephone'),
-                      NavigationSearchChip(label: 'Mode'),
-                      NavigationSearchChip(label: 'Cuisine'),
-                      NavigationSearchChip(label: 'Auto'),
-                      NavigationSearchChip(label: 'Laptop'),
-                    ],
+                  Expanded(
+                    child: ListView(
+                      padding: EdgeInsets.zero,
+                      children: [
+                        DinamicCategoriesHList(
+                          categories: _categories,
+                          showTitle: false,
+                          onCategoryTap: _openCategoryShortcut,
+                        ),
+                        _buildSearchHistorySection(theme),
+                      ],
+                    ),
                   ),
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildSearchHistorySection(ThemeData theme) {
+    final visibleHistory = _searchHistory.where((query) {
+      return !_hiddenSearchHistory.contains(query.trim().toLowerCase());
+    }).toList();
+
+    if (visibleHistory.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        Text(
+          'Historique de recherche',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 12),
+        ...visibleHistory.map(
+          (query) => Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: InkWell(
+              onTap: () => _repeatSearchFromHistory(query),
+              borderRadius: BorderRadius.circular(18),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 13,
+                ),
+                decoration: BoxDecoration(
+                  color: theme.cardColor,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: theme.appColors.inputBorder),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.history_rounded,
+                      size: 20,
+                      color: theme.appColors.mutedText,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        query,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    IconButton(
+                      onPressed: () => _hideSearchHistoryEntry(query),
+                      tooltip: 'Masquer cet historique',
+                      icon: Icon(
+                        Icons.close_rounded,
+                        size: 18,
+                        color: theme.appColors.mutedText,
+                      ),
+                      visualDensity: VisualDensity.compact,
+                      splashRadius: 18,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 28,
+                        minHeight: 28,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:bahibo/component/profile_models.dart';
 import 'package:bahibo/page/chat_page.dart';
-import 'package:bahibo/page/productList.dart';
+import 'package:bahibo/page/navigation/main_home_panel.dart';
 import 'package:bahibo/page/navigation/main_navigation_account_panel.dart';
 import 'package:bahibo/page/navigation/main_simple_user.dart';
 import 'package:bahibo/page/navigation/main_navigation_messages_panel.dart';
@@ -138,7 +138,7 @@ class MainNavigationShellState extends State<BahiboNavigationShell> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final pages = [
-      const Productlist(),
+      const MainHomePanel(),
       const MainNavigationSearchPanel(),
       const MainNavigationMessagesPanel(),
       _usesSellerAccountPanel

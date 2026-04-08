@@ -52,6 +52,7 @@ model User {
   passwordHash    String
   avatarUrl       String?
   coverImageUrl   String?
+  lastSeenAt      DateTime?
   locationLabel   String?
   locationLatitude Float?
   locationLongitude Float?
@@ -77,11 +78,28 @@ model User {
   chatMessages        ChatMessage[]      @relation("MessageSender")
   deviceTokens        UserDeviceToken[]
   notificationReadStates NotificationReadState[]
+  searchHistories     SearchHistory[]
   sellerFollows       SellerFollow[]     @relation("SellerFollowFollower")
   sellerProfileViews  SellerProfileView[] @relation("SellerProfileViewViewer")
   productLikes        ProductLike[]
   productComments     ProductComment[]
   productShares       ProductShare[]
+}
+
+model SearchHistory {
+  id              String   @id @default(uuid())
+  userId          String
+  query           String
+  normalizedQuery String
+  resultCount     Int      @default(0)
+  occurrenceCount Int      @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  lastSearchedAt  DateTime @default(now())
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, normalizedQuery])
+  @@index([userId, resultCount, lastSearchedAt])
 }
 
 model NotificationReadState {

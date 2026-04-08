@@ -168,16 +168,17 @@ class AppAuthService {
     final data = await _client.patch(
       '/profiles/me',
       authenticated: true,
-      body: {
-        'displayName': displayName,
-      },
+      body: {'displayName': displayName},
     );
 
     return Map<String, dynamic>.from(data as Map);
   }
 
   Future<Map<String, dynamic>> submitShopRequest() async {
-    final data = await _client.post('/profiles/me/shop-request', authenticated: true);
+    final data = await _client.post(
+      '/profiles/me/shop-request',
+      authenticated: true,
+    );
     return Map<String, dynamic>.from(data as Map);
   }
 
@@ -193,12 +194,14 @@ class AppAuthService {
     final hasValidSession = await _sessionStorage.hasValidSession();
 
     if (!hasValidSession) {
+      ChatRealtimeService.instance.disconnect();
       return false;
     }
 
     final refreshToken = await _sessionStorage.getRefreshToken();
 
     if (refreshToken == null || refreshToken.isEmpty) {
+      ChatRealtimeService.instance.disconnect();
       await _sessionStorage.clear();
       return false;
     }
@@ -212,6 +215,7 @@ class AppAuthService {
       await _persistSession(Map<String, dynamic>.from(data as Map));
       return true;
     } on AppApiException {
+      ChatRealtimeService.instance.disconnect();
       await _sessionStorage.clear();
       return false;
     }

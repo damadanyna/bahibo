@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bahibo/services/api_config.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:bahibo/services/session_storage.dart';
 import 'package:flutter/widgets.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
@@ -13,9 +14,12 @@ class ChatRealtimeService {
   final SessionStorage _sessionStorage = SessionStorage();
   final StreamController<Map<String, dynamic>> _eventsController =
       StreamController<Map<String, dynamic>>.broadcast();
+  final Connectivity _connectivity = Connectivity();
 
   io.Socket? _socket;
   String? _currentAccessToken;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  bool _hasInternetConnection = true;
 
   Stream<Map<String, dynamic>> get events => _eventsController.stream;
 
@@ -34,8 +38,16 @@ class ChatRealtimeService {
   }
 
   Future<void> ensureConnected() async {
+    _ensureConnectivityMonitoring();
+
+    if (!await _syncConnectivityState()) {
+      disconnect();
+      return;
+    }
+
     final accessToken = await _sessionStorage.getAccessToken();
     if (accessToken == null || accessToken.isEmpty) {
+      disconnect();
       return;
     }
 
@@ -117,6 +129,37 @@ class ChatRealtimeService {
     _currentAccessToken = null;
   }
 
+  void _ensureConnectivityMonitoring() {
+    _connectivitySubscription ??= _connectivity.onConnectivityChanged.listen(
+      _handleConnectivityChanged,
+    );
+  }
+
+  Future<bool> _syncConnectivityState() async {
+    final results = await _connectivity.checkConnectivity();
+    _handleConnectivityChanged(results);
+    return _hasInternetConnection;
+  }
+
+  void _handleConnectivityChanged(List<ConnectivityResult> results) {
+    final hasConnection = results.any(
+      (result) => result != ConnectivityResult.none,
+    );
+
+    if (_hasInternetConnection == hasConnection) {
+      return;
+    }
+
+    _hasInternetConnection = hasConnection;
+
+    if (!hasConnection) {
+      disconnect();
+      return;
+    }
+
+    unawaited(ensureConnected());
+  }
+
   void emitTyping({
     required String conversationId,
     required String recipientUserId,
@@ -135,7 +178,11 @@ class ChatRealtimeService {
   }
 
   void _disposeSocket() {
-    _socket?.dispose();
+    final socket = _socket;
+    if (socket != null) {
+      socket.disconnect();
+      socket.dispose();
+    }
     _socket = null;
   }
 }

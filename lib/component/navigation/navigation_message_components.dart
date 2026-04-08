@@ -164,6 +164,7 @@ class NavigationMessageStoryAvatar extends StatelessWidget {
 class NavigationConversationTile extends StatelessWidget {
   final String name;
   final String preview;
+  final String? statusLabel;
   final String time;
   final String avatarUrl;
   final String? userId;
@@ -177,6 +178,7 @@ class NavigationConversationTile extends StatelessWidget {
     super.key,
     required this.name,
     required this.preview,
+    this.statusLabel,
     required this.time,
     required this.avatarUrl,
     this.userId,
@@ -317,6 +319,20 @@ class NavigationConversationTile extends StatelessWidget {
                         ],
                       ],
                     ),
+                    if (statusLabel != null &&
+                        statusLabel!.trim().isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        statusLabel!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: previewColor,
+                          fontWeight: FontWeight.w500,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

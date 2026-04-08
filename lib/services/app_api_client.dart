@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'api_config.dart';
+import 'chat_realtime_service.dart';
 import 'session_storage.dart';
 
 class AppApiException implements Exception {
@@ -105,12 +106,10 @@ class AppApiClient {
         ? <String, dynamic>{}
         : jsonDecode(response.body) as Map<String, dynamic>;
 
-    if (
-      response.statusCode == 401 &&
-      authenticated &&
-      retryOnUnauthorized &&
-      path != '/auth/refresh'
-    ) {
+    if (response.statusCode == 401 &&
+        authenticated &&
+        retryOnUnauthorized &&
+        path != '/auth/refresh') {
       final refreshed = await _refreshSession();
       if (refreshed) {
         return _request(
@@ -153,6 +152,7 @@ class AppApiClient {
   Future<bool> _performRefreshSession() async {
     final refreshToken = await _sessionStorage.getRefreshToken();
     if (refreshToken == null || refreshToken.isEmpty) {
+      ChatRealtimeService.instance.disconnect();
       await _sessionStorage.clear();
       return false;
     }
@@ -171,6 +171,7 @@ class AppApiClient {
     }
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      ChatRealtimeService.instance.disconnect();
       await _sessionStorage.clear();
       return false;
     }
@@ -187,12 +188,11 @@ class AppApiClient {
     final accessToken = data['accessToken'] as String?;
     final nextRefreshToken = data['refreshToken'] as String?;
 
-    if (
-      accessToken == null ||
-      accessToken.isEmpty ||
-      nextRefreshToken == null ||
-      nextRefreshToken.isEmpty
-    ) {
+    if (accessToken == null ||
+        accessToken.isEmpty ||
+        nextRefreshToken == null ||
+        nextRefreshToken.isEmpty) {
+      ChatRealtimeService.instance.disconnect();
       await _sessionStorage.clear();
       return false;
     }

@@ -6,6 +6,10 @@ import { PrismaService } from '../prisma/prisma.service';
 export class SearchService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private normalizeQuery(query: string) {
+    return query.trim().toLowerCase();
+  }
+
   private joinNonEmpty(values: Array<string | null | undefined>) {
     return values
       .filter((value): value is string => Boolean(value && value.trim().length > 0))
@@ -39,6 +43,90 @@ export class SearchService {
         categories: categories.length,
         locations: locations.length,
       },
+    };
+  }
+
+  async recordSearchHistory(params: {
+    userId: string;
+    query: string;
+    resultCount: number;
+  }) {
+    const query = params.query.trim();
+    const normalizedQuery = this.normalizeQuery(query);
+
+    if (!query || !normalizedQuery) {
+      return null;
+    }
+
+    const resultCount = Number.isFinite(params.resultCount)
+      ? Math.max(0, Math.trunc(params.resultCount))
+      : 0;
+
+    const existing = await this.prisma.searchHistory.findUnique({
+      where: {
+        userId_normalizedQuery: {
+          userId: params.userId,
+          normalizedQuery,
+        },
+      },
+    });
+
+    const history = existing
+      ? await this.prisma.searchHistory.update({
+          where: { id: existing.id },
+          data: {
+            query,
+            resultCount,
+            lastSearchedAt: new Date(),
+            occurrenceCount: {
+              increment: 1,
+            },
+          },
+        })
+      : await this.prisma.searchHistory.create({
+          data: {
+            userId: params.userId,
+            query,
+            normalizedQuery,
+            resultCount,
+          },
+        });
+
+    return this.mapSearchHistory(history);
+  }
+
+  async findNoResultHistory(userId: string) {
+    const histories = await this.prisma.searchHistory.findMany({
+      where: {
+        userId,
+        resultCount: 0,
+      },
+      orderBy: {
+        lastSearchedAt: 'desc',
+      },
+      take: 50,
+    });
+
+    return histories.map((history) => this.mapSearchHistory(history));
+  }
+
+  private mapSearchHistory(history: {
+    id: string;
+    query: string;
+    resultCount: number;
+    occurrenceCount: number;
+    createdAt: Date;
+    updatedAt: Date;
+    lastSearchedAt: Date;
+  }) {
+    return {
+      id: history.id,
+      query: history.query,
+      resultCount: history.resultCount,
+      occurrenceCount: history.occurrenceCount,
+      createdAt: history.createdAt.toISOString(),
+      updatedAt: history.updatedAt.toISOString(),
+      lastSearchedAt: history.lastSearchedAt.toISOString(),
     };
   }
 

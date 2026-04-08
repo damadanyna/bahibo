@@ -434,7 +434,8 @@ class _ChatPageState extends State<ChatPage>
     _emitTyping(false);
     setState(() => _isSending = true);
     try {
-      final data = shouldAttachInitialProductContext &&
+      final data =
+          shouldAttachInitialProductContext &&
               (widget.conversationUserId?.isNotEmpty ?? false)
           ? await _conversationsApiService.sendUserMessage(
               targetUserId: widget.conversationUserId!,
@@ -448,7 +449,7 @@ class _ChatPageState extends State<ChatPage>
               },
             )
           : (widget.conversationProductId?.isNotEmpty ?? false) &&
-              (widget.conversationUserId?.isNotEmpty ?? false) == false
+                (widget.conversationUserId?.isNotEmpty ?? false) == false
           ? await _conversationsApiService.sendProductMessage(
               productId: widget.conversationProductId!,
               content: content,
@@ -521,7 +522,7 @@ class _ChatPageState extends State<ChatPage>
     final product = _productValue;
     final productPageBuilder = widget.productPageBuilder;
     if (product != null && productPageBuilder != null) {
-      Navigator.pushReplacement(
+      Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => productPageBuilder(product, openedFromChat: true),
@@ -548,25 +549,29 @@ class _ChatPageState extends State<ChatPage>
         return;
       }
 
-      Navigator.pushReplacement(
+      Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => productPageBuilder(currentProduct, openedFromChat: true),
+          builder: (_) =>
+              productPageBuilder(currentProduct, openedFromChat: true),
         ),
       );
       return;
     }
 
     try {
-      final fetchedProduct = await _catalogApiService.fetchProductById(productId);
+      final fetchedProduct = await _catalogApiService.fetchProductById(
+        productId,
+      );
       if (!mounted) {
         return;
       }
 
-      Navigator.pushReplacement(
+      Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => productPageBuilder(fetchedProduct, openedFromChat: true),
+          builder: (_) =>
+              productPageBuilder(fetchedProduct, openedFromChat: true),
         ),
       );
     } on AppApiException catch (error) {
@@ -696,8 +701,8 @@ class _ChatPageState extends State<ChatPage>
                                         isMine: chat.isMine,
                                         product: chat.product,
                                         onProductTap:
-                                          !widget.showInlineProductSnapshots ||
-                                            chat.product == null
+                                            !widget.showInlineProductSnapshots ||
+                                                chat.product == null
                                             ? null
                                             : () => _openMessageProductCard(
                                                 chat.product!,
@@ -970,8 +975,7 @@ class _ChatMessageProduct {
     final imageUrl = (value['imageUrl'] as String? ?? '').trim();
     final id = value['id']?.toString().trim();
 
-    if (
-        title.isEmpty &&
+    if (title.isEmpty &&
         subtitle.isEmpty &&
         priceLabel.isEmpty &&
         imageUrl.isEmpty &&
