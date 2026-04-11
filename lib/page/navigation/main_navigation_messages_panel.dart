@@ -39,6 +39,8 @@ class _MainNavigationMessagesPanelState
   List<Map<String, dynamic>> _conversations = const [];
   final Map<String, bool> _typingConversationStates = {};
   bool _isLoading = true;
+  bool _isLoadingConversations = false;
+  bool _searchAnchorCaptureScheduled = false;
   String? _loadError;
   String _searchQuery = '';
   double? _searchAnchorTop;
@@ -69,7 +71,7 @@ class _MainNavigationMessagesPanelState
     _conversationsPollTimer?.cancel();
     _conversationsPollTimer = Timer.periodic(
       _conversationsPollInterval,
-      (_) => _loadConversations(silent: true),
+      (_) => unawaited(_loadConversations(silent: true)),
     );
   }
 
@@ -212,7 +214,23 @@ class _MainNavigationMessagesPanelState
 
   void _handleScroll() {
     if (!mounted) return;
+    _scheduleSearchAnchorCapture();
     setState(() {});
+  }
+
+  void _scheduleSearchAnchorCapture() {
+    if (_searchAnchorCaptureScheduled) {
+      return;
+    }
+
+    _searchAnchorCaptureScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _searchAnchorCaptureScheduled = false;
+      if (!mounted) {
+        return;
+      }
+      _captureSearchAnchorTop();
+    });
   }
 
   void _captureSearchAnchorTop() {
@@ -231,6 +249,12 @@ class _MainNavigationMessagesPanelState
   }
 
   Future<void> _loadConversations({bool silent = false}) async {
+    if (_isLoadingConversations) {
+      return;
+    }
+
+    _isLoadingConversations = true;
+
     if (mounted && !silent) {
       setState(() {
         _isLoading = true;
@@ -265,6 +289,8 @@ class _MainNavigationMessagesPanelState
       if (!silent) {
         mainNavigationUnreadMessageCountNotifier.value = 0;
       }
+    } finally {
+      _isLoadingConversations = false;
     }
   }
 
@@ -467,10 +493,6 @@ class _MainNavigationMessagesPanelState
         : _searchAnchorTop! - currentScrollOffset;
     final isSearchPinned = rawSearchTop != null && rawSearchTop <= 0;
     final floatingSearchTop = rawSearchTop?.clamp(0.0, double.infinity);
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _captureSearchAnchorTop();
-    });
 
     return Scaffold(
       backgroundColor: appColors.backgroundBase,

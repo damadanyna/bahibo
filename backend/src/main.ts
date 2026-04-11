@@ -19,10 +19,11 @@ async function bootstrap() {
   );
 
   const configService = app.get(ConfigService);
+  const host = configService.get<string>('HOST', '0.0.0.0');
   const port = configService.get<number>('PORT', 4000);
 
-  await app.listen(port);
-  console.log(`Bahibo backend running on http://localhost:${port}/api/v1`);
+  await app.listen(port, host);
+  console.log(`Bahibo backend running on http://${host}:${port}/api/v1`);
 }
 
 bootstrap();
