@@ -264,6 +264,8 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
                 fontWeight: FontWeight.w600,
               ),
               decoration: InputDecoration(
+                filled: false,
+                fillColor: Colors.transparent,
                 isCollapsed: true,
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,

@@ -188,13 +188,13 @@ class _ChatPageState extends State<ChatPage>
       if (lastSeenDate != null) {
         final difference = DateTime.now().difference(lastSeenDate);
         if (difference.inMinutes < 1) {
-          return 'Vu a l\'instant';
+          return 'En ligne a l\'instant';
         }
         if (difference.inMinutes < 60) {
-          return 'Vu il y a ${difference.inMinutes} min';
+          return 'En ligne il y a ${difference.inMinutes} min';
         }
         if (difference.inHours < 24) {
-          return 'Vu il y a ${difference.inHours} h';
+          return 'En ligne il y a ${difference.inHours} h';
         }
       }
     }
@@ -626,11 +626,11 @@ class _ChatPageState extends State<ChatPage>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final appColors = theme.appColors;
-    final primary = appColors.onlineStatus;
+    final primary = theme.colorScheme.primary;
     final background = appColors.backgroundBase;
     final headerColor = appColors.panelBackground;
     final incomingBubbleColor = appColors.panelBackground;
-    final outgoingBubbleColor = appColors.onlineStatus.withValues(alpha: 0.28);
+    final outgoingBubbleColor = primary.withValues(alpha: 0.28);
     const panelColor = Colors.transparent;
     final subtleText = appColors.mutedText;
     final sellerName = _sellerNameValue;
@@ -750,7 +750,6 @@ class _ChatPageState extends State<ChatPage>
                         ),
                       ),
                       Container(
-                        color: headerColor,
                         padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
                         child: UiChatMessageInput(
                           controller: _messageController,
