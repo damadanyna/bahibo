@@ -10,6 +10,7 @@ import 'package:bahibo/services/app_api_client.dart';
 import 'package:bahibo/services/catalog_api_service.dart';
 import 'package:bahibo/services/chat_realtime_service.dart';
 import 'package:bahibo/services/conversations_api_service.dart';
+import 'package:bahibo/services/presence_service.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
@@ -163,6 +164,42 @@ class _ChatPageState extends State<ChatPage>
       }
     }
     return widget.avatarUrl;
+  }
+
+  bool get _participantIsOnlineValue {
+    final participant = _conversation?['participant'];
+    if (participant is Map) {
+      return participant['isOnline'] == true;
+    }
+    return false;
+  }
+
+  String get _participantStatusValue {
+    if (_participantIsOnlineValue) {
+      return 'En ligne';
+    }
+
+    final participant = _conversation?['participant'];
+    if (participant is Map) {
+      final lastSeenAt = participant['lastSeenAt'] as String?;
+      final lastSeenDate = lastSeenAt == null
+          ? null
+          : DateTime.tryParse(lastSeenAt)?.toLocal();
+      if (lastSeenDate != null) {
+        final difference = DateTime.now().difference(lastSeenDate);
+        if (difference.inMinutes < 1) {
+          return 'Vu a l\'instant';
+        }
+        if (difference.inMinutes < 60) {
+          return 'Vu il y a ${difference.inMinutes} min';
+        }
+        if (difference.inHours < 24) {
+          return 'Vu il y a ${difference.inHours} h';
+        }
+      }
+    }
+
+    return _sellerRoleValue;
   }
 
   String? get _participantUserId {
@@ -588,15 +625,15 @@ class _ChatPageState extends State<ChatPage>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final appColors = theme.appColors;
-    final primary = theme.colorScheme.primary;
+    final primary = appColors.onlineStatus;
     final background = appColors.backgroundBase;
-    final cardColor = appColors.panelBackground;
-    final panelColor = appColors.inputFill;
+    final headerColor = appColors.panelBackground;
+    final incomingBubbleColor = appColors.panelBackground;
+    final outgoingBubbleColor = appColors.onlineStatus.withValues(alpha: 0.28);
+    const panelColor = Colors.transparent;
     final subtleText = appColors.mutedText;
     final sellerName = _sellerNameValue;
-    final sellerRole = _sellerRoleValue;
     final avatarUrl = _avatarUrlValue;
 
     return Scaffold(
@@ -606,95 +643,77 @@ class _ChatPageState extends State<ChatPage>
           : SafeArea(
               child: Stack(
                 children: [
-                  Positioned.fill(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            primary.withValues(alpha: isDark ? 0.12 : 0.08),
-                            background,
-                            background,
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
+                  Positioned.fill(child: const _ChatPatternBackground()),
                   Column(
                     children: [
+                      _ChatHeader(
+                        primary: primary,
+                        headerColor: headerColor,
+                        subtleText: subtleText,
+                        sellerName: sellerName,
+                        statusText: _participantStatusValue,
+                        avatarUrl: avatarUrl,
+                        userId: _participantUserId,
+                        isOnline: _participantIsOnlineValue,
+                      ),
+                      if (widget.showProductContextCard &&
+                          _productTitleValue.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(10, 10, 10, 0),
+                          child: _ProductContextCard(
+                            primary: primary,
+                            subtleText: subtleText,
+                            onTap: _openProductCard,
+                            productTitle: _productTitleValue,
+                            productSubtitle: _productSubtitleValue,
+                            productPriceLabel: _productPriceLabelValue,
+                            productImageUrl: _productImageUrlValue,
+                          ),
+                        ),
                       Expanded(
                         child: RefreshIndicator(
                           onRefresh: refreshPageWithDialog,
                           child: SingleChildScrollView(
                             controller: _scrollController,
                             physics: const AlwaysScrollableScrollPhysics(),
-                            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+                            padding: const EdgeInsets.fromLTRB(10, 12, 10, 18),
                             child: Column(
                               children: [
-                                _ChatHeader(
-                                  primary: primary,
-                                  cardColor: cardColor,
-                                  subtleText: subtleText,
-                                  sellerName: sellerName,
-                                  sellerRole: sellerRole,
-                                  avatarUrl: avatarUrl,
-                                  userId: _participantUserId,
-                                ),
-                                if (widget.showProductContextCard &&
-                                    _productTitleValue.isNotEmpty) ...[
-                                  const SizedBox(height: 10),
-                                  _ProductContextCard(
-                                    primary: primary,
-                                    cardColor: cardColor,
-                                    subtleText: subtleText,
-                                    onTap: _openProductCard,
-                                    productTitle: _productTitleValue,
-                                    productSubtitle: _productSubtitleValue,
-                                    productPriceLabel: _productPriceLabelValue,
-                                    productImageUrl: _productImageUrlValue,
-                                  ),
-                                ],
-                                const SizedBox(height: 18),
                                 Container(
                                   padding: const EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                    vertical: 8,
+                                    horizontal: 12,
+                                    vertical: 6,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: panelColor,
-                                    borderRadius: BorderRadius.circular(999),
-                                    border: Border.all(
-                                      color: theme.appColors.inputBorder,
-                                    ),
+                                    color: appColors.panelBackground,
+                                    borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Text(
                                     'Aujourd\'hui',
                                     style: TextStyle(
                                       color: subtleText,
                                       fontWeight: FontWeight.w700,
+                                      fontSize: 12,
                                     ),
                                   ),
                                 ),
-                                const SizedBox(height: 18),
+                                const SizedBox(height: 16),
                                 if (_loadError != null)
                                   _ChatInfoCard(
                                     text: _loadError!,
                                     color: theme.colorScheme.error,
-                                    cardColor: cardColor,
+                                    cardColor: incomingBubbleColor,
                                   )
                                 else if (_messages.isEmpty)
                                   _ChatInfoCard(
                                     text: 'Aucun message pour le moment.',
                                     color: subtleText,
-                                    cardColor: cardColor,
+                                    cardColor: incomingBubbleColor,
                                   )
                                 else
                                   ..._messages.map(
                                     (chat) => Padding(
-                                      padding: const EdgeInsets.only(
-                                        bottom: 14,
-                                      ),
+                                      padding: const EdgeInsets.only(bottom: 6),
                                       child: _ChatBubble(
                                         message: chat.message,
                                         time: chat.time,
@@ -709,9 +728,11 @@ class _ChatPageState extends State<ChatPage>
                                               ),
                                         avatarUrl: avatarUrl,
                                         participantUserId: _participantUserId,
-                                        isDark: isDark,
                                         primary: primary,
-                                        cardColor: cardColor,
+                                        incomingBubbleColor:
+                                            incomingBubbleColor,
+                                        outgoingBubbleColor:
+                                            outgoingBubbleColor,
                                         subtleText: subtleText,
                                       ),
                                     ),
@@ -719,9 +740,7 @@ class _ChatPageState extends State<ChatPage>
                                 if (_isParticipantTyping) ...[
                                   const SizedBox(height: 6),
                                   _TypingIndicatorBubble(
-                                    avatarUrl: avatarUrl,
-                                    userId: _participantUserId,
-                                    cardColor: cardColor,
+                                    cardColor: incomingBubbleColor,
                                     subtleText: subtleText,
                                   ),
                                 ],
@@ -730,8 +749,9 @@ class _ChatPageState extends State<ChatPage>
                           ),
                         ),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
+                      Container(
+                        color: headerColor,
+                        padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
                         child: UiChatMessageInput(
                           controller: _messageController,
                           onAttachmentSelected: _handleAttachment,
@@ -739,11 +759,12 @@ class _ChatPageState extends State<ChatPage>
                           onSend: _sendMessage,
                           primary: primary,
                           panelColor: panelColor,
+                          borderColor: appColors.inputBorder,
+                          hintText: 'Message',
                         ),
                       ),
                     ],
                   ),
-                  Positioned(top: 18, left: 18, child: const AppBackButton()),
                   if (isOffline) const AppOfflineBanner(bottomOffset: 78),
                 ],
               ),
@@ -754,78 +775,151 @@ class _ChatPageState extends State<ChatPage>
 
 class _ChatHeader extends StatelessWidget {
   final Color primary;
-  final Color cardColor;
+  final Color headerColor;
   final Color subtleText;
   final String sellerName;
-  final String sellerRole;
+  final String statusText;
   final String avatarUrl;
   final String? userId;
+  final bool isOnline;
 
   const _ChatHeader({
     required this.primary,
-    required this.cardColor,
+    required this.headerColor,
     required this.subtleText,
     required this.sellerName,
-    required this.sellerRole,
+    required this.statusText,
     required this.avatarUrl,
     this.userId,
+    this.isOnline = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final appColors = Theme.of(context).appColors;
+    final normalizedUserId = userId?.trim() ?? '';
+    if (normalizedUserId.isNotEmpty) {
+      PresenceService.instance.watchUser(normalizedUserId);
+    }
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(18, 32, 18, 20),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(34),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [primary.withValues(alpha: 0.92), appColors.heroAccent],
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(3),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: appColors.heroBorder),
-            ),
-            child: AppCircleNetworkAvatar(
-              radius: 26,
-              imageUrl: avatarUrl,
-              userId: userId,
-            ),
+    return ValueListenableBuilder<int>(
+      valueListenable: PresenceService.instance.changes,
+      builder: (context, value, child) {
+        final livePresence = normalizedUserId.isEmpty
+            ? null
+            : PresenceService.instance.presenceOf(normalizedUserId);
+        final resolvedIsOnline = livePresence ?? isOnline;
+        final resolvedStatusText = resolvedIsOnline ? 'En ligne' : statusText;
+
+        return Container(
+          height: 72,
+          color: headerColor,
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Row(
+            children: [
+              IconButton(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                splashRadius: 20,
+              ),
+              AppCircleNetworkAvatar(
+                radius: 21,
+                imageUrl: avatarUrl,
+                userId: userId,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      sellerName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      resolvedStatusText,
+                      style: TextStyle(
+                        color: resolvedIsOnline
+                            ? Colors.white.withValues(alpha: 0.88)
+                            : subtleText,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _ChatHeaderAction(icon: Icons.videocam_outlined, onTap: () {}),
+              _ChatHeaderAction(icon: Icons.call_outlined, onTap: () {}),
+              _ChatHeaderAction(icon: Icons.more_vert, onTap: () {}),
+            ],
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        );
+      },
+    );
+  }
+}
+
+class _ChatHeaderAction extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _ChatHeaderAction({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      onPressed: onTap,
+      splashRadius: 20,
+      icon: Icon(icon, color: Colors.white.withValues(alpha: 0.94), size: 23),
+    );
+  }
+}
+
+class _ChatPatternBackground extends StatelessWidget {
+  const _ChatPatternBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    final appColors = Theme.of(context).appColors;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(color: appColors.backgroundBase),
+      child: IgnorePointer(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final columns = (constraints.maxWidth / 72).ceil();
+            final rows = (constraints.maxHeight / 72).ceil();
+            return Stack(
               children: [
-                Text(
-                  sellerName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: appColors.heroForeground,
-                    fontSize: 24,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  sellerRole,
-                  style: TextStyle(
-                    color: appColors.heroForegroundMuted,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                for (var row = 0; row < rows; row++)
+                  for (var column = 0; column < columns; column++)
+                    Positioned(
+                      left: column * 72.0 + (row.isEven ? 8 : 26),
+                      top: row * 72.0 + (column.isEven ? 10 : 28),
+                      child: Opacity(
+                        opacity: 0.06,
+                        child: Icon(
+                          (row + column).isEven
+                              ? Icons.chat_bubble_outline_rounded
+                              : Icons.star_border_rounded,
+                          size: ((row + column) % 3 == 0) ? 18 : 14,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
               ],
-            ),
-          ),
-        ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -833,7 +927,6 @@ class _ChatHeader extends StatelessWidget {
 
 class _ProductContextCard extends StatelessWidget {
   final Color primary;
-  final Color cardColor;
   final Color subtleText;
   final VoidCallback? onTap;
   final String productTitle;
@@ -843,7 +936,6 @@ class _ProductContextCard extends StatelessWidget {
 
   const _ProductContextCard({
     required this.primary,
-    required this.cardColor,
     required this.subtleText,
     this.onTap,
     required this.productTitle,
@@ -854,32 +946,34 @@ class _ProductContextCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appColors = Theme.of(context).appColors;
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(24),
         child: Ink(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: cardColor,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Theme.of(context).appColors.inputBorder),
+            color: appColors.panelBackground,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: appColors.inputBorder),
           ),
           child: Row(
             children: [
               if (productImageUrl.isNotEmpty)
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(12),
                   child: AppNetworkImage(
                     imageUrl: productImageUrl,
-                    width: 72,
-                    height: 72,
+                    width: 56,
+                    height: 56,
                     fit: BoxFit.cover,
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-              if (productImageUrl.isNotEmpty) const SizedBox(width: 14),
+              if (productImageUrl.isNotEmpty) const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -887,8 +981,8 @@ class _ProductContextCard extends StatelessWidget {
                     Text(
                       productTitle,
                       style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurface,
-                        fontSize: 16,
+                        color: Colors.white,
+                        fontSize: 14,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -906,8 +1000,8 @@ class _ProductContextCard extends StatelessWidget {
                       const SizedBox(height: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
+                          horizontal: 8,
+                          vertical: 4,
                         ),
                         decoration: BoxDecoration(
                           color: primary.withValues(alpha: 0.12),
@@ -1001,9 +1095,9 @@ class _ChatBubble extends StatelessWidget {
   final VoidCallback? onProductTap;
   final String avatarUrl;
   final String? participantUserId;
-  final bool isDark;
   final Color primary;
-  final Color cardColor;
+  final Color incomingBubbleColor;
+  final Color outgoingBubbleColor;
   final Color subtleText;
 
   const _ChatBubble({
@@ -1014,22 +1108,19 @@ class _ChatBubble extends StatelessWidget {
     this.onProductTap,
     required this.avatarUrl,
     this.participantUserId,
-    required this.isDark,
     required this.primary,
-    required this.cardColor,
+    required this.incomingBubbleColor,
+    required this.outgoingBubbleColor,
     required this.subtleText,
   });
 
   @override
   Widget build(BuildContext context) {
-    final appColors = Theme.of(context).appColors;
-    final bubbleColor = isMine
-        ? primary.withValues(alpha: isDark ? 0.90 : 0.96)
-        : cardColor;
-    final textColor = isMine
-        ? appColors.heroForeground
-        : Theme.of(context).colorScheme.onSurface;
-    final metaColor = isMine ? appColors.heroForegroundMuted : subtleText;
+    final bubbleColor = isMine ? outgoingBubbleColor : incomingBubbleColor;
+    final textColor = Colors.white.withValues(alpha: 0.96);
+    final metaColor = isMine
+        ? primary.withValues(alpha: 0.74)
+        : subtleText.withValues(alpha: 0.92);
 
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
@@ -1039,32 +1130,17 @@ class _ChatBubble extends StatelessWidget {
             : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (!isMine) ...[
-            Padding(
-              padding: const EdgeInsets.only(top: 2, right: 10),
-              child: AppCircleNetworkAvatar(
-                radius: 16,
-                imageUrl: avatarUrl,
-                userId: participantUserId,
-              ),
-            ),
-          ],
           ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: isMine ? 290 : 248),
+            constraints: BoxConstraints(maxWidth: isMine ? 290 : 276),
             child: Container(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
               decoration: BoxDecoration(
                 color: bubbleColor,
                 borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(22),
-                  topRight: const Radius.circular(22),
-                  bottomLeft: Radius.circular(isMine ? 22 : 8),
-                  bottomRight: Radius.circular(isMine ? 8 : 22),
-                ),
-                border: Border.all(
-                  color: isMine
-                      ? appColors.heroBorder
-                      : Theme.of(context).appColors.inputBorder,
+                  topLeft: const Radius.circular(12),
+                  topRight: const Radius.circular(12),
+                  bottomLeft: Radius.circular(isMine ? 12 : 4),
+                  bottomRight: Radius.circular(isMine ? 4 : 12),
                 ),
               ),
               child: Column(
@@ -1075,7 +1151,7 @@ class _ChatBubble extends StatelessWidget {
                       product: product!,
                       isMine: isMine,
                       primary: primary,
-                      cardColor: cardColor,
+                      cardColor: incomingBubbleColor,
                       subtleText: metaColor,
                       onTap: onProductTap,
                     ),
@@ -1086,11 +1162,11 @@ class _ChatBubble extends StatelessWidget {
                     style: TextStyle(
                       color: textColor,
                       fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      height: 1.45,
+                      fontWeight: FontWeight.w500,
+                      height: 1.35,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -1103,12 +1179,8 @@ class _ChatBubble extends StatelessWidget {
                         ),
                       ),
                       if (isMine) ...[
-                        const SizedBox(width: 6),
-                        Icon(
-                          Icons.done_all_rounded,
-                          size: 15,
-                          color: Theme.of(context).appColors.heroForeground,
-                        ),
+                        const SizedBox(width: 4),
+                        Icon(Icons.done_all_rounded, size: 15, color: primary),
                       ],
                     ],
                   ),
@@ -1141,12 +1213,13 @@ class _InlineProductSnapshotCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appColors = Theme.of(context).appColors;
     final surfaceColor = isMine
-        ? Colors.white.withValues(alpha: 0.14)
-        : Theme.of(context).appColors.panelBackground;
+        ? primary.withValues(alpha: 0.18)
+        : appColors.panelMuted;
     final borderColor = isMine
-        ? Colors.white.withValues(alpha: 0.24)
-        : Theme.of(context).appColors.inputBorder;
+        ? primary.withValues(alpha: 0.26)
+        : appColors.inputBorder;
     final titleColor = isMine
         ? Theme.of(context).appColors.heroForeground
         : Theme.of(context).colorScheme.onSurface;
@@ -1243,15 +1316,15 @@ class _ChatInfoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: cardColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Theme.of(context).appColors.inputBorder),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
         text,
+        textAlign: TextAlign.center,
         style: TextStyle(color: color, fontWeight: FontWeight.w700),
       ),
     );
@@ -1259,14 +1332,10 @@ class _ChatInfoCard extends StatelessWidget {
 }
 
 class _TypingIndicatorBubble extends StatefulWidget {
-  final String avatarUrl;
-  final String? userId;
   final Color cardColor;
   final Color subtleText;
 
   const _TypingIndicatorBubble({
-    required this.avatarUrl,
-    this.userId,
     required this.cardColor,
     required this.subtleText,
   });
@@ -1296,68 +1365,50 @@ class _TypingIndicatorBubbleState extends State<_TypingIndicatorBubble>
 
   @override
   Widget build(BuildContext context) {
-    final borderColor = Theme.of(context).appColors.inputBorder;
-
     return Align(
       alignment: Alignment.centerLeft,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 2, right: 10),
-            child: AppCircleNetworkAvatar(
-              radius: 16,
-              imageUrl: widget.avatarUrl,
-              userId: widget.userId,
-            ),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+        decoration: BoxDecoration(
+          color: widget.cardColor,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(12),
+            topRight: Radius.circular(12),
+            bottomLeft: Radius.circular(4),
+            bottomRight: Radius.circular(12),
           ),
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-            decoration: BoxDecoration(
-              color: widget.cardColor,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(22),
-                topRight: Radius.circular(22),
-                bottomLeft: Radius.circular(8),
-                bottomRight: Radius.circular(22),
-              ),
-              border: Border.all(color: borderColor),
-            ),
-            child: AnimatedBuilder(
-              animation: _controller,
-              builder: (context, _) {
-                return Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: List.generate(3, (index) {
-                    final phase = (_controller.value - (index * 0.18)) % 1.0;
-                    final opacity =
-                        0.28 + ((phase < 0.5 ? phase : 1 - phase) * 1.4);
-                    final scale =
-                        0.82 + ((phase < 0.5 ? phase : 1 - phase) * 0.5);
+        ),
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, _) {
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(3, (index) {
+                final phase = (_controller.value - (index * 0.18)) % 1.0;
+                final opacity =
+                    0.28 + ((phase < 0.5 ? phase : 1 - phase) * 1.4);
+                final scale = 0.82 + ((phase < 0.5 ? phase : 1 - phase) * 0.5);
 
-                    return Padding(
-                      padding: EdgeInsets.only(right: index == 2 ? 0 : 6),
-                      child: Transform.scale(
-                        scale: scale.clamp(0.82, 1.12),
-                        child: Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: widget.subtleText.withValues(
-                              alpha: opacity.clamp(0.28, 0.92),
-                            ),
-                            shape: BoxShape.circle,
-                          ),
+                return Padding(
+                  padding: EdgeInsets.only(right: index == 2 ? 0 : 6),
+                  child: Transform.scale(
+                    scale: scale.clamp(0.82, 1.12),
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: widget.subtleText.withValues(
+                          alpha: opacity.clamp(0.28, 0.92),
                         ),
+                        shape: BoxShape.circle,
                       ),
-                    );
-                  }),
+                    ),
+                  ),
                 );
-              },
-            ),
-          ),
-        ],
+              }),
+            );
+          },
+        ),
       ),
     );
   }

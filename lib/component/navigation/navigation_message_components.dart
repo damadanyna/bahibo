@@ -70,7 +70,7 @@ class _NavigationMessageSearchBarState
       panelColor: widget.fillColor,
       borderColor: widget.borderColor,
       hintText: 'Rechercher dans message',
-      contentPadding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+      contentPadding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
       leadingSize: 26,
       leadingIcon: Icon(
         Icons.search_rounded,
@@ -87,6 +87,7 @@ class NavigationMessageStoryAvatar extends StatelessWidget {
   final String avatarUrl;
   final String? userId;
   final bool isActive;
+  final bool isOnline;
   final Color primary;
   final Color labelColor;
   final Color haloColor;
@@ -98,6 +99,7 @@ class NavigationMessageStoryAvatar extends StatelessWidget {
     required this.avatarUrl,
     this.userId,
     required this.isActive,
+    this.isOnline = false,
     required this.primary,
     required this.labelColor,
     required this.haloColor,
@@ -112,31 +114,46 @@ class NavigationMessageStoryAvatar extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(20),
         child: SizedBox(
-          width: 68,
+          width: 72,
           child: Column(
             children: [
               Stack(
                 clipBehavior: Clip.none,
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(2.5),
+                    padding: const EdgeInsets.all(2.6),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: primary.withValues(alpha: 0.42),
+                        color: isActive
+                            ? primary.withValues(alpha: 0.9)
+                            : haloColor.withValues(alpha: 0.3),
+                        width: isActive ? 2.2 : 1.1,
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: primary.withValues(alpha: 0.18),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
                     ),
                     child: AppCircleNetworkAvatar(
-                      radius: 26,
+                      radius: 28,
                       imageUrl: avatarUrl,
                       userId: userId,
+                      showPresenceBadge: false,
+                    ),
+                  ),
+                  Positioned(
+                    right: 1,
+                    bottom: 1,
+                    child: Container(
+                      width: 15,
+                      height: 15,
+                      decoration: BoxDecoration(
+                        color: isOnline
+                            ? const Color(0xFF39D353)
+                            : Colors.grey.shade700,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Theme.of(context).scaffoldBackgroundColor,
+                          width: 2.2,
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -170,6 +187,10 @@ class NavigationConversationTile extends StatelessWidget {
   final String? userId;
   final bool isTyping;
   final bool unread;
+  final bool isOnline;
+  final int unreadCount;
+  final bool isMuted;
+  final bool showReplyChip;
   final Color primary;
   final bool isDark;
   final VoidCallback onTap;
@@ -184,6 +205,10 @@ class NavigationConversationTile extends StatelessWidget {
     this.userId,
     this.isTyping = false,
     required this.unread,
+    this.isOnline = false,
+    this.unreadCount = 0,
+    this.isMuted = false,
+    this.showReplyChip = false,
     required this.primary,
     required this.isDark,
     required this.onTap,
@@ -193,42 +218,22 @@ class NavigationConversationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final appColors = theme.appColors;
-    final surfaceColor = unread
-        ? (isDark ? theme.cardColor : theme.cardColor)
-        : appColors.inputFill;
-    final titleColor = isDark
-        ? appColors.heroForeground
-        : theme.colorScheme.onSurface;
-    final previewColor = isDark
-        ? appColors.heroForeground.withValues(alpha: unread ? 0.86 : 0.68)
-        : appColors.mutedText;
+    final surfaceColor = isDark ? const Color(0xFF232323) : theme.cardColor;
+    final titleColor = Colors.white;
+    final previewColor = Colors.white.withValues(alpha: unread ? 0.88 : 0.68);
+    final statusColor = Colors.white.withValues(alpha: 0.52);
+    final badgeCount = unreadCount > 0 ? unreadCount : (unread ? 1 : 0);
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(18),
         onTap: onTap,
         child: Ink(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
           decoration: BoxDecoration(
             color: surfaceColor,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: unread
-                  ? primary.withValues(alpha: isDark ? 0.22 : 0.16)
-                  : (isDark ? appColors.heroSurface : appColors.inputBorder),
-            ),
-            boxShadow: unread
-                ? [
-                    BoxShadow(
-                      color: appColors.scrimSoft.withValues(
-                        alpha: isDark ? 0.18 : 0.05,
-                      ),
-                      blurRadius: 18,
-                      offset: const Offset(0, 8),
-                    ),
-                  ]
-                : null,
+            borderRadius: BorderRadius.circular(18),
           ),
           child: Row(
             children: [
@@ -240,18 +245,37 @@ class NavigationConversationTile extends StatelessWidget {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: primary.withValues(alpha: unread ? 0.42 : 0.18),
+                        color: unread
+                            ? primary.withValues(alpha: 0.82)
+                            : Colors.white.withValues(alpha: 0.08),
+                        width: unread ? 1.8 : 1,
                       ),
                     ),
                     child: AppCircleNetworkAvatar(
-                      radius: 28,
+                      radius: 26,
                       imageUrl: avatarUrl,
                       userId: userId,
+                      showPresenceBadge: false,
+                    ),
+                  ),
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: 14,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: isOnline
+                            ? const Color(0xFF39D353)
+                            : const Color(0xFF4A4A4A),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: surfaceColor, width: 2),
+                      ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -268,24 +292,24 @@ class NavigationConversationTile extends StatelessWidget {
                               fontWeight: unread
                                   ? FontWeight.w800
                                   : FontWeight.w700,
-                              fontSize: 16,
+                              fontSize: 17,
                             ),
                           ),
                         ),
-                        Text(
-                          time,
-                          style: TextStyle(
-                            color: unread ? primary : previewColor,
-                            fontWeight: unread
-                                ? FontWeight.w800
-                                : FontWeight.w600,
-                            fontSize: 13,
+                        if (time.isNotEmpty)
+                          Text(
+                            time,
+                            style: TextStyle(
+                              color: statusColor,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                            ),
                           ),
-                        ),
                       ],
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 5),
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Expanded(
                           child: isTyping
@@ -306,15 +330,65 @@ class NavigationConversationTile extends StatelessWidget {
                                   ),
                                 ),
                         ),
-                        if (unread) ...[
+                        if (showReplyChip) ...[
                           const SizedBox(width: 10),
                           Container(
-                            width: 10,
-                            height: 10,
-                            decoration: BoxDecoration(
-                              color: appColors.success,
-                              shape: BoxShape.circle,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 7,
                             ),
+                            decoration: BoxDecoration(
+                              color: primary.withValues(alpha: 0.24),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.reply_rounded,
+                                  size: 14,
+                                  color: primary,
+                                ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  'Repondre',
+                                  style: TextStyle(
+                                    color: primary,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ] else if (badgeCount > 0) ...[
+                          const SizedBox(width: 10),
+                          Container(
+                            constraints: const BoxConstraints(minWidth: 20),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE53935),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              badgeCount > 9 ? '9+' : '$badgeCount',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                        ] else if (isMuted) ...[
+                          const SizedBox(width: 10),
+                          Icon(
+                            Icons.notifications_off_rounded,
+                            size: 17,
+                            color: statusColor,
                           ),
                         ],
                       ],
@@ -327,7 +401,7 @@ class NavigationConversationTile extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: previewColor,
+                          color: statusColor,
                           fontWeight: FontWeight.w500,
                           fontSize: 11,
                         ),
@@ -432,21 +506,33 @@ class NavigationIconActionButton extends StatelessWidget {
   final IconData icon;
   final Color backgroundColor;
   final Color iconColor;
+  final VoidCallback? onTap;
 
   const NavigationIconActionButton({
     super.key,
     required this.icon,
     required this.backgroundColor,
     required this.iconColor,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 40,
-      height: 40,
-      decoration: BoxDecoration(color: backgroundColor, shape: BoxShape.circle),
-      child: Icon(icon, color: iconColor, size: 20),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Ink(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: iconColor, size: 20),
+        ),
+      ),
     );
   }
 }
