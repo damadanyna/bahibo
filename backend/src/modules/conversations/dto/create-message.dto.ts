@@ -8,6 +8,25 @@ export class CreateMessageDto {
 
   @IsOptional()
   @IsString()
+  replyToMessageId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(191)
+  replyToSenderUserId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(240)
+  replyToSenderName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  replyToContent?: string;
+
+  @IsOptional()
+  @IsString()
   productId?: string;
 
   @IsOptional()

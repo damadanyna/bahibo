@@ -47,10 +47,11 @@ class ConversationsApiService {
   Future<Map<String, dynamic>> sendMessage({
     required String conversationId,
     required String content,
+    Map<String, dynamic>? reply,
   }) async {
     final data = await _client.post(
       '/conversations/$conversationId/messages',
-      body: {'content': content},
+      body: {'content': content, if (reply != null) ...reply},
       authenticated: true,
     );
     return Map<String, dynamic>.from(data as Map);
@@ -59,10 +60,11 @@ class ConversationsApiService {
   Future<Map<String, dynamic>> sendProductMessage({
     required String productId,
     required String content,
+    Map<String, dynamic>? reply,
   }) async {
     final data = await _client.post(
       '/conversations/product/$productId/messages',
-      body: {'content': content},
+      body: {'content': content, if (reply != null) ...reply},
       authenticated: true,
     );
     return Map<String, dynamic>.from(data as Map);
@@ -72,12 +74,14 @@ class ConversationsApiService {
     required String targetUserId,
     required String content,
     Map<String, dynamic>? productSnapshot,
+    Map<String, dynamic>? reply,
   }) async {
     final data = await _client.post(
       '/conversations/user/$targetUserId/messages',
       body: {
         'content': content,
         if (productSnapshot != null) ...productSnapshot,
+        if (reply != null) ...reply,
       },
       authenticated: true,
     );

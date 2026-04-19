@@ -63,6 +63,28 @@ class CatalogApiService {
     return Map<String, dynamic>.from(data as Map);
   }
 
+  Future<Map<String, dynamic>> reportUser(
+    String userId, {
+    String? conversationId,
+    String? reason,
+    String? details,
+    bool blockUser = false,
+  }) async {
+    final data = await _client.post(
+      '/profiles/users/$userId/report',
+      authenticated: true,
+      body: {
+        if (conversationId != null && conversationId.trim().isNotEmpty)
+          'conversationId': conversationId.trim(),
+        if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+        if (details != null && details.trim().isNotEmpty)
+          'details': details.trim(),
+        'blockUser': blockUser,
+      },
+    );
+    return Map<String, dynamic>.from(data as Map);
+  }
+
   Future<List<Map<String, dynamic>>> fetchUsersPresence(
     List<String> userIds,
   ) async {

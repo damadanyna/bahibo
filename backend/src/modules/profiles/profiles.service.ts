@@ -35,6 +35,147 @@ export class ProfilesService {
     return presentUserProfile(user, sellerStats);
   }
 
+  async reportUser(
+    reporterUserId: string,
+    reportedUserId: string,
+    input: {
+      conversationId?: string;
+      reason?: string;
+      details?: string;
+      blockUser?: boolean;
+    },
+  ) {
+    const normalizedReportedUserId = reportedUserId.trim();
+
+    if (normalizedReportedUserId.length === 0) {
+      throw new BadRequestException('Reported user id is required');
+    }
+
+    if (normalizedReportedUserId === reporterUserId) {
+      throw new BadRequestException('You cannot report your own account');
+    }
+
+    const reportedUser = await this.prisma.user.findUnique({
+      where: { id: normalizedReportedUserId },
+      select: {
+        id: true,
+        displayName: true,
+      },
+    });
+
+    if (!reportedUser) {
+      throw new NotFoundException('User not found');
+    }
+
+    const report = await this.prisma.userReport.create({
+      data: {
+        reporterUserId,
+        reportedUserId: normalizedReportedUserId,
+        conversationId: input.conversationId?.trim() || null,
+        reason: input.reason?.trim() || 'CHAT_REPORT',
+        details: input.details?.trim() || null,
+        blockRequested: input.blockUser === true,
+      },
+    });
+
+    return {
+      id: report.id,
+      reportedUserId: reportedUser.id,
+      reportedUserDisplayName: reportedUser.displayName,
+      blockRequested: report.blockRequested,
+      createdAt: report.createdAt.toISOString(),
+    };
+  }
+
+  async listReportsByReporter(reporterUserId: string) {
+    const reports = await this.prisma.userReport.findMany({
+      where: {
+        reporterUserId,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      include: {
+        reporter: {
+          select: {
+            id: true,
+            displayName: true,
+            avatarUrl: true,
+          },
+        },
+        reported: {
+          select: {
+            id: true,
+            displayName: true,
+            avatarUrl: true,
+          },
+        },
+      },
+    });
+
+    return reports.map((report) => ({
+      id: report.id,
+      conversationId: report.conversationId,
+      reason: report.reason,
+      details: report.details,
+      blockRequested: report.blockRequested,
+      createdAt: report.createdAt.toISOString(),
+      reporter: {
+        id: report.reporter.id,
+        displayName: report.reporter.displayName,
+        avatarUrl: report.reporter.avatarUrl,
+      },
+      reported: {
+        id: report.reported.id,
+        displayName: report.reported.displayName,
+        avatarUrl: report.reported.avatarUrl,
+      },
+    }));
+  }
+
+  async listAllReports() {
+    const reports = await this.prisma.userReport.findMany({
+      orderBy: {
+        createdAt: 'desc',
+      },
+      include: {
+        reporter: {
+          select: {
+            id: true,
+            displayName: true,
+            avatarUrl: true,
+          },
+        },
+        reported: {
+          select: {
+            id: true,
+            displayName: true,
+            avatarUrl: true,
+          },
+        },
+      },
+    });
+
+    return reports.map((report) => ({
+      id: report.id,
+      conversationId: report.conversationId,
+      reason: report.reason,
+      details: report.details,
+      blockRequested: report.blockRequested,
+      createdAt: report.createdAt.toISOString(),
+      reporter: {
+        id: report.reporter.id,
+        displayName: report.reporter.displayName,
+        avatarUrl: report.reporter.avatarUrl,
+      },
+      reported: {
+        id: report.reported.id,
+        displayName: report.reported.displayName,
+        avatarUrl: report.reported.avatarUrl,
+      },
+    }));
+  }
+
   async startCurrentUserLive(
     userId: string,
     params: { title: string; category: string },

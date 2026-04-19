@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:bahibo/component/main_navigation_shell.dart';
 import 'package:bahibo/page/chat_page.dart';
+import 'package:bahibo/page/productDetail.dart';
 import 'package:bahibo/services/app_api_client.dart';
 import 'package:bahibo/services/session_storage.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -262,6 +263,11 @@ class PushNotificationService {
             MaterialPageRoute(
               builder: (_) => ChatPage(
                 conversationId: conversationId,
+                productPageBuilder: (product, {openedFromChat = false}) =>
+                    ProductDetailPage(
+                      product: product,
+                      openedFromChat: openedFromChat,
+                    ),
                 sellerName:
                     pendingData['participantName']?.trim().isNotEmpty == true
                     ? pendingData['participantName']!.trim()

@@ -276,6 +276,57 @@ export class ProfilesController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post('users/:userId/report')
+  async reportUser(
+    @Req() req: { user: { userId: string } },
+    @Param('userId') userId: string,
+    @Body()
+    body: {
+      conversationId?: string;
+      reason?: string;
+      details?: string;
+      blockUser?: boolean;
+    },
+  ) {
+    return {
+      success: true,
+      message: 'User reported successfully',
+      data: await this.profilesService.reportUser(req.user.userId, userId, {
+        conversationId: body.conversationId,
+        reason: body.reason,
+        details: body.details,
+        blockUser: body.blockUser,
+      }),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('me/reports')
+  async getMyReports(
+    @Req() req: { user: { userId: string } },
+  ) {
+    return {
+      success: true,
+      message: 'Current user reports fetched successfully',
+      data: await this.profilesService.listReportsByReporter(req.user.userId),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('admin/reports')
+  async getAllReports(
+    @Req() req: { user: { userId: string; role: string } },
+  ) {
+    this.ensureAdminAccess(req.user.role);
+
+    return {
+      success: true,
+      message: 'All reports fetched successfully',
+      data: await this.profilesService.listAllReports(),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('presence')
   async getUsersPresence(
     @Query('userIds') rawUserIds: string | undefined,

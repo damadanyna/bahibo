@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:bahibo/component/navigation/navigation_message_components.dart';
 import 'package:bahibo/page/chat_page.dart';
+import 'package:bahibo/page/productDetail.dart';
 import 'package:bahibo/services/app_api_client.dart';
 import 'package:bahibo/services/chat_realtime_service.dart';
 import 'package:bahibo/services/conversations_api_service.dart';
@@ -442,6 +443,11 @@ class _MainNavigationMessagesPanelState
               ? conversation['id']?.toString()
               : null,
           conversationUserId: participantId,
+          productPageBuilder: (product, {openedFromChat = false}) =>
+              ProductDetailPage(
+                product: product,
+                openedFromChat: openedFromChat,
+              ),
           sellerName: _conversationName(conversation),
           sellerRole:
               ((conversation['participant'] as Map?)?['roleLabel']

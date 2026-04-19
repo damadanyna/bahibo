@@ -4,18 +4,24 @@ import 'package:bahibo/component/app_back_button.dart';
 import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
 import 'package:bahibo/component/app_page_skeletons.dart';
+import 'package:bahibo/component/profile_models.dart';
+import 'package:bahibo/component/seller_profile_page.dart';
 import 'package:bahibo/component/ui/chat_message_input.dart';
+import 'package:bahibo/component/user_profile_page.dart';
 import 'package:bahibo/formatter/price_formatter.dart';
 import 'package:bahibo/services/app_api_client.dart';
 import 'package:bahibo/services/catalog_api_service.dart';
 import 'package:bahibo/services/chat_realtime_service.dart';
 import 'package:bahibo/services/conversations_api_service.dart';
 import 'package:bahibo/services/presence_service.dart';
+import 'package:bahibo/services/session_storage.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
 typedef ChatProductPageBuilder =
     Widget Function(Map<String, dynamic> product, {bool openedFromChat});
+
+enum _ChatHeaderMenuAction { viewProfile, report }
 
 class ChatPage extends StatefulWidget {
   final String? conversationId;
@@ -69,11 +75,15 @@ class _ChatPageState extends State<ChatPage>
   final ConversationsApiService _conversationsApiService =
       ConversationsApiService();
   final CatalogApiService _catalogApiService = CatalogApiService();
+  final SessionStorage _sessionStorage = SessionStorage();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<_ChatMessage> _messages = [];
+  final List<_ChatMessage> _pendingMessages = [];
+  final Map<String, GlobalKey> _messageKeys = {};
   StreamSubscription<Map<String, dynamic>>? _realtimeEventsSubscription;
   Timer? _conversationPollTimer;
+  Timer? _messageHighlightTimer;
   Timer? _typingStopTimer;
   static const int _scrollRetryCount = 4;
   bool _showEntrySkeleton = true;
@@ -85,6 +95,9 @@ class _ChatPageState extends State<ChatPage>
   String? _conversationId;
   String? _loadError;
   Map<String, dynamic>? _conversation;
+  _ChatMessage? _replyingToMessage;
+  String? _highlightedMessageId;
+  bool _highlightVisible = false;
 
   @override
   void initState() {
@@ -109,6 +122,7 @@ class _ChatPageState extends State<ChatPage>
   void dispose() {
     _realtimeEventsSubscription?.cancel();
     _conversationPollTimer?.cancel();
+    _messageHighlightTimer?.cancel();
     _typingStopTimer?.cancel();
     _emitTyping(false);
     disposePageRefresh();
@@ -438,10 +452,32 @@ class _ChatPageState extends State<ChatPage>
             message: (message['content'] as String?) ?? '',
             time: _formatMessageTime(message['createdAt'] as String?),
             isMine: message['isMine'] == true,
+            deliveryState: _resolveDeliveryState(
+              isMine: message['isMine'] == true,
+              readAt: message['readAt'] as String?,
+            ),
+            reply: _ChatMessageReply.fromApi(message['reply']),
             product: _ChatMessageProduct.fromApi(message['product']),
           ),
         ),
       );
+    _pendingMessages.clear();
+  }
+
+  _ChatMessageDeliveryState? _resolveDeliveryState({
+    required bool isMine,
+    required String? readAt,
+  }) {
+    if (!isMine) {
+      return null;
+    }
+
+    final normalizedReadAt = readAt?.trim() ?? '';
+    if (normalizedReadAt.isNotEmpty) {
+      return _ChatMessageDeliveryState.seen;
+    }
+
+    return _ChatMessageDeliveryState.sent;
   }
 
   String _formatMessageTime(String? isoValue) {
@@ -462,6 +498,22 @@ class _ChatPageState extends State<ChatPage>
       return;
     }
 
+    final pendingMessage = _ChatMessage(
+      id: 'pending-${DateTime.now().microsecondsSinceEpoch}',
+      message: content,
+      time: _formatMessageTime(DateTime.now().toIso8601String()),
+      isMine: true,
+      deliveryState: _ChatMessageDeliveryState.sending,
+      reply: _replyingToMessage == null
+          ? null
+          : _ChatMessageReply(
+              messageId: _replyingToMessage!.id,
+              senderLabel: _replyAuthorLabel(_replyingToMessage!),
+              content: _replyingToMessage!.message,
+            ),
+    );
+    final previousReplyingToMessage = _replyingToMessage;
+
     final shouldAttachInitialProductContext =
         widget.embedProductContextInInitialMessage &&
         !_initialProductContextSent &&
@@ -469,14 +521,22 @@ class _ChatPageState extends State<ChatPage>
 
     _typingStopTimer?.cancel();
     _emitTyping(false);
-    setState(() => _isSending = true);
+    setState(() {
+      _isSending = true;
+      _pendingMessages.add(pendingMessage);
+      _replyingToMessage = null;
+    });
+    _messageController.clear();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _animateToBottom());
     try {
+      final replyPayload = await _replyPayload(previousReplyingToMessage);
       final data =
           shouldAttachInitialProductContext &&
               (widget.conversationUserId?.isNotEmpty ?? false)
           ? await _conversationsApiService.sendUserMessage(
               targetUserId: widget.conversationUserId!,
               content: content,
+              reply: replyPayload,
               productSnapshot: {
                 'productId': widget.conversationProductId,
                 'productTitle': _productTitleValue,
@@ -490,37 +550,165 @@ class _ChatPageState extends State<ChatPage>
           ? await _conversationsApiService.sendProductMessage(
               productId: widget.conversationProductId!,
               content: content,
+              reply: replyPayload,
             )
           : (widget.conversationUserId?.isNotEmpty ?? false)
           ? await _conversationsApiService.sendUserMessage(
               targetUserId: widget.conversationUserId!,
               content: content,
+              reply: replyPayload,
             )
           : _conversationId != null
           ? await _conversationsApiService.sendMessage(
               conversationId: _conversationId!,
               content: content,
+              reply: replyPayload,
             )
           : await _conversationsApiService.sendMessage(
               conversationId: _conversationId!,
               content: content,
+              reply: replyPayload,
             );
       _applyConversation(data);
       if (!mounted) return;
-      _messageController.clear();
       _initialProductContextSent = true;
-      setState(() => _showEntrySkeleton = false);
+      setState(() {
+        _showEntrySkeleton = false;
+      });
       WidgetsBinding.instance.addPostFrameCallback((_) => _animateToBottom());
     } on AppApiException catch (error) {
       if (!mounted) return;
+      _messageController
+        ..text = content
+        ..selection = TextSelection.collapsed(offset: content.length);
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(error.message)));
+      setState(() {
+        _pendingMessages.removeWhere(
+          (message) => message.id == pendingMessage.id,
+        );
+        _replyingToMessage = previousReplyingToMessage;
+      });
     } finally {
       if (mounted) {
         setState(() => _isSending = false);
       }
     }
+  }
+
+  void _setReplyingToMessage(_ChatMessage message) {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() => _replyingToMessage = message);
+  }
+
+  void _clearReplyingToMessage() {
+    if (!mounted || _replyingToMessage == null) {
+      return;
+    }
+
+    setState(() => _replyingToMessage = null);
+  }
+
+  String _replyAuthorLabel(_ChatMessage message) {
+    return message.isMine ? 'Vous' : _sellerNameValue;
+  }
+
+  String _messageReplyKey(_ChatMessage message) {
+    return message.id ??
+        '${message.time}-${message.isMine ? 'mine' : 'their'}-${message.message.hashCode}';
+  }
+
+  GlobalKey _messageItemKey(_ChatMessage message) {
+    final visualKey = _messageReplyKey(message);
+    return _messageKeys.putIfAbsent(visualKey, GlobalKey.new);
+  }
+
+  Future<void> _focusRepliedMessage(String? messageId) async {
+    final normalizedId = messageId?.trim() ?? '';
+    if (normalizedId.isEmpty) {
+      return;
+    }
+
+    final key = _messageKeys[normalizedId];
+    final targetContext = key?.currentContext;
+    if (targetContext == null) {
+      return;
+    }
+
+    await Scrollable.ensureVisible(
+      targetContext,
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+      alignment: 0.35,
+    );
+
+    _blinkMessage(normalizedId);
+  }
+
+  void _blinkMessage(String messageId) {
+    _messageHighlightTimer?.cancel();
+    var tick = 0;
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _highlightedMessageId = messageId;
+      _highlightVisible = true;
+    });
+
+    _messageHighlightTimer = Timer.periodic(const Duration(milliseconds: 170), (
+      timer,
+    ) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      tick += 1;
+      if (tick >= 5) {
+        timer.cancel();
+        setState(() {
+          _highlightedMessageId = null;
+          _highlightVisible = false;
+        });
+        return;
+      }
+
+      setState(() => _highlightVisible = !_highlightVisible);
+    });
+  }
+
+  Future<Map<String, dynamic>?> _replyPayload([
+    _ChatMessage? sourceReply,
+  ]) async {
+    final reply = sourceReply ?? _replyingToMessage;
+    if (reply == null) {
+      return null;
+    }
+
+    final content = reply.message.trim();
+    if (content.isEmpty) {
+      return null;
+    }
+
+    final currentDisplayName =
+        (await _sessionStorage.getDisplayName())?.trim() ?? 'Utilisateur';
+
+    return {
+      if (reply.id != null && reply.id!.trim().isNotEmpty)
+        'replyToMessageId': reply.id!.trim(),
+      'replyToSenderUserId': reply.isMine ? '' : (_participantUserId ?? ''),
+      'replyToSenderName': reply.isMine ? currentDisplayName : _sellerNameValue,
+      'replyToContent': content.length > 500
+          ? '${content.substring(0, 497)}...'
+          : content,
+    };
   }
 
   void _handleAttachment(UiChatAttachment attachment) {
@@ -568,6 +756,33 @@ class _ChatPageState extends State<ChatPage>
     }
   }
 
+  bool _matchesCurrentProductSnapshot(
+    _ChatMessageProduct product,
+    Map<String, dynamic> currentProduct,
+  ) {
+    final snapshotTitle = product.title.trim().toLowerCase();
+    final currentTitle =
+        (currentProduct['title'] ?? currentProduct['name'] ?? '')
+            .toString()
+            .trim()
+            .toLowerCase();
+    final snapshotImage = product.imageUrl.trim();
+    final currentImage =
+        (currentProduct['imageUrl'] ?? currentProduct['thumbnail'] ?? '')
+            .toString()
+            .trim();
+
+    if (snapshotTitle.isNotEmpty && snapshotTitle == currentTitle) {
+      return true;
+    }
+
+    if (snapshotImage.isNotEmpty && snapshotImage == currentImage) {
+      return true;
+    }
+
+    return false;
+  }
+
   Future<void> _openMessageProductCard(_ChatMessageProduct product) async {
     final productPageBuilder = widget.productPageBuilder;
     if (productPageBuilder == null) {
@@ -575,13 +790,12 @@ class _ChatPageState extends State<ChatPage>
     }
 
     final productId = product.id?.trim() ?? '';
-    if (productId.isEmpty) {
-      return;
-    }
-
     final currentProduct = _productValue;
     final currentProductId = currentProduct?['id']?.toString().trim() ?? '';
-    if (currentProduct != null && currentProductId == productId) {
+    if (currentProduct != null &&
+        (productId.isEmpty ||
+            currentProductId == productId ||
+            _matchesCurrentProductSnapshot(product, currentProduct))) {
       if (!mounted) {
         return;
       }
@@ -592,6 +806,17 @@ class _ChatPageState extends State<ChatPage>
           builder: (_) =>
               productPageBuilder(currentProduct, openedFromChat: true),
         ),
+      );
+      return;
+    }
+
+    if (productId.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Detail du produit indisponible.')),
       );
       return;
     }
@@ -609,6 +834,228 @@ class _ChatPageState extends State<ChatPage>
         MaterialPageRoute(
           builder: (_) =>
               productPageBuilder(fetchedProduct, openedFromChat: true),
+        ),
+      );
+    } on AppApiException catch (error) {
+      if (currentProduct != null && mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                productPageBuilder(currentProduct, openedFromChat: true),
+          ),
+        );
+        return;
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
+  Future<void> _openParticipantProfile() async {
+    final userId = _participantUserId?.trim() ?? '';
+    if (userId.isEmpty) {
+      return;
+    }
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FutureBuilder<Map<String, dynamic>>(
+          future: _catalogApiService.fetchUserProfile(userId),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return Scaffold(
+                backgroundColor: Theme.of(context).appColors.backgroundBase,
+                body: Center(
+                  child: Text(
+                    'Impossible de charger le profil.',
+                    style: TextStyle(
+                      color: Theme.of(context).appColors.mutedText,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            if (!snapshot.hasData) {
+              return Scaffold(
+                backgroundColor: Theme.of(context).appColors.backgroundBase,
+                body: const Center(child: CircularProgressIndicator()),
+              );
+            }
+
+            final profile = buildPublicUserProfileFromApi(snapshot.data!);
+            final sellerProfileId = profile.sellerProfileId?.trim() ?? '';
+
+            if (sellerProfileId.isNotEmpty) {
+              return SellerProfilePage(profile: profile);
+            }
+
+            return UserProfilePage(profile: profile);
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showReportParticipantDialog() async {
+    final userId = _participantUserId?.trim() ?? '';
+    if (userId.isEmpty) {
+      return;
+    }
+
+    var blockUser = false;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final theme = Theme.of(dialogContext);
+        final appColors = theme.appColors;
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Dialog(
+              backgroundColor: appColors.panelBackground,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 22, 24, 18),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.thumb_down_alt_outlined,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
+                      size: 26,
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      'Signaler a Bahibo',
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurface,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Les 5 derniers messages de cette discussion seront envoyes a Bahibo. Cette personne ne saura pas que vous l\'avez bloquee ou signalee.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: appColors.mutedText,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        height: 1.45,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () => setDialogState(() => blockUser = !blockUser),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Checkbox(
+                              value: blockUser,
+                              onChanged: (value) => setDialogState(
+                                () => blockUser = value ?? false,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Bloquer $_sellerNameValue',
+                                    style: TextStyle(
+                                      color: theme.colorScheme.onSurface,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Cette personne ne pourra plus vous envoyer de messages ni vous appeler.',
+                                    style: TextStyle(
+                                      color: appColors.mutedText,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(false),
+                          child: Text(
+                            'Annuler',
+                            style: TextStyle(color: appColors.onlineStatus),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        TextButton(
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(true),
+                          child: Text(
+                            'Signaler',
+                            style: TextStyle(color: appColors.onlineStatus),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    try {
+      await _catalogApiService.reportUser(
+        userId,
+        conversationId: _conversationId,
+        reason: 'CHAT_REPORT',
+        blockUser: blockUser,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            blockUser
+                ? 'Signalement envoye. La demande de blocage a ete enregistree.'
+                : 'Signalement envoye avec succes.',
+          ),
         ),
       );
     } on AppApiException catch (error) {
@@ -635,6 +1082,7 @@ class _ChatPageState extends State<ChatPage>
     final subtleText = appColors.mutedText;
     final sellerName = _sellerNameValue;
     final avatarUrl = _avatarUrlValue;
+    final displayMessages = [..._messages, ..._pendingMessages];
 
     return Scaffold(
       backgroundColor: background,
@@ -655,6 +1103,8 @@ class _ChatPageState extends State<ChatPage>
                         avatarUrl: avatarUrl,
                         userId: _participantUserId,
                         isOnline: _participantIsOnlineValue,
+                        onViewProfile: _openParticipantProfile,
+                        onReport: _showReportParticipantDialog,
                       ),
                       if (widget.showProductContextCard &&
                           _productTitleValue.isNotEmpty)
@@ -704,39 +1154,59 @@ class _ChatPageState extends State<ChatPage>
                                     color: theme.colorScheme.error,
                                     cardColor: incomingBubbleColor,
                                   )
-                                else if (_messages.isEmpty)
+                                else if (displayMessages.isEmpty)
                                   _ChatInfoCard(
                                     text: 'Aucun message pour le moment.',
                                     color: subtleText,
                                     cardColor: incomingBubbleColor,
                                   )
                                 else
-                                  ..._messages.map(
-                                    (chat) => Padding(
+                                  ...displayMessages.map((chat) {
+                                    final visualKey = _messageReplyKey(chat);
+                                    return Padding(
+                                      key: _messageItemKey(chat),
                                       padding: const EdgeInsets.only(bottom: 6),
-                                      child: _ChatBubble(
-                                        message: chat.message,
-                                        time: chat.time,
+                                      child: _SwipeReplyWrapper(
                                         isMine: chat.isMine,
-                                        product: chat.product,
-                                        onProductTap:
-                                            !widget.showInlineProductSnapshots ||
-                                                chat.product == null
-                                            ? null
-                                            : () => _openMessageProductCard(
-                                                chat.product!,
-                                              ),
-                                        avatarUrl: avatarUrl,
-                                        participantUserId: _participantUserId,
                                         primary: primary,
-                                        incomingBubbleColor:
-                                            incomingBubbleColor,
-                                        outgoingBubbleColor:
-                                            outgoingBubbleColor,
-                                        subtleText: subtleText,
+                                        onReply: () =>
+                                            _setReplyingToMessage(chat),
+                                        child: _ChatBubble(
+                                          message: chat.message,
+                                          time: chat.time,
+                                          isMine: chat.isMine,
+                                          deliveryState: chat.deliveryState,
+                                          reply: chat.reply,
+                                          isHighlighted:
+                                              _highlightedMessageId ==
+                                                  visualKey &&
+                                              _highlightVisible,
+                                          onReplyTap:
+                                              chat.reply?.messageId == null
+                                              ? null
+                                              : () => _focusRepliedMessage(
+                                                  chat.reply!.messageId,
+                                                ),
+                                          product: chat.product,
+                                          onProductTap:
+                                              !widget.showInlineProductSnapshots ||
+                                                  chat.product == null
+                                              ? null
+                                              : () => _openMessageProductCard(
+                                                  chat.product!,
+                                                ),
+                                          avatarUrl: avatarUrl,
+                                          participantUserId: _participantUserId,
+                                          primary: primary,
+                                          incomingBubbleColor:
+                                              incomingBubbleColor,
+                                          outgoingBubbleColor:
+                                              outgoingBubbleColor,
+                                          subtleText: subtleText,
+                                        ),
                                       ),
-                                    ),
-                                  ),
+                                    );
+                                  }),
                                 if (_isParticipantTyping) ...[
                                   const SizedBox(height: 6),
                                   _TypingIndicatorBubble(
@@ -751,15 +1221,33 @@ class _ChatPageState extends State<ChatPage>
                       ),
                       Container(
                         padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
-                        child: UiChatMessageInput(
-                          controller: _messageController,
-                          onAttachmentSelected: _handleAttachment,
-                          onTextChanged: _handleComposerChanged,
-                          onSend: _sendMessage,
-                          primary: primary,
-                          panelColor: panelColor,
-                          borderColor: appColors.inputBorder,
-                          hintText: 'Message',
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_replyingToMessage != null)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: _ReplyComposerCard(
+                                  primary: primary,
+                                  appColors: appColors,
+                                  authorLabel: _replyAuthorLabel(
+                                    _replyingToMessage!,
+                                  ),
+                                  message: _replyingToMessage!.message,
+                                  onClose: _clearReplyingToMessage,
+                                ),
+                              ),
+                            UiChatMessageInput(
+                              controller: _messageController,
+                              onAttachmentSelected: _handleAttachment,
+                              onTextChanged: _handleComposerChanged,
+                              onSend: _sendMessage,
+                              primary: primary,
+                              panelColor: panelColor,
+                              borderColor: appColors.inputBorder,
+                              hintText: 'Message',
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -781,6 +1269,8 @@ class _ChatHeader extends StatelessWidget {
   final String avatarUrl;
   final String? userId;
   final bool isOnline;
+  final VoidCallback onViewProfile;
+  final VoidCallback onReport;
 
   const _ChatHeader({
     required this.primary,
@@ -791,6 +1281,8 @@ class _ChatHeader extends StatelessWidget {
     required this.avatarUrl,
     this.userId,
     this.isOnline = false,
+    required this.onViewProfile,
+    required this.onReport,
   });
 
   @override
@@ -856,29 +1348,54 @@ class _ChatHeader extends StatelessWidget {
                   ],
                 ),
               ),
-              _ChatHeaderAction(icon: Icons.videocam_outlined, onTap: () {}),
-              _ChatHeaderAction(icon: Icons.call_outlined, onTap: () {}),
-              _ChatHeaderAction(icon: Icons.more_vert, onTap: () {}),
+              PopupMenuButton<_ChatHeaderMenuAction>(
+                color: headerColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                onSelected: (value) {
+                  if (value == _ChatHeaderMenuAction.viewProfile) {
+                    onViewProfile();
+                    return;
+                  }
+                  onReport();
+                },
+                itemBuilder: (context) => [
+                  PopupMenuItem<_ChatHeaderMenuAction>(
+                    value: _ChatHeaderMenuAction.viewProfile,
+                    child: Text(
+                      'Voir le profil',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                  ),
+                  PopupMenuItem<_ChatHeaderMenuAction>(
+                    value: _ChatHeaderMenuAction.report,
+                    child: Text(
+                      'Signaler',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                  ),
+                ],
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 8,
+                  ),
+                  child: Icon(
+                    Icons.more_vert,
+                    color: Colors.white.withValues(alpha: 0.94),
+                    size: 23,
+                  ),
+                ),
+              ),
             ],
           ),
         );
       },
-    );
-  }
-}
-
-class _ChatHeaderAction extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-
-  const _ChatHeaderAction({required this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return IconButton(
-      onPressed: onTap,
-      splashRadius: 20,
-      icon: Icon(icon, color: Colors.white.withValues(alpha: 0.94), size: 23),
     );
   }
 }
@@ -1031,6 +1548,8 @@ class _ChatMessage {
   final String message;
   final String time;
   final bool isMine;
+  final _ChatMessageDeliveryState? deliveryState;
+  final _ChatMessageReply? reply;
   final _ChatMessageProduct? product;
 
   const _ChatMessage({
@@ -1038,8 +1557,44 @@ class _ChatMessage {
     required this.message,
     required this.time,
     required this.isMine,
+    this.deliveryState,
+    this.reply,
     this.product,
   });
+}
+
+enum _ChatMessageDeliveryState { sending, sent, seen }
+
+class _ChatMessageReply {
+  final String? messageId;
+  final String senderLabel;
+  final String content;
+
+  const _ChatMessageReply({
+    required this.messageId,
+    required this.senderLabel,
+    required this.content,
+  });
+
+  static _ChatMessageReply? fromApi(dynamic value) {
+    if (value is! Map) {
+      return null;
+    }
+
+    final senderLabel = (value['senderLabel'] as String? ?? '').trim();
+    final content = (value['content'] as String? ?? '').trim();
+    final messageId = value['messageId']?.toString().trim();
+
+    if (senderLabel.isEmpty && content.isEmpty) {
+      return null;
+    }
+
+    return _ChatMessageReply(
+      messageId: messageId,
+      senderLabel: senderLabel.isNotEmpty ? senderLabel : 'Message',
+      content: content,
+    );
+  }
 }
 
 class _ChatMessageProduct {
@@ -1090,6 +1645,10 @@ class _ChatBubble extends StatelessWidget {
   final String message;
   final String time;
   final bool isMine;
+  final _ChatMessageDeliveryState? deliveryState;
+  final _ChatMessageReply? reply;
+  final bool isHighlighted;
+  final VoidCallback? onReplyTap;
   final _ChatMessageProduct? product;
   final VoidCallback? onProductTap;
   final String avatarUrl;
@@ -1103,6 +1662,10 @@ class _ChatBubble extends StatelessWidget {
     required this.message,
     required this.time,
     required this.isMine,
+    this.deliveryState,
+    this.reply,
+    this.isHighlighted = false,
+    this.onReplyTap,
     this.product,
     this.onProductTap,
     required this.avatarUrl,
@@ -1120,6 +1683,11 @@ class _ChatBubble extends StatelessWidget {
     final metaColor = isMine
         ? primary.withValues(alpha: 0.74)
         : subtleText.withValues(alpha: 0.92);
+    final delivery = _ChatDeliveryPresentation.fromState(
+      deliveryState,
+      primary,
+      metaColor,
+    );
 
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
@@ -1131,10 +1699,26 @@ class _ChatBubble extends StatelessWidget {
         children: [
           ConstrainedBox(
             constraints: BoxConstraints(maxWidth: isMine ? 290 : 276),
-            child: Container(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
               padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
               decoration: BoxDecoration(
                 color: bubbleColor,
+                border: isHighlighted
+                    ? Border.all(
+                        color: primary.withValues(alpha: 0.9),
+                        width: 1.4,
+                      )
+                    : null,
+                boxShadow: isHighlighted
+                    ? [
+                        BoxShadow(
+                          color: primary.withValues(alpha: 0.24),
+                          blurRadius: 16,
+                          spreadRadius: 1,
+                        ),
+                      ]
+                    : null,
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(12),
                   topRight: const Radius.circular(12),
@@ -1145,6 +1729,17 @@ class _ChatBubble extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (reply != null) ...[
+                    _MessageReplyCard(
+                      primary: primary,
+                      senderLabel: reply!.senderLabel,
+                      content: reply!.content,
+                      isMine: isMine,
+                      subtleText: metaColor,
+                      onTap: onReplyTap,
+                    ),
+                    const SizedBox(height: 10),
+                  ],
                   if (product != null && onProductTap != null) ...[
                     _InlineProductSnapshotCard(
                       product: product!,
@@ -1172,14 +1767,23 @@ class _ChatBubble extends StatelessWidget {
                       Text(
                         time,
                         style: TextStyle(
-                          color: metaColor,
+                          color: const Color.fromARGB(113, 192, 192, 192),
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      if (isMine) ...[
+                      if (isMine && delivery != null) ...[
                         const SizedBox(width: 4),
-                        Icon(Icons.done_all_rounded, size: 15, color: primary),
+                        Icon(delivery.icon, size: 15, color: delivery.color),
+                        const SizedBox(width: 4),
+                        Text(
+                          delivery.label,
+                          style: TextStyle(
+                            color: delivery.color,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ],
                     ],
                   ),
@@ -1190,6 +1794,47 @@ class _ChatBubble extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _ChatDeliveryPresentation {
+  final String label;
+  final IconData icon;
+  final Color color;
+
+  const _ChatDeliveryPresentation({
+    required this.label,
+    required this.icon,
+    required this.color,
+  });
+
+  static _ChatDeliveryPresentation? fromState(
+    _ChatMessageDeliveryState? state,
+    Color primary,
+    Color fallbackColor,
+  ) {
+    switch (state) {
+      case _ChatMessageDeliveryState.sending:
+        return _ChatDeliveryPresentation(
+          label: 'Envoi...',
+          icon: Icons.schedule_rounded,
+          color: fallbackColor,
+        );
+      case _ChatMessageDeliveryState.sent:
+        return _ChatDeliveryPresentation(
+          label: 'Envoye',
+          icon: Icons.done_rounded,
+          color: fallbackColor,
+        );
+      case _ChatMessageDeliveryState.seen:
+        return _ChatDeliveryPresentation(
+          label: 'Vu',
+          icon: Icons.done_all_rounded,
+          color: primary,
+        );
+      case null:
+        return null;
+    }
   }
 }
 
@@ -1325,6 +1970,297 @@ class _ChatInfoCard extends StatelessWidget {
         text,
         textAlign: TextAlign.center,
         style: TextStyle(color: color, fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+class _ReplySwipeBackground extends StatelessWidget {
+  final Alignment alignment;
+  final Color primary;
+
+  const _ReplySwipeBackground({required this.alignment, required this.primary});
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: alignment,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+        child: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: primary.withValues(alpha: 0.14),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(Icons.reply_rounded, color: primary, size: 20),
+        ),
+      ),
+    );
+  }
+}
+
+class _SwipeReplyWrapper extends StatefulWidget {
+  final bool isMine;
+  final Color primary;
+  final VoidCallback onReply;
+  final Widget child;
+
+  const _SwipeReplyWrapper({
+    required this.isMine,
+    required this.primary,
+    required this.onReply,
+    required this.child,
+  });
+
+  @override
+  State<_SwipeReplyWrapper> createState() => _SwipeReplyWrapperState();
+}
+
+class _MessageReplyCard extends StatelessWidget {
+  final Color primary;
+  final String senderLabel;
+  final String content;
+  final bool isMine;
+  final Color subtleText;
+  final VoidCallback? onTap;
+
+  const _MessageReplyCard({
+    required this.primary,
+    required this.senderLabel,
+    required this.content,
+    required this.isMine,
+    required this.subtleText,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaceColor = isMine
+        ? Colors.white.withValues(alpha: 0.09)
+        : primary.withValues(alpha: 0.08);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Ink(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+          decoration: BoxDecoration(
+            color: surfaceColor,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 3,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: primary,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      senderLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: primary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      content,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: subtleText,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        height: 1.25,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SwipeReplyWrapperState extends State<_SwipeReplyWrapper> {
+  static const double _triggerDistance = 56;
+  static const double _maxOffset = 72;
+  double _dragOffset = 0;
+  bool _triggered = false;
+
+  void _handleDragUpdate(DragUpdateDetails details) {
+    final delta = details.primaryDelta ?? 0;
+    final nextOffset = (_dragOffset + delta).clamp(-_maxOffset, _maxOffset);
+
+    if (widget.isMine && nextOffset > 0) {
+      return;
+    }
+
+    if (!widget.isMine && nextOffset < 0) {
+      return;
+    }
+
+    setState(() => _dragOffset = nextOffset);
+
+    if (!_triggered && _dragOffset.abs() >= _triggerDistance) {
+      _triggered = true;
+      widget.onReply();
+    }
+  }
+
+  void _resetDrag() {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() => _dragOffset = 0);
+    _triggered = false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final alignment = widget.isMine
+        ? Alignment.centerLeft
+        : Alignment.centerRight;
+    final showIcon = _dragOffset.abs() > 12;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onHorizontalDragUpdate: _handleDragUpdate,
+      onHorizontalDragEnd: (_) => _resetDrag(),
+      onHorizontalDragCancel: _resetDrag,
+      child: Stack(
+        alignment: alignment,
+        children: [
+          AnimatedOpacity(
+            duration: const Duration(milliseconds: 120),
+            opacity: showIcon ? 1 : 0,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: widget.primary.withValues(alpha: 0.14),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.reply_rounded,
+                  color: widget.primary,
+                  size: 20,
+                ),
+              ),
+            ),
+          ),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            transform: Matrix4.translationValues(_dragOffset, 0, 0),
+            child: widget.child,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReplyComposerCard extends StatelessWidget {
+  final Color primary;
+  final AppThemeColors appColors;
+  final String authorLabel;
+  final String message;
+  final VoidCallback onClose;
+
+  const _ReplyComposerCard({
+    required this.primary,
+    required this.appColors,
+    required this.authorLabel,
+    required this.message,
+    required this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+      decoration: BoxDecoration(
+        color: appColors.panelBackground,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: appColors.inputBorder),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 42,
+            decoration: BoxDecoration(
+              color: primary,
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  authorLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: primary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  message,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: appColors.mutedText,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    height: 1.25,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          InkWell(
+            onTap: onClose,
+            borderRadius: BorderRadius.circular(999),
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: Icon(
+                Icons.close_rounded,
+                color: appColors.mutedText,
+                size: 20,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

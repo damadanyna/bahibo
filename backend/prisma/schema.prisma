@@ -84,6 +84,25 @@ model User {
   productLikes        ProductLike[]
   productComments     ProductComment[]
   productShares       ProductShare[]
+  reportsSent         UserReport[]       @relation("UserReportsSent")
+  reportsReceived     UserReport[]       @relation("UserReportsReceived")
+}
+
+model UserReport {
+  id             String   @id @default(uuid())
+  reporterUserId String
+  reportedUserId String
+  conversationId String?
+  reason         String?
+  details        String?
+  blockRequested Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  reporter       User     @relation("UserReportsSent", fields: [reporterUserId], references: [id], onDelete: Cascade)
+  reported       User     @relation("UserReportsReceived", fields: [reportedUserId], references: [id], onDelete: Cascade)
+
+  @@index([reporterUserId, createdAt])
+  @@index([reportedUserId, createdAt])
+  @@index([conversationId, createdAt])
 }
 
 model SearchHistory {
@@ -313,6 +332,10 @@ model ChatMessage {
   conversationId String
   senderUserId   String
   content        String
+  replyToMessageId String?
+  replyToSenderUserId String?
+  replyToSenderName String?
+  replyToContent String?
   productId      String?
   productTitle   String?
   productSubtitle String?

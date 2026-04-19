@@ -70,7 +70,13 @@ type ConversationThreadMessage = {
   id: string;
   content: string;
   createdAt: string;
+  readAt: string | null;
   isMine: boolean;
+  reply: {
+    messageId: string | null;
+    senderLabel: string;
+    content: string;
+  } | null;
   sender: {
     id: string;
     displayName: string;
@@ -378,6 +384,10 @@ export class ConversationsService {
           conversationId: conversation.id,
           senderUserId: userId,
           content,
+          replyToMessageId: dto.replyToMessageId?.trim() || undefined,
+          replyToSenderUserId: dto.replyToSenderUserId?.trim() || undefined,
+          replyToSenderName: dto.replyToSenderName?.trim() || undefined,
+          replyToContent: dto.replyToContent?.trim() || undefined,
           productId: productSnapshot?.id ?? undefined,
           productTitle: productSnapshot?.title || undefined,
           productSubtitle: productSnapshot?.subtitle || undefined,
@@ -551,7 +561,9 @@ export class ConversationsService {
         id: message.id,
         content: message.content,
         createdAt: message.createdAt.toISOString(),
+        readAt: message.readAt?.toISOString() ?? null,
         isMine: message.senderUserId === userId,
+        reply: this.presentMessageReply(message, userId),
         sender: {
           id: message.sender.id,
           displayName: message.sender.displayName,
@@ -587,7 +599,9 @@ export class ConversationsService {
           id: message.id,
           content: message.content,
           createdAt: message.createdAt.toISOString(),
+          readAt: message.readAt?.toISOString() ?? null,
           isMine: message.senderUserId === userId,
+          reply: this.presentMessageReply(message, userId),
           sender: {
             id: message.sender.id,
             displayName: message.sender.displayName,
@@ -703,6 +717,34 @@ export class ConversationsService {
       subtitle,
       priceLabel,
       imageUrl,
+    };
+  }
+
+  private presentMessageReply(
+    message: {
+      replyToMessageId?: string | null;
+      replyToSenderUserId?: string | null;
+      replyToSenderName?: string | null;
+      replyToContent?: string | null;
+    },
+    currentUserId: string,
+  ) {
+    const content = message.replyToContent?.trim() ?? '';
+
+    if (content.length === 0) {
+      return null;
+    }
+
+    return {
+      messageId: message.replyToMessageId ?? null,
+      senderLabel:
+        message.replyToSenderUserId != null &&
+            message.replyToSenderUserId === currentUserId
+        ? 'Vous'
+        : (((message.replyToSenderName?.trim().length ?? 0) > 0)
+              ? message.replyToSenderName!.trim()
+              : 'Message'),
+      content,
     };
   }
 }

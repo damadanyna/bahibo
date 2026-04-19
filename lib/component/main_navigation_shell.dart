@@ -7,6 +7,7 @@ import 'package:bahibo/page/navigation/main_navigation_account_panel.dart';
 import 'package:bahibo/page/navigation/main_simple_user.dart';
 import 'package:bahibo/page/navigation/main_navigation_messages_panel.dart';
 import 'package:bahibo/page/navigation/main_navigation_search_panel.dart';
+import 'package:bahibo/page/productDetail.dart';
 import 'package:bahibo/services/app_api_client.dart';
 import 'package:bahibo/services/app_auth_service.dart';
 import 'package:bahibo/services/chat_realtime_service.dart';
@@ -126,6 +127,11 @@ class MainNavigationShellState extends State<BahiboNavigationShell> {
       MaterialPageRoute(
         builder: (_) => ChatPage(
           conversationId: conversationId,
+          productPageBuilder: (product, {openedFromChat = false}) =>
+              ProductDetailPage(
+                product: product,
+                openedFromChat: openedFromChat,
+              ),
           sellerName: sellerName,
           sellerRole: sellerRole,
           avatarUrl: avatarUrl,
