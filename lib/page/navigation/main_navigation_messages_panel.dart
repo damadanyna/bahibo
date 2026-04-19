@@ -510,17 +510,6 @@ class _MainNavigationMessagesPanelState
                         ),
                       ),
                     ),
-                    NavigationIconActionButton(
-                      icon: Icons.settings_rounded,
-                      backgroundColor: surfaceColor,
-                      iconColor: Colors.white,
-                    ),
-                    const SizedBox(width: 8),
-                    NavigationIconActionButton(
-                      icon: Icons.search_rounded,
-                      backgroundColor: surfaceColor,
-                      iconColor: Colors.white,
-                    ),
                   ],
                 ),
               ),
