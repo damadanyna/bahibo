@@ -7,6 +7,7 @@ import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
 import 'package:bahibo/component/app_back_button.dart';
 import 'package:bahibo/component/ui/chat_message_input_not_plus.dart';
+import 'package:bahibo/component/ui/seller_certified_badge.dart';
 import 'package:bahibo/formatter/price_formatter.dart';
 import 'package:bahibo/services/app_api_client.dart';
 import 'package:bahibo/services/app_auth_service.dart';
@@ -49,7 +50,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       'Cet article est toujours disponible ?';
   static const String _defaultSellerAvatarUrl =
       'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600';
-    final AppAuthService _authService = AppAuthService();
+  final AppAuthService _authService = AppAuthService();
   final CatalogApiService _catalogApiService = CatalogApiService();
 
   late PageController _pageController;
@@ -154,12 +155,13 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     );
     _likeCount = widget.initialLikeCount ?? _resolveLikeCount(_productData);
     _commentCount =
-        widget.initialCommentCount ?? _resolveCount(_productData, 'commentsCount');
+        widget.initialCommentCount ??
+        _resolveCount(_productData, 'commentsCount');
     _shareCount = _resolveCount(_productData, 'sharesCount');
     _isSubscribed =
-      (_sellerMap['isFollowing'] as bool?) ??
-      (widget.product['isFollowing'] as bool?) ??
-      false;
+        (_sellerMap['isFollowing'] as bool?) ??
+        (widget.product['isFollowing'] as bool?) ??
+        false;
     _loadLikeStatus();
     _loadSellerContext();
     Future.delayed(const Duration(milliseconds: 260), () {
@@ -185,7 +187,9 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     final productId = product['id']?.toString().trim() ?? '';
     if (productId.isNotEmpty) {
       try {
-        final refreshedProduct = await _catalogApiService.fetchProductById(productId);
+        final refreshedProduct = await _catalogApiService.fetchProductById(
+          productId,
+        );
         if (mounted) {
           setState(() {
             _productData = Map<String, dynamic>.from(refreshedProduct);
@@ -364,7 +368,9 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     if (_isOwnSeller) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Vous ne pouvez pas vous abonner a votre propre boutique.'),
+          content: Text(
+            'Vous ne pouvez pas vous abonner a votre propre boutique.',
+          ),
         ),
       );
       return;
@@ -672,9 +678,11 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     final author = rawAuthor is Map<String, dynamic>
         ? rawAuthor
         : rawAuthor is Map
-            ? Map<String, dynamic>.from(rawAuthor)
-            : const <String, dynamic>{};
-    final createdAt = DateTime.tryParse(rawComment['createdAt']?.toString() ?? '');
+        ? Map<String, dynamic>.from(rawAuthor)
+        : const <String, dynamic>{};
+    final createdAt = DateTime.tryParse(
+      rawComment['createdAt']?.toString() ?? '',
+    );
 
     return AppCommentItem(
       authorId: author['id']?.toString(),
@@ -684,7 +692,9 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       avatarUrl: (author['avatarUrl']?.toString().trim().isNotEmpty ?? false)
           ? author['avatarUrl'].toString().trim()
           : _defaultSellerAvatarUrl,
-      timeLabel: createdAt == null ? 'maintenant' : _formatRelativeTime(createdAt),
+      timeLabel: createdAt == null
+          ? 'maintenant'
+          : _formatRelativeTime(createdAt),
       message: rawComment['content']?.toString().trim() ?? '',
     );
   }
@@ -695,7 +705,9 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       return;
     }
 
-    final rawComments = await _catalogApiService.fetchProductComments(productId);
+    final rawComments = await _catalogApiService.fetchProductComments(
+      productId,
+    );
     if (!mounted) {
       return;
     }
@@ -1093,53 +1105,57 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                             const SizedBox(height: 2),
                                             Row(
                                               children: [
-                                                Container(
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                        horizontal: 8,
-                                                        vertical: 3,
-                                                      ),
-                                                  decoration: BoxDecoration(
-                                                    color: theme
-                                                        .colorScheme
-                                                        .primary
-                                                        .withOpacity(0.1),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          20,
-                                                        ),
-                                                  ),
-                                                  child: Row(
-                                                    children: [
-                                                      Icon(
-                                                        _resolvedSellerBadge
-                                                                .toLowerCase()
-                                                                .contains(
-                                                                  'certifie',
-                                                                )
-                                                            ? Icons.verified
-                                                            : Icons
-                                                                  .storefront_rounded,
-                                                        size: 12,
-                                                        color: theme
-                                                            .colorScheme
-                                                            .primary,
-                                                      ),
-                                                      const SizedBox(width: 3),
-                                                      Text(
-                                                        _resolvedSellerBadge,
-                                                        style: TextStyle(
+                                                _resolvedSellerBadge
+                                                        .toLowerCase()
+                                                        .contains('certifie')
+                                                    ? SellerCertifiedMiniBadge(
+                                                        label:
+                                                            _resolvedSellerBadge,
+                                                      )
+                                                    : Container(
+                                                        padding:
+                                                            const EdgeInsets.symmetric(
+                                                              horizontal: 8,
+                                                              vertical: 3,
+                                                            ),
+                                                        decoration: BoxDecoration(
                                                           color: theme
                                                               .colorScheme
-                                                              .primary,
-                                                          fontSize: 11,
-                                                          fontWeight:
-                                                              FontWeight.w600,
+                                                              .primary
+                                                              .withOpacity(0.1),
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                20,
+                                                              ),
+                                                        ),
+                                                        child: Row(
+                                                          children: [
+                                                            Icon(
+                                                              Icons
+                                                                  .storefront_rounded,
+                                                              size: 12,
+                                                              color: theme
+                                                                  .colorScheme
+                                                                  .primary,
+                                                            ),
+                                                            const SizedBox(
+                                                              width: 3,
+                                                            ),
+                                                            Text(
+                                                              _resolvedSellerBadge,
+                                                              style: TextStyle(
+                                                                color: theme
+                                                                    .colorScheme
+                                                                    .primary,
+                                                                fontSize: 11,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w600,
+                                                              ),
+                                                            ),
+                                                          ],
                                                         ),
                                                       ),
-                                                    ],
-                                                  ),
-                                                ),
                                               ],
                                             ),
                                           ],
@@ -1151,7 +1167,8 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                             : _showSubscribeConfirmation,
                                         icon: Icon(
                                           _isSubscribed
-                                              ? Icons.notifications_active_rounded
+                                              ? Icons
+                                                    .notifications_active_rounded
                                               : Icons.person_add_alt_1,
                                           size: 18,
                                         ),

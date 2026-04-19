@@ -425,7 +425,7 @@ class _MainHomePanelState extends State<MainHomePanel>
                                   return const Center(
                                     child: Padding(
                                       padding: EdgeInsets.all(16),
-                                      child: Text('Plus de produits 😊'),
+                                      child: Text('Plus de produits '),
                                     ),
                                   );
                                 }

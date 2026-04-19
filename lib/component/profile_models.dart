@@ -3,6 +3,7 @@ class UserProfileData {
   final String? sellerProfileId;
   final String? profileCreatedAt;
   final String? accountCreatedAt;
+  final String? lastSeenAt;
   final String name;
   final String avatarUrl;
   final String coverImageUrl;
@@ -28,6 +29,7 @@ class UserProfileData {
     this.sellerProfileId,
     this.profileCreatedAt,
     this.accountCreatedAt,
+    this.lastSeenAt,
     required this.name,
     required this.avatarUrl,
     required this.coverImageUrl,
@@ -74,6 +76,7 @@ UserProfileData buildSellerProfileFromApi(Map<String, dynamic> data) {
     sellerProfileId: data['id'] as String?,
     profileCreatedAt: data['createdAt'] as String?,
     accountCreatedAt: owner['createdAt'] as String?,
+    lastSeenAt: owner['lastSeenAt'] as String?,
     name: (data['studioName'] as String?)?.trim().isNotEmpty == true
         ? (data['studioName'] as String).trim()
         : ((owner['displayName'] as String?)?.trim().isNotEmpty == true
@@ -81,9 +84,7 @@ UserProfileData buildSellerProfileFromApi(Map<String, dynamic> data) {
               : 'Boutique Bahibo'),
     avatarUrl: (owner['avatarUrl'] as String?) ?? '',
     coverImageUrl: (owner['coverImageUrl'] as String?) ?? '',
-    roleLabel: isSellerCertified
-        ? 'Vendeur certifie'
-        : 'Vendeur',
+    roleLabel: isSellerCertified ? 'Vendeur certifie' : 'Vendeur',
     responseLabel: 'Profil actif',
     headline: headlineParts.isNotEmpty
         ? headlineParts.join(', ')
@@ -154,6 +155,7 @@ UserProfileData buildSellerAccountProfileFromCurrentUser(
         sellerProfileId: sellerProfile['id'] as String?,
         profileCreatedAt: sellerProfile['createdAt'] as String?,
         accountCreatedAt: user['createdAt'] as String?,
+        lastSeenAt: user['lastSeenAt'] as String?,
         name: displayLabel.isNotEmpty ? displayLabel : 'Boutique Bahibo',
         avatarUrl: avatarUrl,
         coverImageUrl: coverImageUrl,
@@ -188,9 +190,10 @@ UserProfileData buildSellerAccountProfileFromCurrentUser(
         ? sellerProfile['id'] as String?
         : null,
     profileCreatedAt: sellerProfile is Map
-      ? sellerProfile['createdAt'] as String?
-      : null,
+        ? sellerProfile['createdAt'] as String?
+        : null,
     accountCreatedAt: user['createdAt'] as String?,
+    lastSeenAt: user['lastSeenAt'] as String?,
     name: displayLabel.isNotEmpty ? displayLabel : 'Boutique Bahibo',
     avatarUrl: avatarUrl,
     coverImageUrl: coverImageUrl,
@@ -318,6 +321,7 @@ UserProfileData buildProfileFromUser({
     sellerProfileId: null,
     name: name,
     avatarUrl: avatarUrl,
+    lastSeenAt: null,
     coverImageUrl:
         'https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?w=1600',
     roleLabel: 'Membre verifie',

@@ -165,7 +165,7 @@ class _CategoryPageState extends State<CategoryPage>
                           return const Center(
                             child: Padding(
                               padding: EdgeInsets.all(16),
-                              child: Text('Plus de produits 😊'),
+                              child: Text('Plus de produits '),
                             ),
                           );
                         }

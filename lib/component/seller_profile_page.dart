@@ -1,19 +1,21 @@
 import 'package:bahibo/component/ProductCard.dart';
 import 'package:bahibo/component/app_back_button.dart';
 import 'package:bahibo/component/app_network_image.dart';
-import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
+import 'package:bahibo/component/app_page_skeletons.dart';
 import 'package:bahibo/component/profile_models.dart';
-import 'package:bahibo/component/user_profile_page.dart';
+import 'package:bahibo/component/ui/seller_certified_badge.dart';
 import 'package:bahibo/component/user_list_page.dart';
+import 'package:bahibo/component/user_profile_page.dart';
 import 'package:bahibo/page/chat_page.dart';
 import 'package:bahibo/page/image_viewer_page.dart';
+import 'package:bahibo/page/productDetail.dart';
 import 'package:bahibo/services/app_api_client.dart';
 import 'package:bahibo/services/app_auth_service.dart';
 import 'package:bahibo/services/catalog_api_service.dart';
-import 'package:flutter/material.dart';
-
+import 'package:bahibo/services/presence_service.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:flutter/material.dart';
 
 class SellerProfilePage extends StatefulWidget {
   final UserProfileData profile;
@@ -30,8 +32,10 @@ class _SellerProfilePageState extends State<SellerProfilePage>
       'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600';
   static const String _defaultCoverImageUrl =
       'https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?w=1600';
+
   final AppAuthService _authService = AppAuthService();
   final CatalogApiService _catalogApiService = CatalogApiService();
+
   bool _showEntrySkeleton = true;
   bool _isSubscribed = false;
   bool _isSubscriptionSubmitting = false;
@@ -47,10 +51,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
 
   String get _profileCoverImageUrl {
     final value = profile.coverImageUrl.trim();
-    if (value.isNotEmpty) {
-      return value;
-    }
-    return _defaultCoverImageUrl;
+    return value.isNotEmpty ? value : _defaultCoverImageUrl;
   }
 
   bool get _isOwnSellerProfile {
@@ -61,28 +62,12 @@ class _SellerProfilePageState extends State<SellerProfilePage>
         currentViewerUserId == sellerUserId;
   }
 
-  void _openMessageThread() {
-    if (_isOwnSellerProfile) {
-      return;
+  DateTime? get _profileLastSeenAt {
+    final rawValue = profile.lastSeenAt?.trim() ?? '';
+    if (rawValue.isEmpty) {
+      return null;
     }
-
-    final recipientUserId = profile.userId?.trim() ?? '';
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ChatPage(
-          conversationUserId: recipientUserId.isNotEmpty
-              ? recipientUserId
-              : null,
-          showProductContextCard: false,
-          showInlineProductSnapshots: false,
-          sellerName: profile.name,
-          sellerRole: profile.roleLabel,
-          avatarUrl: _profileAvatarUrl,
-        ),
-      ),
-    );
+    return DateTime.tryParse(rawValue)?.toLocal();
   }
 
   @override
@@ -94,7 +79,9 @@ class _SellerProfilePageState extends State<SellerProfilePage>
     _loadCurrentViewerUser();
     _refreshSellerProfile(recordView: true);
     Future.delayed(const Duration(milliseconds: 240), () {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       setState(() => _showEntrySkeleton = false);
     });
   }
@@ -111,8 +98,10 @@ class _SellerProfilePageState extends State<SellerProfilePage>
       setState(() => _showEntrySkeleton = true);
     }
     await _refreshSellerProfile();
-    await Future.delayed(const Duration(milliseconds: 450));
-    if (!mounted) return;
+    await Future<void>.delayed(const Duration(milliseconds: 450));
+    if (!mounted) {
+      return;
+    }
     setState(() => _showEntrySkeleton = false);
   }
 
@@ -165,11 +154,12 @@ class _SellerProfilePageState extends State<SellerProfilePage>
         return;
       }
       setState(() {
-        _currentViewerUserId =
-            userId != null && userId.isNotEmpty ? userId : null;
+        _currentViewerUserId = userId != null && userId.isNotEmpty
+            ? userId
+            : null;
       });
     } catch (_) {
-      // Keep page usable when current user cannot be resolved.
+      // Keep page usable even when viewer cannot be resolved.
     }
   }
 
@@ -216,13 +206,78 @@ class _SellerProfilePageState extends State<SellerProfilePage>
     }
   }
 
+  void _openMessageThread() {
+    if (_isOwnSellerProfile) {
+      return;
+    }
+
+    final recipientUserId = profile.userId?.trim() ?? '';
+    if (recipientUserId.isEmpty) {
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatPage(
+          conversationUserId: recipientUserId,
+          productPageBuilder: (product, {openedFromChat = false}) =>
+              ProductDetailPage(
+                product: product,
+                openedFromChat: openedFromChat,
+              ),
+          sellerName: profile.name,
+          sellerRole: profile.roleLabel,
+          avatarUrl: _profileAvatarUrl,
+        ),
+      ),
+    );
+  }
+
+  String _presenceStatusLabel(bool isOnline) {
+    if (isOnline) {
+      return 'En ligne';
+    }
+
+    final lastSeenAt = _profileLastSeenAt;
+    if (lastSeenAt == null) {
+      return 'Hors ligne';
+    }
+
+    final difference = DateTime.now().difference(lastSeenAt);
+    if (difference.inSeconds < 45) {
+      return 'En ligne il y a quelques secondes';
+    }
+    if (difference.inMinutes < 60) {
+      return 'En ligne il y a ${difference.inMinutes} min';
+    }
+    if (difference.inHours < 24) {
+      return 'En ligne il y a ${difference.inHours} h';
+    }
+    if (difference.inDays < 7) {
+      return 'En ligne il y a ${difference.inDays} j';
+    }
+
+    final weeks = (difference.inDays / 7).floor();
+    if (weeks < 5) {
+      return 'En ligne il y a $weeks sem';
+    }
+
+    final months = (difference.inDays / 30).floor();
+    if (months < 12) {
+      return 'En ligne il y a $months mois';
+    }
+
+    final years = (difference.inDays / 365).floor();
+    return 'En ligne il y a $years an${years > 1 ? 's' : ''}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final appColors = theme.appColors;
     final primaryGreen = theme.colorScheme.primary;
     final surfaceColor = theme.cardColor;
-    final elevatedSurfaceColor = theme.colorScheme.surfaceContainer;
     final mutedColor = appColors.mutedText;
 
     return Scaffold(
@@ -240,13 +295,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.only(bottom: 24),
                     children: [
-                      _buildProfileHeader(
-                        context,
-                        surfaceColor: surfaceColor,
-                        elevatedSurfaceColor: elevatedSurfaceColor,
-                        mutedColor: mutedColor,
-                        primaryGreen: primaryGreen,
-                      ),
+                      _buildProfileHeader(context),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
                         child: Column(
@@ -264,8 +313,6 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                               '${profile.products.length} annonces',
                             ),
                             const SizedBox(height: 10),
-                            _buildFilterRow(context),
-                            const SizedBox(height: 8),
                             ..._buildProductCards(),
                           ],
                         ),
@@ -337,6 +384,11 @@ class _SellerProfilePageState extends State<SellerProfilePage>
         ? profile.headline.trim()
         : 'Localisation indisponible';
     final accountCreatedLabel = _buildAccountCreatedLabel();
+    final sellerUserId = profile.userId?.trim() ?? '';
+    final livePresence = sellerUserId.isNotEmpty
+        ? PresenceService.instance.presenceOf(sellerUserId)
+        : null;
+    final presenceLabel = _presenceStatusLabel(livePresence == true);
 
     await showDialog<void>(
       context: context,
@@ -368,11 +420,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                 context,
               ),
               const SizedBox(height: 10),
-              _dialogInfoRow(
-                Icons.schedule_outlined,
-                profile.responseLabel,
-                context,
-              ),
+              _dialogInfoRow(Icons.schedule_outlined, presenceLabel, context),
               if (accountCreatedLabel != null) ...[
                 const SizedBox(height: 10),
                 _dialogInfoRow(
@@ -563,7 +611,10 @@ class _SellerProfilePageState extends State<SellerProfilePage>
       return;
     }
 
-    final safeEntryIndex = selectedEntryIndex.clamp(0, viewerEntries.length - 1);
+    final safeEntryIndex = selectedEntryIndex.clamp(
+      0,
+      viewerEntries.length - 1,
+    );
 
     Navigator.push(
       context,
@@ -598,129 +649,111 @@ class _SellerProfilePageState extends State<SellerProfilePage>
     return widgets;
   }
 
-  Widget _buildFilterRow(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          _filterChip(context, 'Madagascar', hasArrow: true),
-          const SizedBox(width: 8),
-          _filterChip(context, 'Disponible'),
-          const SizedBox(width: 8),
-          _filterChip(context, 'Recents'),
-        ],
-      ),
-    );
-  }
-
-  Widget _filterChip(
-    BuildContext context,
-    String text, {
-    bool hasArrow = false,
-  }) {
+  Widget _buildProfileHeader(BuildContext context) {
     final theme = Theme.of(context);
     final appColors = theme.appColors;
+    final sellerUserId = profile.userId?.trim() ?? '';
+    if (sellerUserId.isNotEmpty) {
+      PresenceService.instance.watchUser(sellerUserId);
+    }
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: appColors.inputBorder),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            text,
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              color: theme.colorScheme.primary,
-            ),
-          ),
-          if (hasArrow) ...[
-            const SizedBox(width: 4),
-            Icon(
-              Icons.keyboard_arrow_down,
-              size: 18,
-              color: theme.colorScheme.primary,
-            ),
-          ],
-        ],
-      ),
-    );
-  }
+    return ValueListenableBuilder<int>(
+      valueListenable: PresenceService.instance.changes,
+      builder: (context, value, child) {
+        final livePresence = sellerUserId.isNotEmpty
+            ? PresenceService.instance.presenceOf(sellerUserId)
+            : null;
+        final isOnline = livePresence == true;
+        final presenceLabel = _presenceStatusLabel(isOnline);
+        final outlineColor = theme.brightness == Brightness.dark
+            ? Colors.white.withOpacity(0.08)
+            : Colors.black.withOpacity(0.06);
+        final locationLabel = profile.headline.trim().isNotEmpty
+            ? profile.headline.trim()
+            : 'Localisation indisponible';
+        final aboutPreview = profile.about.trim().isNotEmpty
+            ? profile.about.trim()
+            : 'Boutique Bahibo active sur la plateforme.';
 
-  Widget _buildProfileHeader(
-    BuildContext context, {
-    required Color surfaceColor,
-    required Color elevatedSurfaceColor,
-    required Color mutedColor,
-    required Color primaryGreen,
-  }) {
-    final theme = Theme.of(context);
-    final appColors = theme.appColors;
-
-    return Container(
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(24)),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: Stack(
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Positioned.fill(
-              child: AppNetworkImage(
-                imageUrl: _profileCoverImageUrl,
-                fit: BoxFit.cover,
-              ),
-            ),
-            Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(24),
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [appColors.scrimSoft, appColors.scrimStrong],
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-                    decoration: BoxDecoration(
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(24),
-                      ),
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [appColors.heroSurface, Colors.transparent],
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(32),
+                      bottomRight: Radius.circular(32),
+                    ),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ImageViewerPage(
+                            imageUrls: [_profileCoverImageUrl],
+                            initialIndex: 0,
+                            heroTag: 'profile-cover-${profile.name}',
+                          ),
+                        ),
+                      );
+                    },
+                    child: Hero(
+                      tag: 'profile-cover-${profile.name}',
+                      child: ClipRRect(
+                        borderRadius: const BorderRadius.only(
+                          bottomLeft: Radius.circular(32),
+                          bottomRight: Radius.circular(32),
+                        ),
+                        child: SizedBox(
+                          height: 340,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              AppNetworkImage(
+                                imageUrl: _profileCoverImageUrl,
+                                fit: BoxFit.cover,
+                              ),
+                              DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      Colors.transparent,
+                                      Colors.black.withOpacity(0.08),
+                                      Colors.black.withOpacity(0.34),
+                                    ],
+                                    stops: const [0, 0.72, 1],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        GestureDetector(
+                  ),
+                ),
+                Positioned(
+                  left: 20,
+                  right: 20,
+                  bottom: 18,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(999),
                           onTap: () {
-                            Navigator.push(
-                              context,
+                            Navigator.of(context).push(
                               MaterialPageRoute(
                                 builder: (_) => ImageViewerPage(
                                   imageUrls: [_profileAvatarUrl],
                                   initialIndex: 0,
                                   heroTag: 'profile-avatar-${profile.name}',
-                                  onSellerMessageTap: _isOwnSellerProfile
-                                      ? null
-                                      : _openMessageThread,
-                                  overlay: ImageViewerOverlayData(
-                                    title: profile.name,
-                                    description: profile.headline,
-                                    sellerName: profile.name,
-                                    sellerUserId: profile.userId,
-                                    sellerAvatarUrl: _profileAvatarUrl,
-                                    sellerBadge: profile.roleLabel,
-                                    isUserProfileImage: true,
-                                  ),
                                 ),
                               ),
                             );
@@ -728,213 +761,208 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                           child: Hero(
                             tag: 'profile-avatar-${profile.name}',
                             child: Container(
-                              padding: const EdgeInsets.all(3),
+                              padding: const EdgeInsets.all(4),
                               decoration: BoxDecoration(
-                                color: appColors.heroSurface,
+                                color: Colors.white.withOpacity(0.18),
                                 shape: BoxShape.circle,
-                                border: Border.all(color: appColors.heroBorder),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.78),
+                                  width: 2,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.24),
+                                    blurRadius: 18,
+                                    offset: const Offset(0, 8),
+                                  ),
+                                ],
                               ),
                               child: AppCircleNetworkAvatar(
-                                radius: 34,
+                                radius: 46,
                                 imageUrl: _profileAvatarUrl,
                                 userId: profile.userId,
                               ),
                             ),
                           ),
                         ),
-                        const SizedBox(width: 14),
-                        Expanded(
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      profile.name,
-                                      style: TextStyle(
-                                        color: appColors.heroForeground,
-                                        fontSize: 24,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                  ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: appColors.heroSurface,
-                                      borderRadius: BorderRadius.circular(999),
-                                      border: Border.all(
-                                        color: appColors.heroBorder,
-                                      ),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          Icons.circle,
-                                          size: 10,
-                                          color: appColors.onlineStatus,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          'En ligne',
-                                          style: TextStyle(
-                                            color: appColors.heroForeground,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
                               Text(
-                                profile.headline,
+                                profile.name,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  color: appColors.heroForegroundMuted,
-                                  height: 1.35,
-                                  fontWeight: FontWeight.w500,
+                                  color: appColors.heroForeground,
+                                  fontSize: 30,
+                                  height: 1.02,
+                                  fontWeight: FontWeight.w900,
                                 ),
                               ),
-                              const SizedBox(height: 12),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
+                              const SizedBox(height: 8),
+                              Row(
                                 children: [
-                                  _buildHeaderPill(
-                                    icon: Icons.verified_rounded,
-                                    label: profile.roleLabel,
+                                  Icon(
+                                    Icons.circle,
+                                    size: 10,
+                                    color: isOnline
+                                        ? appColors.onlineStatus
+                                        : appColors.heroForegroundMuted,
                                   ),
-                                  _buildHeaderPill(
-                                    icon: Icons.flash_on_rounded,
-                                    label: profile.responseLabel,
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      presenceLabel,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: appColors.heroForeground,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
                                   ),
                                 ],
                               ),
                             ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 66, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      profile.isSellerCertified
+                          ? const SellerCertifiedBadge()
+                          : _buildHeaderPill(
+                              icon: Icons.storefront_rounded,
+                              label: profile.roleLabel,
+                            ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(22),
+                      onTap: () => _showAboutDialog(context),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: theme.cardColor,
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(color: outlineColor),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.06),
+                              blurRadius: 16,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _buildFeatureTile(
+                                    icon: Icons.location_on_outlined,
+                                    label: 'Zone',
+                                    value: locationLabel,
+                                    valueColor: theme.colorScheme.onSurface,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: _buildFeatureTile(
+                                    icon: Icons.workspace_premium_outlined,
+                                    label: 'Fiabilite',
+                                    value: profile.rating,
+                                    valueColor: appColors.onlineStatus,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                            Text(
+                              aboutPreview,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: theme.colorScheme.onSurfaceVariant,
+                                height: 1.45,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (!_isOwnSellerProfile) ...[
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: _openMessageThread,
+                            icon: const Icon(Icons.message_outlined, size: 18),
+                            label: const Text('Message'),
+                            style: ElevatedButton.styleFrom(
+                              elevation: 0,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _isSubscriptionSubmitting
+                                ? null
+                                : () => _showSubscribeConfirmation(context),
+                            icon: Icon(
+                              _isSubscribed
+                                  ? Icons.notifications_active_rounded
+                                  : Icons.person_add_alt_1_rounded,
+                              size: 18,
+                            ),
+                            label: Text(_isSubscribed ? 'Abonné' : "S'abonner"),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  Material(
-                    color: Colors.transparent,
-                    child: Container(
-                      margin: const EdgeInsets.fromLTRB(18, 0, 18, 18),
-                      child: InkWell(
-                        onTap: () => _showAboutDialog(context),
-                        borderRadius: BorderRadius.circular(20),
-                        child: Ink(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: elevatedSurfaceColor.withOpacity(
-                              theme.brightness == Brightness.dark ? 0.92 : 0.88,
-                            ),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: appColors.overlayBorder),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: _buildFeatureTile(
-                                      icon: Icons.location_on_outlined,
-                                      label: 'Zone',
-                                      value: 'Antananarivo',
-                                      valueColor: appColors.heroForeground,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: _buildFeatureTile(
-                                      icon: Icons.workspace_premium_outlined,
-                                      label: 'Fiabilite',
-                                      value: profile.rating,
-                                      valueColor: appColors.onlineStatus,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 14),
-                              Text(
-                                profile.about,
-                                maxLines: 3,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: theme.brightness == Brightness.dark
-                                      ? appColors.heroForegroundMuted
-                                      : theme.colorScheme.onSurfaceVariant,
-                                  height: 1.45,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  if (!_isOwnSellerProfile)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: _openMessageThread,
-                              icon: const Icon(Icons.message_outlined, size: 18),
-                              label: const Text('Message'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: appColors.heroForeground,
-                                foregroundColor: theme.colorScheme.primary,
-                                elevation: 0,
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: _isSubscriptionSubmitting
-                                  ? null
-                                  : () => _showSubscribeConfirmation(context),
-                              icon: Icon(
-                                _isSubscribed
-                                    ? Icons.notifications_active_rounded
-                                    : Icons.person_add_alt_1_rounded,
-                                size: 18,
-                              ),
-                              label: Text(_isSubscribed ? 'Abonné' : "S'abonner"),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.white,
-                                side: const BorderSide(color: Colors.white),
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                  ],
                 ],
               ),
             ),
           ],
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -1021,6 +1049,8 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                 const SizedBox(height: 2),
                 Text(
                   value,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: valueColor,
                     fontWeight: FontWeight.w800,
@@ -1040,45 +1070,57 @@ class _SellerProfilePageState extends State<SellerProfilePage>
     Color mutedColor,
     Color primaryGreen,
   ) {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: _statCard(
-            context: context,
-            surfaceColor: surfaceColor,
-            label: 'Abonnes',
-            value: profile.followerCount,
-            icon: Icons.groups_2_outlined,
-            accent: primaryGreen,
-            mutedColor: mutedColor,
-            pageTitle: 'Abonnes',
-          ),
+        Text(
+          'Vue d\'ensemble',
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
         ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _statCard(
-            context: context,
-            surfaceColor: surfaceColor,
-            label: 'Vues profil',
-            value: profile.visitorCount,
-            icon: Icons.visibility_outlined,
-            accent: Theme.of(context).appColors.success,
-            mutedColor: mutedColor,
-            pageTitle: 'Vues profil',
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _statCard(
-            context: context,
-            surfaceColor: surfaceColor,
-            label: 'Likes total',
-            value: profile.totalLikesCount,
-            icon: Icons.favorite_outline,
-            accent: Theme.of(context).colorScheme.tertiary,
-            mutedColor: mutedColor,
-            pageTitle: 'Likes total',
-          ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _statCard(
+                context: context,
+                surfaceColor: surfaceColor,
+                label: 'Abonnes',
+                value: profile.followerCount,
+                icon: Icons.groups_2_outlined,
+                accent: primaryGreen,
+                mutedColor: mutedColor,
+                pageTitle: 'Abonnes',
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _statCard(
+                context: context,
+                surfaceColor: surfaceColor,
+                label: 'Vues profil',
+                value: profile.visitorCount,
+                icon: Icons.visibility_outlined,
+                accent: Theme.of(context).appColors.success,
+                mutedColor: mutedColor,
+                pageTitle: 'Vues profil',
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _statCard(
+                context: context,
+                surfaceColor: surfaceColor,
+                label: 'Likes total',
+                value: profile.totalLikesCount,
+                icon: Icons.favorite_outline,
+                accent: Theme.of(context).colorScheme.tertiary,
+                mutedColor: mutedColor,
+                pageTitle: 'Likes total',
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -1255,15 +1297,22 @@ class _SellerProfilePageState extends State<SellerProfilePage>
     required Color mutedColor,
     required String pageTitle,
   }) {
+    final theme = Theme.of(context);
     return GestureDetector(
       onTap: () => _openMetricUsers(pageTitle),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
         decoration: BoxDecoration(
           color: surfaceColor,
           borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: theme.brightness == Brightness.dark
+                ? Colors.white.withOpacity(0.05)
+                : Colors.black.withOpacity(0.05),
+          ),
         ),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
               width: 38,
@@ -1277,12 +1326,20 @@ class _SellerProfilePageState extends State<SellerProfilePage>
             const SizedBox(height: 10),
             Text(
               value,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 4),
             Text(
               label,
-              style: TextStyle(color: mutedColor, fontWeight: FontWeight.w600),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: mutedColor,
+                fontWeight: FontWeight.w600,
+                height: 1.2,
+              ),
             ),
           ],
         ),

@@ -193,6 +193,7 @@ export function presentPublicSellerProfile(
       displayName: profile.user.displayName,
       avatarUrl: profile.user.avatarUrl,
       coverImageUrl: profile.user.coverImageUrl,
+      lastSeenAt: profile.user.lastSeenAt?.toISOString() ?? null,
       createdAt: profile.user.createdAt.toISOString(),
     },
   };
