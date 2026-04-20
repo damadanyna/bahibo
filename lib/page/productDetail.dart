@@ -12,6 +12,7 @@ import 'package:bahibo/formatter/price_formatter.dart';
 import 'package:bahibo/services/app_api_client.dart';
 import 'package:bahibo/services/app_auth_service.dart';
 import 'package:bahibo/services/catalog_api_service.dart';
+import 'package:bahibo/services/search_api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/page/chat_page.dart';
@@ -52,6 +53,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600';
   final AppAuthService _authService = AppAuthService();
   final CatalogApiService _catalogApiService = CatalogApiService();
+  final SearchApiService _searchApiService = SearchApiService();
 
   late PageController _pageController;
   late Map<String, dynamic> _productData;
@@ -673,6 +675,30 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     return 'il y a $years an${years > 1 ? 's' : ''}';
   }
 
+  int _countCommentsRecursively(List<AppCommentItem> comments) {
+    var total = 0;
+    for (final comment in comments) {
+      total += 1;
+      total += _countCommentsRecursively(comment.replies);
+    }
+    return total;
+  }
+
+  AppCommentMention _mapCommentMention(Map<String, dynamic> rawMention) {
+    return AppCommentMention(
+      id: rawMention['id']?.toString(),
+      userId: rawMention['userId']?.toString().trim() ?? '',
+      displayName:
+          (rawMention['displayName']?.toString().trim().isNotEmpty ?? false)
+          ? rawMention['displayName'].toString().trim()
+          : 'Membre Bahibo',
+      avatarUrl:
+          (rawMention['avatarUrl']?.toString().trim().isNotEmpty ?? false)
+          ? rawMention['avatarUrl'].toString().trim()
+          : _defaultSellerAvatarUrl,
+    );
+  }
+
   AppCommentItem _mapCommentItem(Map<String, dynamic> rawComment) {
     final rawAuthor = rawComment['author'];
     final author = rawAuthor is Map<String, dynamic>
@@ -683,8 +709,12 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     final createdAt = DateTime.tryParse(
       rawComment['createdAt']?.toString() ?? '',
     );
+    final rawMentions = rawComment['mentions'];
+    final rawReplies = rawComment['replies'];
 
     return AppCommentItem(
+      id: rawComment['id']?.toString(),
+      parentCommentId: rawComment['parentCommentId']?.toString(),
       authorId: author['id']?.toString(),
       authorName: (author['displayName']?.toString().trim().isNotEmpty ?? false)
           ? author['displayName'].toString().trim()
@@ -696,6 +726,23 @@ class _ProductDetailPageState extends State<ProductDetailPage>
           ? 'maintenant'
           : _formatRelativeTime(createdAt),
       message: rawComment['content']?.toString().trim() ?? '',
+      mentions: rawMentions is List
+          ? rawMentions
+                .whereType<Map>()
+                .map(
+                  (mention) =>
+                      _mapCommentMention(Map<String, dynamic>.from(mention)),
+                )
+                .toList(growable: false)
+          : const <AppCommentMention>[],
+      replies: rawReplies is List
+          ? rawReplies
+                .whereType<Map>()
+                .map(
+                  (reply) => _mapCommentItem(Map<String, dynamic>.from(reply)),
+                )
+                .toList()
+          : const <AppCommentItem>[],
     );
   }
 
@@ -716,11 +763,13 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       _comments
         ..clear()
         ..addAll(rawComments.map(_mapCommentItem));
-      _commentCount = _comments.length;
+      _commentCount = _countCommentsRecursively(_comments);
     });
   }
 
-  Future<AppCommentItem?> _submitComment(String message) async {
+  Future<AppCommentItem?> _submitComment(
+    AppCommentSubmission submission,
+  ) async {
     final productId = product['id']?.toString().trim() ?? '';
     if (productId.isEmpty) {
       return null;
@@ -728,7 +777,9 @@ class _ProductDetailPageState extends State<ProductDetailPage>
 
     final response = await _catalogApiService.addProductComment(
       productId: productId,
-      content: message,
+      content: submission.content,
+      parentCommentId: submission.parentCommentId,
+      mentionUserIds: submission.mentionUserIds,
     );
     final updatedProduct = response['product'];
     final createdComment = response['comment'];
@@ -747,6 +798,50 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     }
 
     return null;
+  }
+
+  Future<List<AppCommentMention>> _searchCommentMentions(String query) async {
+    final normalizedQuery = query.trim();
+    if (normalizedQuery.isEmpty) {
+      return const <AppCommentMention>[];
+    }
+
+    final response = await _searchApiService.search(
+      query: normalizedQuery,
+      limit: 8,
+    );
+    final rawResults = response['results'];
+    if (rawResults is! List) {
+      return const <AppCommentMention>[];
+    }
+
+    final seenUserIds = <String>{};
+    final mentions = <AppCommentMention>[];
+
+    for (final rawItem in rawResults.whereType<Map>()) {
+      final item = Map<String, dynamic>.from(rawItem);
+      if (item['type']?.toString() != 'user') {
+        continue;
+      }
+
+      final userId = item['id']?.toString().trim() ?? '';
+      final displayName = item['label']?.toString().trim() ?? '';
+      if (userId.isEmpty || displayName.isEmpty || !seenUserIds.add(userId)) {
+        continue;
+      }
+
+      mentions.add(
+        AppCommentMention(
+          userId: userId,
+          displayName: displayName,
+          avatarUrl: (item['imageUrl']?.toString().trim().isNotEmpty ?? false)
+              ? item['imageUrl'].toString().trim()
+              : _defaultSellerAvatarUrl,
+        ),
+      );
+    }
+
+    return mentions;
   }
 
   Future<void> _toggleLike() async {
@@ -1469,6 +1564,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
           setState(() => _commentCount = value);
         },
         onSubmitComment: _submitComment,
+        onSearchMentions: _searchCommentMentions,
       );
     } on AppApiException catch (error) {
       if (!mounted) {

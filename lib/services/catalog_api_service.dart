@@ -257,10 +257,17 @@ class CatalogApiService {
   Future<Map<String, dynamic>> addProductComment({
     required String productId,
     required String content,
+    String? parentCommentId,
+    List<String> mentionUserIds = const <String>[],
   }) async {
     final data = await _client.post(
       '/products/$productId/comments',
-      body: {'content': content},
+      body: {
+        'content': content,
+        if (parentCommentId != null && parentCommentId.trim().isNotEmpty)
+          'parentCommentId': parentCommentId.trim(),
+        if (mentionUserIds.isNotEmpty) 'mentionUserIds': mentionUserIds,
+      },
       authenticated: true,
     );
     return Map<String, dynamic>.from(data as Map);

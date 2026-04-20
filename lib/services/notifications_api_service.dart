@@ -1,4 +1,16 @@
+import 'package:flutter/foundation.dart';
+
 import 'app_api_client.dart';
+
+final ValueNotifier<int> notificationsUnreadCountNotifier = ValueNotifier<int>(
+  0,
+);
+
+void syncNotificationsUnreadCount(List<Map<String, dynamic>> notifications) {
+  notificationsUnreadCountNotifier.value = notifications
+      .where((notification) => notification['unread'] == true)
+      .length;
+}
 
 class NotificationsApiService {
   NotificationsApiService({AppApiClient? client})
@@ -8,7 +20,7 @@ class NotificationsApiService {
 
   Future<List<Map<String, dynamic>>> fetchNotifications() async {
     final data = await _client.get('/notifications', authenticated: true);
-    return (data as List).whereType<Map>().map((item) {
+    final notifications = (data as List).whereType<Map>().map((item) {
       final map = Map<String, dynamic>.from(item);
       final seller = Map<String, dynamic>.from(
         (map['seller'] as Map?) ?? const <String, dynamic>{},
@@ -44,6 +56,8 @@ class NotificationsApiService {
         'unread': !(map['isRead'] == true),
       };
     }).toList();
+    syncNotificationsUnreadCount(notifications);
+    return notifications;
   }
 
   Future<void> markNotificationAsRead(String notificationId) async {

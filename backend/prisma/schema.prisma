@@ -83,6 +83,7 @@ model User {
   sellerProfileViews  SellerProfileView[] @relation("SellerProfileViewViewer")
   productLikes        ProductLike[]
   productComments     ProductComment[]
+  productCommentMentions ProductCommentMention[]
   productShares       ProductShare[]
   reportsSent         UserReport[]       @relation("UserReportsSent")
   reportsReceived     UserReport[]       @relation("UserReportsReceived")
@@ -270,17 +271,35 @@ model ProductLike {
 }
 
 model ProductComment {
-  id        String   @id @default(uuid())
-  content   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  userId    String
-  productId String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  id              String   @id @default(uuid())
+  content         String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  userId          String
+  productId       String
+  parentCommentId String?
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product         Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  parentComment   ProductComment? @relation("ProductCommentReplies", fields: [parentCommentId], references: [id], onDelete: Cascade)
+  replies         ProductComment[] @relation("ProductCommentReplies")
+  mentions        ProductCommentMention[]
 
   @@index([productId, createdAt])
+  @@index([productId, parentCommentId, createdAt])
   @@index([userId, createdAt])
+  @@index([parentCommentId, createdAt])
+}
+
+model ProductCommentMention {
+  id              String   @id @default(uuid())
+  createdAt       DateTime @default(now())
+  commentId       String
+  mentionedUserId String
+  comment         ProductComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  mentionedUser   User     @relation(fields: [mentionedUserId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, mentionedUserId])
+  @@index([mentionedUserId, createdAt])
 }
 
 model ProductShare {

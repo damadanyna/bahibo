@@ -118,7 +118,9 @@ export class ProductsController {
   }
 
   @Get(':id/comments')
-  async findComments(@Param('id') id: string) {
+  async findComments(
+    @Param('id') id: string,
+  ): Promise<{ success: true; message: string; data: unknown }> {
     return {
       success: true,
       message: 'Product comments fetched successfully',
@@ -171,7 +173,7 @@ export class ProductsController {
     @Req() req: { user: { userId: string } },
     @Param('id') id: string,
     @Body() dto: CreateProductCommentDto,
-  ) {
+  ): Promise<{ success: true; message: string; data: unknown }> {
     return {
       success: true,
       message: 'Product comment added successfully',

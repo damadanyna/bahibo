@@ -7,6 +7,7 @@ import { Prisma } from '@prisma/client';
 
 import { CloudinaryService } from '../auth/cloudinary.service';
 import { ConversationsRealtimeGateway } from '../conversations/realtime/conversations-realtime.gateway';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushNotificationsService } from '../push-notifications/push-notifications.service';
 import { CreateProductCommentDto } from './dto/create-product-comment.dto';
@@ -37,12 +38,44 @@ type ProductWithRelations = Prisma.ProductGetPayload<{
   };
 }>;
 
+type ProductCommentWithRelations = Prisma.ProductCommentGetPayload<{
+  include: {
+    user: true;
+    mentions: {
+      include: {
+        mentionedUser: true;
+      };
+    };
+  };
+}>;
+
+type SerializedProductComment = {
+  id: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+  parentCommentId: string | null;
+  author: {
+    id: string;
+    displayName: string;
+    avatarUrl: string;
+  };
+  mentions: Array<{
+    id: string;
+    userId: string;
+    displayName: string;
+    avatarUrl: string;
+  }>;
+  replies: SerializedProductComment[];
+};
+
 @Injectable()
 export class ProductsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cloudinaryService: CloudinaryService,
     private readonly conversationsRealtimeGateway: ConversationsRealtimeGateway,
+    private readonly notificationsService: NotificationsService,
     private readonly pushNotificationsService: PushNotificationsService,
   ) {}
 
@@ -302,15 +335,16 @@ export class ProductsService {
     });
 
     const updatedProduct = await this.findProductWithRelations(productId);
+    this.emitProductUpdatedEvent({
+      product: updatedProduct,
+      actorUserId: currentUserId,
+      action: 'liked',
+    });
     await this.emitSellerProfileUpdatedByProfileId(updatedProduct.sellerProfile.id);
     if (product.sellerProfile.userId !== currentUserId) {
-      this.conversationsRealtimeGateway.emitNotificationEvent(
+      await this.emitNotificationUpdatedEvent(
         product.sellerProfile.userId,
-        {
-          type: 'notifications:updated',
-          userId: product.sellerProfile.userId,
-          reason: 'product_like',
-        },
+        'product_like',
       );
     }
     return this.toEntity(updatedProduct);
@@ -327,6 +361,11 @@ export class ProductsService {
     });
 
     const updatedProduct = await this.findProductWithRelations(productId);
+    this.emitProductUpdatedEvent({
+      product: updatedProduct,
+      actorUserId: currentUserId,
+      action: 'unliked',
+    });
     await this.emitSellerProfileUpdatedByProfileId(updatedProduct.sellerProfile.id);
     return this.toEntity(updatedProduct);
   }
@@ -338,24 +377,21 @@ export class ProductsService {
       where: { productId },
       include: {
         user: true,
+        mentions: {
+          include: {
+            mentionedUser: true,
+          },
+          orderBy: {
+            createdAt: 'asc',
+          },
+        },
       },
       orderBy: {
-        createdAt: 'desc',
+        createdAt: 'asc',
       },
     });
 
-    return comments.map((comment) => ({
-      id: comment.id,
-      content: comment.content,
-      createdAt: comment.createdAt.toISOString(),
-      author: {
-        id: comment.user.id,
-        displayName: comment.user.displayName,
-        avatarUrl:
-          comment.user.avatarUrl ??
-          'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600',
-      },
-    }));
+    return this.serializeCommentTree(comments);
   }
 
   async hasLikedProduct(currentUserId: string, productId: string) {
@@ -384,73 +420,219 @@ export class ProductsService {
     dto: CreateProductCommentDto,
   ) {
     const product = await this.findProductWithRelations(productId);
+    const content = dto.content.trim();
+    const requestedParentCommentId = dto.parentCommentId?.trim() || undefined;
+    let parentCommentId: string | undefined;
+
+    if (!content) {
+      throw new BadRequestException('Comment content is required');
+    }
+
+    if (requestedParentCommentId) {
+      const parentComment = await this.prisma.productComment.findFirst({
+        where: {
+          id: requestedParentCommentId,
+          productId,
+        },
+        select: {
+          id: true,
+          parentCommentId: true,
+        },
+      });
+
+      if (!parentComment) {
+        throw new NotFoundException('Parent comment not found');
+      }
+
+      parentCommentId =
+        parentComment.parentCommentId?.trim() || parentComment.id;
+    }
+
+    const mentionUserIds = Array.from(
+      new Set(
+        (dto.mentionUserIds ?? [])
+          .map((userId) => userId.trim())
+          .filter((userId) => userId.length > 0),
+      ),
+    );
+
+    const validMentionUsers = mentionUserIds.length
+      ? await this.prisma.user.findMany({
+          where: {
+            id: {
+              in: mentionUserIds,
+            },
+          },
+          select: {
+            id: true,
+          },
+        })
+      : [];
 
     const comment = await this.prisma.productComment.create({
       data: {
         userId: currentUserId,
         productId,
-        content: dto.content.trim(),
+        content,
+        parentCommentId,
+        mentions: validMentionUsers.length
+          ? {
+              create: validMentionUsers.map((user) => ({
+                mentionedUser: {
+                  connect: {
+                    id: user.id,
+                  },
+                },
+              })),
+            }
+          : undefined,
       },
       include: {
         user: true,
+        mentions: {
+          include: {
+            mentionedUser: true,
+          },
+          orderBy: {
+            createdAt: 'asc',
+          },
+        },
       },
     });
 
     const updatedProduct = await this.findProductWithRelations(productId);
+    const serializedComment = this.serializeComment(comment);
+    this.emitProductUpdatedEvent({
+      product: updatedProduct,
+      actorUserId: currentUserId,
+      action: 'commented',
+      comment: serializedComment,
+    });
     await this.emitSellerProfileUpdatedByProfileId(product.sellerProfile.id);
     if (product.sellerProfile.userId !== currentUserId) {
-      this.conversationsRealtimeGateway.emitNotificationEvent(
+      await this.emitNotificationUpdatedEvent(
         product.sellerProfile.userId,
-        {
-          type: 'notifications:updated',
-          userId: product.sellerProfile.userId,
-          reason: 'product_comment',
-        },
+        'product_comment',
       );
     }
 
-    const commenterFollowsSeller = await this.prisma.sellerFollow.findUnique({
-      where: {
-        followerUserId_sellerProfileId: {
-          followerUserId: currentUserId,
-          sellerProfileId: product.sellerProfile.id,
-        },
-      },
-      select: {
-        id: true,
-      },
+    await this.pushNotificationsService.sendFollowedProductCommentNotification({
+      sellerProfileId: product.sellerProfile.id,
+      sellerUserId: product.sellerProfile.userId,
+      commenterUserId: currentUserId,
+      commenterDisplayName: comment.user.displayName,
+      sellerDisplayName: product.sellerProfile.studioName,
+      sellerAvatarUrl: product.sellerProfile.user.avatarUrl ?? undefined,
+      productId: product.id,
+      productTitle: product.title,
+      productImageUrl: product.imageUrl,
     });
-
-    if (commenterFollowsSeller != null) {
-      await this.pushNotificationsService.sendFollowedProductCommentNotification({
-        sellerProfileId: product.sellerProfile.id,
-        sellerUserId: product.sellerProfile.userId,
-        commenterUserId: currentUserId,
-        commenterDisplayName: comment.user.displayName,
-        sellerDisplayName: product.sellerProfile.studioName,
-        sellerAvatarUrl: product.sellerProfile.user.avatarUrl ?? undefined,
-        productId: product.id,
-        productTitle: product.title,
-        productImageUrl: product.imageUrl,
-      });
-      await this.emitNotificationRefreshToSellerFollowers(product.sellerProfile.id, [currentUserId]);
-    }
+    await this.emitNotificationRefreshToSellerFollowers(
+      product.sellerProfile.id,
+      [currentUserId],
+    );
 
     return {
       product: this.toEntity(updatedProduct),
-      comment: {
-        id: comment.id,
-        content: comment.content,
-        createdAt: comment.createdAt.toISOString(),
-        author: {
-          id: comment.user.id,
-          displayName: comment.user.displayName,
-          avatarUrl:
-            comment.user.avatarUrl ??
-            'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600',
-        },
-      },
+      comment: serializedComment,
     };
+  }
+
+  private serializeCommentTree(
+    comments: ProductCommentWithRelations[],
+  ): SerializedProductComment[] {
+    const nodes = new Map<string, SerializedProductComment>();
+    const roots: SerializedProductComment[] = [];
+    const commentParents = new Map<string, string | null>();
+
+    for (const comment of comments) {
+      nodes.set(comment.id, this.serializeComment(comment));
+      commentParents.set(comment.id, comment.parentCommentId ?? null);
+    }
+
+    for (const comment of comments) {
+      const node = nodes.get(comment.id);
+      if (!node) {
+        continue;
+      }
+
+      const rootParentCommentId = this.resolveThreadRootCommentId(
+        comment.id,
+        commentParents,
+      );
+      if (rootParentCommentId && nodes.has(rootParentCommentId)) {
+        nodes.get(rootParentCommentId)?.replies.push(node);
+        continue;
+      }
+
+      roots.push(node);
+    }
+
+    roots.sort(
+      (left, right) =>
+        Date.parse(right.createdAt) - Date.parse(left.createdAt),
+    );
+    for (const finalComment of roots) {
+      finalComment.replies.sort(
+        (left, right) =>
+          Date.parse(left.createdAt) - Date.parse(right.createdAt),
+      );
+    }
+    return roots;
+  }
+
+  private resolveThreadRootCommentId(
+    commentId: string,
+    commentParents: Map<string, string | null>,
+  ): string | undefined {
+    let currentCommentId = commentId;
+    let parentCommentId = commentParents.get(currentCommentId) ?? undefined;
+
+    if (!parentCommentId) {
+      return undefined;
+    }
+
+    while (parentCommentId) {
+      const nextParentCommentId = commentParents.get(parentCommentId) ?? undefined;
+      if (!nextParentCommentId) {
+        return parentCommentId;
+      }
+      currentCommentId = parentCommentId;
+      parentCommentId = commentParents.get(currentCommentId) ?? undefined;
+    }
+
+    return undefined;
+  }
+
+  private serializeComment(
+    comment: ProductCommentWithRelations,
+  ): SerializedProductComment {
+    return {
+      id: comment.id,
+      content: comment.content,
+      createdAt: comment.createdAt.toISOString(),
+      updatedAt: comment.updatedAt.toISOString(),
+      parentCommentId: comment.parentCommentId ?? null,
+      author: {
+        id: comment.user.id,
+        displayName: comment.user.displayName,
+        avatarUrl: this.resolveUserAvatarUrl(comment.user.avatarUrl),
+      },
+      mentions: comment.mentions.map((mention) => ({
+        id: mention.id,
+        userId: mention.mentionedUser.id,
+        displayName: mention.mentionedUser.displayName,
+        avatarUrl: this.resolveUserAvatarUrl(mention.mentionedUser.avatarUrl),
+      })),
+      replies: [],
+    };
+  }
+
+  private resolveUserAvatarUrl(avatarUrl?: string | null) {
+    return (
+      avatarUrl ??
+      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600'
+    );
   }
 
   private async emitNotificationRefreshToSellerFollowers(
@@ -470,13 +652,9 @@ export class ProductsService {
     });
 
     for (const followerLink of followerLinks) {
-      this.conversationsRealtimeGateway.emitNotificationEvent(
+      await this.emitNotificationUpdatedEvent(
         followerLink.followerUserId,
-        {
-          type: 'notifications:updated',
-          userId: followerLink.followerUserId,
-          reason: 'followed_seller_activity',
-        },
+        'followed_seller_activity',
       );
     }
   }
@@ -492,8 +670,42 @@ export class ProductsService {
     });
 
     const updatedProduct = await this.findProductWithRelations(productId);
+    this.emitProductUpdatedEvent({
+      product: updatedProduct,
+      actorUserId: currentUserId,
+      action: 'shared',
+    });
     await this.emitSellerProfileUpdatedByProfileId(product.sellerProfile.id);
     return this.toEntity(updatedProduct);
+  }
+
+  private async emitNotificationUpdatedEvent(
+    userId: string,
+    reason: 'product_like' | 'product_comment' | 'followed_seller_activity',
+  ) {
+    const unreadCount = await this.notificationsService.countUnread(userId);
+    this.conversationsRealtimeGateway.emitNotificationEvent(userId, {
+      type: 'notifications:updated',
+      userId,
+      reason,
+      unreadCount,
+    });
+  }
+
+  private emitProductUpdatedEvent(args: {
+    product: ProductWithRelations;
+    actorUserId: string;
+    action: 'liked' | 'unliked' | 'commented' | 'shared';
+    comment?: Record<string, unknown>;
+  }) {
+    this.conversationsRealtimeGateway.emitProductEvent({
+      type: 'product:updated',
+      productId: args.product.id,
+      actorUserId: args.actorUserId,
+      action: args.action,
+      product: this.toEntity(args.product) as unknown as Record<string, unknown>,
+      comment: args.comment ?? null,
+    });
   }
 
   async findAll(params: {

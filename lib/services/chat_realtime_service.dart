@@ -30,6 +30,7 @@ class ChatRealtimeService {
         break;
       case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:
+        break;
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
         _disposeSocket();
@@ -79,6 +80,7 @@ class ChatRealtimeService {
       ..off('connect_error')
       ..off('conversations:updated')
       ..off('conversations:typing')
+      ..off('products:updated')
       ..off('profiles:updated')
       ..off('notifications:updated')
       ..off('presence:updated')
@@ -100,6 +102,11 @@ class ChatRealtimeService {
         }
       })
       ..on('conversations:typing', (payload) {
+        if (payload is Map) {
+          _eventsController.add(Map<String, dynamic>.from(payload));
+        }
+      })
+      ..on('products:updated', (payload) {
         if (payload is Map) {
           _eventsController.add(Map<String, dynamic>.from(payload));
         }

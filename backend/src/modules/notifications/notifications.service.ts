@@ -7,6 +7,11 @@ import { NotificationEntity } from './entities/notification.entity';
 export class NotificationsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async countUnread(userId: string): Promise<number> {
+    const notifications = await this.findAll(userId);
+    return notifications.filter((notification) => notification.isRead !== true).length;
+  }
+
   async findAll(userId: string): Promise<NotificationEntity[]> {
     const sellerProfile = await this.prisma.sellerProfile.findUnique({
       where: { userId },

@@ -46,9 +46,6 @@ class _MainHomePanelState extends State<MainHomePanel>
   bool hasMore = true;
   bool _isLoadingFollowedPeople = true;
 
-  int get _unreadNotificationCount =>
-      _notifications.where((item) => item['unread'] == true).length;
-
   @override
   void initState() {
     super.initState();
@@ -77,6 +74,10 @@ class _MainHomePanelState extends State<MainHomePanel>
     ) {
       final type = event['type']?.toString();
       if (type == 'notifications:updated') {
+        final unreadCount = (event['unreadCount'] as num?)?.toInt();
+        if (unreadCount != null) {
+          notificationsUnreadCountNotifier.value = unreadCount;
+        }
         unawaited(fetchNotifications());
       }
 
@@ -171,6 +172,7 @@ class _MainHomePanelState extends State<MainHomePanel>
           ..clear()
           ..addAll(data);
       });
+      syncNotificationsUnreadCount(_notifications);
     } catch (_) {}
   }
 
@@ -190,6 +192,7 @@ class _MainHomePanelState extends State<MainHomePanel>
                 ..clear()
                 ..addAll(updatedNotifications);
             });
+            syncNotificationsUnreadCount(_notifications);
           },
         ),
       ),
@@ -295,52 +298,55 @@ class _MainHomePanelState extends State<MainHomePanel>
   }
 
   Widget _buildNotificationButton(ThemeData theme) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        IconButton(
-          onPressed: _openNotificationsPage,
-          tooltip: 'Ouvrir les notifications',
-          style: IconButton.styleFrom(
-            backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.all(12),
+    return ValueListenableBuilder<int>(
+      valueListenable: notificationsUnreadCountNotifier,
+      builder: (context, unreadNotificationCount, _) => Stack(
+        clipBehavior: Clip.none,
+        children: [
+          IconButton(
+            onPressed: _openNotificationsPage,
+            tooltip: 'Ouvrir les notifications',
+            style: IconButton.styleFrom(
+              backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.all(12),
+            ),
+            icon: Icon(
+              unreadNotificationCount > 0
+                  ? Icons.notifications_active_rounded
+                  : Icons.notifications_none_rounded,
+              color: Colors.white,
+            ),
           ),
-          icon: Icon(
-            _unreadNotificationCount > 0
-                ? Icons.notifications_active_rounded
-                : Icons.notifications_none_rounded,
-            color: Colors.white,
-          ),
-        ),
-        if (_unreadNotificationCount > 0)
-          Positioned(
-            top: -2,
-            right: -2,
-            child: Container(
-              constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primary,
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(
-                  color: theme.scaffoldBackgroundColor,
-                  width: 2,
+          if (unreadNotificationCount > 0)
+            Positioned(
+              top: -2,
+              right: -2,
+              child: Container(
+                constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: theme.scaffoldBackgroundColor,
+                    width: 2,
+                  ),
                 ),
-              ),
-              child: Text(
-                _unreadNotificationCount > 9
-                    ? '9+'
-                    : '$_unreadNotificationCount',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.onPrimary,
-                  fontWeight: FontWeight.w800,
+                child: Text(
+                  unreadNotificationCount > 9
+                      ? '9+'
+                      : '$unreadNotificationCount',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onPrimary,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 

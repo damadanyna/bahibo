@@ -48,6 +48,7 @@ type NotificationRealtimePayload = {
   type: 'notifications:updated';
   userId: string;
   reason: 'product_like' | 'product_comment' | 'followed_seller_activity';
+  unreadCount?: number;
 };
 
 type PresenceRealtimePayload = {
@@ -63,6 +64,15 @@ type LiveRealtimePayload = {
   title: string | null;
   category: string | null;
   startedAt: string | null;
+};
+
+type ProductRealtimePayload = {
+  type: 'product:updated';
+  productId: string;
+  actorUserId: string;
+  action: 'liked' | 'unliked' | 'commented' | 'shared';
+  product: Record<string, unknown>;
+  comment?: Record<string, unknown> | null;
 };
 
 @Injectable()
@@ -228,6 +238,14 @@ export class ConversationsRealtimeGateway
     for (const userId of uniqueUserIds) {
       this.server.to(this.userRoom(userId)).emit('live:updated', payload);
     }
+  }
+
+  emitProductEvent(payload: ProductRealtimePayload) {
+    if (!this.server) {
+      return;
+    }
+
+    this.server.emit('products:updated', payload);
   }
 
   isUserConnected(userId: string) {

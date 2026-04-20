@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:bahibo/formatter/price_formatter.dart';
+import 'package:bahibo/services/product_realtime_sync_service.dart';
 import 'package:flutter/material.dart';
 import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
@@ -18,15 +19,20 @@ class ProductCard extends StatelessWidget {
     this.onTap,
   });
 
-  Widget _buildDetailPage() {
+  Widget _buildDetailPage([Map<String, dynamic>? resolvedProduct]) {
+    final effectiveProduct = resolvedProduct ?? product;
     if (detailPageBuilder != null) {
-      return detailPageBuilder!(product);
+      return detailPageBuilder!(effectiveProduct);
     }
 
-    return ProductDetailPage(product: product);
+    return ProductDetailPage(product: effectiveProduct);
   }
 
-  void _handleTap(BuildContext context, {int initialImageIndex = 0}) {
+  void _handleTap(
+    BuildContext context,
+    Map<String, dynamic> resolvedProduct, {
+    int initialImageIndex = 0,
+  }) {
     if (onTap != null) {
       onTap!(initialImageIndex);
       return;
@@ -34,140 +40,162 @@ class ProductCard extends StatelessWidget {
 
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => _buildDetailPage()),
+      MaterialPageRoute(builder: (_) => _buildDetailPage(resolvedProduct)),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final appColors = theme.appColors;
-    final borderColor = appColors.borderColor;
-    final cardColor = theme.cardColor;
-    final titleColor =
-        theme.textTheme.titleMedium?.color ?? theme.colorScheme.onSurface;
-    final categoryColor = theme.colorScheme.primary;
-    final priceColor = theme.colorScheme.error;
-    final price = (product['price'] as num?)?.toDouble() ?? 0.0;
-    final currency = resolveProductCurrency(product);
+    ProductRealtimeSyncService.instance.ensureInitialized();
 
-    return GestureDetector(
-      onTap: () => _handleTap(context),
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          border: Border.all(width: 1, color: borderColor),
-          borderRadius: BorderRadius.circular(10),
-          color: cardColor,
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(7),
-          child: Row(
-            children: [
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: _buildImageGrid(context),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      product['title'] ?? 'Sans titre',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: titleColor,
-                      ),
+    return ValueListenableBuilder<int>(
+      valueListenable: ProductRealtimeSyncService.instance.changes,
+      builder: (context, value, child) {
+        final resolvedProduct = ProductRealtimeSyncService.instance
+            .mergeIntoProduct(product);
+        final theme = Theme.of(context);
+        final appColors = theme.appColors;
+        final borderColor = appColors.borderColor;
+        final cardColor = theme.cardColor;
+        final titleColor =
+            theme.textTheme.titleMedium?.color ?? theme.colorScheme.onSurface;
+        final categoryColor = theme.colorScheme.primary;
+        final priceColor = theme.colorScheme.error;
+        final price = (resolvedProduct['price'] as num?)?.toDouble() ?? 0.0;
+        final currency = resolveProductCurrency(resolvedProduct);
+
+        return GestureDetector(
+          onTap: () => _handleTap(context, resolvedProduct),
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              border: Border.all(width: 1, color: borderColor),
+              borderRadius: BorderRadius.circular(10),
+              color: cardColor,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(7),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: _buildImageGrid(context, resolvedProduct),
                     ),
-                    const SizedBox(height: 4),
-                    Row(
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(
-                          Icons.account_circle,
-                          size: 18,
-                          color: categoryColor,
+                        Text(
+                          resolvedProduct['title'] ?? 'Sans titre',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: titleColor,
+                          ),
                         ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            product['category'] ?? '',
-                            overflow: TextOverflow.ellipsis,
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.account_circle,
+                              size: 18,
+                              color: categoryColor,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                resolvedProduct['category'] ?? '',
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: categoryColor,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: const [
+                            Icon(Icons.star, color: Colors.white, size: 16),
+                            Icon(Icons.star, color: Colors.white, size: 16),
+                            Icon(Icons.star, color: Colors.white, size: 16),
+                            Icon(Icons.star, color: Colors.white, size: 16),
+                            Icon(Icons.star, color: Colors.white, size: 16),
+                          ],
+                        ),
+                        const SizedBox(height: 30),
+                        Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(text: formatPriceAmount(price)),
+                              const TextSpan(text: ' '),
+                              TextSpan(
+                                text: currency,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: priceColor.withValues(alpha: 0.82),
+                                ),
+                              ),
+                            ],
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              color: categoryColor,
-                              fontSize: 12,
+                              fontSize: 18,
+                              color: priceColor,
                             ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: const [
-                        Icon(Icons.star, color: Colors.white, size: 16),
-                        Icon(Icons.star, color: Colors.white, size: 16),
-                        Icon(Icons.star, color: Colors.white, size: 16),
-                        Icon(Icons.star, color: Colors.white, size: 16),
-                        Icon(Icons.star, color: Colors.white, size: 16),
-                      ],
-                    ),
-                    const SizedBox(height: 30),
-                    Text.rich(
-                      TextSpan(
-                        children: [
-                          TextSpan(text: formatPriceAmount(price)),
-                          const TextSpan(text: ' '),
-                          TextSpan(
-                            text: currency,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: priceColor.withValues(alpha: 0.82),
-                            ),
-                          ),
-                        ],
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                          color: priceColor,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildImageGrid(BuildContext context) {
+  Widget _buildImageGrid(
+    BuildContext context,
+    Map<String, dynamic> resolvedProduct,
+  ) {
     final theme = Theme.of(context);
     final appColors = theme.appColors;
 
     // ✅ CORRECTION — uniquement product['images'], thumbnail en fallback
     final List<String> images =
-        (product['images'] as List?)?.whereType<String>().toList() ?? [];
+        (resolvedProduct['images'] as List?)?.whereType<String>().toList() ??
+        [];
 
     final String placeholder =
-        product['thumbnail'] as String? ?? 'https://via.placeholder.com/150';
+        resolvedProduct['thumbnail'] as String? ??
+        'https://via.placeholder.com/150';
 
     void openProductDetail([int initialImageIndex = 0]) {
-      _handleTap(context, initialImageIndex: initialImageIndex);
+      _handleTap(
+        context,
+        resolvedProduct,
+        initialImageIndex: initialImageIndex,
+      );
     }
 
     // images vide → thumbnail seul
     if (images.isEmpty) {
       return SizedBox(
         height: 170,
-        child: _imageItem(context, placeholder, onTap: () => openProductDetail()),
+        child: _imageItem(
+          context,
+          placeholder,
+          onTap: () => openProductDetail(),
+        ),
       );
     }
 
