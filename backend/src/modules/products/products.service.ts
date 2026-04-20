@@ -514,6 +514,15 @@ export class ProductsService {
         product.sellerProfile.userId,
         'product_comment',
       );
+      await this.pushNotificationsService.sendSellerProductCommentNotification({
+        recipientUserId: product.sellerProfile.userId,
+        commenterUserId: currentUserId,
+        commenterDisplayName: comment.user.displayName,
+        commenterAvatarUrl: comment.user.avatarUrl ?? undefined,
+        productId: product.id,
+        productTitle: product.title,
+        productImageUrl: product.imageUrl,
+      });
     }
 
     await this.pushNotificationsService.sendFollowedProductCommentNotification({
@@ -681,7 +690,11 @@ export class ProductsService {
 
   private async emitNotificationUpdatedEvent(
     userId: string,
-    reason: 'product_like' | 'product_comment' | 'followed_seller_activity',
+    reason:
+      | 'product_like'
+      | 'product_comment'
+      | 'followed_seller_activity'
+      | 'seller_follow',
   ) {
     const unreadCount = await this.notificationsService.countUnread(userId);
     this.conversationsRealtimeGateway.emitNotificationEvent(userId, {

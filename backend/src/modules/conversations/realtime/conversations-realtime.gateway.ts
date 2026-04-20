@@ -16,7 +16,7 @@ import { Server, Socket } from 'socket.io';
 import { PrismaService } from '../../prisma/prisma.service';
 
 type ConversationRealtimePayload = {
-  type: 'message:new' | 'conversation:read';
+  type: 'message:new' | 'conversation:read' | 'conversation:blocked';
   conversationId: string;
   actorUserId: string;
 };
@@ -47,7 +47,11 @@ type ProfileRealtimePayload = {
 type NotificationRealtimePayload = {
   type: 'notifications:updated';
   userId: string;
-  reason: 'product_like' | 'product_comment' | 'followed_seller_activity';
+  reason:
+    | 'product_like'
+    | 'product_comment'
+    | 'followed_seller_activity'
+    | 'seller_follow';
   unreadCount?: number;
 };
 

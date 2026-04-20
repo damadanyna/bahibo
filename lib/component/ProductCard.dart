@@ -44,6 +44,32 @@ class ProductCard extends StatelessWidget {
     );
   }
 
+  bool _isDefaultPlaceholderImage(String value) {
+    final normalizedValue = value.trim().toLowerCase();
+    return normalizedValue.isEmpty ||
+        normalizedValue.contains('via.placeholder.com');
+  }
+
+  List<String> _resolveProductImages(Map<String, dynamic> resolvedProduct) {
+    final images =
+        (resolvedProduct['images'] as List?)
+            ?.whereType<String>()
+            .map((image) => image.trim())
+            .where((image) => !_isDefaultPlaceholderImage(image))
+            .toList() ??
+        <String>[];
+    if (images.isNotEmpty) {
+      return images;
+    }
+
+    final thumbnail = (resolvedProduct['thumbnail'] as String?)?.trim() ?? '';
+    if (_isDefaultPlaceholderImage(thumbnail)) {
+      return const <String>[];
+    }
+
+    return <String>[thumbnail];
+  }
+
   @override
   Widget build(BuildContext context) {
     ProductRealtimeSyncService.instance.ensureInitialized();
@@ -109,6 +135,7 @@ class ProductCard extends StatelessWidget {
                             Expanded(
                               child: Text(
                                 resolvedProduct['category'] ?? '',
+                                maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
@@ -120,7 +147,9 @@ class ProductCard extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 4),
-                        Row(
+                        Wrap(
+                          spacing: 2,
+                          runSpacing: 2,
                           children: const [
                             Icon(Icons.star, color: Colors.white, size: 16),
                             Icon(Icons.star, color: Colors.white, size: 16),
@@ -169,15 +198,7 @@ class ProductCard extends StatelessWidget {
   ) {
     final theme = Theme.of(context);
     final appColors = theme.appColors;
-
-    // ✅ CORRECTION — uniquement product['images'], thumbnail en fallback
-    final List<String> images =
-        (resolvedProduct['images'] as List?)?.whereType<String>().toList() ??
-        [];
-
-    final String placeholder =
-        resolvedProduct['thumbnail'] as String? ??
-        'https://via.placeholder.com/150';
+    final List<String> images = _resolveProductImages(resolvedProduct);
 
     void openProductDetail([int initialImageIndex = 0]) {
       _handleTap(
@@ -187,15 +208,11 @@ class ProductCard extends StatelessWidget {
       );
     }
 
-    // images vide → thumbnail seul
+    // Aucune image fournie → icone de fallback
     if (images.isEmpty) {
       return SizedBox(
         height: 170,
-        child: _imageItem(
-          context,
-          placeholder,
-          onTap: () => openProductDetail(),
-        ),
+        child: _missingImageItem(context, onTap: () => openProductDetail()),
       );
     }
 
@@ -354,7 +371,27 @@ class ProductCard extends StatelessWidget {
     );
   }
 
-  // ✅ _imageItem inchangé
+  Widget _missingImageItem(BuildContext context, {VoidCallback? onTap}) {
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: AppImagePlaceholder(
+        width: double.infinity,
+        height: double.infinity,
+        borderRadius: BorderRadius.circular(4),
+        child: Center(
+          child: Icon(
+            Icons.image_not_supported,
+            color: appColors.placeholderIcon,
+            size: 30,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _imageItem(BuildContext context, String url, {VoidCallback? onTap}) {
     final theme = Theme.of(context);
     final fallbackIconColor =

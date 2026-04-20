@@ -7,6 +7,7 @@ import 'package:bahibo/page/navigation/main_navigation_account_panel.dart';
 import 'package:bahibo/page/navigation/main_simple_user.dart';
 import 'package:bahibo/page/navigation/main_navigation_messages_panel.dart';
 import 'package:bahibo/page/navigation/main_navigation_search_panel.dart';
+import 'package:bahibo/page/notifications_page.dart';
 import 'package:bahibo/page/productDetail.dart';
 import 'package:bahibo/services/app_api_client.dart';
 import 'package:bahibo/services/app_auth_service.dart';
@@ -136,6 +137,23 @@ class MainNavigationShellState extends State<BahiboNavigationShell> {
           sellerRole: sellerRole,
           avatarUrl: avatarUrl,
         ),
+      ),
+    );
+  }
+
+  Future<void> openNotificationsFromNotification() async {
+    if (mounted && _currentIndex != 0) {
+      setState(() => _currentIndex = 0);
+    }
+
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    if (!mounted) {
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const NotificationsPage(notifications: []),
       ),
     );
   }

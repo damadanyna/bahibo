@@ -61,6 +61,32 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     });
   }
 
+  bool _isDefaultPlaceholderImage(String value) {
+    final normalizedValue = value.trim().toLowerCase();
+    return normalizedValue.isEmpty ||
+        normalizedValue.contains('via.placeholder.com');
+  }
+
+  List<String> _resolveProductImages() {
+    final images =
+        (product['images'] as List?)
+            ?.whereType<String>()
+            .map((image) => image.trim())
+            .where((image) => !_isDefaultPlaceholderImage(image))
+            .toList() ??
+        <String>[];
+    if (images.isNotEmpty) {
+      return images;
+    }
+
+    final thumbnail = (product['thumbnail'] as String?)?.trim() ?? '';
+    if (_isDefaultPlaceholderImage(thumbnail)) {
+      return const <String>[];
+    }
+
+    return <String>[thumbnail];
+  }
+
   @override
   void dispose() {
     disposePageRefresh();
@@ -168,7 +194,9 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       return;
     }
 
-    final refreshedProduct = await CatalogApiService().fetchProductById(productId);
+    final refreshedProduct = await CatalogApiService().fetchProductById(
+      productId,
+    );
     if (!mounted) {
       return;
     }
@@ -199,7 +227,9 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Impossible d\'ouvrir cette conversation.')),
+        const SnackBar(
+          content: Text('Impossible d\'ouvrir cette conversation.'),
+        ),
       );
       return;
     }
@@ -261,9 +291,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
 
   @override
   Widget build(BuildContext context) {
-    final List<String> images =
-        (product['images'] as List?)?.whereType<String>().toList() ??
-        [product['thumbnail'] ?? 'https://via.placeholder.com/150'];
+    final List<String> images = _resolveProductImages();
 
     final String title = product['title'] ?? 'Produit';
     final double price = (product['price'] as num?)?.toDouble() ?? 0.0;
@@ -552,7 +580,22 @@ class _ProductDetailPageState extends State<ProductDetailPage>
   Widget _buildImageGrid(List<String> images) {
     final appColors = Theme.of(context).appColors;
 
-    if (images.isEmpty) return const SizedBox.shrink();
+    if (images.isEmpty) {
+      return SizedBox(
+        height: 300,
+        width: double.infinity,
+        child: AppImagePlaceholder(
+          borderRadius: BorderRadius.circular(20),
+          child: Center(
+            child: Icon(
+              Icons.image_not_supported,
+              color: appColors.placeholderIcon,
+              size: 50,
+            ),
+          ),
+        ),
+      );
+    }
 
     late final Widget galleryContent;
 

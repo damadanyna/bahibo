@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:bahibo/component/main_navigation_shell.dart';
 import 'package:bahibo/page/chat_page.dart';
+import 'package:bahibo/page/notifications_page.dart';
 import 'package:bahibo/page/productDetail.dart';
 import 'package:bahibo/services/app_api_client.dart';
 import 'package:bahibo/services/session_storage.dart';
@@ -242,14 +243,46 @@ class PushNotificationService {
       return;
     }
 
+    final notificationType = pendingData['type']?.trim().toLowerCase() ?? '';
     final conversationId = pendingData['conversationId']?.trim();
-    if (conversationId == null || conversationId.isEmpty) {
-      return;
-    }
+    final isConversationNotification =
+        conversationId != null &&
+        conversationId.isNotEmpty &&
+        (notificationType.isEmpty || notificationType == 'chat_message');
 
     final shellState = BahiboNavigationShell.shellKey.currentState;
     final navigator = navigatorKey.currentState;
     if (shellState == null && navigator == null) {
+      return;
+    }
+
+    if (!isConversationNotification) {
+      if (shellState != null) {
+        _isNavigatingFromNotification = true;
+        _pendingNotificationData = null;
+
+        try {
+          await shellState.openNotificationsFromNotification();
+        } finally {
+          _isNavigatingFromNotification = false;
+        }
+        return;
+      }
+
+      if (navigator != null) {
+        _isNavigatingFromNotification = true;
+        _pendingNotificationData = null;
+
+        try {
+          await navigator.push(
+            MaterialPageRoute(
+              builder: (_) => const NotificationsPage(notifications: []),
+            ),
+          );
+        } finally {
+          _isNavigatingFromNotification = false;
+        }
+      }
       return;
     }
 

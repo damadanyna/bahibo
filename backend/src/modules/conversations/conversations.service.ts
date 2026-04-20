@@ -123,6 +123,33 @@ export class ConversationsService {
     return 'Utilisateur';
   }
 
+  private async assertUsersCanInteract(firstUserId: string, secondUserId: string) {
+    const blockingReport = await this.prisma.userReport.findFirst({
+      where: {
+        blockRequested: true,
+        OR: [
+          {
+            reporterUserId: firstUserId,
+            reportedUserId: secondUserId,
+          },
+          {
+            reporterUserId: secondUserId,
+            reportedUserId: firstUserId,
+          },
+        ],
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    if (blockingReport) {
+      throw new ForbiddenException(
+        'Cette conversation est bloquee. Vous ne pouvez plus envoyer de messages.',
+      );
+    }
+  }
+
   async listConversations(userId: string) {
     const conversations = await this.prisma.chatConversation.findMany({
       where: {
@@ -180,6 +207,8 @@ export class ConversationsService {
       );
     }
 
+    await this.assertUsersCanInteract(userId, sellerUserId);
+
     const existingConversation = await this.prisma.chatConversation.findUnique({
       where: {
         buyerUserId_sellerUserId_productId: {
@@ -230,6 +259,8 @@ export class ConversationsService {
     if (!targetUser) {
       throw new NotFoundException('User not found');
     }
+
+    await this.assertUsersCanInteract(userId, targetUserId);
 
     const directKey = this.buildDirectConversationKey(userId, targetUserId);
 
@@ -378,6 +409,8 @@ export class ConversationsService {
       ? conversation.seller
       : conversation.buyer;
 
+    await this.assertUsersCanInteract(userId, recipientUserId);
+
     await this.prisma.$transaction(async (transaction) => {
       await transaction.chatMessage.create({
         data: {
@@ -448,6 +481,11 @@ export class ConversationsService {
         'You do not have access to this conversation',
       );
     }
+
+    const otherParticipantUserId = conversation.buyerUserId === userId
+      ? conversation.sellerUserId
+      : conversation.buyerUserId;
+    await this.assertUsersCanInteract(userId, otherParticipantUserId);
 
     return conversation;
   }

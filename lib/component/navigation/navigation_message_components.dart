@@ -218,10 +218,12 @@ class NavigationConversationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final appColors = theme.appColors;
-    final surfaceColor = isDark ? const Color(0xFF232323) : theme.cardColor;
-    final titleColor = Colors.white;
-    final previewColor = Colors.white.withValues(alpha: unread ? 0.88 : 0.68);
-    final statusColor = Colors.white.withValues(alpha: 0.52);
+    final surfaceColor = theme.cardColor;
+    final titleColor = theme.colorScheme.onSurface;
+    final previewColor = unread
+        ? theme.colorScheme.onSurface.withValues(alpha: 0.88)
+        : appColors.mutedText;
+    final statusColor = appColors.mutedText.withValues(alpha: 0.92);
     final badgeCount = unreadCount > 0 ? unreadCount : (unread ? 1 : 0);
 
     return Material(
@@ -247,7 +249,7 @@ class NavigationConversationTile extends StatelessWidget {
                       border: Border.all(
                         color: unread
                             ? primary.withValues(alpha: 0.82)
-                            : Colors.white.withValues(alpha: 0.08),
+                            : theme.colorScheme.outline.withValues(alpha: 0.22),
                         width: unread ? 1.8 : 1,
                       ),
                     ),
@@ -266,8 +268,8 @@ class NavigationConversationTile extends StatelessWidget {
                       height: 14,
                       decoration: BoxDecoration(
                         color: isOnline
-                            ? const Color(0xFF39D353)
-                            : const Color(0xFF4A4A4A),
+                            ? appColors.onlineStatus
+                            : theme.colorScheme.outline,
                         shape: BoxShape.circle,
                         border: Border.all(color: surfaceColor, width: 2),
                       ),
@@ -370,7 +372,7 @@ class NavigationConversationTile extends StatelessWidget {
                               vertical: 3,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFE53935),
+                              color: theme.colorScheme.error,
                               borderRadius: BorderRadius.circular(999),
                             ),
                             child: Text(

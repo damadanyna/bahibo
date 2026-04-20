@@ -83,8 +83,8 @@ class _LivePreviewPageState extends State<LivePreviewPage>
 
   CameraCaptureOptions get _cameraCaptureOptions => CameraCaptureOptions(
     cameraPosition: _cameraPosition,
-    params: VideoParametersPresets.h360_169,
-    maxFrameRate: 15,
+    params: VideoParametersPresets.h720_169,
+    maxFrameRate: 24,
   );
 
   @override
@@ -468,10 +468,13 @@ class _LivePreviewPageState extends State<LivePreviewPage>
         _errorMessage == null &&
         !_isPaused;
 
-    return WillPopScope(
-      onWillPop: () async {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) {
+          return;
+        }
         await _handleExitRequested();
-        return false;
       },
       child: Scaffold(
         backgroundColor: Colors.black,

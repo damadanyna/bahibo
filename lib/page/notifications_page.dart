@@ -44,6 +44,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
     _notifications.addAll(widget.notifications);
     syncNotificationsUnreadCount(_notifications);
     _bindRealtimeNotifications();
+    if (_notifications.isEmpty) {
+      unawaited(_refreshNotifications());
+    }
   }
 
   @override
@@ -338,6 +341,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
       case 'product_updated':
         await _openProductNotification(context, notification);
         return;
+      case 'seller_follow':
+        _showNotificationActionUnavailable(context);
+        return;
       case 'followed_product_comment':
       case 'product_comment':
         await _openProductNotification(
@@ -516,7 +522,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
     final groupedNotifications = <String, List<Map<String, dynamic>>>{};
 
     for (final notification in _notifications) {
-      final section = notification['section'] as String? ?? 'Recents';
+      final section = notification['section'] as String? ?? 'Non lues';
       groupedNotifications.putIfAbsent(section, () => []).add(notification);
     }
 
@@ -581,16 +587,67 @@ class _NotificationsPageState extends State<NotificationsPage> {
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(0, 8, 0, 24),
-        children: groupedNotifications.entries
-            .map(
+        children: [
+          if (_notifications.isEmpty)
+            const _NotificationsEmptyState()
+          else
+            ...groupedNotifications.entries.map(
               (entry) => _NotificationSection(
                 title: entry.key,
                 notifications: entry.value,
                 onNotificationTap: (notification) =>
                     _openNotification(context, notification),
               ),
-            )
-            .toList(),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NotificationsEmptyState extends StatelessWidget {
+  const _NotificationsEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: colorScheme.onSurface.withValues(alpha: 0.08),
+        ),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            Icons.notifications_none_rounded,
+            size: 42,
+            color: colorScheme.onSurface.withValues(alpha: 0.42),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Aucune notification pour le moment',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Les nouvelles activites de vos produits, messages et abonnes apparaitront ici.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: colorScheme.onSurface.withValues(alpha: 0.62),
+              height: 1.35,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }
@@ -658,6 +715,11 @@ class _NotificationTile extends StatelessWidget {
         return const _NotificationVisual(
           icon: Icons.chat_bubble_rounded,
           label: 'Commentaire d\'un abonne',
+        );
+      case 'seller_follow':
+        return const _NotificationVisual(
+          icon: Icons.person_add_alt_1_rounded,
+          label: 'Nouvel abonne',
         );
       case 'product_comment':
         return const _NotificationVisual(
@@ -777,71 +839,116 @@ class _NotificationTile extends StatelessWidget {
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _NotificationAvatar(label: channel, imageUrl: avatarUrl),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: colorScheme.primary.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isUnread
+                ? colorScheme.primary.withValues(alpha: 0.05)
+                : theme.cardColor,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isUnread
+                  ? colorScheme.primary.withValues(alpha: 0.16)
+                  : colorScheme.onSurface.withValues(alpha: 0.08),
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _NotificationAvatar(label: channel, imageUrl: avatarUrl),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        Icon(visual.icon, size: 14, color: colorScheme.primary),
-                        const SizedBox(width: 6),
-                        Text(
-                          visual.label,
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            color: colorScheme.primary,
-                            fontWeight: FontWeight.w800,
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: colorScheme.primary.withValues(
+                                alpha: 0.12,
+                              ),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  visual.icon,
+                                  size: 14,
+                                  color: colorScheme.primary,
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    visual.label,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.labelMedium
+                                        ?.copyWith(
+                                          color: colorScheme.primary,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
+                        if (isUnread)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 8),
+                            child: Container(
+                              width: 10,
+                              height: 10,
+                              decoration: BoxDecoration(
+                                color: colorScheme.primary,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    resolvedDescription,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      color: descriptionColor,
-                      fontSize: 13,
-                      fontWeight: isUnread ? FontWeight.w800 : FontWeight.w500,
-                      height: 1.24,
+                    const SizedBox(height: 8),
+                    Text(
+                      resolvedDescription,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        color: descriptionColor,
+                        fontSize: 13,
+                        fontWeight: isUnread
+                            ? FontWeight.w800
+                            : FontWeight.w500,
+                        height: 1.24,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    relativeTime,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontSize: 12,
-                      color: colorScheme.onSurface.withValues(alpha: 0.52),
-                      fontWeight: FontWeight.w500,
+                    const SizedBox(height: 4),
+                    Text(
+                      relativeTime,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontSize: 12,
+                        color: colorScheme.onSurface.withValues(alpha: 0.52),
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: 10),
-            _NotificationThumbnail(
-              imageUrl: thumbnailUrl,
-              width: 86,
-              height: 62,
-              showPlaceholder: !hasProductPreview,
-            ),
-          ],
+              const SizedBox(width: 10),
+              _NotificationThumbnail(
+                imageUrl: thumbnailUrl,
+                width: 86,
+                height: 62,
+                showPlaceholder: !hasProductPreview,
+              ),
+            ],
+          ),
         ),
       ),
     );

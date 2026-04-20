@@ -157,6 +157,14 @@ class CatalogApiService {
         .toList();
   }
 
+  Future<List<Map<String, dynamic>>> fetchCurrentUserReports() async {
+    final data = await _client.get('/profiles/me/reports', authenticated: true);
+    return (data as List)
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
   Future<Map<String, dynamic>> startCurrentUserLive({
     required String title,
     required String category,

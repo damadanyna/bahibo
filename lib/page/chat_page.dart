@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:bahibo/component/app_back_button.dart';
 import 'package:bahibo/component/app_network_image.dart';
 import 'package:bahibo/component/app_page_refresh.dart';
 import 'package:bahibo/component/app_page_skeletons.dart';
@@ -92,6 +91,7 @@ class _ChatPageState extends State<ChatPage>
   bool _isTypingEventActive = false;
   bool _initialMessageHandled = false;
   bool _initialProductContextSent = false;
+  bool _conversationBlocked = false;
   String? _conversationId;
   String? _loadError;
   Map<String, dynamic>? _conversation;
@@ -397,8 +397,9 @@ class _ChatPageState extends State<ChatPage>
           _showEntrySkeleton = false;
         });
       }
-    } on AppApiException {
+    } on AppApiException catch (error) {
       if (!mounted) return;
+      _applyConversationError(error);
     }
   }
 
@@ -428,10 +429,7 @@ class _ChatPageState extends State<ChatPage>
       _scheduleScrollToBottom();
     } on AppApiException catch (error) {
       if (!mounted) return;
-      setState(() {
-        _showEntrySkeleton = false;
-        _loadError = error.message;
-      });
+      _applyConversationError(error, showEntrySkeleton: false);
     }
   }
 
@@ -462,6 +460,27 @@ class _ChatPageState extends State<ChatPage>
         ),
       );
     _pendingMessages.clear();
+    _conversationBlocked = false;
+    _loadError = null;
+  }
+
+  bool _isBlockedError(AppApiException error) {
+    final message = error.message.toLowerCase();
+    return error.statusCode == 403 && message.contains('bloqu');
+  }
+
+  void _applyConversationError(
+    AppApiException error, {
+    bool? showEntrySkeleton,
+  }) {
+    setState(() {
+      if (showEntrySkeleton != null) {
+        _showEntrySkeleton = showEntrySkeleton;
+      }
+      _conversationBlocked = _isBlockedError(error);
+      _loadError = error.message;
+      _pendingMessages.clear();
+    });
   }
 
   _ChatMessageDeliveryState? _resolveDeliveryState({
@@ -494,7 +513,10 @@ class _ChatPageState extends State<ChatPage>
 
   Future<void> _sendMessage(String text) async {
     final content = text.trim();
-    if (content.isEmpty || !_usesLiveConversation || _isSending) {
+    if (content.isEmpty ||
+        !_usesLiveConversation ||
+        _isSending ||
+        _conversationBlocked) {
       return;
     }
 
@@ -581,6 +603,12 @@ class _ChatPageState extends State<ChatPage>
       _messageController
         ..text = content
         ..selection = TextSelection.collapsed(offset: content.length);
+      if (_isBlockedError(error)) {
+        setState(() {
+          _conversationBlocked = true;
+          _loadError = error.message;
+        });
+      }
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(error.message)));
@@ -1058,6 +1086,14 @@ class _ChatPageState extends State<ChatPage>
           ),
         ),
       );
+
+      if (blockUser) {
+        setState(() {
+          _conversationBlocked = true;
+          _loadError =
+              'Cette conversation est bloquee. Vous ne pouvez plus envoyer de messages.';
+        });
+      }
     } on AppApiException catch (error) {
       if (!mounted) {
         return;
@@ -1237,16 +1273,24 @@ class _ChatPageState extends State<ChatPage>
                                   onClose: _clearReplyingToMessage,
                                 ),
                               ),
-                            UiChatMessageInput(
-                              controller: _messageController,
-                              onAttachmentSelected: _handleAttachment,
-                              onTextChanged: _handleComposerChanged,
-                              onSend: _sendMessage,
-                              primary: primary,
-                              panelColor: panelColor,
-                              borderColor: appColors.inputBorder,
-                              hintText: 'Message',
-                            ),
+                            if (_conversationBlocked)
+                              _ChatInfoCard(
+                                text:
+                                    'Cette discussion est bloquee. Vous pouvez lire l\'historique, mais vous ne pouvez plus envoyer de nouveaux messages.',
+                                color: theme.colorScheme.error,
+                                cardColor: incomingBubbleColor,
+                              )
+                            else
+                              UiChatMessageInput(
+                                controller: _messageController,
+                                onAttachmentSelected: _handleAttachment,
+                                onTextChanged: _handleComposerChanged,
+                                onSend: _sendMessage,
+                                primary: primary,
+                                panelColor: panelColor,
+                                borderColor: appColors.inputBorder,
+                                hintText: 'Message',
+                              ),
                           ],
                         ),
                       ),
@@ -1287,7 +1331,6 @@ class _ChatHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final appColors = Theme.of(context).appColors;
     final normalizedUserId = userId?.trim() ?? '';
     if (normalizedUserId.isNotEmpty) {
       PresenceService.instance.watchUser(normalizedUserId);
@@ -1970,32 +2013,6 @@ class _ChatInfoCard extends StatelessWidget {
         text,
         textAlign: TextAlign.center,
         style: TextStyle(color: color, fontWeight: FontWeight.w700),
-      ),
-    );
-  }
-}
-
-class _ReplySwipeBackground extends StatelessWidget {
-  final Alignment alignment;
-  final Color primary;
-
-  const _ReplySwipeBackground({required this.alignment, required this.primary});
-
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: alignment,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18),
-        child: Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: primary.withValues(alpha: 0.14),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(Icons.reply_rounded, color: primary, size: 20),
-        ),
       ),
     );
   }

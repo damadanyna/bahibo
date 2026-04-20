@@ -202,7 +202,22 @@ export class NotificationsService {
       ].sort((left, right) => right.createdAt.localeCompare(left.createdAt)));
     }
 
-    const [recentProductLikes, recentProductComments, recentProfileViews] = await Promise.all([
+    const [recentSellerFollows, recentProductLikes, recentProductComments, recentProfileViews] = await Promise.all([
+      this.prisma.sellerFollow.findMany({
+        where: {
+          sellerProfileId: sellerProfile.id,
+          followerUserId: {
+            not: userId,
+          },
+        },
+        include: {
+          follower: true,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        take: 20,
+      }),
       this.prisma.productLike.findMany({
         where: {
           product: {
@@ -275,6 +290,33 @@ export class NotificationsService {
       }),
     ]);
 
+    const sellerFollowNotifications: NotificationEntity[] = recentSellerFollows.map((follow) => ({
+      id: `notif-seller-follow-${follow.id}`,
+      type: 'seller_follow',
+      title: 'Nouvel abonne',
+      body: `${follow.follower.displayName} vient de s'abonner a votre boutique.`,
+      isRead: false,
+      createdAt: follow.createdAt.toISOString(),
+      sellerProfile: {
+        id: sellerProfile.id,
+        studioName: sellerProfile.studioName,
+      },
+      seller: {
+        id: follow.follower.id,
+        name: follow.follower.displayName,
+        avatarUrl: follow.follower.avatarUrl ?? 'https://i.pravatar.cc/240?img=12',
+      },
+      product: null,
+      actors: [
+        {
+          id: follow.follower.id,
+          name: follow.follower.displayName,
+          avatarUrl: follow.follower.avatarUrl ?? 'https://i.pravatar.cc/240?img=12',
+          timeLabel: this.buildRelativeTimeLabel(follow.createdAt),
+        },
+      ],
+    }));
+
     const productLikeNotifications = this.buildProductLikeNotifications(
       recentProductLikes,
       userId,
@@ -290,6 +332,7 @@ export class NotificationsService {
     );
 
     return this.applyReadStates(userId, [
+      ...sellerFollowNotifications,
       ...productCommentNotifications,
       ...productLikeNotifications,
       ...profileViewNotifications,

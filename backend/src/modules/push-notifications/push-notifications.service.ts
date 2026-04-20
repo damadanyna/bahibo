@@ -50,6 +50,24 @@ type SendFollowedProductCommentNotificationArgs = {
   productImageUrl?: string;
 };
 
+type SendSellerProductCommentNotificationArgs = {
+  recipientUserId: string;
+  commenterUserId: string;
+  commenterDisplayName: string;
+  commenterAvatarUrl?: string;
+  productId: string;
+  productTitle: string;
+  productImageUrl?: string;
+};
+
+type SendSellerFollowNotificationArgs = {
+  recipientUserId: string;
+  followerUserId: string;
+  followerDisplayName: string;
+  followerAvatarUrl?: string;
+  sellerProfileId: string;
+};
+
 @Injectable()
 export class PushNotificationsService {
   private readonly logger = new Logger(PushNotificationsService.name);
@@ -413,6 +431,154 @@ export class PushNotificationsService {
         productId: args.productId,
         productTitle: args.productTitle,
         productImageUrl: args.productImageUrl ?? '',
+      },
+      android: {
+        priority: 'high',
+        notification: {
+          channelId: 'bahibo_messages',
+          clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+        },
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: 'default',
+          },
+        },
+      },
+    });
+
+    const invalidTokens = response.responses
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => {
+        const code = item.error?.code;
+        return (
+          code === 'messaging/invalid-registration-token' ||
+          code === 'messaging/registration-token-not-registered'
+        );
+      })
+      .map(({ index }) => deviceTokens[index].token);
+
+    if (invalidTokens.length > 0) {
+      await this.prisma.userDeviceToken.deleteMany({
+        where: {
+          token: {
+            in: invalidTokens,
+          },
+        },
+      });
+    }
+  }
+
+  async sendSellerProductCommentNotification(
+    args: SendSellerProductCommentNotificationArgs,
+  ) {
+    const deviceTokens = await this.prisma.userDeviceToken.findMany({
+      where: {
+        userId: args.recipientUserId,
+      },
+      select: {
+        token: true,
+      },
+    });
+
+    if (deviceTokens.length === 0) {
+      return;
+    }
+
+    if (!this.firebaseApp) {
+      this.logger.warn(
+        `Skipping seller comment notification for ${args.productId} because Firebase Admin is not configured.`,
+      );
+      return;
+    }
+
+    const response = await getMessaging(this.firebaseApp).sendEachForMulticast({
+      tokens: deviceTokens.map((deviceToken) => deviceToken.token),
+      notification: {
+        title: args.commenterDisplayName,
+        body: `a commente votre produit ${args.productTitle}.`,
+      },
+      data: {
+        type: 'product_comment',
+        sellerName: args.commenterDisplayName,
+        sellerAvatarUrl: args.commenterAvatarUrl ?? '',
+        commenterUserId: args.commenterUserId,
+        productId: args.productId,
+        productTitle: args.productTitle,
+        productImageUrl: args.productImageUrl ?? '',
+      },
+      android: {
+        priority: 'high',
+        notification: {
+          channelId: 'bahibo_messages',
+          clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+        },
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: 'default',
+          },
+        },
+      },
+    });
+
+    const invalidTokens = response.responses
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => {
+        const code = item.error?.code;
+        return (
+          code === 'messaging/invalid-registration-token' ||
+          code === 'messaging/registration-token-not-registered'
+        );
+      })
+      .map(({ index }) => deviceTokens[index].token);
+
+    if (invalidTokens.length > 0) {
+      await this.prisma.userDeviceToken.deleteMany({
+        where: {
+          token: {
+            in: invalidTokens,
+          },
+        },
+      });
+    }
+  }
+
+  async sendSellerFollowNotification(args: SendSellerFollowNotificationArgs) {
+    const deviceTokens = await this.prisma.userDeviceToken.findMany({
+      where: {
+        userId: args.recipientUserId,
+      },
+      select: {
+        token: true,
+      },
+    });
+
+    if (deviceTokens.length === 0) {
+      return;
+    }
+
+    if (!this.firebaseApp) {
+      this.logger.warn(
+        `Skipping seller follow notification for seller profile ${args.sellerProfileId} because Firebase Admin is not configured.`,
+      );
+      return;
+    }
+
+    const response = await getMessaging(this.firebaseApp).sendEachForMulticast({
+      tokens: deviceTokens.map((deviceToken) => deviceToken.token),
+      notification: {
+        title: args.followerDisplayName,
+        body: 'vient de s\'abonner a votre boutique.',
+      },
+      data: {
+        type: 'seller_follow',
+        sellerProfileId: args.sellerProfileId,
+        followerUserId: args.followerUserId,
+        sellerName: args.followerDisplayName,
+        sellerAvatarUrl: args.followerAvatarUrl ?? '',
       },
       android: {
         priority: 'high',

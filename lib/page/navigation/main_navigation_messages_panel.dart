@@ -1,9 +1,13 @@
 import 'dart:async';
 
+import 'package:bahibo/component/profile_models.dart';
 import 'package:bahibo/component/navigation/navigation_message_components.dart';
+import 'package:bahibo/component/theme_menu_button.dart';
+import 'package:bahibo/component/user_list_page.dart';
 import 'package:bahibo/page/chat_page.dart';
 import 'package:bahibo/page/productDetail.dart';
 import 'package:bahibo/services/app_api_client.dart';
+import 'package:bahibo/services/catalog_api_service.dart';
 import 'package:bahibo/services/chat_realtime_service.dart';
 import 'package:bahibo/services/conversations_api_service.dart';
 import 'package:bahibo/theme/app_theme_extensions.dart';
@@ -14,6 +18,8 @@ final ValueNotifier<int> mainNavigationUnreadMessageCountNotifier =
 
 int get mainNavigationUnreadMessageCount =>
     mainNavigationUnreadMessageCountNotifier.value;
+
+enum _MessagesPanelMenuAction { theme, blockedUsers }
 
 class MainNavigationMessagesPanel extends StatefulWidget {
   const MainNavigationMessagesPanel({super.key});
@@ -29,6 +35,7 @@ class _MainNavigationMessagesPanelState
 
   final ConversationsApiService _conversationsApiService =
       ConversationsApiService();
+  final CatalogApiService _catalogApiService = CatalogApiService();
   final TextEditingController _searchController = TextEditingController();
 
   Timer? _conversationsPollTimer;
@@ -391,6 +398,140 @@ class _MainNavigationMessagesPanelState
     }
   }
 
+  String _formatBlockedDateLabel(String value) {
+    final createdAt = DateTime.tryParse(value)?.toLocal();
+    if (createdAt == null) {
+      return 'Bloque';
+    }
+
+    final difference = DateTime.now().difference(createdAt);
+    if (difference.inMinutes < 1) {
+      return 'A l\'instant';
+    }
+    if (difference.inMinutes < 60) {
+      return 'Il y a ${difference.inMinutes} min';
+    }
+    if (difference.inHours < 24) {
+      return 'Il y a ${difference.inHours} h';
+    }
+    if (difference.inDays < 7) {
+      return 'Il y a ${difference.inDays} j';
+    }
+    return 'Bloque';
+  }
+
+  Future<void> _openBlockedUsers() async {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) =>
+          const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final reports = await _catalogApiService.fetchCurrentUserReports();
+      if (!mounted) {
+        return;
+      }
+
+      final blockedByUserId = <String, Map<String, dynamic>>{};
+      for (final report in reports) {
+        if (report['blockRequested'] != true) {
+          continue;
+        }
+
+        final reported = Map<String, dynamic>.from(
+          (report['reported'] as Map?) ?? const <String, dynamic>{},
+        );
+        final reportedUserId = reported['id']?.toString().trim() ?? '';
+        if (reportedUserId.isEmpty) {
+          continue;
+        }
+
+        final existing = blockedByUserId[reportedUserId];
+        if (existing == null) {
+          blockedByUserId[reportedUserId] = report;
+          continue;
+        }
+
+        final existingDate = DateTime.tryParse(
+          existing['createdAt']?.toString() ?? '',
+        );
+        final currentDate = DateTime.tryParse(
+          report['createdAt']?.toString() ?? '',
+        );
+        if (currentDate != null &&
+            (existingDate == null || currentDate.isAfter(existingDate))) {
+          blockedByUserId[reportedUserId] = report;
+        }
+      }
+
+      final blockedUsers = blockedByUserId.values.map((report) {
+        final reported = Map<String, dynamic>.from(
+          (report['reported'] as Map?) ?? const <String, dynamic>{},
+        );
+        final name = reported['displayName']?.toString().trim();
+        final avatarUrl = reported['avatarUrl']?.toString().trim() ?? '';
+        final userId = reported['id']?.toString().trim();
+        final createdAt = report['createdAt']?.toString() ?? '';
+        final subtitle = 'Utilisateur bloque dans vos conversations.';
+
+        return UserListItemData(
+          name: name != null && name.isNotEmpty ? name : 'Utilisateur Bahibo',
+          subtitle: subtitle,
+          imageUrl: avatarUrl,
+          trailingText: _formatBlockedDateLabel(createdAt),
+          userId: userId != null && userId.isNotEmpty ? userId : null,
+          profileData: buildProfileFromUser(
+            userId: userId != null && userId.isNotEmpty ? userId : null,
+            name: name != null && name.isNotEmpty ? name : 'Utilisateur Bahibo',
+            avatarUrl: avatarUrl,
+            subtitle: subtitle,
+          ),
+        );
+      }).toList();
+
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => UserListPage(
+            title: 'Personnes bloquees',
+            users: blockedUsers,
+            totalCount: blockedUsers.length,
+          ),
+        ),
+      );
+    } on AppApiException catch (error) {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
+  Future<void> _handleMenuSelection(_MessagesPanelMenuAction action) async {
+    switch (action) {
+      case _MessagesPanelMenuAction.theme:
+        await showThemeSelectionSheet(context);
+        return;
+      case _MessagesPanelMenuAction.blockedUsers:
+        await _openBlockedUsers();
+        return;
+    }
+  }
+
   String _conversationTime(Map<String, dynamic> conversation) {
     final value = conversation['lastMessageAt'];
     if (value is! String || value.isEmpty) {
@@ -463,11 +604,12 @@ class _MainNavigationMessagesPanelState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final appColors = theme.appColors;
-    final primary = const Color(0xFF2E89FF);
-    final scaffoldColor = const Color(0xFF181818);
-    final surfaceColor = const Color(0xFF242424);
-    final titleColor = Colors.white;
-    final mutedColor = Colors.white.withValues(alpha: 0.62);
+    final primary = theme.colorScheme.primary;
+    final scaffoldColor = appColors.backgroundBase;
+    final surfaceColor = theme.cardColor;
+    final titleColor = theme.colorScheme.onSurface;
+    final mutedColor = appColors.mutedText;
+    final strongTextColor = theme.colorScheme.onSurface;
     final groupedConversations = _groupConversationsByParticipant(
       _conversations,
     );
@@ -497,7 +639,7 @@ class _MainNavigationMessagesPanelState
                     NavigationIconActionButton(
                       icon: Icons.arrow_back_ios_new_rounded,
                       backgroundColor: surfaceColor,
-                      iconColor: Colors.white,
+                      iconColor: theme.colorScheme.onSurface,
                       onTap: _handleBackPressed,
                     ),
                     const SizedBox(width: 10),
@@ -510,6 +652,40 @@ class _MainNavigationMessagesPanelState
                         ),
                       ),
                     ),
+                    const SizedBox(width: 10),
+                    PopupMenuButton<_MessagesPanelMenuAction>(
+                      onSelected: (action) => _handleMenuSelection(action),
+                      tooltip: 'Plus',
+                      padding: EdgeInsets.zero,
+                      color: surfaceColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      itemBuilder: (context) => const [
+                        PopupMenuItem(
+                          value: _MessagesPanelMenuAction.theme,
+                          child: _MessagesPanelMenuItem(
+                            icon: Icons.palette_outlined,
+                            label: 'Theme',
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: _MessagesPanelMenuAction.blockedUsers,
+                          child: _MessagesPanelMenuItem(
+                            icon: Icons.block_rounded,
+                            label: 'Personnes bloquees',
+                          ),
+                        ),
+                      ],
+                      child: SizedBox(
+                        width: 32,
+                        height: 32,
+                        child: Icon(
+                          Icons.more_vert_rounded,
+                          color: theme.colorScheme.onSurface,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -518,12 +694,12 @@ class _MainNavigationMessagesPanelState
                 child: NavigationMessageSearchBar(
                   controller: _searchController,
                   fillColor: surfaceColor,
-                  iconColor: Colors.white.withValues(alpha: 0.9),
-                  hintColor: Colors.white.withValues(alpha: 0.44),
+                  iconColor: theme.colorScheme.onSurface.withValues(alpha: 0.9),
+                  hintColor: appColors.mutedText,
                   onChanged: (value) {
                     setState(() => _searchQuery = value);
                   },
-                  borderColor: Colors.transparent,
+                  borderColor: appColors.borderColor.withValues(alpha: 0.2),
                 ),
               ),
               if (filteredConversations.isNotEmpty) ...[
@@ -547,8 +723,8 @@ class _MainNavigationMessagesPanelState
                           conversation,
                         ),
                         primary: primary,
-                        labelColor: Colors.white,
-                        haloColor: Colors.white,
+                        labelColor: strongTextColor,
+                        haloColor: theme.colorScheme.onSurface,
                         onTap: () => _openConversation(conversation),
                       );
                     },
@@ -579,7 +755,7 @@ class _MainNavigationMessagesPanelState
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFE53935),
+                              color: theme.colorScheme.error,
                               borderRadius: BorderRadius.circular(999),
                             ),
                             child: Text(
@@ -599,7 +775,7 @@ class _MainNavigationMessagesPanelState
                             child: Text(
                               'Nouvelles invitations par message',
                               style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.92),
+                                color: strongTextColor.withValues(alpha: 0.92),
                                 fontWeight: FontWeight.w800,
                                 fontSize: 15,
                               ),
@@ -676,7 +852,7 @@ class _MainNavigationMessagesPanelState
                       isMuted: _conversationIsMuted(conversation),
                       showReplyChip: _conversationShowsReplyChip(conversation),
                       primary: primary,
-                      isDark: true,
+                      isDark: theme.brightness == Brightness.dark,
                       onTap: () => _openConversation(conversation),
                     ),
                   );
@@ -699,7 +875,7 @@ class _MainNavigationMessagesPanelState
       child: Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: const Color(0xFF242424),
+          color: theme.cardColor,
           borderRadius: BorderRadius.circular(18),
         ),
         child: Text(
@@ -710,6 +886,24 @@ class _MainNavigationMessagesPanelState
           ),
         ),
       ),
+    );
+  }
+}
+
+class _MessagesPanelMenuItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _MessagesPanelMenuItem({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 18),
+        const SizedBox(width: 10),
+        Expanded(child: Text(label)),
+      ],
     );
   }
 }

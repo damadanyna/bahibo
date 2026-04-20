@@ -10,7 +10,9 @@ import { AccessToken, TrackSource } from 'livekit-server-sdk';
 
 import { CloudinaryService } from '../auth/cloudinary.service';
 import { ConversationsRealtimeGateway } from '../conversations/realtime/conversations-realtime.gateway';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { PushNotificationsService } from '../push-notifications/push-notifications.service';
 import { UpdateProfileDto, UpdateSellerProfileDto } from './dto/update-profile.dto';
 import {
   presentPublicSellerProfile,
@@ -24,6 +26,8 @@ export class ProfilesService {
     private readonly prisma: PrismaService,
     private readonly cloudinaryService: CloudinaryService,
     private readonly conversationsRealtimeGateway: ConversationsRealtimeGateway,
+    private readonly notificationsService: NotificationsService,
+    private readonly pushNotificationsService: PushNotificationsService,
     private readonly configService: ConfigService,
   ) {}
 
@@ -77,6 +81,17 @@ export class ProfilesService {
         blockRequested: input.blockUser === true,
       },
     });
+
+    if (report.blockRequested && report.conversationId) {
+      this.conversationsRealtimeGateway.emitConversationEvent(
+        [reporterUserId, normalizedReportedUserId],
+        {
+          type: 'conversation:blocked',
+          conversationId: report.conversationId,
+          actorUserId: reporterUserId,
+        },
+      );
+    }
 
     return {
       id: report.id,
@@ -508,22 +523,68 @@ export class ProfilesService {
       throw new BadRequestException('Impossible de s\'abonner a son propre profil.');
     }
 
-    await this.prisma.sellerFollow.upsert({
+    const existingFollow = await this.prisma.sellerFollow.findUnique({
       where: {
         followerUserId_sellerProfileId: {
           followerUserId: viewerUserId,
           sellerProfileId,
         },
       },
-      create: {
-        followerUserId: viewerUserId,
-        sellerProfileId,
-      },
-      update: {},
     });
+
+    if (!existingFollow) {
+      const follower = await this.prisma.user.findUnique({
+        where: {
+          id: viewerUserId,
+        },
+        select: {
+          id: true,
+          displayName: true,
+          avatarUrl: true,
+        },
+      });
+
+      await this.prisma.sellerFollow.create({
+        data: {
+          followerUserId: viewerUserId,
+          sellerProfileId,
+        },
+      });
+
+      if (follower) {
+        await this.emitNotificationUpdatedEvent(
+          sellerProfile.userId,
+          'seller_follow',
+        );
+        await this.pushNotificationsService.sendSellerFollowNotification({
+          recipientUserId: sellerProfile.userId,
+          followerUserId: follower.id,
+          followerDisplayName: follower.displayName,
+          followerAvatarUrl: follower.avatarUrl ?? undefined,
+          sellerProfileId,
+        });
+      }
+    }
 
     await this.emitSellerMetricsProfileUpdate(sellerProfile.userId);
     return this.getPublicSellerProfileForViewer(sellerProfileId, viewerUserId);
+  }
+
+  private async emitNotificationUpdatedEvent(
+    userId: string,
+    reason:
+      | 'product_like'
+      | 'product_comment'
+      | 'followed_seller_activity'
+      | 'seller_follow',
+  ) {
+    const unreadCount = await this.notificationsService.countUnread(userId);
+    this.conversationsRealtimeGateway.emitNotificationEvent(userId, {
+      type: 'notifications:updated',
+      userId,
+      reason,
+      unreadCount,
+    });
   }
 
   async unfollowSeller(viewerUserId: string, sellerProfileId: string) {

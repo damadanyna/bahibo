@@ -37,7 +37,7 @@ class NotificationsApiService {
           .toList();
 
       return {
-        'section': map['isRead'] == true ? 'Aujourd\'hui' : 'Important',
+        'section': map['isRead'] == true ? 'Lues' : 'Non lues',
         'id': map['id'],
         'type': map['type'],
         'title': map['title'],
