@@ -85,6 +85,29 @@ class CatalogApiService {
     return Map<String, dynamic>.from(data as Map);
   }
 
+  Future<Map<String, dynamic>> blockUser(
+    String userId, {
+    String? conversationId,
+  }) async {
+    final data = await _client.post(
+      '/profiles/users/$userId/block',
+      authenticated: true,
+      body: {
+        if (conversationId != null && conversationId.trim().isNotEmpty)
+          'conversationId': conversationId.trim(),
+      },
+    );
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<Map<String, dynamic>> unblockUser(String userId) async {
+    final data = await _client.delete(
+      '/profiles/users/$userId/block',
+      authenticated: true,
+    );
+    return Map<String, dynamic>.from(data as Map);
+  }
+
   Future<List<Map<String, dynamic>>> fetchUsersPresence(
     List<String> userIds,
   ) async {
@@ -159,6 +182,17 @@ class CatalogApiService {
 
   Future<List<Map<String, dynamic>>> fetchCurrentUserReports() async {
     final data = await _client.get('/profiles/me/reports', authenticated: true);
+    return (data as List)
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
+  Future<List<Map<String, dynamic>>> fetchCurrentUserBlockedUsers() async {
+    final data = await _client.get(
+      '/profiles/me/blocked-users',
+      authenticated: true,
+    );
     return (data as List)
         .whereType<Map>()
         .map((item) => Map<String, dynamic>.from(item))

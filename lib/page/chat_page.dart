@@ -460,8 +460,25 @@ class _ChatPageState extends State<ChatPage>
         ),
       );
     _pendingMessages.clear();
-    _conversationBlocked = false;
-    _loadError = null;
+    final participant = data['participant'];
+    final participantUserId = participant is Map
+        ? participant['id']?.toString().trim()
+        : null;
+    final blockedParticipantUserId = data['blockedParticipantUserId']
+        ?.toString()
+        .trim();
+    _conversationBlocked =
+        data['isBlocked'] == true &&
+        participantUserId != null &&
+        participantUserId.isNotEmpty &&
+        blockedParticipantUserId != null &&
+        blockedParticipantUserId.isNotEmpty &&
+        blockedParticipantUserId == participantUserId;
+    _loadError = _conversationBlocked
+        ? (data['blockedMessage']?.toString().trim().isNotEmpty == true
+              ? data['blockedMessage']!.toString().trim()
+              : 'Cette discussion est bloquee. Vous pouvez lire l\'historique, mais vous ne pouvez plus envoyer de nouveaux messages.')
+        : null;
   }
 
   bool _isBlockedError(AppApiException error) {

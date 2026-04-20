@@ -87,6 +87,22 @@ model User {
   productShares       ProductShare[]
   reportsSent         UserReport[]       @relation("UserReportsSent")
   reportsReceived     UserReport[]       @relation("UserReportsReceived")
+  blocksSent          UserBlock[]        @relation("UserBlocksSent")
+  blocksReceived      UserBlock[]        @relation("UserBlocksReceived")
+}
+
+model UserBlock {
+  id            String   @id @default(uuid())
+  blockerUserId String
+  blockedUserId String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  blocker       User     @relation("UserBlocksSent", fields: [blockerUserId], references: [id], onDelete: Cascade)
+  blocked       User     @relation("UserBlocksReceived", fields: [blockedUserId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerUserId, blockedUserId])
+  @@index([blockerUserId, createdAt])
+  @@index([blockedUserId, createdAt])
 }
 
 model UserReport {

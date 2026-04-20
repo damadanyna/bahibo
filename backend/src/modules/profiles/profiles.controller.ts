@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   Param,
@@ -297,6 +298,47 @@ export class ProfilesController {
         details: body.details,
         blockUser: body.blockUser,
       }),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('users/:userId/block')
+  async blockUser(
+    @Req() req: { user: { userId: string } },
+    @Param('userId') userId: string,
+    @Body() body: { conversationId?: string },
+  ) {
+    return {
+      success: true,
+      message: 'User blocked successfully',
+      data: await this.profilesService.blockUser(req.user.userId, userId, {
+        conversationId: body.conversationId,
+      }),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('users/:userId/block')
+  async unblockUser(
+    @Req() req: { user: { userId: string } },
+    @Param('userId') userId: string,
+  ) {
+    return {
+      success: true,
+      message: 'User unblocked successfully',
+      data: await this.profilesService.unblockUser(req.user.userId, userId),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('me/blocked-users')
+  async getMyBlockedUsers(
+    @Req() req: { user: { userId: string } },
+  ) {
+    return {
+      success: true,
+      message: 'Current user blocked users fetched successfully',
+      data: await this.profilesService.listBlockedUsers(req.user.userId),
     };
   }
 

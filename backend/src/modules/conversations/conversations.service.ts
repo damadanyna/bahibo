@@ -101,6 +101,13 @@ type MessageProductSnapshotFields = {
   productImageUrl: string | null;
 };
 
+type MessageReplyFields = {
+  replyToMessageId?: string | null;
+  replyToSenderUserId?: string | null;
+  replyToSenderName?: string | null;
+  replyToContent?: string | null;
+};
+
 @Injectable()
 export class ConversationsService {
   constructor(
@@ -123,18 +130,17 @@ export class ConversationsService {
     return 'Utilisateur';
   }
 
-  private async assertUsersCanInteract(firstUserId: string, secondUserId: string) {
-    const blockingReport = await this.prisma.userReport.findFirst({
+  private async findUserBlock(firstUserId: string, secondUserId: string) {
+    return this.prisma.userBlock.findFirst({
       where: {
-        blockRequested: true,
         OR: [
           {
-            reporterUserId: firstUserId,
-            reportedUserId: secondUserId,
+            blockerUserId: firstUserId,
+            blockedUserId: secondUserId,
           },
           {
-            reporterUserId: secondUserId,
-            reportedUserId: firstUserId,
+            blockerUserId: secondUserId,
+            blockedUserId: firstUserId,
           },
         ],
       },
@@ -142,8 +148,31 @@ export class ConversationsService {
         createdAt: 'desc',
       },
     });
+  }
 
-    if (blockingReport) {
+  private async presentConversationBlockState(
+    firstUserId: string,
+    secondUserId: string,
+  ) {
+    const userBlock = await this.findUserBlock(
+      firstUserId,
+      secondUserId,
+    );
+
+    return {
+      isBlocked: userBlock != null,
+      blockedParticipantUserId: userBlock == null ? null : secondUserId,
+      blockedMessage:
+        userBlock == null
+          ? null
+          : 'Cette conversation est bloquee. Vous pouvez lire l\'historique, mais vous ne pouvez plus envoyer de nouveaux messages.',
+    };
+  }
+
+  private async assertUsersCanInteract(firstUserId: string, secondUserId: string) {
+    const userBlock = await this.findUserBlock(firstUserId, secondUserId);
+
+    if (userBlock != null) {
       throw new ForbiddenException(
         'Cette conversation est bloquee. Vous ne pouvez plus envoyer de messages.',
       );
@@ -207,8 +236,6 @@ export class ConversationsService {
       );
     }
 
-    await this.assertUsersCanInteract(userId, sellerUserId);
-
     const existingConversation = await this.prisma.chatConversation.findUnique({
       where: {
         buyerUserId_sellerUserId_productId: {
@@ -227,6 +254,8 @@ export class ConversationsService {
       }
       return this.presentConversationDetail(existingConversation, userId);
     }
+
+    await this.assertUsersCanInteract(userId, sellerUserId);
 
     const conversation = await this.prisma.chatConversation.create({
       data: {
@@ -260,26 +289,12 @@ export class ConversationsService {
       throw new NotFoundException('User not found');
     }
 
-    await this.assertUsersCanInteract(userId, targetUserId);
-
     const directKey = this.buildDirectConversationKey(userId, targetUserId);
 
-    let directConversation = await this.prisma.chatConversation.findFirst({
+    const directConversation = await this.prisma.chatConversation.findFirst({
       where: { directKey },
       include: conversationDetailInclude,
     });
-
-    if (!directConversation) {
-      directConversation = await this.prisma.chatConversation.create({
-        data: {
-          buyerUserId: userId,
-          sellerUserId: targetUserId,
-          kind: 'DIRECT',
-          directKey,
-        },
-        include: conversationDetailInclude,
-      });
-    }
 
     const conversations = await this.prisma.chatConversation.findMany({
       where: {
@@ -300,20 +315,41 @@ export class ConversationsService {
       },
     });
 
-    const readCounts = await Promise.all(
-      conversations.map((conversation) =>
-        this.markConversationAsRead(conversation.id, userId),
-      ),
-    );
-    for (var index = 0; index < conversations.length; index += 1) {
-      if (readCounts[index] > 0) {
-        this.emitConversationRead(conversations[index], userId);
+    if (conversations.length > 0) {
+      const readCounts = await Promise.all(
+        conversations.map((conversation) =>
+          this.markConversationAsRead(conversation.id, userId),
+        ),
+      );
+
+      for (var index = 0; index < conversations.length; index += 1) {
+        if (readCounts[index] > 0) {
+          this.emitConversationRead(conversations[index], userId);
+        }
       }
+
+      return this.presentConversationThreadDetail(
+        directConversation ?? conversations[conversations.length - 1],
+        conversations,
+        userId,
+      );
     }
 
+    await this.assertUsersCanInteract(userId, targetUserId);
+
+    const createdConversation = await this.prisma.chatConversation.create({
+      data: {
+        buyerUserId: userId,
+        sellerUserId: targetUserId,
+        kind: 'DIRECT',
+        directKey,
+      },
+      include: conversationDetailInclude,
+    });
+
     return this.presentConversationThreadDetail(
-      directConversation,
-      conversations,
+      createdConversation,
+      [createdConversation],
       userId,
     );
   }
@@ -339,6 +375,7 @@ export class ConversationsService {
       userId,
       productId,
     );
+
     return this.sendMessage(userId, conversation.id, dto, {
       id: conversation.product?.id ?? null,
       title: conversation.product?.title ?? '',
@@ -482,11 +519,6 @@ export class ConversationsService {
       );
     }
 
-    const otherParticipantUserId = conversation.buyerUserId === userId
-      ? conversation.sellerUserId
-      : conversation.buyerUserId;
-    await this.assertUsersCanInteract(userId, otherParticipantUserId);
-
     return conversation;
   }
 
@@ -521,7 +553,7 @@ export class ConversationsService {
     );
   }
 
-  private presentConversationListItem(
+  private async presentConversationListItem(
     conversation: ConversationListItem,
     userId: string,
     unreadCount: number,
@@ -529,6 +561,10 @@ export class ConversationsService {
     const isBuyer = conversation.buyerUserId === userId;
     const participant = isBuyer ? conversation.seller : conversation.buyer;
     const lastMessage = conversation.messages[0] ?? null;
+    const blockState = await this.presentConversationBlockState(
+      userId,
+      participant.id,
+    );
 
     return {
       id: conversation.id,
@@ -561,6 +597,7 @@ export class ConversationsService {
       unreadCount,
       kind: conversation.kind,
       lastMessageAt: conversation.lastMessageAt.toISOString(),
+      ...blockState,
     };
   }
 
@@ -570,6 +607,10 @@ export class ConversationsService {
   ) {
     const isBuyer = conversation.buyerUserId === userId;
     const participant = isBuyer ? conversation.seller : conversation.buyer;
+    const blockState = await this.presentConversationBlockState(
+      userId,
+      participant.id,
+    );
     const currentProductSnapshots = await this.buildCurrentProductSnapshotMap(
       conversation.messages,
     );
@@ -615,6 +656,7 @@ export class ConversationsService {
       kind: conversation.kind,
       createdAt: conversation.createdAt.toISOString(),
       lastMessageAt: conversation.lastMessageAt.toISOString(),
+      ...blockState,
     };
   }
 
@@ -627,6 +669,10 @@ export class ConversationsService {
     const participant = anchorIsBuyer
       ? anchorConversation.seller
       : anchorConversation.buyer;
+    const blockState = await this.presentConversationBlockState(
+      userId,
+      participant.id,
+    );
     const currentProductSnapshots = await this.buildCurrentProductSnapshotMap(
       conversations.flatMap((conversation) => conversation.messages),
     );
@@ -679,6 +725,7 @@ export class ConversationsService {
       kind: 'DIRECT',
       createdAt: createdAt.toISOString(),
       lastMessageAt: lastMessageAt.toISOString(),
+      ...blockState,
     };
   }
 
@@ -759,12 +806,7 @@ export class ConversationsService {
   }
 
   private presentMessageReply(
-    message: {
-      replyToMessageId?: string | null;
-      replyToSenderUserId?: string | null;
-      replyToSenderName?: string | null;
-      replyToContent?: string | null;
-    },
+    message: MessageReplyFields,
     currentUserId: string,
   ) {
     const content = message.replyToContent?.trim() ?? '';

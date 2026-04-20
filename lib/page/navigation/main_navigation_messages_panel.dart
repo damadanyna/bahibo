@@ -429,51 +429,22 @@ class _MainNavigationMessagesPanelState
     );
 
     try {
-      final reports = await _catalogApiService.fetchCurrentUserReports();
+      final blocks = await _catalogApiService.fetchCurrentUserBlockedUsers();
       if (!mounted) {
         return;
       }
 
-      final blockedByUserId = <String, Map<String, dynamic>>{};
-      for (final report in reports) {
-        if (report['blockRequested'] != true) {
-          continue;
-        }
-
-        final reported = Map<String, dynamic>.from(
-          (report['reported'] as Map?) ?? const <String, dynamic>{},
+      final blockedUsers = blocks.map((block) {
+        final blocked = Map<String, dynamic>.from(
+          (block['blocked'] as Map?) ?? const <String, dynamic>{},
         );
-        final reportedUserId = reported['id']?.toString().trim() ?? '';
-        if (reportedUserId.isEmpty) {
-          continue;
-        }
-
-        final existing = blockedByUserId[reportedUserId];
-        if (existing == null) {
-          blockedByUserId[reportedUserId] = report;
-          continue;
-        }
-
-        final existingDate = DateTime.tryParse(
-          existing['createdAt']?.toString() ?? '',
-        );
-        final currentDate = DateTime.tryParse(
-          report['createdAt']?.toString() ?? '',
-        );
-        if (currentDate != null &&
-            (existingDate == null || currentDate.isAfter(existingDate))) {
-          blockedByUserId[reportedUserId] = report;
-        }
-      }
-
-      final blockedUsers = blockedByUserId.values.map((report) {
-        final reported = Map<String, dynamic>.from(
-          (report['reported'] as Map?) ?? const <String, dynamic>{},
-        );
-        final name = reported['displayName']?.toString().trim();
-        final avatarUrl = reported['avatarUrl']?.toString().trim() ?? '';
-        final userId = reported['id']?.toString().trim();
-        final createdAt = report['createdAt']?.toString() ?? '';
+        final name = blocked['displayName']?.toString().trim();
+        final avatarUrl = blocked['avatarUrl']?.toString().trim() ?? '';
+        final userId = blocked['id']?.toString().trim();
+        final createdAt =
+            block['updatedAt']?.toString() ??
+            block['blockedAt']?.toString() ??
+            '';
         final subtitle = 'Utilisateur bloque dans vos conversations.';
 
         return UserListItemData(
@@ -575,15 +546,12 @@ class _MainNavigationMessagesPanelState
   }
 
   void _openConversation(Map<String, dynamic> conversation) {
-    final participantId = _participantId(conversation);
+    final conversationId = _conversationId(conversation);
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => ChatPage(
-          conversationId: participantId == null
-              ? conversation['id']?.toString()
-              : null,
-          conversationUserId: participantId,
+          conversationId: conversationId,
           productPageBuilder: (product, {openedFromChat = false}) =>
               ProductDetailPage(
                 product: product,

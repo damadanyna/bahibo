@@ -39,6 +39,134 @@ export class ProfilesService {
     return presentUserProfile(user, sellerStats);
   }
 
+  private async findReportTargetUser(reportedUserId: string) {
+    const reportedUser = await this.prisma.user.findUnique({
+      where: { id: reportedUserId },
+      select: {
+        id: true,
+        displayName: true,
+        avatarUrl: true,
+      },
+    });
+
+    if (!reportedUser) {
+      throw new NotFoundException('User not found');
+    }
+
+    return reportedUser;
+  }
+
+  async blockUser(
+    blockerUserId: string,
+    blockedUserId: string,
+    input: { conversationId?: string } = {},
+  ) {
+    const normalizedBlockedUserId = blockedUserId.trim();
+
+    if (normalizedBlockedUserId.length === 0) {
+      throw new BadRequestException('Blocked user id is required');
+    }
+
+    if (normalizedBlockedUserId === blockerUserId) {
+      throw new BadRequestException('You cannot block your own account');
+    }
+
+    const blockedUser = await this.findReportTargetUser(normalizedBlockedUserId);
+
+    const userBlock = await this.prisma.userBlock.upsert({
+      where: {
+        blockerUserId_blockedUserId: {
+          blockerUserId,
+          blockedUserId: normalizedBlockedUserId,
+        },
+      },
+      update: {
+        updatedAt: new Date(),
+      },
+      create: {
+        blockerUserId,
+        blockedUserId: normalizedBlockedUserId,
+      },
+    });
+
+    const conversationId = input.conversationId?.trim() ?? '';
+    if (conversationId.length > 0) {
+      this.conversationsRealtimeGateway.emitConversationEvent(
+        [blockerUserId, normalizedBlockedUserId],
+        {
+          type: 'conversation:blocked',
+          conversationId,
+          actorUserId: blockerUserId,
+        },
+      );
+    }
+
+    return {
+      id: userBlock.id,
+      blockedUserId: blockedUser.id,
+      blockedUserDisplayName: blockedUser.displayName,
+      blockedUserAvatarUrl: blockedUser.avatarUrl,
+      createdAt: userBlock.createdAt.toISOString(),
+      updatedAt: userBlock.updatedAt.toISOString(),
+    };
+  }
+
+  async unblockUser(blockerUserId: string, blockedUserId: string) {
+    const normalizedBlockedUserId = blockedUserId.trim();
+
+    if (normalizedBlockedUserId.length === 0) {
+      throw new BadRequestException('Blocked user id is required');
+    }
+
+    if (normalizedBlockedUserId === blockerUserId) {
+      throw new BadRequestException('You cannot unblock your own account');
+    }
+
+    await this.prisma.userBlock.deleteMany({
+      where: {
+        blockerUserId,
+        blockedUserId: normalizedBlockedUserId,
+      },
+    });
+
+    return {
+      blockerUserId,
+      blockedUserId: normalizedBlockedUserId,
+      unblocked: true,
+    };
+  }
+
+  async listBlockedUsers(blockerUserId: string) {
+    const blocks = await this.prisma.userBlock.findMany({
+      where: {
+        blockerUserId,
+      },
+      orderBy: {
+        updatedAt: 'desc',
+      },
+      include: {
+        blocked: {
+          select: {
+            id: true,
+            displayName: true,
+            avatarUrl: true,
+          },
+        },
+      },
+    });
+
+    return blocks.map((block) => ({
+      id: block.id,
+      blockedAt: block.createdAt.toISOString(),
+      updatedAt: block.updatedAt.toISOString(),
+      blocked: {
+        id: block.blocked.id,
+        displayName: block.blocked.displayName,
+        avatarUrl: block.blocked.avatarUrl,
+      },
+    }));
+  }
+
   async reportUser(
     reporterUserId: string,
     reportedUserId: string,
@@ -59,17 +187,8 @@ export class ProfilesService {
       throw new BadRequestException('You cannot report your own account');
     }
 
-    const reportedUser = await this.prisma.user.findUnique({
-      where: { id: normalizedReportedUserId },
-      select: {
-        id: true,
-        displayName: true,
-      },
-    });
-
-    if (!reportedUser) {
-      throw new NotFoundException('User not found');
-    }
+    const reportedUser = await this.findReportTargetUser(normalizedReportedUserId);
+    const shouldBlockUser = input.blockUser === true;
 
     const report = await this.prisma.userReport.create({
       data: {
@@ -78,25 +197,21 @@ export class ProfilesService {
         conversationId: input.conversationId?.trim() || null,
         reason: input.reason?.trim() || 'CHAT_REPORT',
         details: input.details?.trim() || null,
-        blockRequested: input.blockUser === true,
+        blockRequested: shouldBlockUser,
       },
     });
 
-    if (report.blockRequested && report.conversationId) {
-      this.conversationsRealtimeGateway.emitConversationEvent(
-        [reporterUserId, normalizedReportedUserId],
-        {
-          type: 'conversation:blocked',
-          conversationId: report.conversationId,
-          actorUserId: reporterUserId,
-        },
-      );
+    if (shouldBlockUser) {
+      await this.blockUser(reporterUserId, normalizedReportedUserId, {
+        conversationId: report.conversationId ?? undefined,
+      });
     }
 
     return {
       id: report.id,
       reportedUserId: reportedUser.id,
       reportedUserDisplayName: reportedUser.displayName,
+      reportedUserAvatarUrl: reportedUser.avatarUrl,
       blockRequested: report.blockRequested,
       createdAt: report.createdAt.toISOString(),
     };
