@@ -4,8 +4,6 @@ import 'package:geolocator/geolocator.dart';
 class LocationPermissionService {
   LocationPermissionService._();
 
-  static bool _hasRequestedOnLaunch = false;
-
   static Future<LocationPermission> checkPermissionStatus() async {
     if (kIsWeb) {
       return LocationPermission.unableToDetermine;
@@ -15,7 +13,8 @@ class LocationPermissionService {
   }
 
   static bool shouldExplainOnLaunch(LocationPermission permission) {
-    return permission == LocationPermission.denied && !_hasRequestedOnLaunch;
+    return permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever;
   }
 
   static Future<LocationPermission> requestPermissionAfterExplanation() async {
@@ -23,8 +22,15 @@ class LocationPermissionService {
       return LocationPermission.unableToDetermine;
     }
 
-    _hasRequestedOnLaunch = true;
     return Geolocator.requestPermission();
+  }
+
+  static Future<bool> openAppSettingsForPermission() async {
+    if (kIsWeb) {
+      return false;
+    }
+
+    return Geolocator.openAppSettings();
   }
 
   static Future<LocationPermission> ensurePermissionRequestedOnLaunch() async {

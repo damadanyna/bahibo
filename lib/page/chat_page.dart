@@ -1467,37 +1467,7 @@ class _ChatPatternBackground extends StatelessWidget {
   Widget build(BuildContext context) {
     final appColors = Theme.of(context).appColors;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(color: appColors.backgroundBase),
-      child: IgnorePointer(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final columns = (constraints.maxWidth / 72).ceil();
-            final rows = (constraints.maxHeight / 72).ceil();
-            return Stack(
-              children: [
-                for (var row = 0; row < rows; row++)
-                  for (var column = 0; column < columns; column++)
-                    Positioned(
-                      left: column * 72.0 + (row.isEven ? 8 : 26),
-                      top: row * 72.0 + (column.isEven ? 10 : 28),
-                      child: Opacity(
-                        opacity: 0.06,
-                        child: Icon(
-                          (row + column).isEven
-                              ? Icons.chat_bubble_outline_rounded
-                              : Icons.star_border_rounded,
-                          size: ((row + column) % 3 == 0) ? 18 : 14,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
+    return ColoredBox(color: appColors.backgroundBase);
   }
 }
 
