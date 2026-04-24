@@ -16,6 +16,7 @@ class UserListItemData {
   final String? userId;
   final UserProfileData? profileData;
   final WidgetBuilder? destinationBuilder;
+  final Future<bool> Function()? onTrailingTap;
 
   const UserListItemData({
     required this.name,
@@ -25,6 +26,7 @@ class UserListItemData {
     this.userId,
     this.profileData,
     this.destinationBuilder,
+    this.onTrailingTap,
   });
 }
 
@@ -50,6 +52,8 @@ class _UserListPageState extends State<UserListPage>
     with AppPageRefreshMixin<UserListPage> {
   final AppAuthService _authService = AppAuthService();
   final TextEditingController _searchController = TextEditingController();
+  late List<UserListItemData> _users;
+  final Set<String> _pendingTrailingActions = <String>{};
   String _searchQuery = '';
   bool _showEntrySkeleton = true;
   String? _currentUserId;
@@ -57,12 +61,21 @@ class _UserListPageState extends State<UserListPage>
   @override
   void initState() {
     super.initState();
+    _users = List<UserListItemData>.from(widget.users);
     initializePageRefresh();
     _loadCurrentUser();
     Future.delayed(const Duration(milliseconds: 220), () {
       if (!mounted) return;
       setState(() => _showEntrySkeleton = false);
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant UserListPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.users, widget.users)) {
+      _users = List<UserListItemData>.from(widget.users);
+    }
   }
 
   Future<void> _loadCurrentUser() async {
@@ -121,7 +134,7 @@ class _UserListPageState extends State<UserListPage>
     final mutedColor = appColors.mutedText;
     final titleColor =
         theme.textTheme.headlineSmall?.color ?? theme.colorScheme.onSurface;
-    final filteredUsers = widget.users.where((user) {
+    final filteredUsers = _users.where((user) {
       final normalizedQuery = _searchQuery.trim().toLowerCase();
       if (normalizedQuery.isEmpty) return true;
       return user.name.toLowerCase().contains(normalizedQuery);
@@ -129,7 +142,7 @@ class _UserListPageState extends State<UserListPage>
     final displayedCount = _searchQuery.trim().isEmpty
         ? (widget.totalCount ?? filteredUsers.length)
         : filteredUsers.length;
-    final hasSourceUsers = widget.users.isNotEmpty;
+    final hasSourceUsers = _users.isNotEmpty;
     final itemCount = filteredUsers.isEmpty ? 2 : filteredUsers.length + 1;
 
     return Scaffold(
@@ -160,9 +173,7 @@ class _UserListPageState extends State<UserListPage>
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                               colors: [
-                                primary.withValues(
-                                  alpha: isDark ? 0.30 : 0.18,
-                                ),
+                                primary.withValues(alpha: isDark ? 0.30 : 0.18),
                                 surfaceColor,
                               ],
                             ),
@@ -294,6 +305,33 @@ class _UserListPageState extends State<UserListPage>
         (widget.onUserTapBuilder == null
             ? null
             : (_) => widget.onUserTapBuilder!(user));
+    final trailingActionKey = user.userId ?? user.name;
+    final isTrailingActionPending = _pendingTrailingActions.contains(
+      trailingActionKey,
+    );
+
+    Future<void> handleTrailingAction() async {
+      final onTrailingTap = user.onTrailingTap;
+      if (onTrailingTap == null || isTrailingActionPending) {
+        return;
+      }
+
+      setState(() => _pendingTrailingActions.add(trailingActionKey));
+      var shouldRemove = false;
+      try {
+        shouldRemove = await onTrailingTap();
+      } finally {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _pendingTrailingActions.remove(trailingActionKey);
+          if (shouldRemove) {
+            _users.remove(user);
+          }
+        });
+      }
+    }
 
     return Material(
       color: Colors.transparent,
@@ -362,18 +400,41 @@ class _UserListPageState extends State<UserListPage>
                 ),
               ),
               const SizedBox(width: 10),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 9,
-                ),
-                decoration: BoxDecoration(
-                  color: primary.withValues(alpha: 0.12),
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: user.onTrailingTap == null
+                      ? null
+                      : handleTrailingAction,
                   borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  user.trailingText,
-                  style: TextStyle(color: primary, fontWeight: FontWeight.w800),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 9,
+                    ),
+                    decoration: BoxDecoration(
+                      color: primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: isTrailingActionPending
+                        ? SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                primary,
+                              ),
+                            ),
+                          )
+                        : Text(
+                            user.trailingText,
+                            style: TextStyle(
+                              color: primary,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                  ),
                 ),
               ),
             ],

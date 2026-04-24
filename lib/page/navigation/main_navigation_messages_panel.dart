@@ -398,26 +398,75 @@ class _MainNavigationMessagesPanelState
     }
   }
 
-  String _formatBlockedDateLabel(String value) {
-    final createdAt = DateTime.tryParse(value)?.toLocal();
-    if (createdAt == null) {
-      return 'Bloque';
+  Future<bool> _unblockUserFromList(String userId, String userName) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final theme = Theme.of(dialogContext);
+        final appColors = theme.appColors;
+
+        return AlertDialog(
+          backgroundColor: appColors.panelBackground,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Text(
+            'Debloquer $userName',
+            style: TextStyle(
+              color: theme.colorScheme.onSurface,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          content: Text(
+            'Voulez-vous vraiment debloquer cette Personne ?',
+            style: TextStyle(
+              color: appColors.mutedText,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(
+                'Annuler',
+                style: TextStyle(color: appColors.mutedText),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(
+                'Debloquer',
+                style: TextStyle(color: theme.colorScheme.primary),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return false;
     }
 
-    final difference = DateTime.now().difference(createdAt);
-    if (difference.inMinutes < 1) {
-      return 'A l\'instant';
+    try {
+      await _catalogApiService.unblockUser(userId);
+      if (!mounted) {
+        return false;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Utilisateur debloque.')));
+      await _loadConversations(silent: true);
+      return true;
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return false;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+      return false;
     }
-    if (difference.inMinutes < 60) {
-      return 'Il y a ${difference.inMinutes} min';
-    }
-    if (difference.inHours < 24) {
-      return 'Il y a ${difference.inHours} h';
-    }
-    if (difference.inDays < 7) {
-      return 'Il y a ${difference.inDays} j';
-    }
-    return 'Bloque';
   }
 
   Future<void> _openBlockedUsers() async {
@@ -441,17 +490,13 @@ class _MainNavigationMessagesPanelState
         final name = blocked['displayName']?.toString().trim();
         final avatarUrl = blocked['avatarUrl']?.toString().trim() ?? '';
         final userId = blocked['id']?.toString().trim();
-        final createdAt =
-            block['updatedAt']?.toString() ??
-            block['blockedAt']?.toString() ??
-            '';
         final subtitle = 'Utilisateur bloque dans vos conversations.';
 
         return UserListItemData(
           name: name != null && name.isNotEmpty ? name : 'Utilisateur Bahibo',
           subtitle: subtitle,
           imageUrl: avatarUrl,
-          trailingText: _formatBlockedDateLabel(createdAt),
+          trailingText: 'Debloquer',
           userId: userId != null && userId.isNotEmpty ? userId : null,
           profileData: buildProfileFromUser(
             userId: userId != null && userId.isNotEmpty ? userId : null,
@@ -459,6 +504,12 @@ class _MainNavigationMessagesPanelState
             avatarUrl: avatarUrl,
             subtitle: subtitle,
           ),
+          onTrailingTap: userId == null || userId.isEmpty
+              ? null
+              : () => _unblockUserFromList(
+                  userId,
+                  name != null && name.isNotEmpty ? name : 'cet utilisateur',
+                ),
         );
       }).toList();
 

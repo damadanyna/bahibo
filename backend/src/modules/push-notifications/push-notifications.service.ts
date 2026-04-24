@@ -6,6 +6,9 @@ import { getMessaging } from 'firebase-admin/messaging';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDeviceTokenDto } from '../auth/dto/register-device-token.dto';
 
+const ANDROID_NOTIFICATION_CHANNEL_ID = 'bahibo_messages_v2';
+const ANDROID_NOTIFICATION_SOUND = 'notification';
+
 type SendChatMessageNotificationArgs = {
   recipientUserId: string;
   conversationId: string;
@@ -138,7 +141,8 @@ export class PushNotificationsService {
       android: {
         priority: 'high',
         notification: {
-          channelId: 'bahibo_messages',
+          channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
+          sound: ANDROID_NOTIFICATION_SOUND,
           clickAction: 'FLUTTER_NOTIFICATION_CLICK',
         },
       },
@@ -237,7 +241,8 @@ export class PushNotificationsService {
       android: {
         priority: 'high',
         notification: {
-          channelId: 'bahibo_messages',
+          channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
+          sound: ANDROID_NOTIFICATION_SOUND,
           clickAction: 'FLUTTER_NOTIFICATION_CLICK',
         },
       },
@@ -336,7 +341,8 @@ export class PushNotificationsService {
       android: {
         priority: 'high',
         notification: {
-          channelId: 'bahibo_messages',
+          channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
+          sound: ANDROID_NOTIFICATION_SOUND,
           clickAction: 'FLUTTER_NOTIFICATION_CLICK',
         },
       },
@@ -435,7 +441,8 @@ export class PushNotificationsService {
       android: {
         priority: 'high',
         notification: {
-          channelId: 'bahibo_messages',
+          channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
+          sound: ANDROID_NOTIFICATION_SOUND,
           clickAction: 'FLUTTER_NOTIFICATION_CLICK',
         },
       },
@@ -511,7 +518,8 @@ export class PushNotificationsService {
       android: {
         priority: 'high',
         notification: {
-          channelId: 'bahibo_messages',
+          channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
+          sound: ANDROID_NOTIFICATION_SOUND,
           clickAction: 'FLUTTER_NOTIFICATION_CLICK',
         },
       },
@@ -583,7 +591,8 @@ export class PushNotificationsService {
       android: {
         priority: 'high',
         notification: {
-          channelId: 'bahibo_messages',
+          channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
+          sound: ANDROID_NOTIFICATION_SOUND,
           clickAction: 'FLUTTER_NOTIFICATION_CLICK',
         },
       },

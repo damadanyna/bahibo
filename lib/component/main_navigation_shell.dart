@@ -13,6 +13,7 @@ import 'package:bahibo/services/app_api_client.dart';
 import 'package:bahibo/services/app_auth_service.dart';
 import 'package:bahibo/services/chat_realtime_service.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:bahibo/theme/app_theme_extensions.dart';
 
@@ -34,7 +35,9 @@ class BahiboNavigationShell extends StatefulWidget {
   static final GlobalKey<MainNavigationShellState> shellKey =
       GlobalKey<MainNavigationShellState>();
 
-  const BahiboNavigationShell({super.key});
+  final int initialIndex;
+
+  const BahiboNavigationShell({super.key, this.initialIndex = 0});
 
   @override
   State<BahiboNavigationShell> createState() => MainNavigationShellState();
@@ -42,15 +45,18 @@ class BahiboNavigationShell extends StatefulWidget {
 
 class MainNavigationShellState extends State<BahiboNavigationShell> {
   final AppAuthService _authService = AppAuthService();
+  static const Duration _exitConfirmationWindow = Duration(seconds: 2);
 
-  int _currentIndex = 0;
+  late int _currentIndex;
   bool _usesSellerAccountPanel = false;
   UserProfileData? _sellerAccountProfile;
   StreamSubscription<Map<String, dynamic>>? _profileEventsSubscription;
+  DateTime? _lastExitAttemptAt;
 
   @override
   void initState() {
     super.initState();
+    _currentIndex = widget.initialIndex;
     _loadAccountPanelKind();
     _bindRealtimeProfileUpdates();
   }
@@ -65,7 +71,12 @@ class MainNavigationShellState extends State<BahiboNavigationShell> {
     if (_currentIndex == index) {
       return;
     }
-    setState(() => _currentIndex = index);
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => BahiboNavigationShell(initialIndex: index),
+      ),
+    );
   }
 
   Future<void> _loadAccountPanelKind() async {
@@ -158,6 +169,34 @@ class MainNavigationShellState extends State<BahiboNavigationShell> {
     );
   }
 
+  Future<bool> _handleWillPop() async {
+    if (widget.initialIndex != 0) {
+      return true;
+    }
+
+    final now = DateTime.now();
+    final lastAttemptAt = _lastExitAttemptAt;
+    final shouldConfirmExit =
+        lastAttemptAt == null ||
+        now.difference(lastAttemptAt) > _exitConfirmationWindow;
+
+    if (shouldConfirmExit) {
+      _lastExitAttemptAt = now;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Retourne une fois pour quitter'),
+            duration: _exitConfirmationWindow,
+          ),
+        );
+      return false;
+    }
+
+    await SystemNavigator.pop();
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -170,28 +209,31 @@ class MainNavigationShellState extends State<BahiboNavigationShell> {
           : const MainSimpleUser(),
     ];
 
-    return Scaffold(
-      backgroundColor: theme.cardColor,
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: IndexedStack(index: _currentIndex, children: pages),
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: ValueListenableBuilder<int>(
-              valueListenable: mainNavigationUnreadMessageCountNotifier,
-              builder: (context, unreadMessageCount, _) => MainNavigationBar(
-                currentIndex: _currentIndex,
-                items: bahiboMainNavigationItems,
-                unreadMessageCount: unreadMessageCount,
-                onTap: _handleNavigationSelection,
+    return WillPopScope(
+      onWillPop: _handleWillPop,
+      child: Scaffold(
+        backgroundColor: theme.cardColor,
+        body: Stack(
+          children: [
+            Positioned.fill(
+              child: IndexedStack(index: _currentIndex, children: pages),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: ValueListenableBuilder<int>(
+                valueListenable: mainNavigationUnreadMessageCountNotifier,
+                builder: (context, unreadMessageCount, _) => MainNavigationBar(
+                  currentIndex: _currentIndex,
+                  items: bahiboMainNavigationItems,
+                  unreadMessageCount: unreadMessageCount,
+                  onTap: _handleNavigationSelection,
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

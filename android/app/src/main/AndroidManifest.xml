@@ -18,7 +18,7 @@
         android:usesCleartextTraffic="true">
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="bahibo_messages" />
+            android:value="bahibo_messages_v2" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -34,12 +34,17 @@ void onDidReceiveBackgroundNotificationResponse(NotificationResponse response) {
 }
 
 class PushNotificationService {
+  static const String _androidNotificationChannelId = 'bahibo_messages_v2';
+  static const RawResourceAndroidNotificationSound _androidNotificationSound =
+      RawResourceAndroidNotificationSound('notification');
   static const AndroidNotificationChannel _messagesChannel =
       AndroidNotificationChannel(
-        'bahibo_messages',
+        _androidNotificationChannelId,
         'Messages Bahibo',
         description: 'Notifications des nouveaux messages Bahibo.',
         importance: Importance.high,
+        sound: _androidNotificationSound,
+        playSound: true,
       );
 
   static final FlutterLocalNotificationsPlugin _localNotifications =
@@ -124,6 +129,7 @@ class PushNotificationService {
         .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin
         >();
+    await androidPlugin?.deleteNotificationChannel('bahibo_messages');
     await androidPlugin?.createNotificationChannel(_messagesChannel);
   }
 
@@ -186,6 +192,8 @@ class PushNotificationService {
           channelDescription: _messagesChannel.description,
           importance: Importance.high,
           priority: Priority.high,
+          sound: _androidNotificationSound,
+          playSound: true,
         ),
         iOS: const DarwinNotificationDetails(),
       ),
