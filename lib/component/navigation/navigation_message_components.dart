@@ -146,8 +146,10 @@ class NavigationMessageStoryAvatar extends StatelessWidget {
                       height: 15,
                       decoration: BoxDecoration(
                         color: isOnline
-                            ? const Color(0xFF39D353)
-                            : Colors.grey.shade700,
+                            ? Theme.of(context).appColors.onlineStatus
+                            : Theme.of(
+                                context,
+                              ).colorScheme.outline.withValues(alpha: 0.84),
                         shape: BoxShape.circle,
                         border: Border.all(
                           color: Theme.of(context).scaffoldBackgroundColor,

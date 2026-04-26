@@ -5,6 +5,7 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
   final Color backgroundBase;
   final Color authBackground;
   final Color panelBackground;
+  final Color panelBackground_;
   final Color panelMuted;
   final Color borderColor;
   final Color inputFill;
@@ -34,6 +35,7 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
     required this.backgroundBase,
     required this.authBackground,
     required this.panelBackground,
+    required this.panelBackground_,
     required this.panelMuted,
     required this.borderColor,
     required this.inputFill,
@@ -94,6 +96,7 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
       backgroundBase: backgroundBase ?? this.backgroundBase,
       authBackground: authBackground ?? this.authBackground,
       panelBackground: panelBackground ?? this.panelBackground,
+      panelBackground_: panelBackground ?? this.panelBackground,
       panelMuted: panelMuted ?? this.panelMuted,
       borderColor: borderColor ?? this.borderColor,
       inputFill: inputFill ?? this.inputFill,
@@ -131,6 +134,7 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
       backgroundBase: Color.lerp(backgroundBase, other.backgroundBase, t)!,
       authBackground: Color.lerp(authBackground, other.authBackground, t)!,
       panelBackground: Color.lerp(panelBackground, other.panelBackground, t)!,
+      panelBackground_: Color.lerp(panelBackground, other.panelBackground, t)!,
       panelMuted: Color.lerp(panelMuted, other.panelMuted, t)!,
       borderColor: Color.lerp(borderColor, other.borderColor, t)!,
       inputFill: Color.lerp(inputFill, other.inputFill, t)!,

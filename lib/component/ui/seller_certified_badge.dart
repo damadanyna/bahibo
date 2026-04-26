@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:bahibo/theme/app_theme_extensions.dart';
+
 class SellerCertifiedMiniBadge extends StatelessWidget {
   const SellerCertifiedMiniBadge({super.key, this.label = 'Vendeur certifie'});
 
@@ -27,9 +29,9 @@ class SellerCertifiedBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final surfaceColor = isDark ? const Color(0xFF101314) : Colors.white;
-    final titleColor = isDark ? Colors.white : const Color(0xFF172027);
+    final appColors = theme.appColors;
+    final surfaceColor = theme.cardColor;
+    final titleColor = theme.colorScheme.onSurface;
     final outerRadius = compact ? 15.0 : 24.0;
     final innerRadius = compact ? 14.0 : 23.0;
     final iconSize = compact ? 11.0 : 18.0;
@@ -51,13 +53,26 @@ class SellerCertifiedBadge extends StatelessWidget {
     final iconGap = compact ? 6.0 : 10.0;
     final shadowBlur = compact ? 6.0 : 18.0;
     final shadowOffset = compact ? const Offset(0, 3) : const Offset(0, 10);
+    final primary = theme.colorScheme.primary;
+    final secondary = theme.colorScheme.secondary;
+    final shadowColor = theme.brightness == Brightness.dark
+        ? appColors.scrimStrong.withValues(alpha: 0.22)
+        : primary.withValues(alpha: 0.14);
+    final shellGradient = [
+      primary.withValues(alpha: 0.94),
+      secondary.withValues(alpha: 0.88),
+    ];
+    final iconGradient = [
+      theme.colorScheme.primaryContainer,
+      appColors.panelMuted,
+    ];
 
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(outerRadius),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF2E9F53).withOpacity(0.14),
+            color: shadowColor,
             blurRadius: shadowBlur,
             offset: shadowOffset,
           ),
@@ -67,11 +82,11 @@ class SellerCertifiedBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(outerRadius),
         child: Container(
           padding: EdgeInsets.all(borderThickness),
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
-              colors: [Colors.white, Color(0xFF2E9F53), Color(0xFFD94747)],
+              colors: shellGradient,
             ),
           ),
           child: Container(
@@ -79,6 +94,9 @@ class SellerCertifiedBadge extends StatelessWidget {
             decoration: BoxDecoration(
               color: surfaceColor,
               borderRadius: BorderRadius.circular(innerRadius),
+              border: Border.all(
+                color: theme.colorScheme.outline.withValues(alpha: 0.16),
+              ),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -88,19 +106,17 @@ class SellerCertifiedBadge extends StatelessWidget {
                   height: iconBoxSize,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: const LinearGradient(
+                    gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [Colors.white, Color(0xFFEAF6EE)],
+                      colors: iconGradient,
                     ),
-                    border: Border.all(
-                      color: const Color(0xFF2E9F53).withOpacity(0.28),
-                    ),
+                    border: Border.all(color: primary.withValues(alpha: 0.24)),
                   ),
                   child: Icon(
                     Icons.workspace_premium_rounded,
                     size: iconSize,
-                    color: Color(0xFF1E7A34),
+                    color: primary,
                   ),
                 ),
                 SizedBox(width: iconGap),
@@ -111,14 +127,10 @@ class SellerCertifiedBadge extends StatelessWidget {
                   height: accentHeight,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(999),
-                    gradient: const LinearGradient(
+                    gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.white,
-                        Color(0xFF2E9F53),
-                        Color(0xFFD94747),
-                      ],
+                      colors: shellGradient,
                     ),
                   ),
                 ),

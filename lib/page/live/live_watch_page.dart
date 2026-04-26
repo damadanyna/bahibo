@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bahibo/services/catalog_api_service.dart';
+import 'package:bahibo/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 import 'package:livekit_client/livekit_client.dart';
 
@@ -97,11 +98,15 @@ class _LiveWatchPageState extends State<LiveWatchPage> {
 
   @override
   Widget build(BuildContext context) {
-    const liveColor = Color(0xFFE53935);
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
+    final liveColor = theme.colorScheme.secondary;
+    final headingColor = appColors.heroForeground;
+    final mutedColor = appColors.heroForegroundMuted.withValues(alpha: 0.86);
     final remoteTrack = _remoteVideoTrack();
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: appColors.viewerBackground,
       body: SafeArea(
         child: Column(
           children: [
@@ -112,12 +117,10 @@ class _LiveWatchPageState extends State<LiveWatchPage> {
                   IconButton(
                     onPressed: () => Navigator.of(context).pop(),
                     style: IconButton.styleFrom(
-                      backgroundColor: Colors.white.withValues(alpha: 0.12),
+                      backgroundColor: appColors.overlaySurface,
+                      side: BorderSide(color: appColors.overlayBorder),
                     ),
-                    icon: const Icon(
-                      Icons.arrow_back_rounded,
-                      color: Colors.white,
-                    ),
+                    icon: Icon(Icons.arrow_back_rounded, color: headingColor),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -128,8 +131,8 @@ class _LiveWatchPageState extends State<LiveWatchPage> {
                           widget.sellerName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: headingColor,
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
                           ),
@@ -162,7 +165,7 @@ class _LiveWatchPageState extends State<LiveWatchPage> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.82),
+                                  color: mutedColor,
                                   fontSize: 12,
                                   fontWeight: FontWeight.w500,
                                 ),
@@ -182,7 +185,11 @@ class _LiveWatchPageState extends State<LiveWatchPage> {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(28),
                   child: Container(
-                    color: const Color(0xFF090909),
+                    color: Color.lerp(
+                      appColors.viewerBackground,
+                      theme.colorScheme.surface,
+                      0.08,
+                    ),
                     child: _isConnecting
                         ? const Center(child: CircularProgressIndicator())
                         : _errorMessage != null
@@ -203,8 +210,11 @@ class _LiveWatchPageState extends State<LiveWatchPage> {
                                 child: Container(
                                   padding: const EdgeInsets.all(14),
                                   decoration: BoxDecoration(
-                                    color: Colors.black.withValues(alpha: 0.36),
+                                    color: appColors.overlaySurface,
                                     borderRadius: BorderRadius.circular(18),
+                                    border: Border.all(
+                                      color: appColors.overlayBorder,
+                                    ),
                                   ),
                                   child: Column(
                                     crossAxisAlignment:
@@ -213,8 +223,8 @@ class _LiveWatchPageState extends State<LiveWatchPage> {
                                     children: [
                                       Text(
                                         _title,
-                                        style: const TextStyle(
-                                          color: Colors.white,
+                                        style: TextStyle(
+                                          color: headingColor,
                                           fontSize: 18,
                                           fontWeight: FontWeight.w800,
                                         ),
@@ -223,9 +233,7 @@ class _LiveWatchPageState extends State<LiveWatchPage> {
                                       Text(
                                         'Live de ${widget.sellerName}',
                                         style: TextStyle(
-                                          color: Colors.white.withValues(
-                                            alpha: 0.78,
-                                          ),
+                                          color: mutedColor,
                                           fontSize: 13,
                                           fontWeight: FontWeight.w500,
                                         ),
@@ -266,19 +274,22 @@ class _LiveWatchMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: Colors.white, size: 42),
+            Icon(icon, color: appColors.heroForeground, size: 42),
             const SizedBox(height: 14),
             Text(
               title,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: appColors.heroForeground,
                 fontSize: 20,
                 fontWeight: FontWeight.w700,
               ),
@@ -288,7 +299,7 @@ class _LiveWatchMessage extends StatelessWidget {
               message,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.76),
+                color: appColors.heroForegroundMuted.withValues(alpha: 0.86),
                 fontSize: 14,
                 height: 1.45,
               ),

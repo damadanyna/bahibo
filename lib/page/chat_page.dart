@@ -1128,7 +1128,7 @@ class _ChatPageState extends State<ChatPage>
     final appColors = theme.appColors;
     final primary = theme.colorScheme.primary;
     final background = appColors.backgroundBase;
-    final headerColor = appColors.panelBackground;
+    final headerColor = appColors.backgroundBase;
     final incomingBubbleColor = appColors.panelBackground;
     final outgoingBubbleColor = primary.withValues(alpha: 0.28);
     const panelColor = Colors.transparent;

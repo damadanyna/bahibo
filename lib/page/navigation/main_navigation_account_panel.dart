@@ -1793,10 +1793,17 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
           width: 28,
           height: 28,
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.56),
+            color: Theme.of(context).appColors.overlaySurface,
             shape: BoxShape.circle,
+            border: Border.all(
+              color: Theme.of(context).appColors.overlayBorder,
+            ),
           ),
-          child: Icon(icon, size: 16, color: Colors.white),
+          child: Icon(
+            icon,
+            size: 16,
+            color: Theme.of(context).appColors.heroForeground,
+          ),
         ),
       ),
     );
@@ -1818,7 +1825,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
         final theme = Theme.of(sheetContext);
         final accentColor = _accentColor(theme);
         final panelColor = _backgroundColor(theme);
-        final liveColor = const Color(0xFFE53935);
+        final liveColor = theme.colorScheme.secondary;
 
         return Padding(
           padding: EdgeInsets.only(
@@ -1912,8 +1919,8 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                       Container(
                         width: 10,
                         height: 10,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFE53935),
+                        decoration: BoxDecoration(
+                          color: liveColor,
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -2005,14 +2012,6 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   }
 
   Color _accentColor(ThemeData theme) {
-    if (theme.brightness == Brightness.dark) {
-      return Color.lerp(
-        theme.colorScheme.primary,
-        theme.colorScheme.onSurfaceVariant,
-        0.28,
-      )!;
-    }
-
     return theme.colorScheme.primary;
   }
 
@@ -2025,11 +2024,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   }
 
   Color _supportAccentColor(ThemeData theme) {
-    if (theme.brightness == Brightness.dark) {
-      return theme.colorScheme.tertiary;
-    }
-
-    return theme.colorScheme.primary;
+    return theme.colorScheme.secondary;
   }
 
   Color _panelBorderColor(ThemeData theme) {
@@ -2041,20 +2036,20 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
 
   List<BoxShadow> _panelShadow(ThemeData theme) {
     if (theme.brightness == Brightness.dark) {
-      return const [
+      return [
         BoxShadow(
-          color: Color(0x33000000),
-          blurRadius: 22,
-          offset: Offset(0, 12),
+          color: theme.appColors.scrimStrong.withValues(alpha: 0.24),
+          blurRadius: 26,
+          offset: const Offset(0, 14),
         ),
       ];
     }
 
-    return const [
+    return [
       BoxShadow(
-        color: Color(0x0D101828),
+        color: theme.appColors.scrimSoft.withValues(alpha: 0.08),
         blurRadius: 18,
-        offset: Offset(0, 10),
+        offset: const Offset(0, 10),
       ),
     ];
   }
@@ -2428,7 +2423,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                           ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: theme.appColors.heroForeground,
-                            foregroundColor: Colors.black,
+                            foregroundColor: theme.colorScheme.onSurface,
                             textStyle: const TextStyle(
                               fontWeight: FontWeight.w900,
                             ),
@@ -2750,7 +2745,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
         ),
         style: ElevatedButton.styleFrom(
           elevation: 0,
-          foregroundColor: Colors.white,
+          foregroundColor: theme.colorScheme.onPrimary,
           backgroundColor: accentColor,
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
           minimumSize: const Size(double.infinity, 58),

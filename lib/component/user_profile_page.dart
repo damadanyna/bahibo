@@ -139,21 +139,21 @@ class UserProfilePage extends StatelessWidget {
                                           imageUrl: profile.coverImageUrl,
                                           fit: BoxFit.cover,
                                           errorChild: Container(
-                                            color: const Color(0xFF9E9E9E),
+                                            color: appColors.placeholderFill,
                                             alignment: Alignment.center,
-                                            child: const Icon(
+                                            child: Icon(
                                               Icons.person,
-                                              color: Colors.white,
+                                              color: appColors.placeholderIcon,
                                               size: 44,
                                             ),
                                           ),
                                         )
                                       : Container(
-                                          color: const Color(0xFF9E9E9E),
+                                          color: appColors.placeholderFill,
                                           alignment: Alignment.center,
-                                          child: const Icon(
+                                          child: Icon(
                                             Icons.person,
-                                            color: Colors.white,
+                                            color: appColors.placeholderIcon,
                                             size: 74,
                                           ),
                                         ),
@@ -172,8 +172,12 @@ class UserProfilePage extends StatelessWidget {
                                       begin: Alignment.topCenter,
                                       end: Alignment.bottomCenter,
                                       colors: [
-                                        Colors.black.withValues(alpha: 0.08),
-                                        Colors.black.withValues(alpha: 0.28),
+                                        appColors.scrimSoft.withValues(
+                                          alpha: 0.18,
+                                        ),
+                                        appColors.scrimStrong.withValues(
+                                          alpha: 0.26,
+                                        ),
                                       ],
                                     ),
                                   ),
@@ -210,13 +214,13 @@ class UserProfilePage extends StatelessWidget {
                                         : Container(
                                             width: 88,
                                             height: 88,
-                                            decoration: const BoxDecoration(
+                                            decoration: BoxDecoration(
                                               shape: BoxShape.circle,
-                                              color: Color(0xFF9E9E9E),
+                                              color: appColors.placeholderFill,
                                             ),
-                                            child: const Icon(
+                                            child: Icon(
                                               Icons.person_rounded,
-                                              color: Colors.white,
+                                              color: appColors.placeholderIcon,
                                               size: 52,
                                             ),
                                           ),

@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
+import 'package:bahibo/theme/app_theme_extensions.dart';
+
 class DynamicIconButton extends StatelessWidget {
   final String text;
   final Widget icon;
   final VoidCallback? onPressed;
-  final Color backgroundColor;
-  final Color foregroundColor;
+  final Color? backgroundColor;
+  final Color? foregroundColor;
   final double borderRadius;
   final EdgeInsetsGeometry padding;
   final double spacing;
@@ -16,8 +18,8 @@ class DynamicIconButton extends StatelessWidget {
     required this.text,
     required this.icon,
     this.onPressed,
-    this.backgroundColor = const Color(0xFF16A34A),
-    this.foregroundColor = Colors.white,
+    this.backgroundColor,
+    this.foregroundColor,
     this.borderRadius = 999,
     this.padding = const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
     this.spacing = 10,
@@ -26,12 +28,27 @@ class DynamicIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
+    final resolvedBackgroundColor =
+        backgroundColor ?? theme.colorScheme.primary;
+    final resolvedForegroundColor =
+        foregroundColor ?? theme.colorScheme.onPrimary;
+    final disabledBackgroundColor = appColors.panelMuted;
+    final disabledForegroundColor = appColors.mutedText;
+    final currentBackgroundColor = onPressed == null
+        ? disabledBackgroundColor
+        : resolvedBackgroundColor;
+    final currentForegroundColor = onPressed == null
+        ? disabledForegroundColor
+        : resolvedForegroundColor;
+
     final buttonChild = Row(
       mainAxisSize: expanded ? MainAxisSize.max : MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         IconTheme(
-          data: IconThemeData(color: foregroundColor),
+          data: IconThemeData(color: currentForegroundColor),
           child: icon,
         ),
         SizedBox(width: spacing),
@@ -41,7 +58,7 @@ class DynamicIconButton extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: foregroundColor,
+              color: currentForegroundColor,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -57,7 +74,7 @@ class DynamicIconButton extends StatelessWidget {
         child: Ink(
           padding: padding,
           decoration: BoxDecoration(
-            color: backgroundColor,
+            color: currentBackgroundColor,
             borderRadius: BorderRadius.circular(borderRadius),
           ),
           child: buttonChild,

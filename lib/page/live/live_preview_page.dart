@@ -477,14 +477,14 @@ class _LivePreviewPageState extends State<LivePreviewPage>
         await _handleExitRequested();
       },
       child: Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: theme.appColors.viewerBackground,
         body: Stack(
           children: [
             Positioned.fill(
               child: previewReady
                   ? _buildCameraSurface(localTrack)
                   : Container(
-                      color: Colors.black,
+                      color: theme.appColors.viewerBackground,
                       alignment: Alignment.center,
                       child: _buildFallback(),
                     ),
@@ -496,9 +496,9 @@ class _LivePreviewPageState extends State<LivePreviewPage>
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Colors.black.withValues(alpha: 0.58),
+                      theme.appColors.scrimStrong.withValues(alpha: 0.76),
                       Colors.transparent,
-                      Colors.black.withValues(alpha: 0.72),
+                      theme.appColors.scrimStrong.withValues(alpha: 0.88),
                     ],
                     stops: const [0, 0.34, 1],
                   ),
@@ -515,25 +515,25 @@ class _LivePreviewPageState extends State<LivePreviewPage>
                         vertical: 22,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.42),
+                        color: theme.appColors.overlaySurface,
                         borderRadius: BorderRadius.circular(28),
                         border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.14),
+                          color: theme.appColors.overlayBorder,
                         ),
                       ),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.pause_circle_filled_rounded,
-                            color: Colors.white,
+                            color: theme.appColors.heroForeground,
                             size: 74,
                           ),
                           const SizedBox(height: 10),
                           Text(
                             'Live en pause',
                             style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.94),
+                              color: theme.appColors.heroForeground,
                               fontWeight: FontWeight.w800,
                               fontSize: 18,
                             ),
@@ -563,19 +563,21 @@ class _LivePreviewPageState extends State<LivePreviewPage>
                       controller: _commentController,
                       onSubmitted: _submitComment,
                       autoClearOnSubmit: true,
-                      primary: const Color(0xFFE53935),
-                      panelColor: Colors.black.withValues(alpha: 0.22),
-                      borderColor: Colors.white.withValues(alpha: 0.12),
+                      primary: theme.colorScheme.secondary,
+                      panelColor: theme.appColors.overlaySurface,
+                      borderColor: theme.appColors.overlayBorder,
                       hintText: 'Ecrire un commentaire...',
                       textInputAction: TextInputAction.send,
                       leadingIcon: Icon(
                         Icons.emoji_emotions_outlined,
-                        color: Colors.white.withValues(alpha: 0.82),
+                        color: theme.appColors.heroForegroundMuted.withValues(
+                          alpha: 0.86,
+                        ),
                       ),
                       onLeadingTap: _showEmojiPicker,
-                      trailingIcon: const Icon(
+                      trailingIcon: Icon(
                         Icons.send_rounded,
-                        color: Color(0xFFE53935),
+                        color: theme.colorScheme.secondary,
                       ),
                       onTrailingTap: () =>
                           _submitComment(_commentController.text.trim()),
@@ -652,7 +654,11 @@ class _LivePreviewPageState extends State<LivePreviewPage>
         borderRadius: BorderRadius.circular(999),
         child: Padding(
           padding: const EdgeInsets.all(6),
-          child: Icon(icon, color: Colors.white, size: 28),
+          child: Icon(
+            icon,
+            color: Theme.of(context).appColors.heroForeground,
+            size: 28,
+          ),
         ),
       ),
     );
@@ -675,9 +681,11 @@ class _LivePreviewPageState extends State<LivePreviewPage>
               icon: Icon(icon),
               label: Text(label),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFE53935),
-                foregroundColor: Colors.white,
-                disabledBackgroundColor: const Color(0xFF7A2525),
+                backgroundColor: theme.colorScheme.secondary,
+                foregroundColor: theme.colorScheme.onSecondary,
+                disabledBackgroundColor: theme.colorScheme.secondary.withValues(
+                  alpha: 0.42,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(18),
                 ),
@@ -690,7 +698,7 @@ class _LivePreviewPageState extends State<LivePreviewPage>
               style: OutlinedButton.styleFrom(
                 foregroundColor: appColors.heroForeground,
                 side: BorderSide(color: appColors.overlayBorder),
-                backgroundColor: Colors.black.withValues(alpha: 0.22),
+                backgroundColor: appColors.overlaySurface,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(18),
                 ),
@@ -771,7 +779,10 @@ class _LivePreviewPageState extends State<LivePreviewPage>
                             child: Text(
                               'Les commentaires apparaitront ici des que le live commence. L\'espace est reserve pour garder la lecture claire.',
                               style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.82),
+                                color: Theme.of(context)
+                                    .appColors
+                                    .heroForegroundMuted
+                                    .withValues(alpha: 0.86),
                                 height: 1.35,
                                 fontWeight: FontWeight.w500,
                               ),
@@ -790,13 +801,15 @@ class _LivePreviewPageState extends State<LivePreviewPage>
                                 children: [
                                   CircleAvatar(
                                     radius: 17,
-                                    backgroundColor: Colors.white.withValues(
-                                      alpha: 0.14,
-                                    ),
+                                    backgroundColor: Theme.of(
+                                      context,
+                                    ).appColors.heroSurface,
                                     child: Text(
                                       comment.initials,
-                                      style: const TextStyle(
-                                        color: Colors.white,
+                                      style: TextStyle(
+                                        color: Theme.of(
+                                          context,
+                                        ).appColors.heroForeground,
                                         fontSize: 11,
                                         fontWeight: FontWeight.w800,
                                       ),
@@ -812,13 +825,10 @@ class _LivePreviewPageState extends State<LivePreviewPage>
                                           comment.author,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            color: Color.fromARGB(
-                                              255,
-                                              67,
-                                              167,
-                                              1,
-                                            ),
+                                          style: TextStyle(
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.primary,
                                             fontWeight: FontWeight.w800,
                                           ),
                                         ),
@@ -828,9 +838,10 @@ class _LivePreviewPageState extends State<LivePreviewPage>
                                           maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
-                                            color: Colors.white.withValues(
-                                              alpha: 0.9,
-                                            ),
+                                            color: Theme.of(context)
+                                                .appColors
+                                                .heroForeground
+                                                .withValues(alpha: 0.92),
                                             fontWeight: FontWeight.w500,
                                             height: 1.25,
                                           ),
@@ -878,19 +889,23 @@ class _LivePreviewPageState extends State<LivePreviewPage>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.34),
+        color: Theme.of(context).appColors.overlaySurface,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+        border: Border.all(color: Theme.of(context).appColors.overlayBorder),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: Colors.white, size: 15),
+          Icon(
+            icon,
+            color: Theme.of(context).appColors.heroForeground,
+            size: 15,
+          ),
           const SizedBox(width: 6),
           Text(
             value,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.94),
+              color: Theme.of(context).appColors.heroForeground,
               fontWeight: FontWeight.w800,
               fontSize: 12,
             ),
@@ -908,12 +923,14 @@ class _LivePreviewPageState extends State<LivePreviewPage>
       child: Container(
         width: 14,
         height: 14,
-        decoration: const BoxDecoration(
-          color: Color(0xFFE53935),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.secondary,
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: Color(0x99E53935),
+              color: Theme.of(
+                context,
+              ).colorScheme.secondary.withValues(alpha: 0.56),
               blurRadius: 12,
               spreadRadius: 1,
             ),
@@ -924,19 +941,24 @@ class _LivePreviewPageState extends State<LivePreviewPage>
   }
 
   Widget _buildFallback() {
+    final theme = Theme.of(context);
+
     if (_isConnecting) {
       return Column(
         mainAxisSize: MainAxisSize.min,
-        children: const [
-          SizedBox(
+        children: [
+          const SizedBox(
             width: 34,
             height: 34,
             child: CircularProgressIndicator(strokeWidth: 2.6),
           ),
-          SizedBox(height: 14),
+          const SizedBox(height: 14),
           Text(
             'Initialisation de la camera...',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              color: theme.appColors.heroForeground,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       );
@@ -951,7 +973,7 @@ class _LivePreviewPageState extends State<LivePreviewPage>
             _errorMessage == null
                 ? Icons.videocam_off_rounded
                 : Icons.error_outline_rounded,
-            color: Colors.white,
+            color: theme.appColors.heroForeground,
             size: 42,
           ),
           const SizedBox(height: 14),
@@ -960,8 +982,8 @@ class _LivePreviewPageState extends State<LivePreviewPage>
                 ? 'Le live est en pause.'
                 : _errorMessage ?? 'Impossible d\'ouvrir la camera.',
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: theme.appColors.heroForeground,
               fontWeight: FontWeight.w600,
               height: 1.4,
             ),
