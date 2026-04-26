@@ -1,20 +1,20 @@
-import 'package:bahibo/component/ProductCard.dart';
-import 'package:bahibo/component/app_back_button.dart';
-import 'package:bahibo/component/app_network_image.dart';
-import 'package:bahibo/component/app_page_refresh.dart';
-import 'package:bahibo/component/app_page_skeletons.dart';
-import 'package:bahibo/component/profile_models.dart';
-import 'package:bahibo/component/ui/seller_certified_badge.dart';
-import 'package:bahibo/component/user_list_page.dart';
-import 'package:bahibo/component/user_profile_page.dart';
-import 'package:bahibo/page/chat_page.dart';
-import 'package:bahibo/page/image_viewer_page.dart';
-import 'package:bahibo/page/productDetail.dart';
-import 'package:bahibo/services/app_api_client.dart';
-import 'package:bahibo/services/app_auth_service.dart';
-import 'package:bahibo/services/catalog_api_service.dart';
-import 'package:bahibo/services/presence_service.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/component/ProductCard.dart';
+import 'package:banay/component/app_back_button.dart';
+import 'package:banay/component/app_network_image.dart';
+import 'package:banay/component/app_page_refresh.dart';
+import 'package:banay/component/app_page_skeletons.dart';
+import 'package:banay/component/profile_models.dart';
+import 'package:banay/component/ui/seller_certified_badge.dart';
+import 'package:banay/component/user_list_page.dart';
+import 'package:banay/component/user_profile_page.dart';
+import 'package:banay/page/chat_page.dart';
+import 'package:banay/page/image_viewer_page.dart';
+import 'package:banay/page/productDetail.dart';
+import 'package:banay/services/app_api_client.dart';
+import 'package:banay/services/app_auth_service.dart';
+import 'package:banay/services/catalog_api_service.dart';
+import 'package:banay/services/presence_service.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
 class SellerProfilePage extends StatefulWidget {
@@ -673,7 +673,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
             : 'Localisation indisponible';
         final aboutPreview = profile.about.trim().isNotEmpty
             ? profile.about.trim()
-            : 'Boutique Bahibo active sur la plateforme.';
+            : 'Boutique BANAY active sur la plateforme.';
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1150,7 +1150,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
 
     final previewProfile = buildProfileFromUser(
       userId: userId != null && userId.isNotEmpty ? userId : null,
-      name: name != null && name.isNotEmpty ? name : 'Membre Bahibo',
+      name: name != null && name.isNotEmpty ? name : 'Membre BANAY',
       avatarUrl: avatarUrl,
       subtitle: metricLabel == 'Likes total' && count != null && count > 0
           ? count > 1
@@ -1158,7 +1158,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                 : 'A laisse 1 like sur votre produit'
           : subtitle != null && subtitle.isNotEmpty
           ? subtitle
-          : 'Membre de la communaute Bahibo',
+          : 'Membre de la communaute BANAY',
     );
 
     return UserListItemData(
@@ -1366,3 +1366,5 @@ class _SellerProfilePageState extends State<SellerProfilePage>
     );
   }
 }
+
+

@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:bahibo/component/ui/dinamic_icon_input.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/component/ui/dinamic_icon_input.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:livekit_client/livekit_client.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -998,3 +998,4 @@ class _LivePreviewPageState extends State<LivePreviewPage>
     );
   }
 }
+

@@ -1,17 +1,17 @@
 import 'dart:async';
 
-import 'package:bahibo/component/app_network_image.dart';
-import 'package:bahibo/component/profile_models.dart';
-import 'package:bahibo/component/seller_profile_page.dart';
-import 'package:bahibo/component/ui/dinamic_categories_h_list.dart';
-import 'package:bahibo/component/ui/dinamic_icon_input.dart';
-import 'package:bahibo/page/category_page.dart';
-import 'package:bahibo/page/productDetail.dart';
-import 'package:bahibo/services/app_api_client.dart';
-import 'package:bahibo/services/catalog_api_service.dart';
-import 'package:bahibo/services/search_history_service.dart';
-import 'package:bahibo/services/search_api_service.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/component/app_network_image.dart';
+import 'package:banay/component/profile_models.dart';
+import 'package:banay/component/seller_profile_page.dart';
+import 'package:banay/component/ui/dinamic_categories_h_list.dart';
+import 'package:banay/component/ui/dinamic_icon_input.dart';
+import 'package:banay/page/category_page.dart';
+import 'package:banay/page/productDetail.dart';
+import 'package:banay/services/app_api_client.dart';
+import 'package:banay/services/catalog_api_service.dart';
+import 'package:banay/services/search_history_service.dart';
+import 'package:banay/services/search_api_service.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
 class MainNavigationSearchPanel extends StatefulWidget {
@@ -527,7 +527,7 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
       children: [
         Text(
           query.isEmpty
-              ? 'Resultats depuis la base Bahibo'
+              ? 'Resultats depuis la base BANAY'
               : 'Resultats lies a la recherche (${suggestions.length})',
           style: theme.textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w800,
@@ -869,3 +869,5 @@ class _SearchSuggestion {
     }
   }
 }
+
+

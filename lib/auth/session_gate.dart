@@ -1,9 +1,9 @@
-import 'package:bahibo/auth/language.dart';
-import 'package:bahibo/component/main_navigation_shell.dart';
-import 'package:bahibo/services/app_auth_service.dart';
-import 'package:bahibo/services/chat_realtime_service.dart';
-import 'package:bahibo/services/push_notification_service.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/auth/language.dart';
+import 'package:banay/component/main_navigation_shell.dart';
+import 'package:banay/services/app_auth_service.dart';
+import 'package:banay/services/chat_realtime_service.dart';
+import 'package:banay/services/push_notification_service.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
 class SessionGatePage extends StatefulWidget {
@@ -52,7 +52,7 @@ class _SessionGatePageState extends State<SessionGatePage> {
               await PushNotificationService.processPendingNotificationNavigation();
             });
           }
-          return BahiboNavigationShell(key: BahiboNavigationShell.shellKey);
+          return BANAYNavigationShell(key: BANAYNavigationShell.shellKey);
         }
 
         return const LanguagePage();
@@ -60,3 +60,5 @@ class _SessionGatePageState extends State<SessionGatePage> {
     );
   }
 }
+
+

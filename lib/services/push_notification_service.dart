@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:bahibo/component/main_navigation_shell.dart';
-import 'package:bahibo/page/chat_page.dart';
-import 'package:bahibo/page/notifications_page.dart';
-import 'package:bahibo/page/productDetail.dart';
-import 'package:bahibo/services/app_api_client.dart';
-import 'package:bahibo/services/session_storage.dart';
+import 'package:banay/component/main_navigation_shell.dart';
+import 'package:banay/page/chat_page.dart';
+import 'package:banay/page/notifications_page.dart';
+import 'package:banay/page/productDetail.dart';
+import 'package:banay/services/app_api_client.dart';
+import 'package:banay/services/session_storage.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -34,14 +34,14 @@ void onDidReceiveBackgroundNotificationResponse(NotificationResponse response) {
 }
 
 class PushNotificationService {
-  static const String _androidNotificationChannelId = 'bahibo_messages_v2';
+  static const String _androidNotificationChannelId = 'banay_messages_v2';
   static const RawResourceAndroidNotificationSound _androidNotificationSound =
       RawResourceAndroidNotificationSound('notification');
   static const AndroidNotificationChannel _messagesChannel =
       AndroidNotificationChannel(
         _androidNotificationChannelId,
-        'Messages Bahibo',
-        description: 'Notifications des nouveaux messages Bahibo.',
+        'Messages Banay',
+        description: 'Notifications des nouveaux messages Banay.',
         importance: Importance.high,
         sound: _androidNotificationSound,
         playSound: true,
@@ -52,7 +52,7 @@ class PushNotificationService {
   static final GlobalKey<NavigatorState> navigatorKey =
       GlobalKey<NavigatorState>();
   static const MethodChannel _nativeNotificationChannel = MethodChannel(
-    'bahibo/notifications',
+    'banay/notifications',
   );
   static final AppApiClient _apiClient = AppApiClient();
   static final SessionStorage _sessionStorage = SessionStorage();
@@ -129,7 +129,7 @@ class PushNotificationService {
         .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin
         >();
-    await androidPlugin?.deleteNotificationChannel('bahibo_messages');
+    await androidPlugin?.deleteNotificationChannel('BANAY_messages');
     await androidPlugin?.createNotificationChannel(_messagesChannel);
   }
 
@@ -175,7 +175,7 @@ class PushNotificationService {
   static Future<void> _handleForegroundMessage(RemoteMessage message) async {
     final notification = message.notification;
     final title =
-        notification?.title ?? message.data['title']?.toString() ?? 'Bahibo';
+        notification?.title ?? message.data['title']?.toString() ?? 'BANAY';
     final body =
         notification?.body ??
         message.data['body']?.toString() ??
@@ -258,7 +258,7 @@ class PushNotificationService {
         conversationId.isNotEmpty &&
         (notificationType.isEmpty || notificationType == 'chat_message');
 
-    final shellState = BahiboNavigationShell.shellKey.currentState;
+    final shellState = BANAYNavigationShell.shellKey.currentState;
     final navigator = navigatorKey.currentState;
     if (shellState == null && navigator == null) {
       return;
@@ -386,3 +386,5 @@ class PushNotificationService {
     );
   }
 }
+
+

@@ -81,17 +81,17 @@ UserProfileData buildSellerProfileFromApi(Map<String, dynamic> data) {
         ? (data['studioName'] as String).trim()
         : ((owner['displayName'] as String?)?.trim().isNotEmpty == true
               ? (owner['displayName'] as String).trim()
-              : 'Boutique Bahibo'),
+              : 'Boutique BANAY'),
     avatarUrl: (owner['avatarUrl'] as String?) ?? '',
     coverImageUrl: (owner['coverImageUrl'] as String?) ?? '',
     roleLabel: isSellerCertified ? 'Vendeur certifie' : 'Vendeur',
     responseLabel: 'Profil actif',
     headline: headlineParts.isNotEmpty
         ? headlineParts.join(', ')
-        : 'Boutique Bahibo active',
+        : 'Boutique BANAY active',
     about: (data['description'] as String?)?.trim().isNotEmpty == true
         ? (data['description'] as String).trim()
-        : 'Boutique Bahibo active sur la plateforme.',
+        : 'Boutique BANAY active sur la plateforme.',
     followerCount: '${sellerStats['followerCount'] ?? 0}',
     visitorCount: '${sellerStats['profileViewCount'] ?? 0}',
     productCount: '${sellerStats['productCount'] ?? products.length}',
@@ -122,7 +122,7 @@ UserProfileData buildSellerAccountProfileFromCurrentUser(
   final sellerVerificationReviewedAt =
       user['sellerVerificationReviewedAt'] as String?;
 
-  String about = 'Boutique Bahibo active sur la plateforme.';
+  String about = 'Boutique BANAY active sur la plateforme.';
   String displayLabel = displayName;
   String followerCount = '0';
   String visitorCount = '0';
@@ -156,14 +156,14 @@ UserProfileData buildSellerAccountProfileFromCurrentUser(
         profileCreatedAt: sellerProfile['createdAt'] as String?,
         accountCreatedAt: user['createdAt'] as String?,
         lastSeenAt: user['lastSeenAt'] as String?,
-        name: displayLabel.isNotEmpty ? displayLabel : 'Boutique Bahibo',
+        name: displayLabel.isNotEmpty ? displayLabel : 'Boutique BANAY',
         avatarUrl: avatarUrl,
         coverImageUrl: coverImageUrl,
         roleLabel: isSellerCertified ? 'Vendeur certifie' : 'Vendeur',
         responseLabel: 'Profil actif',
         headline: locationLabel.isNotEmpty
             ? locationLabel
-            : 'Boutique Bahibo active',
+            : 'Boutique BANAY active',
         about: about,
         followerCount: followerCount,
         visitorCount: visitorCount,
@@ -194,14 +194,14 @@ UserProfileData buildSellerAccountProfileFromCurrentUser(
         : null,
     accountCreatedAt: user['createdAt'] as String?,
     lastSeenAt: user['lastSeenAt'] as String?,
-    name: displayLabel.isNotEmpty ? displayLabel : 'Boutique Bahibo',
+    name: displayLabel.isNotEmpty ? displayLabel : 'Boutique BANAY',
     avatarUrl: avatarUrl,
     coverImageUrl: coverImageUrl,
     roleLabel: isSellerCertified ? 'Vendeur certifie' : 'Vendeur',
     responseLabel: 'Profil actif',
     headline: locationLabel.isNotEmpty
         ? locationLabel
-        : 'Boutique Bahibo active',
+        : 'Boutique BANAY active',
     about: about,
     followerCount: followerCount,
     visitorCount: visitorCount,
@@ -240,7 +240,7 @@ UserProfileData buildPublicUserProfileFromApi(Map<String, dynamic> data) {
     accountCreatedAt: data['createdAt'] as String?,
     name: (data['displayName'] as String?)?.trim().isNotEmpty == true
         ? (data['displayName'] as String).trim()
-        : 'Utilisateur Bahibo',
+        : 'Utilisateur BANAY',
     avatarUrl: (data['avatarUrl'] as String?) ?? '',
     coverImageUrl: (data['coverImageUrl'] as String?) ?? '',
     roleLabel: role == 'SELLER'
@@ -249,10 +249,10 @@ UserProfileData buildPublicUserProfileFromApi(Map<String, dynamic> data) {
     responseLabel: 'Profil actif',
     headline: locationLabel.isNotEmpty
         ? locationLabel
-        : 'Membre de la communaute Bahibo',
+        : 'Membre de la communaute BANAY',
     about: sellerDescription.isNotEmpty
         ? sellerDescription
-        : 'Membre Bahibo actif sur la plateforme.',
+        : 'Membre BANAY actif sur la plateforme.',
     followerCount: '${sellerStats['followerCount'] ?? 0}',
     visitorCount: '${sellerStats['profileViewCount'] ?? 0}',
     productCount: '${sellerStats['productCount'] ?? 0}',
@@ -328,7 +328,7 @@ UserProfileData buildProfileFromUser({
     responseLabel: 'Profil actif',
     headline: subtitle,
     about:
-        '$name consulte regulierement les annonces mobiles et interagit avec la communaute Bahibo.',
+        '$name consulte regulierement les annonces mobiles et interagit avec la communaute BANAY.',
     followerCount: '1.2k',
     visitorCount: '86',
     productCount: '2',
@@ -360,3 +360,5 @@ UserProfileData buildProfileFromUser({
     ],
   );
 }
+
+

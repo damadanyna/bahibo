@@ -1,26 +1,26 @@
 import 'dart:io';
 import 'dart:async';
 
-import 'package:bahibo/component/ProductCard.dart';
-import 'package:bahibo/component/app_network_image.dart';
-import 'package:bahibo/component/app_page_refresh.dart';
-import 'package:bahibo/component/app_page_skeletons.dart';
-import 'package:bahibo/component/product_list_page.dart';
-import 'package:bahibo/component/profile_models.dart';
-import 'package:bahibo/component/seller_profile_page.dart';
-import 'package:bahibo/component/user_profile_page.dart';
-import 'package:bahibo/component/ui/dinamic_icon_button.dart';
-import 'package:bahibo/component/ui/dinamic_icon_combobox.dart';
-import 'package:bahibo/component/ui/dinamic_icon_input.dart';
-import 'package:bahibo/component/ui/dinamic_icon_textarea.dart';
-import 'package:bahibo/component/user_list_page.dart';
-import 'package:bahibo/page/dashboard_page.dart';
-import 'package:bahibo/page/live/live_preview_page.dart';
-import 'package:bahibo/page/productDetailSeller.dart' as seller_detail;
-import 'package:bahibo/services/app_api_client.dart';
-import 'package:bahibo/services/app_auth_service.dart';
-import 'package:bahibo/services/catalog_api_service.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/component/ProductCard.dart';
+import 'package:banay/component/app_network_image.dart';
+import 'package:banay/component/app_page_refresh.dart';
+import 'package:banay/component/app_page_skeletons.dart';
+import 'package:banay/component/product_list_page.dart';
+import 'package:banay/component/profile_models.dart';
+import 'package:banay/component/seller_profile_page.dart';
+import 'package:banay/component/user_profile_page.dart';
+import 'package:banay/component/ui/dinamic_icon_button.dart';
+import 'package:banay/component/ui/dinamic_icon_combobox.dart';
+import 'package:banay/component/ui/dinamic_icon_input.dart';
+import 'package:banay/component/ui/dinamic_icon_textarea.dart';
+import 'package:banay/component/user_list_page.dart';
+import 'package:banay/page/dashboard_page.dart';
+import 'package:banay/page/live/live_preview_page.dart';
+import 'package:banay/page/productDetailSeller.dart' as seller_detail;
+import 'package:banay/services/app_api_client.dart';
+import 'package:banay/services/app_auth_service.dart';
+import 'package:banay/services/catalog_api_service.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -138,7 +138,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
 
     final previewProfile = buildProfileFromUser(
       userId: userId != null && userId.isNotEmpty ? userId : null,
-      name: name != null && name.isNotEmpty ? name : 'Membre Bahibo',
+      name: name != null && name.isNotEmpty ? name : 'Membre BANAY',
       avatarUrl: avatarUrl,
       subtitle: metricLabel == 'Likes total' && count != null && count > 0
           ? count > 1
@@ -146,7 +146,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                 : 'A laisse 1 like sur votre produit'
           : subtitle != null && subtitle.isNotEmpty
           ? subtitle
-          : 'Membre de la communaute Bahibo',
+          : 'Membre de la communaute BANAY',
     );
 
     return UserListItemData(
@@ -3131,3 +3131,5 @@ class _RankedProductEntry {
     required this.growth,
   });
 }
+
+

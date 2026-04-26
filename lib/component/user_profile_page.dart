@@ -1,8 +1,8 @@
-import 'package:bahibo/component/app_back_button.dart';
-import 'package:bahibo/component/app_network_image.dart';
-import 'package:bahibo/component/profile_models.dart';
-import 'package:bahibo/page/image_viewer_page.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/component/app_back_button.dart';
+import 'package:banay/component/app_network_image.dart';
+import 'package:banay/component/profile_models.dart';
+import 'package:banay/page/image_viewer_page.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
 class UserProfilePage extends StatelessWidget {
@@ -341,3 +341,4 @@ class UserProfilePage extends StatelessWidget {
     );
   }
 }
+

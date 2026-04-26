@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'package:bahibo/services/presence_service.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/services/presence_service.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 
 class AppImagePlaceholder extends StatelessWidget {
   final double? width;
@@ -209,3 +209,4 @@ class AppCircleNetworkAvatar extends StatelessWidget {
     );
   }
 }
+

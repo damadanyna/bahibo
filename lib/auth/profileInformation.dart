@@ -1,14 +1,14 @@
 import 'dart:io';
 
-import 'package:bahibo/component/main_navigation_shell.dart';
-import 'package:bahibo/component/ui/dinamic_icon_button.dart';
-import 'package:bahibo/component/ui/dinamic_icon_input.dart';
-import 'package:bahibo/services/app_api_client.dart';
-import 'package:bahibo/services/app_auth_service.dart';
+import 'package:banay/component/main_navigation_shell.dart';
+import 'package:banay/component/ui/dinamic_icon_button.dart';
+import 'package:banay/component/ui/dinamic_icon_input.dart';
+import 'package:banay/services/app_api_client.dart';
+import 'package:banay/services/app_auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 
 class ProfileInformationPage extends StatefulWidget {
   const ProfileInformationPage({
@@ -86,7 +86,7 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
 
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const BahiboNavigationShell()),
+        MaterialPageRoute(builder: (context) => const BANAYNavigationShell()),
       );
     } on AppApiException catch (error) {
       if (!mounted) return;
@@ -248,3 +248,5 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
     );
   }
 }
+
+

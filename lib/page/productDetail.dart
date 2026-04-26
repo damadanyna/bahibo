@@ -1,23 +1,23 @@
-import 'package:bahibo/component/app_comments_sheet.dart';
-import 'package:bahibo/component/app_likes_sheet.dart';
-import 'package:bahibo/component/profile_models.dart';
-import 'package:bahibo/component/seller_profile_page.dart';
-import 'package:bahibo/component/app_share_sheet.dart';
-import 'package:bahibo/component/app_page_skeletons.dart';
-import 'package:bahibo/component/app_page_refresh.dart';
-import 'package:bahibo/component/app_back_button.dart';
-import 'package:bahibo/component/ui/chat_message_input_not_plus.dart';
-import 'package:bahibo/component/ui/seller_certified_badge.dart';
-import 'package:bahibo/formatter/price_formatter.dart';
-import 'package:bahibo/services/app_api_client.dart';
-import 'package:bahibo/services/app_auth_service.dart';
-import 'package:bahibo/services/catalog_api_service.dart';
-import 'package:bahibo/services/search_api_service.dart';
+import 'package:banay/component/app_comments_sheet.dart';
+import 'package:banay/component/app_likes_sheet.dart';
+import 'package:banay/component/profile_models.dart';
+import 'package:banay/component/seller_profile_page.dart';
+import 'package:banay/component/app_share_sheet.dart';
+import 'package:banay/component/app_page_skeletons.dart';
+import 'package:banay/component/app_page_refresh.dart';
+import 'package:banay/component/app_back_button.dart';
+import 'package:banay/component/ui/chat_message_input_not_plus.dart';
+import 'package:banay/component/ui/seller_certified_badge.dart';
+import 'package:banay/formatter/price_formatter.dart';
+import 'package:banay/services/app_api_client.dart';
+import 'package:banay/services/app_auth_service.dart';
+import 'package:banay/services/catalog_api_service.dart';
+import 'package:banay/services/search_api_service.dart';
 import 'package:flutter/material.dart';
-import 'package:bahibo/component/app_network_image.dart';
-import 'package:bahibo/page/chat_page.dart';
-import 'package:bahibo/page/image_viewer_page.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/component/app_network_image.dart';
+import 'package:banay/page/chat_page.dart';
+import 'package:banay/page/image_viewer_page.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 
 enum ProductDetailInitialAction { none, comments, likes }
 
@@ -105,7 +105,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       return sellerName.trim();
     }
 
-    return _resolveStringField(['sellerName', 'vendorName'], 'Vendeur Bahibo');
+    return _resolveStringField(['sellerName', 'vendorName'], 'Vendeur BANAY');
   }
 
   String get _sellerAvatarUrlValue {
@@ -691,7 +691,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       displayName:
           (rawMention['displayName']?.toString().trim().isNotEmpty ?? false)
           ? rawMention['displayName'].toString().trim()
-          : 'Membre Bahibo',
+          : 'Membre BANAY',
       avatarUrl:
           (rawMention['avatarUrl']?.toString().trim().isNotEmpty ?? false)
           ? rawMention['avatarUrl'].toString().trim()
@@ -718,7 +718,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       authorId: author['id']?.toString(),
       authorName: (author['displayName']?.toString().trim().isNotEmpty ?? false)
           ? author['displayName'].toString().trim()
-          : 'Membre Bahibo',
+          : 'Membre BANAY',
       avatarUrl: (author['avatarUrl']?.toString().trim().isNotEmpty ?? false)
           ? author['avatarUrl'].toString().trim()
           : _defaultSellerAvatarUrl,
@@ -962,7 +962,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                   7,
                                 ),
                                 child: Text(
-                                  'Abaoly',
+                                  'Banay',
                                   style: TextStyle(
                                     fontSize: 25,
                                     fontWeight: FontWeight.w900,
@@ -1183,7 +1183,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                                     overlay: ImageViewerOverlayData(
                                                       title: 'Profil vendeur',
                                                       description:
-                                                          'Vendeur actif sur Bahibo, disponible pour des photos et details supplementaires.',
+                                                          'Vendeur actif sur BANAY, disponible pour des photos et details supplementaires.',
                                                       sellerName:
                                                           _sellerNameValue,
                                                       sellerAvatarUrl:
@@ -1731,3 +1731,5 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     );
   }
 }
+
+

@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:bahibo/component/app_network_image.dart';
-import 'package:bahibo/component/ui/dinamic_icon_button.dart';
-import 'package:bahibo/page/image_viewer_page.dart';
-import 'package:bahibo/services/app_api_client.dart';
-import 'package:bahibo/services/app_auth_service.dart';
-import 'package:bahibo/services/chat_realtime_service.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/component/app_network_image.dart';
+import 'package:banay/component/ui/dinamic_icon_button.dart';
+import 'package:banay/page/image_viewer_page.dart';
+import 'package:banay/services/app_api_client.dart';
+import 'package:banay/services/app_auth_service.dart';
+import 'package:banay/services/chat_realtime_service.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
@@ -46,7 +46,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
   String? _locationLabel;
   DateTime? _displayNameChangedAt;
   DateTime? _nextDisplayNameChangeAt;
-  String _displayName = 'Utilisateur Bahibo';
+  String _displayName = 'Utilisateur BANAY';
   String _avatarUrl = '';
   String _coverImageUrl = '';
   String? _currentUserId;
@@ -475,13 +475,13 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
 
     final message = switch (blocker) {
       _LocationAccessBlocker.servicesDisabled =>
-        'Bahibo a besoin que le service de localisation du telephone soit active pour continuer.',
+        'BANAY a besoin que le service de localisation du telephone soit active pour continuer.',
       _LocationAccessBlocker.permissionDenied =>
-        'Bahibo a besoin de votre position pour fonctionner. Autorisez la localisation pour continuer.',
+        'BANAY a besoin de votre position pour fonctionner. Autorisez la localisation pour continuer.',
       _LocationAccessBlocker.permissionDeniedForever =>
         'La permission de localisation a ete refusee de facon permanente. Ouvrez les reglages de l\'application pour l\'activer.',
       _LocationAccessBlocker.preciseLocationRequired =>
-        'Bahibo a besoin d\'une localisation precise. Activez l\'option de localisation precise dans les reglages de l\'application.',
+        'BANAY a besoin d\'une localisation precise. Activez l\'option de localisation precise dans les reglages de l\'application.',
     };
 
     final primaryLabel = switch (blocker) {
@@ -1300,3 +1300,5 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
     );
   }
 }
+
+

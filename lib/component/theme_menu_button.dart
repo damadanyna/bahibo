@@ -1,5 +1,5 @@
-import 'package:bahibo/providers/theme_provider.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/providers/theme_provider.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -304,3 +304,4 @@ class _ThemeModePresentation {
     required this.tint,
   });
 }
+

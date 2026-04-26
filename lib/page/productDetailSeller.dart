@@ -1,18 +1,18 @@
-import 'package:bahibo/component/app_comments_sheet.dart';
-import 'package:bahibo/component/profile_models.dart';
-import 'package:bahibo/component/seller_profile_page.dart';
-import 'package:bahibo/component/app_share_sheet.dart';
-import 'package:bahibo/component/app_page_skeletons.dart';
-import 'package:bahibo/component/app_page_refresh.dart';
-import 'package:bahibo/component/app_back_button.dart';
-import 'package:bahibo/formatter/price_formatter.dart';
-import 'package:bahibo/services/app_api_client.dart';
-import 'package:bahibo/services/catalog_api_service.dart';
+import 'package:banay/component/app_comments_sheet.dart';
+import 'package:banay/component/profile_models.dart';
+import 'package:banay/component/seller_profile_page.dart';
+import 'package:banay/component/app_share_sheet.dart';
+import 'package:banay/component/app_page_skeletons.dart';
+import 'package:banay/component/app_page_refresh.dart';
+import 'package:banay/component/app_back_button.dart';
+import 'package:banay/formatter/price_formatter.dart';
+import 'package:banay/services/app_api_client.dart';
+import 'package:banay/services/catalog_api_service.dart';
 import 'package:flutter/material.dart';
-import 'package:bahibo/component/app_network_image.dart';
-import 'package:bahibo/page/chat_page.dart';
-import 'package:bahibo/page/image_viewer_page.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/component/app_network_image.dart';
+import 'package:banay/page/chat_page.dart';
+import 'package:banay/page/image_viewer_page.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 
 class ProductDetailPage extends StatefulWidget {
   final Map<String, dynamic> product;
@@ -339,7 +339,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                   7,
                                 ),
                                 child: Text(
-                                  'Abaoly',
+                                  'Banay',
                                   style: TextStyle(
                                     fontSize: 25,
                                     fontWeight: FontWeight.w900,
@@ -856,3 +856,4 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     );
   }
 }
+

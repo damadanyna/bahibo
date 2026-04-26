@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
-import 'package:bahibo/component/ProductCard.dart';
-import 'package:bahibo/component/app_back_button.dart';
-import 'package:bahibo/component/app_page_refresh.dart';
-import 'package:bahibo/component/app_page_skeletons.dart';
-import 'package:bahibo/component/ui/dinamic_icon_input.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/component/ProductCard.dart';
+import 'package:banay/component/app_back_button.dart';
+import 'package:banay/component/app_page_refresh.dart';
+import 'package:banay/component/app_page_skeletons.dart';
+import 'package:banay/component/ui/dinamic_icon_input.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 
 class ProductListPage extends StatefulWidget {
   final String title;
@@ -404,3 +404,4 @@ class _ProductListPageState extends State<ProductListPage>
     );
   }
 }
+

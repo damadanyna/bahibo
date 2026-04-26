@@ -1,4 +1,4 @@
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
 class DynamicIconComboBox<T> extends StatelessWidget {
@@ -102,3 +102,4 @@ class DynamicIconComboBox<T> extends StatelessWidget {
     );
   }
 }
+

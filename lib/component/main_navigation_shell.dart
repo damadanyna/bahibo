@@ -1,21 +1,21 @@
 import 'dart:async';
 
-import 'package:bahibo/component/profile_models.dart';
-import 'package:bahibo/page/chat_page.dart';
-import 'package:bahibo/page/navigation/main_home_panel.dart';
-import 'package:bahibo/page/navigation/main_navigation_account_panel.dart';
-import 'package:bahibo/page/navigation/main_simple_user.dart';
-import 'package:bahibo/page/navigation/main_navigation_messages_panel.dart';
-import 'package:bahibo/page/navigation/main_navigation_search_panel.dart';
-import 'package:bahibo/page/notifications_page.dart';
-import 'package:bahibo/page/productDetail.dart';
-import 'package:bahibo/services/app_api_client.dart';
-import 'package:bahibo/services/app_auth_service.dart';
-import 'package:bahibo/services/chat_realtime_service.dart';
+import 'package:banay/component/profile_models.dart';
+import 'package:banay/page/chat_page.dart';
+import 'package:banay/page/navigation/main_home_panel.dart';
+import 'package:banay/page/navigation/main_navigation_account_panel.dart';
+import 'package:banay/page/navigation/main_simple_user.dart';
+import 'package:banay/page/navigation/main_navigation_messages_panel.dart';
+import 'package:banay/page/navigation/main_navigation_search_panel.dart';
+import 'package:banay/page/notifications_page.dart';
+import 'package:banay/page/productDetail.dart';
+import 'package:banay/services/app_api_client.dart';
+import 'package:banay/services/app_auth_service.dart';
+import 'package:banay/services/chat_realtime_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 
 class MainNavigationItem {
   final IconData icon;
@@ -24,26 +24,26 @@ class MainNavigationItem {
   const MainNavigationItem({required this.icon, required this.label});
 }
 
-const List<MainNavigationItem> bahiboMainNavigationItems = [
+const List<MainNavigationItem> BANAYMainNavigationItems = [
   MainNavigationItem(icon: Icons.home_filled, label: 'Accueil'),
   MainNavigationItem(icon: Icons.search_rounded, label: 'Recherche'),
   MainNavigationItem(icon: Icons.message, label: 'Messages'),
   MainNavigationItem(icon: Icons.person, label: 'Compte'),
 ];
 
-class BahiboNavigationShell extends StatefulWidget {
+class BANAYNavigationShell extends StatefulWidget {
   static final GlobalKey<MainNavigationShellState> shellKey =
       GlobalKey<MainNavigationShellState>();
 
   final int initialIndex;
 
-  const BahiboNavigationShell({super.key, this.initialIndex = 0});
+  const BANAYNavigationShell({super.key, this.initialIndex = 0});
 
   @override
-  State<BahiboNavigationShell> createState() => MainNavigationShellState();
+  State<BANAYNavigationShell> createState() => MainNavigationShellState();
 }
 
-class MainNavigationShellState extends State<BahiboNavigationShell> {
+class MainNavigationShellState extends State<BANAYNavigationShell> {
   final AppAuthService _authService = AppAuthService();
   static const Duration _exitConfirmationWindow = Duration(seconds: 2);
 
@@ -74,7 +74,7 @@ class MainNavigationShellState extends State<BahiboNavigationShell> {
 
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => BahiboNavigationShell(initialIndex: index),
+        builder: (_) => BANAYNavigationShell(initialIndex: index),
       ),
     );
   }
@@ -226,7 +226,7 @@ class MainNavigationShellState extends State<BahiboNavigationShell> {
                 valueListenable: mainNavigationUnreadMessageCountNotifier,
                 builder: (context, unreadMessageCount, _) => MainNavigationBar(
                   currentIndex: _currentIndex,
-                  items: bahiboMainNavigationItems,
+                  items: BANAYMainNavigationItems,
                   unreadMessageCount: unreadMessageCount,
                   onTap: _handleNavigationSelection,
                 ),
@@ -492,3 +492,5 @@ class _CapsuleNavigationButton extends StatelessWidget {
     );
   }
 }
+
+

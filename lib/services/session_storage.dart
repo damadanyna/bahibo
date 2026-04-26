@@ -2,17 +2,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class SessionStorage {
   static const int _sessionDurationInDays = 30;
-  static const String _accessTokenKey = 'bahibo.access_token';
-  static const String _refreshTokenKey = 'bahibo.refresh_token';
-  static const String _phoneKey = 'bahibo.phone';
-  static const String _displayNameKey = 'bahibo.display_name';
-  static const String _countryNameKey = 'bahibo.country_name';
-  static const String _countryDialCodeKey = 'bahibo.country_dial_code';
-  static const String _sessionExpiryKey = 'bahibo.session_expiry';
-  static const String _pendingPhoneKey = 'bahibo.pending_phone';
-  static const String _pendingCountryNameKey = 'bahibo.pending_country_name';
+  static const String _accessTokenKey = 'BANAY.access_token';
+  static const String _refreshTokenKey = 'BANAY.refresh_token';
+  static const String _phoneKey = 'BANAY.phone';
+  static const String _displayNameKey = 'BANAY.display_name';
+  static const String _countryNameKey = 'BANAY.country_name';
+  static const String _countryDialCodeKey = 'BANAY.country_dial_code';
+  static const String _sessionExpiryKey = 'BANAY.session_expiry';
+  static const String _pendingPhoneKey = 'BANAY.pending_phone';
+  static const String _pendingCountryNameKey = 'BANAY.pending_country_name';
   static const String _pendingCountryDialCodeKey =
-      'bahibo.pending_country_dial_code';
+      'BANAY.pending_country_dial_code';
 
   Future<void> saveSession({
     required String accessToken,
@@ -134,3 +134,5 @@ class SessionStorage {
     await clearPhoneDraft();
   }
 }
+
+

@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Bahibo: Run Mobile Auto API",
+      "label": "Banay: Run Mobile Auto API",
       "type": "shell",
       "command": "powershell",
       "args": [

@@ -1,6 +1,6 @@
 {
   "info": {
-    "name": "Bahibo Shop Requests",
+    "name": "Banay Shop Requests",
     "description": "Collection Postman pour tester la demande de creation de boutique et les endpoints admin de validation.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },

@@ -1,4 +1,4 @@
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
 class DynamicIconTextArea extends StatefulWidget {
@@ -138,3 +138,4 @@ class _DynamicIconTextAreaState extends State<DynamicIconTextArea> {
     );
   }
 }
+

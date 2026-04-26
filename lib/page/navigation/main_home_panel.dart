@@ -1,17 +1,17 @@
 import 'dart:async';
 
-import 'package:bahibo/component/app_page_refresh.dart';
-import 'package:bahibo/component/app_page_skeletons.dart';
-import 'package:bahibo/component/profile_models.dart';
-import 'package:bahibo/component/seller_profile_page.dart';
-import 'package:bahibo/component/ui/dinamic_followed_people_h_list.dart';
-import 'package:bahibo/component/user_profile_page.dart';
-import 'package:bahibo/page/notifications_page.dart';
-import 'package:bahibo/page/live/live_watch_page.dart';
-import 'package:bahibo/services/catalog_api_service.dart';
-import 'package:bahibo/services/chat_realtime_service.dart';
-import 'package:bahibo/services/notifications_api_service.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/component/app_page_refresh.dart';
+import 'package:banay/component/app_page_skeletons.dart';
+import 'package:banay/component/profile_models.dart';
+import 'package:banay/component/seller_profile_page.dart';
+import 'package:banay/component/ui/dinamic_followed_people_h_list.dart';
+import 'package:banay/component/user_profile_page.dart';
+import 'package:banay/page/notifications_page.dart';
+import 'package:banay/page/live/live_watch_page.dart';
+import 'package:banay/services/catalog_api_service.dart';
+import 'package:banay/services/chat_realtime_service.dart';
+import 'package:banay/services/notifications_api_service.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -275,7 +275,7 @@ class _MainHomePanelState extends State<MainHomePanel>
           sellerName:
               person['displayName']?.toString() ??
               person['name']?.toString() ??
-              'Boutique Bahibo',
+              'Boutique BANAY',
           sellerAvatarUrl: person['avatarUrl']?.toString() ?? '',
         ),
       ),
@@ -371,7 +371,7 @@ class _MainHomePanelState extends State<MainHomePanel>
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'Abaoly',
+                    'Banay',
                     style: TextStyle(
                       fontSize: 25,
                       fontWeight: FontWeight.w900,
@@ -458,3 +458,5 @@ class _MainHomePanelState extends State<MainHomePanel>
     );
   }
 }
+
+

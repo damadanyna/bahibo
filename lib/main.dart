@@ -1,8 +1,8 @@
-import 'package:bahibo/auth/session_gate.dart';
-import 'package:bahibo/services/chat_realtime_service.dart';
-import 'package:bahibo/services/location_permission_service.dart';
-import 'package:bahibo/providers/theme_provider.dart';
-import 'package:bahibo/services/push_notification_service.dart';
+import 'package:banay/auth/session_gate.dart';
+import 'package:banay/services/chat_realtime_service.dart';
+import 'package:banay/services/location_permission_service.dart';
+import 'package:banay/providers/theme_provider.dart';
+import 'package:banay/services/push_notification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
@@ -204,8 +204,8 @@ class _LocationPermissionDialog extends StatelessWidget {
                           const SizedBox(height: 6),
                           Text(
                             isDeniedForever
-                                ? 'Ouvre les reglages pour autoriser Bahibo a acceder a ta position.'
-                                : 'Bahibo a besoin de ta position pour afficher ce qui est pertinent autour de toi.',
+                                ? 'Ouvre les reglages pour autoriser BANAY a acceder a ta position.'
+                                : 'BANAY a besoin de ta position pour afficher ce qui est pertinent autour de toi.',
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: colors.onSurface.withValues(alpha: 0.76),
                               height: 1.35,
@@ -235,7 +235,7 @@ class _LocationPermissionDialog extends StatelessWidget {
                 icon: Icons.shield_moon_rounded,
                 label: isDeniedForever
                     ? 'Android a bloque la demande. Il faut maintenant passer par les reglages.'
-                    : 'Ta position reste utilisee pour ameliorer l\'experience dans Bahibo.',
+                    : 'Ta position reste utilisee pour ameliorer l\'experience dans BANAY.',
                 tint: isDeniedForever ? colors.error : colors.tertiary,
               ),
               const SizedBox(height: 20),
@@ -326,3 +326,5 @@ class _PermissionInfoRow extends StatelessWidget {
     );
   }
 }
+
+

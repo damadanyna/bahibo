@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 
 typedef AppAttachmentAction = FutureOr<void> Function();
 
@@ -177,3 +177,4 @@ class _AttachmentActionTile extends StatelessWidget {
     );
   }
 }
+

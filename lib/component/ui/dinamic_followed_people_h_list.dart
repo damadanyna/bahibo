@@ -1,8 +1,8 @@
 import 'dart:async';
 
-import 'package:bahibo/component/app_network_image.dart';
-import 'package:bahibo/component/app_page_skeletons.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/component/app_network_image.dart';
+import 'package:banay/component/app_page_skeletons.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
 typedef DynamicFollowedPersonTapCallback =
@@ -15,7 +15,7 @@ String resolveFollowedPersonName(Map<String, dynamic> person) {
       ? person['displayName'].toString().trim()
       : person['name']?.toString().trim().isNotEmpty == true
       ? person['name'].toString().trim()
-      : 'Membre Bahibo';
+      : 'Membre BANAY';
 }
 
 String resolveFollowedPersonSubtitle(Map<String, dynamic> person) {
@@ -401,3 +401,5 @@ class _FollowedPeopleEmptyState extends StatelessWidget {
     );
   }
 }
+
+

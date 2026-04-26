@@ -2,12 +2,12 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
-import 'package:bahibo/component/app_attachment_sheet.dart';
-import 'package:bahibo/component/app_message_composer.dart';
-import 'package:bahibo/component/app_network_image.dart';
-import 'package:bahibo/component/profile_models.dart';
-import 'package:bahibo/component/seller_profile_page.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/component/app_attachment_sheet.dart';
+import 'package:banay/component/app_message_composer.dart';
+import 'package:banay/component/app_network_image.dart';
+import 'package:banay/component/profile_models.dart';
+import 'package:banay/component/seller_profile_page.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 
 class AppCommentMention {
   final String? id;
@@ -87,7 +87,7 @@ List<AppCommentItem> defaultAppComments() {
         AppCommentItem(
           id: 'default-1-1',
           parentCommentId: 'default-1',
-          authorName: 'Bahibo Shop',
+          authorName: 'BANAY Shop',
           avatarUrl:
               'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600',
           timeLabel: 'il y a 2 min',
@@ -217,7 +217,7 @@ class _AppCommentsSheetContentState extends State<_AppCommentsSheetContent> {
             userId: comment.authorId,
             name: comment.authorName,
             avatarUrl: comment.avatarUrl,
-            subtitle: 'Membre de la communaute Bahibo',
+            subtitle: 'Membre de la communaute BANAY',
           ),
         ),
       ),
@@ -974,3 +974,5 @@ class _ActiveMentionQuery {
     required this.end,
   });
 }
+
+

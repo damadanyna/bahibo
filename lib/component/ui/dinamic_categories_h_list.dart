@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:bahibo/component/app_page_skeletons.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/component/app_page_skeletons.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
 typedef DynamicCategoryTapCallback =
@@ -131,3 +131,4 @@ class DinamicCategoriesHList extends StatelessWidget {
     );
   }
 }
+

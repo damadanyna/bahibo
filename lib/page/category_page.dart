@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import "../component/ProductCard.dart";
-import 'package:bahibo/component/app_page_skeletons.dart';
-import 'package:bahibo/component/app_page_refresh.dart';
-import 'package:bahibo/services/catalog_api_service.dart';
+import 'package:banay/component/app_page_skeletons.dart';
+import 'package:banay/component/app_page_refresh.dart';
+import 'package:banay/services/catalog_api_service.dart';
 import "../component/theme_menu_button.dart";
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 
 class CategoryPage extends StatefulWidget {
   final String categoryName;
@@ -186,3 +186,4 @@ class _CategoryPageState extends State<CategoryPage>
     );
   }
 }
+

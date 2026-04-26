@@ -1,10 +1,10 @@
 import 'dart:io';
 
-import 'package:bahibo/formatter/price_formatter.dart';
-import 'package:bahibo/services/product_realtime_sync_service.dart';
+import 'package:banay/formatter/price_formatter.dart';
+import 'package:banay/services/product_realtime_sync_service.dart';
 import 'package:flutter/material.dart';
-import 'package:bahibo/component/app_network_image.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/component/app_network_image.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 import '../page/productDetail.dart';
 
 class ProductCard extends StatelessWidget {
@@ -427,3 +427,4 @@ class ProductCard extends StatelessWidget {
     );
   }
 }
+

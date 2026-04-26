@@ -1,4 +1,4 @@
-package com.example.bahibo
+package com.example.banay
 
 import android.content.Intent
 import android.os.Bundle
@@ -7,7 +7,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-	private val channelName = "bahibo/notifications"
+	private val channelName = "banay/notifications"
 	private var pendingNotificationPayload: Map<String, String>? = null
 	private var methodChannel: MethodChannel? = null
 

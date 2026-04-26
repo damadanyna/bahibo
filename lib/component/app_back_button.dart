@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 
 class AppBackButton extends StatelessWidget {
   final VoidCallback? onTap;
@@ -42,3 +42,4 @@ class AppBackButton extends StatelessWidget {
     );
   }
 }
+

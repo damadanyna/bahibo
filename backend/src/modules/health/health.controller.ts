@@ -6,9 +6,11 @@ export class HealthController {
   getHealth() {
     return {
       success: true,
-      service: 'bahibo-backend',
+      service: 'BANAY-backend',
       status: 'up',
       timestamp: new Date().toISOString(),
     };
   }
 }
+
+

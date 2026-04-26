@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:bahibo/component/app_network_image.dart';
+import 'package:banay/component/app_network_image.dart';
 
 class SkeletonBox extends StatelessWidget {
   final double? width;
@@ -386,3 +386,4 @@ class UserListSkeleton extends StatelessWidget {
     );
   }
 }
+

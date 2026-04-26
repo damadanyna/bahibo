@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.bahibo"
+    namespace = "com.example.banay"
     compileSdk = flutter.compileSdkVersion
     buildToolsVersion = "35.0.0"
     ndkVersion = flutter.ndkVersion
@@ -24,7 +24,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.bahibo"
+        applicationId = "com.example.banay"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

@@ -1,4 +1,4 @@
-# Bahibo Workflow Progress
+# Banay Workflow Progress
 
 Tableau d'avancement de reference pour suivre le workflow produit et technique.
 
@@ -52,7 +52,7 @@ Tableau d'avancement de reference pour suivre le workflow produit et technique.
 
 | Sujet | Statut | Notes |
 | --- | --- | --- |
-| PostgreSQL local | Required | Base Bahibo attendue par Prisma |
+| PostgreSQL local | Required | Base Banay attendue par Prisma |
 | Backend NestJS | Required | Port 4000 |
 | URL Flutter vers IP locale PC | Done | Utilise l'IP LAN du PC pour telephone reel |
 | Cloudinary | Required for avatar upload | CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET |

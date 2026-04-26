@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 
 class AppInputContainer extends StatelessWidget {
   final Widget child;
@@ -72,3 +72,4 @@ TextStyle appInputTextStyle(BuildContext context) {
     fontSize: 14,
   );
 }
+

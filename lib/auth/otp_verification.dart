@@ -1,12 +1,12 @@
 import 'dart:async';
 
-import 'package:bahibo/auth/profileInformation.dart';
-import 'package:bahibo/component/main_navigation_shell.dart';
-import 'package:bahibo/component/ui/dinamic_icon_button.dart';
-import 'package:bahibo/services/app_api_client.dart';
-import 'package:bahibo/services/app_auth_service.dart';
+import 'package:banay/auth/profileInformation.dart';
+import 'package:banay/component/main_navigation_shell.dart';
+import 'package:banay/component/ui/dinamic_icon_button.dart';
+import 'package:banay/services/app_api_client.dart';
+import 'package:banay/services/app_auth_service.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 import 'package:sms_autofill/sms_autofill.dart';
 
@@ -212,7 +212,7 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
           Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(
-              builder: (context) => const BahiboNavigationShell(),
+              builder: (context) => const BANAYNavigationShell(),
             ),
             (route) => false,
           );
@@ -507,3 +507,5 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
     );
   }
 }
+
+

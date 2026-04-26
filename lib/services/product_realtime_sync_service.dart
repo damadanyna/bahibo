@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:bahibo/services/chat_realtime_service.dart';
+import 'package:banay/services/chat_realtime_service.dart';
 import 'package:flutter/foundation.dart';
 
 class ProductRealtimeUpdate {
@@ -112,3 +112,4 @@ class ProductRealtimeSyncService {
     _updatesController.add(update);
   }
 }
+

@@ -1,8 +1,8 @@
 import 'dart:async';
 
-import 'package:bahibo/services/api_config.dart';
+import 'package:banay/services/api_config.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:bahibo/services/session_storage.dart';
+import 'package:banay/services/session_storage.dart';
 import 'package:flutter/widgets.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
@@ -199,3 +199,4 @@ class ChatRealtimeService {
     _socket = null;
   }
 }
+

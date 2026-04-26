@@ -1,7 +1,7 @@
-import 'package:bahibo/component/app_network_image.dart';
-import 'package:bahibo/component/ui/dinamic_icon_input.dart';
+import 'package:banay/component/app_network_image.dart';
+import 'package:banay/component/ui/dinamic_icon_input.dart';
 import 'package:flutter/material.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 
 class NavigationMessageSearchBar extends StatefulWidget {
   final Color fillColor;
@@ -540,3 +540,4 @@ class NavigationIconActionButton extends StatelessWidget {
     );
   }
 }
+

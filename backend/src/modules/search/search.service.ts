@@ -298,8 +298,8 @@ export class SearchService {
             .join(' · ');
       const description = user.sellerProfile?.description ??
         (user.countryName != null && user.countryName!.trim().length > 0
-          ? `Utilisateur Bahibo de ${user.countryName}.`
-          : 'Utilisateur Bahibo.');
+          ? `Utilisateur BANAY de ${user.countryName}.`
+          : 'Utilisateur BANAY.');
       const totalLikesCount = sellerProducts.reduce(
         (sum, product) => sum + product._count.likes,
         0,
@@ -308,7 +308,7 @@ export class SearchService {
       return {
         id: user.id,
         label: user.displayName,
-        subtitle: user.sellerProfile?.studioName ?? 'Utilisateur Bahibo',
+        subtitle: user.sellerProfile?.studioName ?? 'Utilisateur BANAY',
         sellerName: user.displayName,
         categoryName: sellerProducts[0]?.title,
         locationLabel,
@@ -335,7 +335,7 @@ export class SearchService {
           products: sellerProducts.map((product) => ({
             'id': product.id,
             'title': product.title,
-            'category': 'Produit Bahibo',
+            'category': 'Produit BANAY',
             'price': product.priceAmount.toNumber(),
             'likesCount': product._count.likes,
             'images': [product.imageUrl],
@@ -374,7 +374,7 @@ export class SearchService {
       label: category.name,
       subtitle: `${category._count.products} produits`,
       categoryName: category.name,
-      description: 'Categorie Bahibo',
+      description: 'Categorie BANAY',
     }));
   }
 
@@ -422,3 +422,4 @@ export class SearchService {
       }));
   }
 }
+

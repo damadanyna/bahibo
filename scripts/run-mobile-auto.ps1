@@ -188,7 +188,7 @@ switch ($mode) {
   }
 }
 
-Write-Host "Bahibo mobile auto-run"
+Write-Host "Banay mobile auto-run"
 Write-Host "- Device: $($device.name) [$($device.id)]"
 Write-Host "- Mode: $mode"
 Write-Host "- API: $baseUrl"
@@ -199,7 +199,7 @@ try {
     'run'
     '-d'
     $device.id
-    "--dart-define=BAHIBO_API_BASE_URL=$baseUrl"
+    "--dart-define=BANAY_API_BASE_URL=$baseUrl"
   )
 
   if ($FlutterArgs) {

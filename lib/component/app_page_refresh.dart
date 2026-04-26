@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 
 class AppOfflineBanner extends StatelessWidget {
   final String message;
@@ -150,3 +150,4 @@ mixin AppPageRefreshMixin<T extends StatefulWidget> on State<T> {
     }
   }
 }
+

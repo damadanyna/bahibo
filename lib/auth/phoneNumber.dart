@@ -1,13 +1,13 @@
-import 'package:bahibo/auth/otp_verification.dart';
-import 'package:bahibo/component/ui/dinamic_icon_button.dart';
-import 'package:bahibo/component/ui/dinamic_icon_input.dart';
-import 'package:bahibo/services/app_api_client.dart';
-import 'package:bahibo/services/app_auth_service.dart';
+import 'package:banay/auth/otp_verification.dart';
+import 'package:banay/component/ui/dinamic_icon_button.dart';
+import 'package:banay/component/ui/dinamic_icon_input.dart';
+import 'package:banay/services/app_api_client.dart';
+import 'package:banay/services/app_auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sms_autofill/sms_autofill.dart';
 
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 
 class PhoneNumberPage extends StatefulWidget {
   const PhoneNumberPage({super.key});
@@ -347,7 +347,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
           Container(
             alignment: Alignment.center,
             child: Text(
-              'Welcome to Bahibo',
+              'Welcome to BANAY',
               style: TextStyle(
                 fontSize: 25,
                 fontWeight: FontWeight.w400,
@@ -359,7 +359,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
           Container(
             alignment: Alignment.center,
             child: Text(
-              'Bahibo need to verify your phone number',
+              'BANAY need to verify your phone number',
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w400,
@@ -523,3 +523,5 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
     );
   }
 }
+
+

@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:bahibo/component/app_back_button.dart';
-import 'package:bahibo/component/app_comments_sheet.dart';
-import 'package:bahibo/component/app_network_image.dart';
-import 'package:bahibo/component/app_page_skeletons.dart';
-import 'package:bahibo/component/app_page_refresh.dart';
-import 'package:bahibo/component/app_share_sheet.dart';
-import 'package:bahibo/services/cloudinary_image_url.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/component/app_back_button.dart';
+import 'package:banay/component/app_comments_sheet.dart';
+import 'package:banay/component/app_network_image.dart';
+import 'package:banay/component/app_page_skeletons.dart';
+import 'package:banay/component/app_page_refresh.dart';
+import 'package:banay/component/app_share_sheet.dart';
+import 'package:banay/services/cloudinary_image_url.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 
 class ImageViewerOverlayData {
   final String? title;
@@ -904,3 +904,4 @@ class _SellerStatusAvatar extends StatelessWidget {
     );
   }
 }
+

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import 'package:bahibo/component/app_network_image.dart';
-import 'package:bahibo/component/profile_models.dart';
-import 'package:bahibo/component/seller_profile_page.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/component/app_network_image.dart';
+import 'package:banay/component/profile_models.dart';
+import 'package:banay/component/seller_profile_page.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 
 class AppLikeItem {
   final String? authorId;
@@ -78,7 +78,7 @@ class _AppLikesSheetContent extends StatelessWidget {
           profile: buildProfileFromUser(
             name: like.authorName,
             avatarUrl: like.avatarUrl,
-            subtitle: 'Membre de la communaute Bahibo',
+            subtitle: 'Membre de la communaute BANAY',
           ),
         ),
       ),
@@ -248,3 +248,5 @@ class _AppLikesSheetContent extends StatelessWidget {
     );
   }
 }
+
+

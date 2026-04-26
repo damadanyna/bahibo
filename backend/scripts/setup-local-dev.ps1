@@ -1,7 +1,7 @@
 param(
     [string]$DbHost = "localhost",
     [int]$DbPort = 5432,
-    [string]$DbName = "bahibo",
+    [string]$DbName = "banay",
     [string]$DbUser = "postgres",
     [string]$DbPassword = "postgres",
     [switch]$StartBackend

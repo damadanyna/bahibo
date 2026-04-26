@@ -1,6 +1,6 @@
 class ApiConfig {
   static const String _configuredBaseUrl = String.fromEnvironment(
-    'BAHIBO_API_BASE_URL',
+    'BANAY_API_BASE_URL',
   );
   static const String _localNetworkBaseUrl =
       'http://192.168.160.62:4000/api/v1';
@@ -18,3 +18,5 @@ class ApiConfig {
     return uri.replace(path: '', query: null, fragment: '').toString();
   }
 }
+
+

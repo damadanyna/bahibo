@@ -1,11 +1,11 @@
-# bahibo
+# Banay
 
 A new Flutter project.
 
 ## Project Docs
 
 - [Workflow progress](docs/workflow-progress.md)
-- [Database schema](docs/bahibo-database-schema.mmd)
+- [Database schema](docs/banay-database-schema.mmd)
 
 ## Mobile API Auto Config
 
@@ -30,7 +30,7 @@ Notes:
 powershell -ExecutionPolicy Bypass -File .\scripts\run-mobile-auto.ps1 -DeviceId <flutter-device-id>
 ```
 
-- You can also launch it from VS Code with the task `Bahibo: Run Mobile Auto API`.
+- You can also launch it from VS Code with the task `Banay: Run Mobile Auto API`.
 
 ## Getting Started
 

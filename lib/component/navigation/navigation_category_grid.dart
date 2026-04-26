@@ -1,7 +1,7 @@
-import 'package:bahibo/page/category_page.dart';
+import 'package:banay/page/category_page.dart';
 import 'package:flutter/material.dart';
 
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 
 class NavigationCategoryEntry {
   final String icon;
@@ -15,7 +15,7 @@ class NavigationCategoryEntry {
   });
 }
 
-const bahiboNavigationCategories = <NavigationCategoryEntry>[
+const BANAYNavigationCategories = <NavigationCategoryEntry>[
   NavigationCategoryEntry(
     icon: '📱',
     label: 'Smartphones',
@@ -113,3 +113,5 @@ class NavigationCategoryGrid extends StatelessWidget {
     );
   }
 }
+
+

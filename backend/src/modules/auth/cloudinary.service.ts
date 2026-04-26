@@ -45,10 +45,10 @@ export class CloudinaryService {
     const sanitizedIdentifier = identifier.replace(/[^a-zA-Z0-9]/g, '');
     const folder =
       variant === 'cover'
-        ? 'bahibo/profile-covers'
+        ? 'BANAY/profile-covers'
         : variant === 'product'
-        ? 'bahibo/products'
-        : 'bahibo/profile-avatars';
+        ? 'BANAY/products'
+        : 'BANAY/profile-avatars';
     const uploadResult = await new Promise<UploadApiResponse>((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
         {
@@ -126,3 +126,4 @@ export class CloudinaryService {
     ];
   }
 }
+

@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Bahibo</string>
+	<string>Banay</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>bahibo</string>
+	<string>Banay</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -27,11 +27,11 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Bahibo utilise la camera pour lancer un live video.</string>
+	<string>Banay utilise la camera pour lancer un live video.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Bahibo utilise le microphone pour diffuser un live video.</string>
+	<string>Banay utilise le microphone pour diffuser un live video.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Bahibo utilise votre position pour afficher votre emplacement actuel sur votre profil.</string>
+	<string>Banay utilise votre position pour afficher votre emplacement actuel sur votre profil.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

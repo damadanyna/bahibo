@@ -358,7 +358,7 @@ class CatalogApiService {
     try {
       streamedResponse = await request.send();
     } catch (_) {
-      throw AppApiException('Impossible de joindre le serveur Bahibo');
+      throw AppApiException('Impossible de joindre le serveur BANAY');
     }
 
     final response = await http.Response.fromStream(streamedResponse);
@@ -417,7 +417,7 @@ class CatalogApiService {
     try {
       streamedResponse = await request.send();
     } catch (_) {
-      throw AppApiException('Impossible de joindre le serveur Bahibo');
+      throw AppApiException('Impossible de joindre le serveur BANAY');
     }
 
     final response = await http.Response.fromStream(streamedResponse);
@@ -435,3 +435,5 @@ class CatalogApiService {
     );
   }
 }
+
+

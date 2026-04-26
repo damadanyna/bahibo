@@ -23,7 +23,9 @@ async function bootstrap() {
   const port = configService.get<number>('PORT', 4000);
 
   await app.listen(port, host);
-  console.log(`Bahibo backend running on http://${host}:${port}/api/v1`);
+  console.log(`BANAY backend running on http://${host}:${port}/api/v1`);
 }
 
 bootstrap();
+
+

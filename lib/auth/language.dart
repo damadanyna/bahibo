@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'phoneNumber.dart';
 
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 
 class LanguagePage extends StatefulWidget {
   const LanguagePage({super.key});
@@ -44,7 +44,7 @@ class _LanguagePageState extends State<LanguagePage> {
             Container(
               alignment: Alignment.center,
               child: Text(
-                "Hello, welcome to Bahibo",
+                "Hello, welcome to BANAY",
                 style: TextStyle(fontSize: 25, fontWeight: FontWeight.w400),
               ),
             ),
@@ -112,3 +112,5 @@ class _LanguagePageState extends State<LanguagePage> {
     );
   }
 }
+
+

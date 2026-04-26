@@ -99,7 +99,7 @@ class AppApiClient {
         _ => throw AppApiException('Methode HTTP non supportee'),
       };
     } catch (_) {
-      throw AppApiException('Impossible de joindre le serveur Bahibo');
+      throw AppApiException('Impossible de joindre le serveur BANAY');
     }
 
     final decoded = response.body.isEmpty
@@ -208,3 +208,5 @@ class AppApiClient {
     return true;
   }
 }
+
+

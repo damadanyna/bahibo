@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:bahibo/services/catalog_api_service.dart';
-import 'package:bahibo/services/chat_realtime_service.dart';
+import 'package:banay/services/catalog_api_service.dart';
+import 'package:banay/services/chat_realtime_service.dart';
 import 'package:flutter/foundation.dart';
 
 class PresenceService {
@@ -119,3 +119,4 @@ class PresenceService {
     }
   }
 }
+

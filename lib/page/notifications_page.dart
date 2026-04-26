@@ -1,18 +1,18 @@
 import 'dart:async';
 
-import 'package:bahibo/auth/phoneNumber.dart';
-import 'package:bahibo/component/app_comments_sheet.dart';
-import 'package:bahibo/component/app_likes_sheet.dart';
-import 'package:bahibo/component/profile_models.dart';
-import 'package:bahibo/component/user_list_page.dart';
-import 'package:bahibo/page/productDetail.dart';
-import 'package:bahibo/component/theme_menu_button.dart';
-import 'package:bahibo/services/app_api_client.dart';
-import 'package:bahibo/services/app_auth_service.dart';
-import 'package:bahibo/services/catalog_api_service.dart';
-import 'package:bahibo/services/chat_realtime_service.dart';
-import 'package:bahibo/services/notifications_api_service.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/auth/phoneNumber.dart';
+import 'package:banay/component/app_comments_sheet.dart';
+import 'package:banay/component/app_likes_sheet.dart';
+import 'package:banay/component/profile_models.dart';
+import 'package:banay/component/user_list_page.dart';
+import 'package:banay/page/productDetail.dart';
+import 'package:banay/component/theme_menu_button.dart';
+import 'package:banay/services/app_api_client.dart';
+import 'package:banay/services/app_auth_service.dart';
+import 'package:banay/services/catalog_api_service.dart';
+import 'package:banay/services/chat_realtime_service.dart';
+import 'package:banay/services/notifications_api_service.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
 class NotificationsPage extends StatefulWidget {
@@ -292,7 +292,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
           icon: Icons.verified_user_outlined,
           paragraphs: const [
             'Vos informations sont utilisees uniquement pour ameliorer les recommandations, les notifications et les echanges avec les vendeurs que vous suivez.',
-            'Bahibo protege les donnees partagees dans l\'application et limite leur affichage aux actions strictement necessaires a votre experience.',
+            'BANAY protege les donnees partagees dans l\'application et limite leur affichage aux actions strictement necessaires a votre experience.',
           ],
         );
         return;
@@ -424,15 +424,15 @@ class _NotificationsPageState extends State<NotificationsPage> {
     final users = actors
         .map(
           (actor) => UserListItemData(
-            name: (actor['name'] as String?) ?? 'Utilisateur Bahibo',
+            name: (actor['name'] as String?) ?? 'Utilisateur BANAY',
             subtitle: 'A consulte votre profil.',
             imageUrl: (actor['avatarUrl'] as String?) ?? '',
             trailingText: (actor['timeLabel'] as String?) ?? 'recent',
             profileData: buildProfileFromUser(
               userId: actor['id'] as String?,
-              name: (actor['name'] as String?) ?? 'Utilisateur Bahibo',
+              name: (actor['name'] as String?) ?? 'Utilisateur BANAY',
               avatarUrl: (actor['avatarUrl'] as String?) ?? '',
-              subtitle: 'A consulte votre profil Bahibo.',
+              subtitle: 'A consulte votre profil BANAY.',
             ),
           ),
         )
@@ -459,7 +459,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
         .map(
           (actor) => AppLikeItem(
             authorId: actor['id']?.toString(),
-            authorName: (actor['name'] as String?) ?? 'Utilisateur Bahibo',
+            authorName: (actor['name'] as String?) ?? 'Utilisateur BANAY',
             avatarUrl: (actor['avatarUrl'] as String?) ?? '',
             timeLabel: (actor['timeLabel'] as String?) ?? 'recent',
           ),
@@ -482,7 +482,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
     return actors
         .map(
           (actor) => AppCommentItem(
-            authorName: (actor['name'] as String?) ?? 'Utilisateur Bahibo',
+            authorName: (actor['name'] as String?) ?? 'Utilisateur BANAY',
             avatarUrl: (actor['avatarUrl'] as String?) ?? '',
             timeLabel: (actor['timeLabel'] as String?) ?? 'recent',
             message: 'A commente le produit $productName.',
@@ -1084,3 +1084,5 @@ class _NotificationMenuItem extends StatelessWidget {
     );
   }
 }
+
+

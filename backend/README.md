@@ -1,6 +1,6 @@
-# Bahibo Backend
+# Banay Backend
 
-Backend NestJS pour l'application ecommerce Bahibo.
+Backend NestJS pour l'application ecommerce Banay.
 
 ## Stack
 

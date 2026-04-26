@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 
-const Color _bahiboPrimary = Color.fromARGB(255, 0, 174, 70);
-const Color _bahiboPrimarySoft = Color(0xFF63B27D);
-const Color _bahiboSecondary = Color.fromARGB(255, 200, 4, 26);
-const Color _bahiboSuccess = Color(0xFF2F7D4E);
-const Color _bahiboFacebook = Color(0xFF4267B2);
-const Color _bahiboWhatsApp = Color(0xFF25D366);
+const Color _BANAYPrimary = Color.fromARGB(255, 0, 174, 70);
+const Color _BANAYPrimarySoft = Color(0xFF63B27D);
+const Color _BANAYSecondary = Color.fromARGB(255, 200, 4, 26);
+const Color _BANAYSuccess = Color(0xFF2F7D4E);
+const Color _BANAYFacebook = Color(0xFF4267B2);
+const Color _BANAYWhatsApp = Color(0xFF25D366);
 
 class ThemeProvider extends ChangeNotifier {
   static const String _themeKey = 'theme_mode';
@@ -66,10 +66,10 @@ class ThemeProvider extends ChangeNotifier {
         inputFill: Color(0xFFF2F4F1),
         inputBorder: Color(0xFFD7DEDA),
         mutedText: Color(0xFF6C736F),
-        success: _bahiboSuccess,
+        success: _BANAYSuccess,
         placeholderFill: Color(0x4DB4BAB6),
         placeholderIcon: Color(0xFF919893),
-        heroAccent: _bahiboPrimary,
+        heroAccent: _BANAYPrimary,
         heroForeground: Colors.white,
         heroForegroundMuted: Color(0xFFEAF4EE),
         heroSurface: Color(0x24FFFFFF),
@@ -79,12 +79,12 @@ class ThemeProvider extends ChangeNotifier {
         scrimStrong: Color(0xC4000000),
         overlaySurface: Color(0x85000000),
         overlayBorder: Color(0x24FFFFFF),
-        favoriteAccent: _bahiboSecondary,
-        onlineStatus: _bahiboPrimary,
+        favoriteAccent: _BANAYSecondary,
+        onlineStatus: _BANAYPrimary,
         backButtonFill: Color(0x47000000),
         backButtonBorder: Color(0x3DFFFFFF),
-        socialFacebook: _bahiboFacebook,
-        socialWhatsApp: _bahiboWhatsApp,
+        socialFacebook: _BANAYFacebook,
+        socialWhatsApp: _BANAYWhatsApp,
       ),
     );
   }
@@ -97,18 +97,19 @@ class ThemeProvider extends ChangeNotifier {
         // backgroundBase: Color(0xFF141816),
         backgroundBase: Color.fromARGB(255, 8, 8, 8),
         authBackground: Color.fromARGB(255, 8, 8, 8),
-        panelBackground: Color.fromARGB(255, 8, 8, 8),
-        panelBackground_: Color.fromARGB(255, 28, 28, 28),
+        panelBackground: Color.fromARGB(255, 20, 21, 21),
+        // panelBackground_: Color.fromARGB(255, 28, 28, 28),
+        panelBackground_: Color.fromARGB(255, 8, 8, 8),
         // panelBackground: Color(0xFF1B201D),
         panelMuted: Color(0xFF242B27),
-        borderColor: Color(0xFF343C37),
+        borderColor: Color.fromARGB(97, 32, 35, 33),
         inputFill: Color(0xFF202622),
         inputBorder: Color(0xFF343C37),
         mutedText: Color(0xFFC8CEC9),
-        success: _bahiboSuccess,
+        success: _BANAYSuccess,
         placeholderFill: Color(0x4D929A95),
         placeholderIcon: Color(0xFFA1A8A3),
-        heroAccent: _bahiboPrimary,
+        heroAccent: _BANAYPrimary,
         heroForeground: Colors.white,
         heroForegroundMuted: Color(0xFFF0F2F1),
         heroSurface: Color(0x24FFFFFF),
@@ -118,23 +119,23 @@ class ThemeProvider extends ChangeNotifier {
         scrimStrong: Color(0xDE000000),
         overlaySurface: Color(0x94000000),
         overlayBorder: Color(0x24FFFFFF),
-        favoriteAccent: _bahiboSecondary,
-        onlineStatus: _bahiboPrimarySoft,
+        favoriteAccent: _BANAYSecondary,
+        onlineStatus: _BANAYPrimarySoft,
         backButtonFill: Color(0x52000000),
         backButtonBorder: Color(0x3DFFFFFF),
-        socialFacebook: _bahiboFacebook,
-        socialWhatsApp: _bahiboWhatsApp,
+        socialFacebook: _BANAYFacebook,
+        socialWhatsApp: _BANAYWhatsApp,
       ),
     );
   }
 
   static const ColorScheme _lightColorScheme = ColorScheme(
     brightness: Brightness.light,
-    primary: _bahiboPrimary,
+    primary: _BANAYPrimary,
     onPrimary: Colors.white,
     primaryContainer: Color(0xFFD9EBDD),
     onPrimaryContainer: Color(0xFF123722),
-    secondary: _bahiboSecondary,
+    secondary: _BANAYSecondary,
     onSecondary: Colors.white,
     secondaryContainer: Color(0xFFF7D9DE),
     onSecondaryContainer: Color(0xFF4A0F18),
@@ -156,17 +157,17 @@ class ThemeProvider extends ChangeNotifier {
     scrim: Color(0xFF000000),
     inverseSurface: Color(0xFF2D312F),
     onInverseSurface: Color(0xFFF1F3F0),
-    inversePrimary: _bahiboPrimarySoft,
-    surfaceTint: _bahiboPrimary,
+    inversePrimary: _BANAYPrimarySoft,
+    surfaceTint: _BANAYPrimary,
   );
 
   static const ColorScheme _darkColorScheme = ColorScheme(
     brightness: Brightness.dark,
-    primary: _bahiboPrimary,
+    primary: _BANAYPrimary,
     onPrimary: Colors.white,
     primaryContainer: Color(0xFF214E35),
     onPrimaryContainer: Color(0xFFD9EBDD),
-    secondary: _bahiboSecondary,
+    secondary: _BANAYSecondary,
     onSecondary: Colors.white,
     secondaryContainer: Color(0xFF61212A),
     onSecondaryContainer: Color(0xFFF8DBE0),
@@ -188,8 +189,8 @@ class ThemeProvider extends ChangeNotifier {
     scrim: Color(0xFF000000),
     inverseSurface: Color(0xFFE6EAE6),
     onInverseSurface: Color(0xFF2A2F2C),
-    inversePrimary: _bahiboPrimary,
-    surfaceTint: _bahiboPrimary,
+    inversePrimary: _BANAYPrimary,
+    surfaceTint: _BANAYPrimary,
   );
 
   static ThemeData _buildTheme({
@@ -204,7 +205,7 @@ class ThemeProvider extends ChangeNotifier {
       colorScheme: colorScheme,
       primaryColor: colorScheme.primary,
       scaffoldBackgroundColor: appColors.backgroundBase,
-      cardColor: appColors.panelBackground,
+      cardColor: appColors.panelBackground_,
       canvasColor: appColors.backgroundBase,
       dialogBackgroundColor: appColors.panelBackground,
       extensions: <ThemeExtension<dynamic>>[appColors],

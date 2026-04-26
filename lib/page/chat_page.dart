@@ -1,20 +1,20 @@
 import 'dart:async';
 
-import 'package:bahibo/component/app_network_image.dart';
-import 'package:bahibo/component/app_page_refresh.dart';
-import 'package:bahibo/component/app_page_skeletons.dart';
-import 'package:bahibo/component/profile_models.dart';
-import 'package:bahibo/component/seller_profile_page.dart';
-import 'package:bahibo/component/ui/chat_message_input.dart';
-import 'package:bahibo/component/user_profile_page.dart';
-import 'package:bahibo/formatter/price_formatter.dart';
-import 'package:bahibo/services/app_api_client.dart';
-import 'package:bahibo/services/catalog_api_service.dart';
-import 'package:bahibo/services/chat_realtime_service.dart';
-import 'package:bahibo/services/conversations_api_service.dart';
-import 'package:bahibo/services/presence_service.dart';
-import 'package:bahibo/services/session_storage.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/component/app_network_image.dart';
+import 'package:banay/component/app_page_refresh.dart';
+import 'package:banay/component/app_page_skeletons.dart';
+import 'package:banay/component/profile_models.dart';
+import 'package:banay/component/seller_profile_page.dart';
+import 'package:banay/component/ui/chat_message_input.dart';
+import 'package:banay/component/user_profile_page.dart';
+import 'package:banay/formatter/price_formatter.dart';
+import 'package:banay/services/app_api_client.dart';
+import 'package:banay/services/catalog_api_service.dart';
+import 'package:banay/services/chat_realtime_service.dart';
+import 'package:banay/services/conversations_api_service.dart';
+import 'package:banay/services/presence_service.dart';
+import 'package:banay/services/session_storage.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
 typedef ChatProductPageBuilder =
@@ -983,7 +983,7 @@ class _ChatPageState extends State<ChatPage>
                     ),
                     const SizedBox(height: 14),
                     Text(
-                      'Signaler a Bahibo',
+                      'Signaler a BANAY',
                       style: TextStyle(
                         color: theme.colorScheme.onSurface,
                         fontSize: 16,
@@ -992,7 +992,7 @@ class _ChatPageState extends State<ChatPage>
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'Les 5 derniers messages de cette discussion seront envoyes a Bahibo. Cette personne ne saura pas que vous l\'avez bloquee ou signalee.',
+                      'Les 5 derniers messages de cette discussion seront envoyes a BANAY. Cette personne ne saura pas que vous l\'avez bloquee ou signalee.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: appColors.mutedText,
@@ -2352,3 +2352,5 @@ class _TypingIndicatorBubbleState extends State<_TypingIndicatorBubble>
     );
   }
 }
+
+

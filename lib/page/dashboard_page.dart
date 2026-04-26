@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'package:bahibo/component/app_back_button.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/component/app_back_button.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 
 class StudioDashboardPage extends StatefulWidget {
   final String studioName;
@@ -1094,4 +1094,5 @@ class _DashboardMultiLinePainter extends CustomPainter {
         oldDelegate.activeLineLabel != activeLineLabel;
   }
 }
+
 

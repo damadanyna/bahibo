@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:bahibo/component/app_back_button.dart';
-import 'package:bahibo/component/app_network_image.dart';
-import 'package:bahibo/component/app_page_skeletons.dart';
-import 'package:bahibo/component/app_page_refresh.dart';
-import 'package:bahibo/component/app_text_input.dart';
-import 'package:bahibo/component/profile_models.dart';
-import 'package:bahibo/services/app_auth_service.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/component/app_back_button.dart';
+import 'package:banay/component/app_network_image.dart';
+import 'package:banay/component/app_page_skeletons.dart';
+import 'package:banay/component/app_page_refresh.dart';
+import 'package:banay/component/app_text_input.dart';
+import 'package:banay/component/profile_models.dart';
+import 'package:banay/services/app_auth_service.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 
 class UserListItemData {
   final String name;
@@ -483,3 +483,4 @@ class _UserListPageState extends State<UserListPage>
     );
   }
 }
+

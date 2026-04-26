@@ -1,16 +1,16 @@
 import 'dart:async';
 
-import 'package:bahibo/component/profile_models.dart';
-import 'package:bahibo/component/navigation/navigation_message_components.dart';
-import 'package:bahibo/component/theme_menu_button.dart';
-import 'package:bahibo/component/user_list_page.dart';
-import 'package:bahibo/page/chat_page.dart';
-import 'package:bahibo/page/productDetail.dart';
-import 'package:bahibo/services/app_api_client.dart';
-import 'package:bahibo/services/catalog_api_service.dart';
-import 'package:bahibo/services/chat_realtime_service.dart';
-import 'package:bahibo/services/conversations_api_service.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/component/profile_models.dart';
+import 'package:banay/component/navigation/navigation_message_components.dart';
+import 'package:banay/component/theme_menu_button.dart';
+import 'package:banay/component/user_list_page.dart';
+import 'package:banay/page/chat_page.dart';
+import 'package:banay/page/productDetail.dart';
+import 'package:banay/services/app_api_client.dart';
+import 'package:banay/services/catalog_api_service.dart';
+import 'package:banay/services/chat_realtime_service.dart';
+import 'package:banay/services/conversations_api_service.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
 final ValueNotifier<int> mainNavigationUnreadMessageCountNotifier =
@@ -493,14 +493,14 @@ class _MainNavigationMessagesPanelState
         final subtitle = 'Utilisateur bloque dans vos conversations.';
 
         return UserListItemData(
-          name: name != null && name.isNotEmpty ? name : 'Utilisateur Bahibo',
+          name: name != null && name.isNotEmpty ? name : 'Utilisateur BANAY',
           subtitle: subtitle,
           imageUrl: avatarUrl,
           trailingText: 'Debloquer',
           userId: userId != null && userId.isNotEmpty ? userId : null,
           profileData: buildProfileFromUser(
             userId: userId != null && userId.isNotEmpty ? userId : null,
-            name: name != null && name.isNotEmpty ? name : 'Utilisateur Bahibo',
+            name: name != null && name.isNotEmpty ? name : 'Utilisateur BANAY',
             avatarUrl: avatarUrl,
             subtitle: subtitle,
           ),
@@ -926,3 +926,5 @@ class _MessagesPanelMenuItem extends StatelessWidget {
     );
   }
 }
+
+

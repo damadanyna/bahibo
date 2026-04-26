@@ -1,5 +1,5 @@
-import 'package:bahibo/component/navigation/navigation_category_grid.dart';
-import 'package:bahibo/theme/app_theme_extensions.dart';
+import 'package:banay/component/navigation/navigation_category_grid.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
 class MainNavigationCategoryHubPanel extends StatelessWidget {
@@ -35,7 +35,7 @@ class MainNavigationCategoryHubPanel extends StatelessWidget {
               const SizedBox(height: 20),
               const Expanded(
                 child: NavigationCategoryGrid(
-                  categories: bahiboNavigationCategories,
+                  categories: BANAYNavigationCategories,
                 ),
               ),
             ],
@@ -45,3 +45,5 @@ class MainNavigationCategoryHubPanel extends StatelessWidget {
     );
   }
 }
+
+

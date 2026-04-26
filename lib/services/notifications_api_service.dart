@@ -41,7 +41,7 @@ class NotificationsApiService {
         'id': map['id'],
         'type': map['type'],
         'title': map['title'],
-        'channel': seller['name'] ?? 'Bahibo',
+        'channel': seller['name'] ?? 'BANAY',
         'description': map['body'],
         'content': map['body'],
         'productName': product['title'],
@@ -67,3 +67,5 @@ class NotificationsApiService {
     );
   }
 }
+
+
