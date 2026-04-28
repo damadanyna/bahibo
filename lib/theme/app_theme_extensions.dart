@@ -6,6 +6,7 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
   final Color authBackground;
   final Color panelBackground;
   final Color panelBackground_;
+  final Color productCardBackground;
   final Color panelMuted;
   final Color borderColor;
   final Color inputFill;
@@ -36,6 +37,7 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
     required this.authBackground,
     required this.panelBackground,
     required this.panelBackground_,
+    required this.productCardBackground,
     required this.panelMuted,
     required this.borderColor,
     required this.inputFill,
@@ -67,6 +69,7 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
     Color? backgroundBase,
     Color? authBackground,
     Color? panelBackground,
+    Color? productCardBackground,
     Color? panelMuted,
     Color? borderColor,
     Color? inputFill,
@@ -97,6 +100,8 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
       authBackground: authBackground ?? this.authBackground,
       panelBackground: panelBackground ?? this.panelBackground,
       panelBackground_: panelBackground ?? this.panelBackground,
+      productCardBackground:
+          productCardBackground ?? this.productCardBackground,
       panelMuted: panelMuted ?? this.panelMuted,
       borderColor: borderColor ?? this.borderColor,
       inputFill: inputFill ?? this.inputFill,
@@ -135,6 +140,11 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
       authBackground: Color.lerp(authBackground, other.authBackground, t)!,
       panelBackground: Color.lerp(panelBackground, other.panelBackground, t)!,
       panelBackground_: Color.lerp(panelBackground, other.panelBackground, t)!,
+      productCardBackground: Color.lerp(
+        productCardBackground,
+        other.productCardBackground,
+        t,
+      )!,
       panelMuted: Color.lerp(panelMuted, other.panelMuted, t)!,
       borderColor: Color.lerp(borderColor, other.borderColor, t)!,
       inputFill: Color.lerp(inputFill, other.inputFill, t)!,

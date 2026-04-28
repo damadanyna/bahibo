@@ -9,6 +9,13 @@ const Color _BANAYSecondary = Color.fromARGB(255, 200, 4, 26);
 const Color _BANAYSuccess = Color(0xFF2F7D4E);
 const Color _BANAYFacebook = Color(0xFF4267B2);
 const Color _BANAYWhatsApp = Color(0xFF25D366);
+const Color _BANAYProductCardBackgroundLight = Color.fromARGB(
+  84,
+  219,
+  219,
+  219,
+);
+const Color _BANAYProductCardBackgroundDark = Color.fromARGB(41, 22, 22, 22);
 
 class ThemeProvider extends ChangeNotifier {
   static const String _themeKey = 'theme_mode';
@@ -61,6 +68,7 @@ class ThemeProvider extends ChangeNotifier {
         authBackground: Color(0xFFFFFCFB),
         panelBackground: Color(0xFFFFFFFF),
         panelBackground_: Color(0xFFFFFFFF),
+        productCardBackground: _BANAYProductCardBackgroundLight,
         panelMuted: Color(0xFFE7EFEA),
         borderColor: Color(0xFFD7DEDA),
         inputFill: Color(0xFFF2F4F1),
@@ -100,6 +108,7 @@ class ThemeProvider extends ChangeNotifier {
         panelBackground: Color.fromARGB(255, 20, 21, 21),
         // panelBackground_: Color.fromARGB(255, 28, 28, 28),
         panelBackground_: Color.fromARGB(255, 8, 8, 8),
+        productCardBackground: _BANAYProductCardBackgroundDark,
         // panelBackground: Color(0xFF1B201D),
         panelMuted: Color(0xFF242B27),
         borderColor: Color.fromARGB(97, 32, 35, 33),

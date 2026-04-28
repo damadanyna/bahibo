@@ -82,7 +82,7 @@ class ProductCard extends StatelessWidget {
         final theme = Theme.of(context);
         final appColors = theme.appColors;
         final borderColor = appColors.borderColor;
-        final cardColor = theme.cardColor;
+        final cardColor = appColors.productCardBackground;
         final titleColor =
             theme.textTheme.titleMedium?.color ?? theme.colorScheme.onSurface;
         final categoryColor = theme.colorScheme.primary;
@@ -427,4 +427,3 @@ class ProductCard extends StatelessWidget {
     );
   }
 }
-
