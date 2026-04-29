@@ -1,4 +1,4 @@
-package com.example.banay
+package com.banay.app
 
 import android.content.Intent
 import android.os.Bundle

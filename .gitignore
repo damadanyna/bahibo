@@ -35,6 +35,7 @@ migrate_working_dir/
 /backend/node_modules
 /backend/dist
 /backend/.env
+/keystores
 
 # Symbolication related
 app.*.symbols
