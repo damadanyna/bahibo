@@ -2,6 +2,7 @@ class ApiConfig {
   static const String _configuredBaseUrl = String.fromEnvironment(
     'BANAY_API_BASE_URL',
   );
+  // static const String _localNetworkBaseUrl = 'http://77.37.51.154:4000/api/v1';
   static const String _localNetworkBaseUrl =
       'http://192.168.160.62:4000/api/v1';
 
@@ -18,5 +19,3 @@ class ApiConfig {
     return uri.replace(path: '', query: null, fragment: '').toString();
   }
 }
-
-
