@@ -86,6 +86,8 @@ type ProductRealtimePayload = {
     credentials: true,
   },
   transports: ['websocket', 'polling'],
+  pingInterval: 5000,
+  pingTimeout: 8000,
 })
 export class ConversationsRealtimeGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect

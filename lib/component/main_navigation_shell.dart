@@ -48,6 +48,7 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
   static const Duration _exitConfirmationWindow = Duration(seconds: 2);
 
   late int _currentIndex;
+  final List<int> _navigationHistory = <int>[];
   bool _usesSellerAccountPanel = false;
   UserProfileData? _sellerAccountProfile;
   StreamSubscription<Map<String, dynamic>>? _profileEventsSubscription;
@@ -68,15 +69,21 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
   }
 
   void _handleNavigationSelection(int index) {
+    _switchNavigationIndex(index);
+  }
+
+  void _switchNavigationIndex(int index, {bool recordHistory = true}) {
     if (_currentIndex == index) {
       return;
     }
 
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => BANAYNavigationShell(initialIndex: index),
-      ),
-    );
+    setState(() {
+      if (recordHistory) {
+        _navigationHistory.remove(index);
+        _navigationHistory.add(_currentIndex);
+      }
+      _currentIndex = index;
+    });
   }
 
   Future<void> _loadAccountPanelKind() async {
@@ -127,7 +134,7 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
     required String avatarUrl,
   }) async {
     if (mounted && _currentIndex != 2) {
-      setState(() => _currentIndex = 2);
+      _switchNavigationIndex(2, recordHistory: false);
     }
 
     await Future<void>.delayed(const Duration(milliseconds: 30));
@@ -154,7 +161,7 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
 
   Future<void> openNotificationsFromNotification() async {
     if (mounted && _currentIndex != 0) {
-      setState(() => _currentIndex = 0);
+      _switchNavigationIndex(0, recordHistory: false);
     }
 
     await Future<void>.delayed(const Duration(milliseconds: 30));
@@ -170,8 +177,19 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
   }
 
   Future<bool> _handleWillPop() async {
-    if (widget.initialIndex != 0) {
-      return true;
+    if (_navigationHistory.isNotEmpty) {
+      final previousIndex = _navigationHistory.removeLast();
+      if (mounted) {
+        setState(() => _currentIndex = previousIndex);
+      }
+      return false;
+    }
+
+    if (_currentIndex != 0) {
+      if (mounted) {
+        setState(() => _currentIndex = 0);
+      }
+      return false;
     }
 
     final now = DateTime.now();
@@ -346,9 +364,7 @@ class MainNavigationBar extends StatelessWidget {
                   ),
                 ),
               ),
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
+              Positioned(
                 left: cradleLeft,
                 top: -((cradleSize - barHeight) / 1.4),
                 child: Container(
@@ -362,9 +378,7 @@ class MainNavigationBar extends StatelessWidget {
                   ),
                 ),
               ),
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 0),
-                curve: Curves.easeOutCubic,
+              Positioned(
                 left: activeLeft,
                 top: 1.4,
                 child: _CapsuleNavigationButton(
@@ -442,55 +456,48 @@ class _CapsuleNavigationButton extends StatelessWidget {
     final theme = Theme.of(context);
     final badgeColor = theme.appColors.favoriteAccent;
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(size / 2),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          width: size,
-          height: size,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Center(
-                child: Icon(icon, size: isSelected ? 35 : 23, color: iconColor),
-              ),
-              if (badgeLabel != null)
-                Positioned(
-                  top: isSelected ? -4 : -2,
-                  right: isSelected ? -6 : -8,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: badgeColor,
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: theme.cardColor, width: 1.5),
-                    ),
-                    constraints: const BoxConstraints(minWidth: 20),
-                    child: Text(
-                      badgeLabel!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        height: 1.1,
-                      ),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Center(
+              child: Icon(icon, size: isSelected ? 35 : 23, color: iconColor),
+            ),
+            if (badgeLabel != null)
+              Positioned(
+                top: isSelected ? -4 : -2,
+                right: isSelected ? -6 : -8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: badgeColor,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: theme.cardColor, width: 1.5),
+                  ),
+                  constraints: const BoxConstraints(minWidth: 20),
+                  child: Text(
+                    badgeLabel!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      height: 1.1,
                     ),
                   ),
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );
   }
 }
-
-

@@ -13,6 +13,7 @@ import 'package:banay/services/catalog_api_service.dart';
 import 'package:banay/services/chat_realtime_service.dart';
 import 'package:banay/services/conversations_api_service.dart';
 import 'package:banay/services/presence_service.dart';
+import 'package:banay/services/push_notification_service.dart';
 import 'package:banay/services/session_storage.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
@@ -68,7 +69,7 @@ class ChatPage extends StatefulWidget {
 }
 
 class _ChatPageState extends State<ChatPage>
-    with AppPageRefreshMixin<ChatPage> {
+    with AppPageRefreshMixin<ChatPage>, RouteAware {
   static const Duration _conversationPollInterval = Duration(seconds: 3);
   static const Duration _typingStopDelay = Duration(milliseconds: 1200);
   final ConversationsApiService _conversationsApiService =
@@ -98,6 +99,7 @@ class _ChatPageState extends State<ChatPage>
   _ChatMessage? _replyingToMessage;
   String? _highlightedMessageId;
   bool _highlightVisible = false;
+  ModalRoute<dynamic>? _route;
 
   @override
   void initState() {
@@ -120,6 +122,11 @@ class _ChatPageState extends State<ChatPage>
 
   @override
   void dispose() {
+    final currentConversationId = _conversationId?.trim();
+    if (currentConversationId != null && currentConversationId.isNotEmpty) {
+      PushNotificationService.setVisibleConversation(null);
+    }
+    PushNotificationService.routeObserver.unsubscribe(this);
     _realtimeEventsSubscription?.cancel();
     _conversationPollTimer?.cancel();
     _messageHighlightTimer?.cancel();
@@ -140,6 +147,49 @@ class _ChatPageState extends State<ChatPage>
 
     if (!mounted) return;
     setState(() => _showEntrySkeleton = false);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    final route = ModalRoute.of(context);
+    if (route == null || identical(route, _route)) {
+      return;
+    }
+
+    if (_route != null) {
+      PushNotificationService.routeObserver.unsubscribe(this);
+    }
+
+    _route = route;
+    if (route is PageRoute<dynamic>) {
+      PushNotificationService.routeObserver.subscribe(this, route);
+    }
+  }
+
+  void _syncVisibleConversationRegistration() {
+    PushNotificationService.setVisibleConversation(_conversationId);
+  }
+
+  @override
+  void didPush() {
+    _syncVisibleConversationRegistration();
+  }
+
+  @override
+  void didPopNext() {
+    _syncVisibleConversationRegistration();
+  }
+
+  @override
+  void didPushNext() {
+    PushNotificationService.setVisibleConversation(null);
+  }
+
+  @override
+  void didPop() {
+    PushNotificationService.setVisibleConversation(null);
   }
 
   bool get _usesLiveConversation =>
@@ -436,6 +486,9 @@ class _ChatPageState extends State<ChatPage>
   void _applyConversation(Map<String, dynamic> data) {
     final previousConversationId = _conversationId;
     _conversationId = data['id']?.toString() ?? _conversationId;
+    if (_route?.isCurrent ?? false) {
+      _syncVisibleConversationRegistration();
+    }
     _conversation = Map<String, dynamic>.from(data);
     if (_conversationId != null && _conversationId != previousConversationId) {
       _bindRealtimeUpdates();
@@ -1321,7 +1374,7 @@ class _ChatPageState extends State<ChatPage>
   }
 }
 
-class _ChatHeader extends StatelessWidget {
+class _ChatHeader extends StatefulWidget {
   final Color primary;
   final Color headerColor;
   final Color subtleText;
@@ -1347,8 +1400,57 @@ class _ChatHeader extends StatelessWidget {
   });
 
   @override
+  State<_ChatHeader> createState() => _ChatHeaderState();
+}
+
+class _ChatHeaderState extends State<_ChatHeader> {
+  Timer? _statusRefreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _statusRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _statusRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  String _formatLiveLastSeen(DateTime lastSeenAt) {
+    final difference = DateTime.now().difference(lastSeenAt);
+    if (difference.inSeconds < 45) {
+      return 'En ligne a l\'instant';
+    }
+    if (difference.inMinutes < 60) {
+      return 'En ligne il y a ${difference.inMinutes} min';
+    }
+    if (difference.inHours < 24) {
+      return 'En ligne il y a ${difference.inHours} h';
+    }
+    if (difference.inDays < 7) {
+      return 'En ligne il y a ${difference.inDays} j';
+    }
+    final weeks = (difference.inDays / 7).floor();
+    if (weeks < 5) {
+      return 'En ligne il y a $weeks sem';
+    }
+    final months = (difference.inDays / 30).floor();
+    if (months < 12) {
+      return 'En ligne il y a $months mois';
+    }
+    final years = (difference.inDays / 365).floor();
+    return 'En ligne il y a $years an${years > 1 ? 's' : ''}';
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final normalizedUserId = userId?.trim() ?? '';
+    final normalizedUserId = widget.userId?.trim() ?? '';
     if (normalizedUserId.isNotEmpty) {
       PresenceService.instance.watchUser(normalizedUserId);
     }
@@ -1359,12 +1461,19 @@ class _ChatHeader extends StatelessWidget {
         final livePresence = normalizedUserId.isEmpty
             ? null
             : PresenceService.instance.presenceOf(normalizedUserId);
-        final resolvedIsOnline = livePresence ?? isOnline;
-        final resolvedStatusText = resolvedIsOnline ? 'En ligne' : statusText;
+        final liveLastSeen = normalizedUserId.isEmpty
+            ? null
+            : PresenceService.instance.lastSeenOf(normalizedUserId);
+        final resolvedIsOnline = livePresence ?? widget.isOnline;
+        final resolvedStatusText = resolvedIsOnline
+            ? 'En ligne'
+            : liveLastSeen != null
+            ? _formatLiveLastSeen(liveLastSeen)
+            : widget.statusText;
 
         return Container(
           height: 72,
-          color: headerColor,
+          color: widget.headerColor,
           padding: const EdgeInsets.symmetric(horizontal: 6),
           child: Row(
             children: [
@@ -1375,8 +1484,8 @@ class _ChatHeader extends StatelessWidget {
               ),
               AppCircleNetworkAvatar(
                 radius: 21,
-                imageUrl: avatarUrl,
-                userId: userId,
+                imageUrl: widget.avatarUrl,
+                userId: widget.userId,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -1385,7 +1494,7 @@ class _ChatHeader extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      sellerName,
+                      widget.sellerName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -1400,7 +1509,7 @@ class _ChatHeader extends StatelessWidget {
                       style: TextStyle(
                         color: resolvedIsOnline
                             ? Colors.white.withValues(alpha: 0.88)
-                            : subtleText,
+                            : widget.subtleText,
                         fontWeight: FontWeight.w500,
                         fontSize: 12,
                       ),
@@ -1409,16 +1518,16 @@ class _ChatHeader extends StatelessWidget {
                 ),
               ),
               PopupMenuButton<_ChatHeaderMenuAction>(
-                color: headerColor,
+                color: widget.headerColor,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
                 onSelected: (value) {
                   if (value == _ChatHeaderMenuAction.viewProfile) {
-                    onViewProfile();
+                    widget.onViewProfile();
                     return;
                   }
-                  onReport();
+                  widget.onReport();
                 },
                 itemBuilder: (context) => [
                   PopupMenuItem<_ChatHeaderMenuAction>(
@@ -2352,5 +2461,3 @@ class _TypingIndicatorBubbleState extends State<_TypingIndicatorBubble>
     );
   }
 }
-
-

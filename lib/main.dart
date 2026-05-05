@@ -52,8 +52,10 @@ class _AppLifecycleBootstrapState extends State<_AppLifecycleBootstrap>
         return;
       }
 
-      final dialogContext =
-          PushNotificationService.navigatorKey.currentContext ?? context;
+      final dialogContext = PushNotificationService.navigatorKey.currentContext;
+      if (dialogContext == null || !dialogContext.mounted) {
+        return;
+      }
       final isDeniedForever = permission == LocationPermission.deniedForever;
       final action = await showDialog<_LocationPermissionDialogAction>(
         context: dialogContext,
@@ -112,6 +114,7 @@ class _AppLifecycleBootstrapState extends State<_AppLifecycleBootstrap>
           return MaterialApp(
             debugShowCheckedModeBanner: false,
             navigatorKey: PushNotificationService.navigatorKey,
+            navigatorObservers: [PushNotificationService.routeObserver],
             home: const SessionGatePage(),
             theme: ThemeProvider.lightTheme,
             darkTheme: ThemeProvider.darkTheme,
@@ -326,5 +329,3 @@ class _PermissionInfoRow extends StatelessWidget {
     );
   }
 }
-
-

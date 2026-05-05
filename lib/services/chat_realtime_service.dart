@@ -9,6 +9,9 @@ import 'package:socket_io_client/socket_io_client.dart' as io;
 class ChatRealtimeService {
   ChatRealtimeService._();
 
+  static const String connectedEventType = 'realtime:connected';
+  static const String disconnectedEventType = 'realtime:disconnected';
+
   static final ChatRealtimeService instance = ChatRealtimeService._();
 
   final SessionStorage _sessionStorage = SessionStorage();
@@ -20,6 +23,8 @@ class ChatRealtimeService {
   String? _currentAccessToken;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   bool _hasInternetConnection = true;
+  bool _isEnsuringConnection = false;
+  Timer? _reconnectTimer;
 
   Stream<Map<String, dynamic>> get events => _eventsController.stream;
 
@@ -30,114 +35,129 @@ class ChatRealtimeService {
         break;
       case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:
-        break;
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
-        _disposeSocket();
         break;
     }
   }
 
   Future<void> ensureConnected() async {
-    _ensureConnectivityMonitoring();
-
-    if (!await _syncConnectivityState()) {
-      disconnect();
+    if (_isEnsuringConnection) {
       return;
     }
 
-    final accessToken = await _sessionStorage.getAccessToken();
-    if (accessToken == null || accessToken.isEmpty) {
-      disconnect();
-      return;
-    }
+    _isEnsuringConnection = true;
 
-    if (_socket != null &&
-        _socket!.connected &&
-        _currentAccessToken == accessToken) {
-      return;
-    }
+    try {
+      _ensureConnectivityMonitoring();
 
-    if (_currentAccessToken != accessToken) {
-      _disposeSocket();
-      _currentAccessToken = accessToken;
-    }
+      if (!await _syncConnectivityState()) {
+        disconnect();
+        return;
+      }
 
-    _socket ??= io.io(
-      ApiConfig.socketUrl,
-      io.OptionBuilder()
-          .setTransports(['websocket'])
-          .enableAutoConnect()
-          .enableReconnection()
-          .setAuth({'token': accessToken})
-          .setExtraHeaders({'Authorization': 'Bearer $accessToken'})
-          .build(),
-    );
+      final accessToken = await _sessionStorage.getAccessToken();
+      if (accessToken == null || accessToken.isEmpty) {
+        disconnect();
+        return;
+      }
 
-    _socket!
-      ..off('connect')
-      ..off('disconnect')
-      ..off('connect_error')
-      ..off('conversations:updated')
-      ..off('conversations:typing')
-      ..off('products:updated')
-      ..off('profiles:updated')
-      ..off('notifications:updated')
-      ..off('presence:updated')
-      ..off('live:updated');
+      if (_socket != null &&
+          _socket!.connected &&
+          _currentAccessToken == accessToken) {
+        _cancelReconnectRetry();
+        return;
+      }
 
-    _socket!
-      ..on('connect', (_) {
-        debugPrint('Chat realtime connected');
-      })
-      ..on('disconnect', (_) {
-        debugPrint('Chat realtime disconnected');
-      })
-      ..on('connect_error', (error) {
-        debugPrint('Chat realtime connection error: $error');
-      })
-      ..on('conversations:updated', (payload) {
-        if (payload is Map) {
-          _eventsController.add(Map<String, dynamic>.from(payload));
-        }
-      })
-      ..on('conversations:typing', (payload) {
-        if (payload is Map) {
-          _eventsController.add(Map<String, dynamic>.from(payload));
-        }
-      })
-      ..on('products:updated', (payload) {
-        if (payload is Map) {
-          _eventsController.add(Map<String, dynamic>.from(payload));
-        }
-      })
-      ..on('profiles:updated', (payload) {
-        if (payload is Map) {
-          _eventsController.add(Map<String, dynamic>.from(payload));
-        }
-      })
-      ..on('notifications:updated', (payload) {
-        if (payload is Map) {
-          _eventsController.add(Map<String, dynamic>.from(payload));
-        }
-      })
-      ..on('presence:updated', (payload) {
-        if (payload is Map) {
-          _eventsController.add(Map<String, dynamic>.from(payload));
-        }
-      })
-      ..on('live:updated', (payload) {
-        if (payload is Map) {
-          _eventsController.add(Map<String, dynamic>.from(payload));
-        }
-      });
+      if (_currentAccessToken != accessToken) {
+        _disposeSocket();
+        _currentAccessToken = accessToken;
+      }
 
-    if (!_socket!.connected) {
-      _socket!.connect();
+      _socket ??= io.io(
+        ApiConfig.socketUrl,
+        io.OptionBuilder()
+            .setTransports(['websocket'])
+            .enableAutoConnect()
+            .enableReconnection()
+            .setAuth({'token': accessToken})
+            .setExtraHeaders({'Authorization': 'Bearer $accessToken'})
+            .build(),
+      );
+
+      _socket!
+        ..off('connect')
+        ..off('disconnect')
+        ..off('connect_error')
+        ..off('conversations:updated')
+        ..off('conversations:typing')
+        ..off('products:updated')
+        ..off('profiles:updated')
+        ..off('notifications:updated')
+        ..off('presence:updated')
+        ..off('live:updated');
+
+      _socket!
+        ..on('connect', (_) {
+          debugPrint('Chat realtime connected');
+          _cancelReconnectRetry();
+          _emitSystemEvent(connectedEventType);
+        })
+        ..on('disconnect', (_) {
+          debugPrint('Chat realtime disconnected');
+          _scheduleReconnectRetry();
+          _emitSystemEvent(disconnectedEventType);
+        })
+        ..on('connect_error', (error) {
+          debugPrint('Chat realtime connection error: $error');
+          _scheduleReconnectRetry();
+        })
+        ..on('conversations:updated', (payload) {
+          if (payload is Map) {
+            _eventsController.add(Map<String, dynamic>.from(payload));
+          }
+        })
+        ..on('conversations:typing', (payload) {
+          if (payload is Map) {
+            _eventsController.add(Map<String, dynamic>.from(payload));
+          }
+        })
+        ..on('products:updated', (payload) {
+          if (payload is Map) {
+            _eventsController.add(Map<String, dynamic>.from(payload));
+          }
+        })
+        ..on('profiles:updated', (payload) {
+          if (payload is Map) {
+            _eventsController.add(Map<String, dynamic>.from(payload));
+          }
+        })
+        ..on('notifications:updated', (payload) {
+          if (payload is Map) {
+            _eventsController.add(Map<String, dynamic>.from(payload));
+          }
+        })
+        ..on('presence:updated', (payload) {
+          if (payload is Map) {
+            _eventsController.add(Map<String, dynamic>.from(payload));
+          }
+        })
+        ..on('live:updated', (payload) {
+          if (payload is Map) {
+            _eventsController.add(Map<String, dynamic>.from(payload));
+          }
+        });
+
+      if (!_socket!.connected) {
+        _socket!.connect();
+      }
+    } finally {
+      _isEnsuringConnection = false;
     }
   }
 
   void disconnect() {
+    _cancelReconnectRetry();
     _disposeSocket();
     _currentAccessToken = null;
   }
@@ -170,7 +190,28 @@ class ChatRealtimeService {
       return;
     }
 
+    _cancelReconnectRetry();
     unawaited(ensureConnected());
+  }
+
+  void _scheduleReconnectRetry() {
+    if (!_hasInternetConnection || _currentAccessToken == null) {
+      return;
+    }
+
+    if (_reconnectTimer?.isActive == true) {
+      return;
+    }
+
+    _reconnectTimer = Timer(const Duration(seconds: 2), () {
+      _reconnectTimer = null;
+      unawaited(ensureConnected());
+    });
+  }
+
+  void _cancelReconnectRetry() {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
   }
 
   void emitTyping({
@@ -198,5 +239,8 @@ class ChatRealtimeService {
     }
     _socket = null;
   }
-}
 
+  void _emitSystemEvent(String eventType) {
+    _eventsController.add(<String, dynamic>{'type': eventType});
+  }
+}

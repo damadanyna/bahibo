@@ -100,8 +100,8 @@ class CategoryBlockSkeleton extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             itemCount: 5,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
-            itemBuilder: (_, __) {
+            separatorBuilder: (context, index) => const SizedBox(width: 12),
+            itemBuilder: (context, index) {
               return Container(
                 width: 150,
                 padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -334,7 +334,7 @@ class UserListSkeleton extends StatelessWidget {
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
       itemCount: 5,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      separatorBuilder: (context, index) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
         if (index == 0) {
           return Container(
@@ -387,3 +387,332 @@ class UserListSkeleton extends StatelessWidget {
   }
 }
 
+class MainNavigationMessagesSkeleton extends StatelessWidget {
+  final bool showStories;
+  final bool showInvitationCard;
+
+  const MainNavigationMessagesSkeleton({
+    super.key,
+    this.showStories = true,
+    this.showInvitationCard = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final surfaceColor = theme.cardColor;
+    final errorColor = theme.colorScheme.error;
+    final isDark = theme.brightness == Brightness.dark;
+    final headerBlockColor = isDark
+        ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.38)
+        : theme.colorScheme.surfaceContainerLowest.withValues(alpha: 0.92);
+    final tileColor = isDark
+        ? theme.colorScheme.surfaceContainerHigh.withValues(alpha: 0.36)
+        : surfaceColor;
+    final outlineColor = isDark
+        ? theme.colorScheme.outline.withValues(alpha: 0.16)
+        : theme.colorScheme.outline.withValues(alpha: 0.08);
+    const titleWidths = <double>[168, 144, 176, 136, 158, 149];
+    const previewWidths = <double>[228, 194, 238, 172, 208, 186];
+    const statusWidths = <double>[92, 116, 79, 102, 86, 108];
+    const storyNameWidths = <double>[42, 55, 48, 52, 46];
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+          child: Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: headerBlockColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: outlineColor),
+                ),
+                child: const Center(child: SkeletonBox(width: 14, height: 14)),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(child: SkeletonBox(height: 28, width: 150)),
+              const SizedBox(width: 10),
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: headerBlockColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: outlineColor),
+                ),
+                child: const Center(child: SkeletonBox(width: 14, height: 14)),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+          child: Container(
+            height: 46,
+            decoration: BoxDecoration(
+              color: tileColor,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: outlineColor),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: const Row(
+              children: [
+                SkeletonBox(width: 22, height: 22),
+                SizedBox(width: 12),
+                Expanded(child: SkeletonBox(height: 14)),
+              ],
+            ),
+          ),
+        ),
+        if (showStories) ...[
+          const SizedBox(height: 14),
+          SizedBox(
+            height: 98,
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              scrollDirection: Axis.horizontal,
+              itemCount: 5,
+              separatorBuilder: (context, index) => const SizedBox(width: 14),
+              itemBuilder: (context, index) => SizedBox(
+                width: 72,
+                child: Column(
+                  children: [
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(2.6),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: index.isEven
+                                  ? theme.colorScheme.primary.withValues(
+                                      alpha: 0.9,
+                                    )
+                                  : theme.colorScheme.onSurface.withValues(
+                                      alpha: 0.3,
+                                    ),
+                              width: index.isEven ? 2.2 : 1.1,
+                            ),
+                          ),
+                          child: const SkeletonBox(
+                            width: 56,
+                            height: 56,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const Positioned(
+                          right: 1,
+                          bottom: 1,
+                          child: SkeletonBox(
+                            width: 15,
+                            height: 15,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    SkeletonBox(
+                      width: storyNameWidths[index % storyNameWidths.length],
+                      height: 13,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ] else ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+            child: Container(
+              height: 72,
+              decoration: BoxDecoration(
+                color: tileColor,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: outlineColor),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: const Row(
+                children: [
+                  SkeletonBox(width: 42, height: 42, shape: BoxShape.circle),
+                  SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SkeletonBox(width: 148, height: 15),
+                        SizedBox(height: 8),
+                        SkeletonBox(width: 210, height: 12),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+        if (showInvitationCard)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: tileColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: outlineColor),
+              ),
+              child: const Row(
+                children: [
+                  SkeletonBox(width: 24, height: 24),
+                  SizedBox(width: 10),
+                  Expanded(child: SkeletonBox(width: 188, height: 15)),
+                ],
+              ),
+            ),
+          ),
+        ...List.generate(6, (index) {
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+              14,
+              index == 0 ? 4 : 2,
+              14,
+              index == 5 ? 0 : 2,
+            ),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              decoration: BoxDecoration(
+                color: tileColor,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: outlineColor),
+              ),
+              child: Row(
+                children: [
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: index == 0 || index == 3
+                                ? theme.colorScheme.primary.withValues(
+                                    alpha: 0.82,
+                                  )
+                                : theme.colorScheme.outline.withValues(
+                                    alpha: 0.22,
+                                  ),
+                            width: index == 0 || index == 3 ? 1.8 : 1,
+                          ),
+                        ),
+                        child: const SkeletonBox(
+                          width: 52,
+                          height: 52,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      Positioned(
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          width: 14,
+                          height: 14,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: const SkeletonBox(
+                            width: 14,
+                            height: 14,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            SizedBox(
+                              width: titleWidths[index % titleWidths.length],
+                              child: const SkeletonBox(height: 17),
+                            ),
+                            const SizedBox(width: 12),
+                            SkeletonBox(
+                              width: index.isEven ? 38 : 46,
+                              height: 12,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 5),
+                        if (index == 1)
+                          Row(
+                            children: [
+                              Row(
+                                children: List.generate(
+                                  3,
+                                  (dotIndex) => Padding(
+                                    padding: EdgeInsets.only(
+                                      right: dotIndex == 2 ? 8 : 4,
+                                    ),
+                                    child: const SkeletonBox(
+                                      width: 6,
+                                      height: 6,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SkeletonBox(width: 74, height: 14),
+                            ],
+                          )
+                        else
+                          SkeletonBox(
+                            height: 14,
+                            width: previewWidths[index % previewWidths.length],
+                          ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            SkeletonBox(
+                              width: statusWidths[index % statusWidths.length],
+                              height: 11,
+                            ),
+                            if (index == 0 || index == 3) ...[
+                              const SizedBox(width: 10),
+                              Container(
+                                constraints: const BoxConstraints(minWidth: 20),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: errorColor.withValues(alpha: 0.92),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: const SkeletonBox(width: 12, height: 11),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+}

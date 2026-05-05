@@ -1,0 +1,134 @@
+Liste des endpoints API - Cote administrateur
+
+Base URL: /api/v1
+
+1. GET /api/v1/profiles/admin/shop-requests/pending
+Description:
+- Liste les demandes de creation de boutique en attente.
+- Retourne les informations du compte utilisateur et, si present, le profil vendeur associe.
+Parametres:
+- Path params: aucun
+- Query params: aucun
+- Body: aucun
+
+2. POST /api/v1/profiles/admin/shop-requests/:userId/approve
+Description:
+- Approuve une demande de boutique.
+- Le compte utilisateur passe au role SELLER.
+- Le statut de la demande passe a APPROVED.
+- Cree un seller profile si necessaire.
+Parametres:
+- Path params: userId (string) -> identifiant de l'utilisateur a approuver
+- Query params: aucun
+- Body: aucun
+
+3. POST /api/v1/profiles/admin/shop-requests/:userId/pending
+Description:
+- Remet une demande de boutique a l'etat PENDING.
+- Le compte repasse au role CUSTOMER si possible.
+- Supprime le seller profile si la boutique n'a ni produits ni commandes.
+Parametres:
+- Path params: userId (string) -> identifiant de l'utilisateur a remettre en attente
+- Query params: aucun
+- Body: aucun
+
+4. GET /api/v1/profiles/admin/seller-verification-requests/pending
+Description:
+- Liste les demandes de certification vendeur en attente.
+- Retourne les informations du vendeur et son seller profile.
+Parametres:
+- Path params: aucun
+- Query params: aucun
+- Body: aucun
+
+5. POST /api/v1/profiles/admin/seller-verification-requests/:userId/approve
+Description:
+- Valide la certification d'un vendeur.
+- Le champ isSellerCertified passe a true.
+- Le statut de la demande passe a APPROVED.
+Parametres:
+- Path params: userId (string) -> identifiant du vendeur a certifier
+- Query params: aucun
+- Body: aucun
+
+6. POST /api/v1/profiles/admin/seller-verification-requests/:userId/pending
+Description:
+- Remet une demande de certification vendeur a l'etat PENDING.
+- Retire la certification si elle avait deja ete accordee.
+Parametres:
+- Path params: userId (string) -> identifiant du vendeur a remettre en attente
+- Query params: aucun
+- Body: aucun
+
+7. GET /api/v1/profiles/admin/reports
+Description:
+- Recupere tous les signalements utilisateurs.
+- Inclut le reporter, l'utilisateur signale, la raison, les details et la date de creation.
+Parametres:
+- Path params: aucun
+- Query params: aucun
+- Body: aucun
+
+AUTHENTIFICATION ADMINISTRATEUR
+
+Ces endpoints servent a la connexion et a la gestion de session pour acceder aux routes administrateur.
+
+Headers d'authentification a retenir:
+- Authorization: Bearer <accessToken> -> requis pour les routes protegees comme /api/v1/auth/me et toutes les routes /profiles/admin/*
+- Content-Type: application/json -> requis pour les requetes avec body JSON
+
+8. POST /api/v1/auth/login
+Description:
+- Connecte un administrateur a la plateforme.
+Parametres:
+- Path params: aucun
+- Query params: aucun
+- Body:
+	- phoneE164 (string) -> numero de telephone au format international
+	- password (string) -> mot de passe du compte
+Utilisation:
+- Endpoint de connexion initiale
+- Retour attendu: accessToken et refreshToken
+
+9. POST /api/v1/auth/refresh
+Description:
+- Renouvelle le token d'acces apres connexion.
+Parametres:
+- Path params: aucun
+- Query params: aucun
+- Body:
+	- refreshToken (string) -> token de renouvellement
+Utilisation:
+- Endpoint a utiliser quand l'accessToken expire
+- Retour attendu: nouveau accessToken et parfois un nouveau refreshToken
+
+10. POST /api/v1/auth/logout
+Description:
+- Deconnecte l'utilisateur authentifie.
+Parametres:
+- Path params: aucun
+- Query params: aucun
+- Body:
+	- refreshToken (string) -> token de session a invalider
+Utilisation:
+- Endpoint de fermeture de session
+- Invalide le refreshToken cote serveur
+
+11. GET /api/v1/auth/me
+Description:
+- Retourne le profil de l'utilisateur connecte.
+- Permet de verifier si le compte courant a le role ADMIN.
+Parametres:
+- Path params: aucun
+- Query params: aucun
+- Body: aucun
+Headers:
+- Authorization: Bearer <accessToken>
+Utilisation:
+- Endpoint de verification de session
+- Permet de confirmer que l'utilisateur courant est bien administrateur
+
+Remarque:
+- Toutes les routes /profiles/admin/* necessitent une authentification JWT.
+- L'acces est autorise uniquement aux utilisateurs dont le role est ADMIN.
+- Les endpoints auth proteges utilisent le header Authorization: Bearer <token>.

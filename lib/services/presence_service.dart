@@ -14,10 +14,13 @@ class PresenceService {
   final CatalogApiService _catalogApiService = CatalogApiService();
   final ValueNotifier<int> _version = ValueNotifier<int>(0);
   final Map<String, bool> _presenceByUserId = <String, bool>{};
+  final Map<String, DateTime> _lastSeenByUserId = <String, DateTime>{};
   final Map<String, DateTime> _lastPresenceFetchByUserId = <String, DateTime>{};
+  final Set<String> _watchedUserIds = <String>{};
   final Set<String> _pendingUserIds = <String>{};
 
   Timer? _batchTimer;
+  Timer? _refreshTimer;
   bool _isInitialized = false;
 
   ValueListenable<int> get changes => _version;
@@ -30,6 +33,14 @@ class PresenceService {
     return _presenceByUserId[normalizedUserId];
   }
 
+  DateTime? lastSeenOf(String userId) {
+    final normalizedUserId = userId.trim();
+    if (normalizedUserId.isEmpty) {
+      return null;
+    }
+    return _lastSeenByUserId[normalizedUserId];
+  }
+
   void watchUser(String? userId) {
     final normalizedUserId = userId?.trim() ?? '';
     if (normalizedUserId.isEmpty) {
@@ -37,6 +48,7 @@ class PresenceService {
     }
 
     _ensureInitialized();
+    _watchedUserIds.add(normalizedUserId);
 
     if (_pendingUserIds.contains(normalizedUserId)) {
       return;
@@ -63,8 +75,16 @@ class PresenceService {
 
     _isInitialized = true;
     ChatRealtimeService.instance.ensureConnected();
+    _refreshTimer ??= Timer.periodic(_presenceRefreshInterval, (_) {
+      refreshWatchedUsers(force: true);
+    });
     ChatRealtimeService.instance.events.listen((event) {
       final eventType = event['type']?.toString();
+      if (eventType == ChatRealtimeService.connectedEventType) {
+        refreshWatchedUsers(force: true);
+        return;
+      }
+
       if (eventType != 'presence:updated') {
         return;
       }
@@ -77,6 +97,11 @@ class PresenceService {
       final isOnline = event['isOnline'] == true;
       final currentValue = _presenceByUserId[userId];
       _lastPresenceFetchByUserId[userId] = DateTime.now();
+      if (isOnline) {
+        _lastSeenByUserId.remove(userId);
+      } else {
+        _lastSeenByUserId[userId] = DateTime.now();
+      }
       if (currentValue == isOnline) {
         return;
       }
@@ -84,6 +109,22 @@ class PresenceService {
       _presenceByUserId[userId] = isOnline;
       _version.value += 1;
     });
+  }
+
+  void refreshWatchedUsers({bool force = false}) {
+    if (_watchedUserIds.isEmpty) {
+      return;
+    }
+
+    if (force) {
+      for (final userId in _watchedUserIds) {
+        _lastPresenceFetchByUserId.remove(userId);
+      }
+    }
+
+    for (final userId in _watchedUserIds) {
+      watchUser(userId);
+    }
   }
 
   Future<void> _flushPendingUsers() async {
@@ -103,6 +144,9 @@ class PresenceService {
         }
         _lastPresenceFetchByUserId[userId] = DateTime.now();
         final isOnline = status['isOnline'] == true;
+        if (isOnline) {
+          _lastSeenByUserId.remove(userId);
+        }
         if (_presenceByUserId[userId] == isOnline) {
           continue;
         }
@@ -119,4 +163,3 @@ class PresenceService {
     }
   }
 }
-

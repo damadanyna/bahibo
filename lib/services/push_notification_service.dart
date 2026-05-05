@@ -51,6 +51,8 @@ class PushNotificationService {
       FlutterLocalNotificationsPlugin();
   static final GlobalKey<NavigatorState> navigatorKey =
       GlobalKey<NavigatorState>();
+  static final RouteObserver<ModalRoute<void>> routeObserver =
+      RouteObserver<ModalRoute<void>>();
   static const MethodChannel _nativeNotificationChannel = MethodChannel(
     'banay/notifications',
   );
@@ -60,6 +62,7 @@ class PushNotificationService {
   static bool _initialized = false;
   static bool _isNavigatingFromNotification = false;
   static Map<String, String>? _pendingNotificationData;
+  static String? _visibleConversationId;
 
   static bool get isSupportedPlatform {
     if (kIsWeb) {
@@ -173,6 +176,10 @@ class PushNotificationService {
   }
 
   static Future<void> _handleForegroundMessage(RemoteMessage message) async {
+    if (!_shouldShowForegroundNotification(message)) {
+      return;
+    }
+
     final notification = message.notification;
     final title =
         notification?.title ?? message.data['title']?.toString() ?? 'BANAY';
@@ -199,6 +206,40 @@ class PushNotificationService {
       ),
       payload: message.data.isEmpty ? null : jsonEncode(message.data),
     );
+  }
+
+  static void setVisibleConversation(String? conversationId) {
+    final normalized = conversationId?.trim();
+    _visibleConversationId = normalized == null || normalized.isEmpty
+        ? null
+        : normalized;
+  }
+
+  static bool _shouldShowForegroundNotification(RemoteMessage message) {
+    final visibleConversationId = _visibleConversationId;
+    if (visibleConversationId == null) {
+      return true;
+    }
+
+    final notificationType = message.data['type']
+        ?.toString()
+        .trim()
+        .toLowerCase();
+    final messageConversationId = message.data['conversationId']
+        ?.toString()
+        .trim();
+    final isConversationNotification =
+        messageConversationId != null &&
+        messageConversationId.isNotEmpty &&
+        (notificationType == null ||
+            notificationType.isEmpty ||
+            notificationType == 'chat_message');
+
+    if (!isConversationNotification) {
+      return true;
+    }
+
+    return messageConversationId != visibleConversationId;
   }
 
   static void _handleOpenedAppMessage(RemoteMessage message) {
@@ -386,5 +427,3 @@ class PushNotificationService {
     );
   }
 }
-
-
