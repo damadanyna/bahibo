@@ -34,8 +34,28 @@ export class SearchController {
     };
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Get('autocomplete')
+  async autocomplete(
+    @Req() req: { user: { userId: string } },
+    @Query('q') query?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return {
+      success: true,
+      message: 'Search autocomplete fetched successfully',
+      data: await this.searchService.autocomplete({
+        userId: req.user.userId,
+        query: query ?? '',
+        limit: Number(limit ?? '6'),
+      }),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get()
   async search(
+    @Req() req: { user: { userId: string } },
     @Query('q') query?: string,
     @Query('limit') limit?: string,
   ) {
@@ -43,6 +63,7 @@ export class SearchController {
       success: true,
       message: 'Search results fetched successfully',
       data: await this.searchService.search({
+        userId: req.user.userId,
         query: query ?? '',
         limit: Number(limit ?? '24'),
       }),

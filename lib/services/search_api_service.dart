@@ -5,6 +5,19 @@ class SearchApiService {
 
   final AppApiClient _client;
 
+  Future<Map<String, dynamic>> autocomplete({
+    required String query,
+    int limit = 6,
+  }) async {
+    final data = await _client.get(
+      '/search/autocomplete',
+      queryParameters: {'q': query, 'limit': '$limit'},
+      authenticated: true,
+    );
+
+    return Map<String, dynamic>.from(data as Map);
+  }
+
   Future<Map<String, dynamic>> search({
     required String query,
     int limit = 24,
@@ -12,6 +25,7 @@ class SearchApiService {
     final data = await _client.get(
       '/search',
       queryParameters: {'q': query, 'limit': '$limit'},
+      authenticated: true,
     );
 
     return Map<String, dynamic>.from(data as Map);

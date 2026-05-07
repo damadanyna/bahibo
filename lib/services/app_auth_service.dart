@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'app_api_client.dart';
 import 'api_config.dart';
 import 'chat_realtime_service.dart';
+import 'presence_service.dart';
 import 'push_notification_service.dart';
 import 'session_storage.dart';
 import 'package:http/http.dart' as http;
@@ -195,6 +196,7 @@ class AppAuthService {
 
     if (!hasValidSession) {
       ChatRealtimeService.instance.disconnect();
+      PresenceService.instance.reset();
       return false;
     }
 
@@ -202,6 +204,7 @@ class AppAuthService {
 
     if (refreshToken == null || refreshToken.isEmpty) {
       ChatRealtimeService.instance.disconnect();
+      PresenceService.instance.reset();
       await _sessionStorage.clear();
       return false;
     }
@@ -216,6 +219,7 @@ class AppAuthService {
       return true;
     } on AppApiException {
       ChatRealtimeService.instance.disconnect();
+      PresenceService.instance.reset();
       await _sessionStorage.clear();
       return false;
     }
@@ -236,6 +240,7 @@ class AppAuthService {
     }
 
     ChatRealtimeService.instance.disconnect();
+    PresenceService.instance.reset();
     await _sessionStorage.clear();
   }
 
@@ -254,6 +259,7 @@ class AppAuthService {
           countryDialCode: user['countryDialCode'] as String?,
         )
         .then((_) async {
+          PresenceService.instance.reset();
           try {
             await ChatRealtimeService.instance.ensureConnected();
             await PushNotificationService.syncDeviceTokenIfAuthenticated();
@@ -309,5 +315,3 @@ class AppAuthService {
     return imageUrl;
   }
 }
-
-

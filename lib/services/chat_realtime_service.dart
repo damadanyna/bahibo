@@ -70,7 +70,7 @@ class ChatRealtimeService {
       }
 
       if (_currentAccessToken != accessToken) {
-        _disposeSocket();
+        _disposeSocket(suppressReconnect: true);
         _currentAccessToken = accessToken;
       }
 
@@ -78,6 +78,8 @@ class ChatRealtimeService {
         ApiConfig.socketUrl,
         io.OptionBuilder()
             .setTransports(['websocket'])
+            .enableForceNew()
+            .disableMultiplex()
             .enableAutoConnect()
             .enableReconnection()
             .setAuth({'token': accessToken})
@@ -158,8 +160,8 @@ class ChatRealtimeService {
 
   void disconnect() {
     _cancelReconnectRetry();
-    _disposeSocket();
     _currentAccessToken = null;
+    _disposeSocket(suppressReconnect: true);
   }
 
   void _ensureConnectivityMonitoring() {
@@ -231,9 +233,15 @@ class ChatRealtimeService {
     });
   }
 
-  void _disposeSocket() {
+  void _disposeSocket({bool suppressReconnect = false}) {
     final socket = _socket;
     if (socket != null) {
+      if (suppressReconnect) {
+        socket
+          ..off('connect')
+          ..off('disconnect')
+          ..off('connect_error');
+      }
       socket.disconnect();
       socket.dispose();
     }

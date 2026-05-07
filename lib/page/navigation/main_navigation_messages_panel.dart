@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:banay/auth/phoneNumber.dart';
 import 'package:banay/component/app_page_skeletons.dart';
 import 'package:banay/component/profile_models.dart';
 import 'package:banay/component/navigation/navigation_message_components.dart';
@@ -9,6 +10,7 @@ import 'package:banay/component/user_list_page.dart';
 import 'package:banay/page/chat_page.dart';
 import 'package:banay/page/productDetail.dart';
 import 'package:banay/services/app_api_client.dart';
+import 'package:banay/services/app_auth_service.dart';
 import 'package:banay/services/catalog_api_service.dart';
 import 'package:banay/services/chat_realtime_service.dart';
 import 'package:banay/services/conversations_api_service.dart';
@@ -22,7 +24,7 @@ final ValueNotifier<int> mainNavigationUnreadMessageCountNotifier =
 int get mainNavigationUnreadMessageCount =>
     mainNavigationUnreadMessageCountNotifier.value;
 
-enum _MessagesPanelMenuAction { theme, blockedUsers }
+enum _MessagesPanelMenuAction { theme, blockedUsers, logout }
 
 class MainNavigationMessagesPanel extends StatefulWidget {
   const MainNavigationMessagesPanel({super.key});
@@ -36,6 +38,7 @@ class _MainNavigationMessagesPanelState
     extends State<MainNavigationMessagesPanel> {
   static const Duration _conversationsPollInterval = Duration(seconds: 5);
 
+  final AppAuthService _authService = AppAuthService();
   final ConversationsApiService _conversationsApiService =
       ConversationsApiService();
   final CatalogApiService _catalogApiService = CatalogApiService();
@@ -589,7 +592,61 @@ class _MainNavigationMessagesPanelState
       case _MessagesPanelMenuAction.blockedUsers:
         await _openBlockedUsers();
         return;
+      case _MessagesPanelMenuAction.logout:
+        await _logout();
+        return;
     }
+  }
+
+  Future<bool> _confirmLogout() async {
+    final decision = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Deconnexion'),
+        content: const Text(
+          'Voulez-vous vraiment vous deconnecter de ce compte ?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Deconnecter'),
+          ),
+        ],
+      ),
+    );
+
+    return decision ?? false;
+  }
+
+  Future<void> _logout() async {
+    final shouldLogout = await _confirmLogout();
+    if (!shouldLogout || !mounted) {
+      return;
+    }
+
+    try {
+      await _authService.logout();
+    } on AppApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const PhoneNumberPage()),
+      (route) => false,
+    );
   }
 
   String _conversationTime(Map<String, dynamic> conversation) {
@@ -736,6 +793,13 @@ class _MainNavigationMessagesPanelState
                             child: _MessagesPanelMenuItem(
                               icon: Icons.block_rounded,
                               label: 'Personnes bloquees',
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: _MessagesPanelMenuAction.logout,
+                            child: _MessagesPanelMenuItem(
+                              icon: Icons.logout_rounded,
+                              label: 'Deconnexion',
                             ),
                           ),
                         ],

@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import 'api_config.dart';
 import 'chat_realtime_service.dart';
+import 'presence_service.dart';
 import 'session_storage.dart';
 
 class AppApiException implements Exception {
@@ -153,6 +154,7 @@ class AppApiClient {
     final refreshToken = await _sessionStorage.getRefreshToken();
     if (refreshToken == null || refreshToken.isEmpty) {
       ChatRealtimeService.instance.disconnect();
+      PresenceService.instance.reset();
       await _sessionStorage.clear();
       return false;
     }
@@ -172,6 +174,7 @@ class AppApiClient {
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       ChatRealtimeService.instance.disconnect();
+      PresenceService.instance.reset();
       await _sessionStorage.clear();
       return false;
     }
@@ -193,6 +196,7 @@ class AppApiClient {
         nextRefreshToken == null ||
         nextRefreshToken.isEmpty) {
       ChatRealtimeService.instance.disconnect();
+      PresenceService.instance.reset();
       await _sessionStorage.clear();
       return false;
     }
@@ -208,5 +212,3 @@ class AppApiClient {
     return true;
   }
 }
-
-

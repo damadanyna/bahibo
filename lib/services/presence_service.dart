@@ -41,6 +41,16 @@ class PresenceService {
     return _lastSeenByUserId[normalizedUserId];
   }
 
+  void reset() {
+    _batchTimer?.cancel();
+    _pendingUserIds.clear();
+    _watchedUserIds.clear();
+    _presenceByUserId.clear();
+    _lastSeenByUserId.clear();
+    _lastPresenceFetchByUserId.clear();
+    _version.value += 1;
+  }
+
   void watchUser(String? userId) {
     final normalizedUserId = userId?.trim() ?? '';
     if (normalizedUserId.isEmpty) {
@@ -146,6 +156,8 @@ class PresenceService {
         final isOnline = status['isOnline'] == true;
         if (isOnline) {
           _lastSeenByUserId.remove(userId);
+        } else {
+          _lastSeenByUserId[userId] = DateTime.now();
         }
         if (_presenceByUserId[userId] == isOnline) {
           continue;

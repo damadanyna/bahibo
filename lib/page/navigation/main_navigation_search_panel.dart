@@ -32,9 +32,12 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
   List<Map<String, dynamic>> _categories = const [];
   List<String> _searchHistory = const [];
   final Set<String> _hiddenSearchHistory = <String>{};
+  List<_SearchSuggestion> _autocompleteSuggestions = const [];
   List<_SearchSuggestion> _suggestions = const [];
   Timer? _searchDebounce;
+  bool _isLoadingAutocomplete = false;
   bool _isSearchingApi = false;
+  bool _hasSubmittedSearch = false;
   String? _searchError;
   Map<String, int> _resultCounts = const {
     'products': 0,
@@ -50,7 +53,6 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
     _searchFocusNode.addListener(_handleFocusChanged);
     _loadSearchHistory();
     _refreshCategories();
-    _refreshSearchResults();
   }
 
   Future<void> _loadSearchHistory() async {
@@ -78,17 +80,42 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
   }
 
   void _handleSearchChanged() {
+    final query = _searchController.text.trim();
     _searchDebounce?.cancel();
+    if (query.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _autocompleteSuggestions = const [];
+          _suggestions = const [];
+          _resultCounts = const {
+            'products': 0,
+            'users': 0,
+            'categories': 0,
+            'locations': 0,
+          };
+          _searchError = null;
+          _hasSubmittedSearch = false;
+          _isLoadingAutocomplete = false;
+          _isSearchingApi = false;
+        });
+      }
+      return;
+    }
+
     _searchDebounce = Timer(const Duration(milliseconds: 250), () {
-      _refreshSearchResults();
+      _refreshAutocomplete();
     });
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {
+        _hasSubmittedSearch = false;
+      });
+    }
   }
 
   void _handleFocusChanged() {
     if (_searchFocusNode.hasFocus && _searchController.text.trim().isNotEmpty) {
       _searchDebounce?.cancel();
-      unawaited(_refreshSearchResults());
+      unawaited(_refreshAutocomplete());
     }
 
     if (mounted) {
@@ -96,16 +123,77 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
     }
   }
 
-  Future<void> _refreshSearchResults() async {
+  Future<void> _refreshAutocomplete() async {
     final query = _searchController.text.trim();
 
+    if (query.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _autocompleteSuggestions = const [];
+          _isLoadingAutocomplete = false;
+          _searchError = null;
+        });
+      }
+      return;
+    }
+
     setState(() {
-      _isSearchingApi = true;
+      _isLoadingAutocomplete = true;
       _searchError = null;
     });
 
     try {
-      final response = await _searchApiService.search(query: query);
+      final response = await _searchApiService.autocomplete(query: query);
+      final rawResults = (response['results'] as List?) ?? const [];
+
+      if (!mounted) return;
+
+      setState(() {
+        _autocompleteSuggestions = rawResults
+            .whereType<Map>()
+            .map(
+              (item) =>
+                  _SearchSuggestion.fromApi(Map<String, dynamic>.from(item)),
+            )
+            .toList();
+        _isLoadingAutocomplete = false;
+      });
+    } on AppApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _autocompleteSuggestions = const [];
+        _isLoadingAutocomplete = false;
+        _searchError = error.message;
+      });
+    }
+  }
+
+  Future<void> _executeSearch({String? query, bool unfocus = true}) async {
+    final normalizedQuery = (query ?? _searchController.text).trim();
+    if (normalizedQuery.isEmpty) {
+      return;
+    }
+
+    _searchDebounce?.cancel();
+    if (_searchController.text != normalizedQuery) {
+      _searchController.value = TextEditingValue(
+        text: normalizedQuery,
+        selection: TextSelection.collapsed(offset: normalizedQuery.length),
+      );
+    }
+
+    if (unfocus) {
+      _searchFocusNode.unfocus();
+    }
+
+    setState(() {
+      _isSearchingApi = true;
+      _hasSubmittedSearch = true;
+      _searchError = null;
+    });
+
+    try {
+      final response = await _searchApiService.search(query: normalizedQuery);
       final rawResults = (response['results'] as List?) ?? const [];
       final counts = Map<String, int>.from(
         ((response['counts'] as Map?) ?? const <String, int>{}).map(
@@ -130,6 +218,7 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
           'categories': counts['categories'] ?? 0,
           'locations': counts['locations'] ?? 0,
         };
+        _autocompleteSuggestions = const [];
         _isSearchingApi = false;
       });
     } on AppApiException catch (error) {
@@ -175,6 +264,12 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
     }).toList();
   }
 
+  Future<void> _selectAutocompleteSuggestion(
+    _SearchSuggestion suggestion,
+  ) async {
+    await _executeSearch(query: suggestion.label, unfocus: true);
+  }
+
   void _selectSuggestion(_SearchSuggestion suggestion) {
     _searchController.value = TextEditingValue(
       text: suggestion.label,
@@ -184,12 +279,7 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
   }
 
   Future<void> _repeatSearchFromHistory(String query) async {
-    _searchController.value = TextEditingValue(
-      text: query,
-      selection: TextSelection.collapsed(offset: query.length),
-    );
-    _searchFocusNode.requestFocus();
-    await _refreshSearchResults();
+    await _executeSearch(query: query, unfocus: true);
   }
 
   Future<void> _saveQueryToHistory(String query) async {
@@ -215,6 +305,198 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
     setState(() {
       _hiddenSearchHistory.add(query.trim().toLowerCase());
     });
+  }
+
+  Future<void> _confirmHideSearchHistoryEntry(String query) async {
+    final decision = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Supprimer de l\'historique'),
+        content: Text(
+          'Voulez-vous vraiment supprimer "$query" de votre historique de recherche ?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+
+    if (decision == true && mounted) {
+      _hideSearchHistoryEntry(query);
+    }
+  }
+
+  Widget _buildAutocompleteSection(
+    ThemeData theme,
+    List<_SearchSuggestion> suggestions,
+  ) {
+    final query = _searchController.text.trim();
+
+    if (_isLoadingAutocomplete) {
+      return const Center(
+        child: SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(strokeWidth: 2.2),
+        ),
+      );
+    }
+
+    if (suggestions.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+        decoration: BoxDecoration(
+          color: theme.cardColor,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: theme.appColors.inputBorder),
+        ),
+        child: Text(
+          'Aucune suggestion disponible pour "$query".',
+          style: TextStyle(
+            color: theme.appColors.mutedText,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: theme.appColors.inputBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.people_alt_outlined,
+                size: 18,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Suggestions',
+                style: TextStyle(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ...suggestions.map(
+            (suggestion) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: InkWell(
+                onTap: () => _selectAutocompleteSuggestion(suggestion),
+                borderRadius: BorderRadius.circular(14),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 2,
+                    vertical: 4,
+                  ),
+                  child: Row(
+                    children: [
+                      _buildAutocompleteLeading(theme, suggestion),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              suggestion.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              suggestion.subtitle.isEmpty
+                                  ? suggestion.typeLabel
+                                  : '${suggestion.typeLabel} · ${suggestion.subtitle}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: theme.appColors.mutedText,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Rechercher',
+                        style: TextStyle(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAutocompleteLeading(
+    ThemeData theme,
+    _SearchSuggestion suggestion,
+  ) {
+    switch (suggestion.type) {
+      case _SuggestionType.user:
+        return SizedBox(
+          width: 42,
+          height: 42,
+          child: AppCircleNetworkAvatar(
+            imageUrl: suggestion.imageUrl ?? '',
+            radius: 21,
+            userId: suggestion.id,
+            showPresenceBadge: false,
+          ),
+        );
+      case _SuggestionType.product:
+        return AppNetworkImage(
+          imageUrl: suggestion.imageUrl ?? '',
+          width: 42,
+          height: 42,
+          borderRadius: BorderRadius.circular(12),
+          errorChild: Icon(
+            Icons.inventory_2_outlined,
+            color: theme.appColors.placeholderIcon,
+            size: 22,
+          ),
+        );
+      case _SuggestionType.category:
+      case _SuggestionType.location:
+        return AppImagePlaceholder(
+          width: 42,
+          height: 42,
+          borderRadius: BorderRadius.circular(12),
+          child: Icon(
+            suggestion.icon,
+            color: theme.colorScheme.primary,
+            size: 22,
+          ),
+        );
+    }
   }
 
   Future<void> _openCategoryShortcut(Map<String, dynamic> category) async {
@@ -292,7 +574,7 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
     if (suggestion.type == _SuggestionType.category ||
         suggestion.type == _SuggestionType.location) {
       _searchFocusNode.requestFocus();
-      unawaited(_refreshSearchResults());
+      unawaited(_refreshAutocomplete());
       return;
     }
 
@@ -319,8 +601,12 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final appColors = theme.appColors;
-    final showSuggestions = _searchFocusNode.hasFocus;
+    final showAutocomplete =
+        _searchFocusNode.hasFocus && _searchController.text.trim().isNotEmpty;
+    final showSearchResults =
+        _hasSubmittedSearch && _searchController.text.trim().isNotEmpty;
     final suggestions = _visibleSuggestions;
+    final autocompleteSuggestions = _autocompleteSuggestions;
 
     return Scaffold(
       backgroundColor: appColors.backgroundBase,
@@ -343,9 +629,11 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
                 DynamicIconInput(
                   controller: _searchController,
                   focusNode: _searchFocusNode,
+                  onSubmitted: (_) => _executeSearch(),
                   primary: theme.colorScheme.primary,
                   panelColor: theme.cardColor,
                   borderColor: appColors.inputBorder,
+                  textInputAction: TextInputAction.search,
                   hintText:
                       'Rechercher un utilisateur, produit, categorie ou lieu...',
                   contentPadding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
@@ -368,8 +656,12 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
                     _searchFocusNode.requestFocus();
                   },
                 ),
+                if (showAutocomplete) ...[
+                  const SizedBox(height: 12),
+                  _buildAutocompleteSection(theme, autocompleteSuggestions),
+                ],
                 const SizedBox(height: 20),
-                if (showSuggestions)
+                if (showSearchResults)
                   Expanded(child: _buildSuggestionsPanel(theme, suggestions))
                 else
                   Expanded(
@@ -447,7 +739,7 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
                     ),
                     const SizedBox(width: 6),
                     IconButton(
-                      onPressed: () => _hideSearchHistoryEntry(query),
+                      onPressed: () => _confirmHideSearchHistoryEntry(query),
                       tooltip: 'Masquer cet historique',
                       icon: Icon(
                         Icons.close_rounded,
@@ -869,5 +1161,3 @@ class _SearchSuggestion {
     }
   }
 }
-
-
