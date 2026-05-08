@@ -143,7 +143,9 @@ class _CategoryPageState extends State<CategoryPage>
                 ? ListView.builder(
                     physics: const AlwaysScrollableScrollPhysics(),
                     itemCount: 8,
-                    itemBuilder: (_, __) => const ProductCardSkeleton(),
+                    itemBuilder: (_, _) => const ProductCardSkeleton(
+                      variant: ProductCardVariant.editorial,
+                    ),
                   )
                 : ListView.builder(
                     controller: _scrollController,
@@ -157,7 +159,9 @@ class _CategoryPageState extends State<CategoryPage>
                             child: Column(
                               children: List.generate(
                                 2,
-                                (_) => const ProductCardSkeleton(),
+                                (_) => const ProductCardSkeleton(
+                                  variant: ProductCardVariant.editorial,
+                                ),
                               ),
                             ),
                           );
@@ -176,6 +180,7 @@ class _CategoryPageState extends State<CategoryPage>
 
                       return ProductCard(
                         product: product as Map<String, dynamic>,
+                        variant: ProductCardVariant.editorial,
                       );
                     },
                   ),
@@ -186,4 +191,3 @@ class _CategoryPageState extends State<CategoryPage>
     );
   }
 }
-

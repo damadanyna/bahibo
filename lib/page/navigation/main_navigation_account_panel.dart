@@ -2888,6 +2888,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                   children: [
                     ProductCard(
                       product: product,
+                      variant: ProductCardVariant.marketplace,
                       detailPageBuilder: (product) =>
                           seller_detail.ProductDetailPage(product: product),
                     ),
@@ -3131,5 +3132,3 @@ class _RankedProductEntry {
     required this.growth,
   });
 }
-
-

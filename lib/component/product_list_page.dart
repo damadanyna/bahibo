@@ -269,18 +269,10 @@ class _ProductListPageState extends State<ProductListPage>
                       }
 
                       final product = filteredProducts[index - 1];
-                      return Container(
-                        decoration: BoxDecoration(
-                          color: surfaceColor,
-                          borderRadius: BorderRadius.circular(22),
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(22),
-                          child: ProductCard(
-                            product: product,
-                            detailPageBuilder: widget.detailPageBuilder,
-                          ),
-                        ),
+                      return ProductCard(
+                        product: product,
+                        detailPageBuilder: widget.detailPageBuilder,
+                        variant: ProductCardVariant.editorial,
                       );
                     },
                   ),
@@ -404,4 +396,3 @@ class _ProductListPageState extends State<ProductListPage>
     );
   }
 }
-

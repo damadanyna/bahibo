@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'package:banay/component/app_network_image.dart';
+import 'package:banay/component/ProductCard.dart';
+import 'package:banay/theme/app_theme_extensions.dart';
 
 class SkeletonBox extends StatelessWidget {
   final double? width;
@@ -28,56 +30,140 @@ class SkeletonBox extends StatelessWidget {
 }
 
 class ProductCardSkeleton extends StatelessWidget {
-  const ProductCardSkeleton({super.key});
+  final ProductCardVariant variant;
+
+  const ProductCardSkeleton({
+    super.key,
+    this.variant = ProductCardVariant.editorial,
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final borderColor = theme.brightness == Brightness.dark
-        ? theme.colorScheme.outlineVariant.withValues(alpha: 0.24)
-        : theme.colorScheme.onSurface.withValues(alpha: 0.08);
+    final appColors = theme.appColors;
+    final borderColor = appColors.borderColor.withValues(alpha: 0.55);
+    final isMarketplace = variant == ProductCardVariant.marketplace;
+    final badgeWidth = isMarketplace ? 74.0 : 90.0;
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
         border: Border.all(width: 1, color: borderColor),
-        borderRadius: BorderRadius.circular(10),
-        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(20),
+        color: theme.colorScheme.surface,
+        boxShadow: [
+          BoxShadow(
+            color: theme.colorScheme.shadow.withValues(alpha: 0.08),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(7),
-        child: Row(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Expanded(
-              child: Padding(
-                padding: EdgeInsets.all(8),
-                child: SkeletonBox(width: 70, height: 170),
+            AspectRatio(
+              aspectRatio: 1.42,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  const SkeletonBox(
+                    width: double.infinity,
+                    height: double.infinity,
+                    borderRadius: BorderRadius.zero,
+                  ),
+                  Positioned(
+                    left: 12,
+                    top: 12,
+                    child: _skeletonChip(width: badgeWidth),
+                  ),
+                  const Positioned(
+                    right: 12,
+                    top: 12,
+                    child: SkeletonBox(
+                      width: 40,
+                      height: 40,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  Positioned(
+                    left: 12,
+                    bottom: 12,
+                    child: const SkeletonBox(
+                      width: 34,
+                      height: 34,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  Positioned(
+                    right: isMarketplace ? 64 : 12,
+                    bottom: 12,
+                    child: Row(
+                      children: [
+                        _skeletonChip(width: 52),
+                        const SizedBox(width: 8),
+                        _skeletonChip(width: 52),
+                      ],
+                    ),
+                  ),
+                  if (isMarketplace)
+                    Positioned(
+                      right: 12,
+                      bottom: 12,
+                      child: _skeletonChip(width: 44),
+                    ),
+                ],
               ),
             ),
-            const SizedBox(width: 10),
-            Expanded(
+            const Padding(
+              padding: EdgeInsets.fromLTRB(14, 12, 14, 14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  SkeletonBox(width: 170, height: 20),
-                  SizedBox(height: 4),
+                children: [
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      SkeletonBox(width: 15, height: 15),
-                      SizedBox(width: 4),
-                      SkeletonBox(width: 120, height: 15),
+                      SkeletonBox(width: 108, height: 26),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: SkeletonBox(width: double.infinity, height: 16),
+                      ),
                     ],
                   ),
-                  SizedBox(height: 4),
-                  SkeletonBox(width: 120, height: 15),
-                  SizedBox(height: 30),
-                  SkeletonBox(width: 120, height: 30),
+                  SizedBox(height: 8),
+                  SkeletonBox(width: double.infinity, height: 18),
+                  SizedBox(height: 6),
+                  Row(
+                    children: [
+                      SkeletonBox(
+                        width: 28,
+                        height: 28,
+                        shape: BoxShape.circle,
+                      ),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: SkeletonBox(width: double.infinity, height: 16),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 8),
+                  SkeletonBox(width: 150, height: 16),
                 ],
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _skeletonChip({required double width}) {
+    return SkeletonBox(
+      width: width,
+      height: 26,
+      borderRadius: BorderRadius.circular(999),
     );
   }
 }
@@ -175,10 +261,11 @@ class ProductDetailSkeleton extends StatelessWidget {
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     SkeletonBox(width: 180, height: 18),
-                    SizedBox(height: 8),
-                    SkeletonBox(width: 120, height: 14),
+                    SizedBox(height: 10),
+                    SkeletonBox(width: 210, height: 18),
                   ],
                 ),
               ),

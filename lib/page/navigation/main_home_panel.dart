@@ -26,7 +26,6 @@ class MainHomePanel extends StatefulWidget {
 
 class _MainHomePanelState extends State<MainHomePanel>
     with AppPageRefreshMixin<MainHomePanel> {
-  static const double _bottomContentPadding = 84;
   static const double _offlineBannerBottomOffset = 64;
 
   final CatalogApiService _catalogApiService = CatalogApiService();
@@ -351,7 +350,7 @@ class _MainHomePanelState extends State<MainHomePanel>
   }
 
   Widget buildProductCardLoadig() {
-    return const ProductCardSkeleton();
+    return const ProductCardSkeleton(variant: ProductCardVariant.marketplace);
   }
 
   @override
@@ -389,9 +388,7 @@ class _MainHomePanelState extends State<MainHomePanel>
                     onRefresh: refreshPageWithDialog,
                     child: products.isEmpty && isLoading
                         ? ListView(
-                            padding: const EdgeInsets.only(
-                              bottom: _bottomContentPadding,
-                            ),
+                            padding: EdgeInsets.zero,
                             physics: const AlwaysScrollableScrollPhysics(),
                             children: [
                               _buildFollowedPeopleSection(),
@@ -403,9 +400,7 @@ class _MainHomePanelState extends State<MainHomePanel>
                           )
                         : ListView.builder(
                             controller: _scrollController,
-                            padding: const EdgeInsets.only(
-                              bottom: _bottomContentPadding,
-                            ),
+                            padding: EdgeInsets.zero,
                             physics: const AlwaysScrollableScrollPhysics(),
                             itemCount: products.length + 2,
                             itemBuilder: (context, index) {
@@ -441,6 +436,7 @@ class _MainHomePanelState extends State<MainHomePanel>
                               return ProductCard(
                                 product:
                                     products[index - 1] as Map<String, dynamic>,
+                                variant: ProductCardVariant.marketplace,
                               );
                             },
                           ),
@@ -458,5 +454,3 @@ class _MainHomePanelState extends State<MainHomePanel>
     );
   }
 }
-
-

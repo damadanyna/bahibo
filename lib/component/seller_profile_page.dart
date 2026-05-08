@@ -635,6 +635,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
       widgets.add(
         ProductCard(
           product: profile.products[index],
+          variant: ProductCardVariant.editorial,
           onTap: (initialImageIndex) => _openProductImageViewer(
             profile.products[index],
             productIndex: index,
@@ -1366,5 +1367,3 @@ class _SellerProfilePageState extends State<SellerProfilePage>
     );
   }
 }
-
-
