@@ -2931,22 +2931,34 @@ class _AttachmentUploadProgressGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final columnCount = tasks.length == 1 ? 1 : 2;
 
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: tasks.length,
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: columnCount,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
-        childAspectRatio: columnCount == 1 ? 2.6 : 0.92,
-      ),
-      itemBuilder: (context, index) {
-        return _AttachmentUploadProgressCard(
-          task: tasks[index],
-          primary: primary,
-          cardColor: cardColor,
-          subtleText: subtleText,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const spacing = 8.0;
+        final itemWidth =
+            (constraints.maxWidth - ((columnCount - 1) * spacing)) /
+            columnCount;
+        final compact = columnCount == 1;
+        final mainAxisExtent = compact ? 106.0 : itemWidth + 94;
+
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: tasks.length,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columnCount,
+            crossAxisSpacing: spacing,
+            mainAxisSpacing: spacing,
+            mainAxisExtent: mainAxisExtent,
+          ),
+          itemBuilder: (context, index) {
+            return _AttachmentUploadProgressCard(
+              task: tasks[index],
+              primary: primary,
+              cardColor: cardColor,
+              subtleText: subtleText,
+              compact: compact,
+            );
+          },
         );
       },
     );
@@ -2958,26 +2970,182 @@ class _AttachmentUploadProgressCard extends StatelessWidget {
   final Color primary;
   final Color cardColor;
   final Color subtleText;
+  final bool compact;
 
   const _AttachmentUploadProgressCard({
     required this.task,
     required this.primary,
     required this.cardColor,
     required this.subtleText,
+    this.compact = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final normalizedPercent = task.progressPercent.clamp(1, 100);
     final normalizedProgress = normalizedPercent / 100;
-    final percentLabel = '$normalizedPercent%';
     final isWaitingForConnection =
         task.state == ChatPhotoUploadState.waitingForConnection;
     final isFailed = task.state == ChatPhotoUploadState.failed;
+    final accentColor = isFailed
+        ? Colors.redAccent
+        : (isWaitingForConnection ? const Color(0xFF4FC3F7) : primary);
+    final statusText = isFailed
+        ? 'Echec de l\'envoi'
+        : isWaitingForConnection
+        ? 'Reprise automatique'
+        : 'Remplissage en cours';
+
+    Widget buildPreview({
+      required double borderRadius,
+      required double iconSize,
+    }) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(borderRadius),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.memory(task.previewBytes, fit: BoxFit.cover),
+            Container(color: Colors.black.withValues(alpha: 0.18)),
+            _WaterFillProgressLayer(
+              progress: normalizedProgress,
+              primary: accentColor,
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.48),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.16),
+                  ),
+                ),
+                child: Text(
+                  '$normalizedPercent%',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isFailed
+                        ? Icons.error_outline_rounded
+                        : isWaitingForConnection
+                        ? Icons.wifi_off_rounded
+                        : Icons.cloud_upload_outlined,
+                    color: Colors.white,
+                    size: iconSize,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '$normalizedPercent%',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (compact) {
+      return Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: cardColor,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isFailed
+                ? Colors.redAccent.withValues(alpha: 0.38)
+                : primary.withValues(alpha: 0.24),
+          ),
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 86,
+              height: 86,
+              child: buildPreview(borderRadius: 16, iconSize: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    task.fileName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.96),
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    task.statusLabel,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: subtleText,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(
+                        isFailed
+                            ? Icons.error_rounded
+                            : isWaitingForConnection
+                            ? Icons.autorenew_rounded
+                            : Icons.water_drop_rounded,
+                        size: 14,
+                        color: accentColor,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          statusText,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: accentColor.withValues(alpha: 0.95),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: cardColor,
         borderRadius: BorderRadius.circular(20),
@@ -2987,93 +3155,60 @@ class _AttachmentUploadProgressCard extends StatelessWidget {
               : primary.withValues(alpha: 0.24),
         ),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: SizedBox(
-              width: 58,
-              height: 58,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Image.memory(task.previewBytes, fit: BoxFit.cover),
-                  Container(color: Colors.black.withValues(alpha: 0.18)),
-                  _WaterFillProgressLayer(
-                    progress: normalizedProgress,
-                    primary: isFailed
-                        ? Colors.redAccent
-                        : (isWaitingForConnection
-                              ? const Color(0xFF4FC3F7)
-                              : primary),
-                  ),
-                  Center(
-                    child: Icon(
-                      isFailed
-                          ? Icons.error_outline_rounded
-                          : isWaitingForConnection
-                          ? Icons.wifi_off_rounded
-                          : Icons.cloud_upload_outlined,
-                      color: Colors.white,
-                      size: 22,
-                    ),
-                  ),
-                ],
-              ),
+          AspectRatio(
+            aspectRatio: 1,
+            child: buildPreview(borderRadius: 16, iconSize: 24),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            task.fileName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.96),
+              fontWeight: FontWeight.w800,
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        task.fileName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.96),
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      percentLabel,
-                      style: TextStyle(
-                        color: subtleText,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  task.statusLabel,
-                  maxLines: 2,
+          const SizedBox(height: 3),
+          Text(
+            task.statusLabel,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: subtleText,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Icon(
+                isFailed
+                    ? Icons.error_rounded
+                    : isWaitingForConnection
+                    ? Icons.autorenew_rounded
+                    : Icons.water_drop_rounded,
+                size: 14,
+                color: accentColor,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  statusText,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: subtleText,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                    color: accentColor.withValues(alpha: 0.95),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 10),
-                _WaterFillProgressTrack(
-                  progress: normalizedProgress,
-                  primary: isFailed
-                      ? Colors.redAccent
-                      : (isWaitingForConnection
-                            ? const Color(0xFF4FC3F7)
-                            : primary),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ],
       ),
@@ -3081,172 +3216,335 @@ class _AttachmentUploadProgressCard extends StatelessWidget {
   }
 }
 
-class _WaterFillProgressTrack extends StatelessWidget {
+class _WaterFillProgressLayer extends StatefulWidget {
   final double progress;
-  final Color primary;
-
-  const _WaterFillProgressTrack({
-    required this.progress,
-    required this.primary,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(999),
-      child: SizedBox(
-        height: 12,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Container(color: Colors.white.withValues(alpha: 0.08)),
-            _WaterFillProgressLayer(progress: progress, primary: primary),
-          ],
-      ),
-    );
-  }
-              final accentColor = isFailed
-                  ? Colors.redAccent
-                  : (isWaitingForConnection ? const Color(0xFF4FC3F7) : primary);
-}
-
-                padding: const EdgeInsets.all(10),
   final Color primary;
 
   const _WaterFillProgressLayer({
     required this.progress,
     required this.primary,
-                        ? Colors.redAccent.withValues(alpha: 0.38)
+  });
 
   @override
   State<_WaterFillProgressLayer> createState() =>
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+      _WaterFillProgressLayerState();
+}
 
-                    AspectRatio(
-                      aspectRatio: 1,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            Image.memory(task.previewBytes, fit: BoxFit.cover),
-                            Container(color: Colors.black.withValues(alpha: 0.18)),
-                            _WaterFillProgressLayer(
-                              progress: normalizedProgress,
-                              primary: accentColor,
-                            ),
-                            Positioned(
-                              top: 8,
-                              right: 8,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 5,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withValues(alpha: 0.48),
-                                  borderRadius: BorderRadius.circular(999),
-                                  border: Border.all(
-                                    color: Colors.white.withValues(alpha: 0.16),
-                                  ),
-                                ),
-                                child: Text(
-                                  '$normalizedPercent%',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    isFailed
-                                        ? Icons.error_outline_rounded
-                                        : isWaitingForConnection
-                                        ? Icons.wifi_off_rounded
-                                        : Icons.cloud_upload_outlined,
-                                    color: Colors.white,
-                                    size: 24,
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    '$normalizedPercent%',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
+class _WaterFillProgressLayerState extends State<_WaterFillProgressLayer>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final CurvedAnimation _flowAnimation;
 
   @override
-                    const SizedBox(height: 10),
-                    Text(
-                      task.fileName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.96),
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      task.statusLabel,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: subtleText,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Icon(
-                          isFailed
-                              ? Icons.error_rounded
-                              : isWaitingForConnection
-                              ? Icons.autorenew_rounded
-                              : Icons.water_drop_rounded,
-                          size: 14,
-                          color: accentColor,
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            isFailed
-                                ? 'Echec de l\'envoi'
-                                : isWaitingForConnection
-                                ? 'Reprise automatique'
-                                : 'Remplissage en cours',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: accentColor.withValues(alpha: 0.95),
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2800),
+    );
+    _flowAnimation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeInOutSine,
+    );
+    _controller.repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _flowAnimation,
+      builder: (context, child) {
+        return CustomPaint(
+          painter: _WaterFillPainter(
+            progress: widget.progress.clamp(0, 1),
+            phase: _controller.value,
+            easedPhase: _flowAnimation.value,
+            primary: widget.primary,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _WaterFillPainter extends CustomPainter {
+  final double progress;
+  final double phase;
+  final double easedPhase;
+  final Color primary;
+
+  const _WaterFillPainter({
+    required this.progress,
+    required this.phase,
+    required this.easedPhase,
+    required this.primary,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final clampedProgress = progress.clamp(0.0, 1.0);
+    final fillTop = size.height * (1 - clampedProgress);
+    final liquidRect = Rect.fromLTWH(0, fillTop, size.width, size.height);
+    final bodyPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          primary.withValues(alpha: 0.38),
+          primary.withValues(alpha: 0.7),
+          primary.withValues(alpha: 0.94),
+        ],
+        stops: const [0.0, 0.45, 1.0],
+      ).createShader(Offset.zero & size);
+
+    canvas.drawRect(liquidRect, bodyPaint);
+
+    final depthShadeRect = Rect.fromLTWH(
+      0,
+      fillTop + (size.height * 0.08),
+      size.width,
+      size.height * 0.92,
+    );
+    canvas.drawRect(
+      depthShadeRect,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.transparent,
+            Colors.black.withValues(alpha: 0.05),
+            Colors.black.withValues(alpha: 0.1),
+          ],
+          stops: const [0.0, 0.55, 1.0],
+        ).createShader(depthShadeRect),
+    );
+
+    final pulseOffset =
+        math.sin(easedPhase * 2 * math.pi) * (size.height * 0.012);
+    final frontWaveBase = fillTop + pulseOffset;
+    final backWaveBase = fillTop - (size.height * 0.018) + (pulseOffset * 0.65);
+    final primaryWaveAmplitude = math.max(2.0, size.height * 0.055);
+    final secondaryWaveAmplitude = math.max(1.5, size.height * 0.03);
+    final primaryFrequency = (2 * math.pi * 1.15) / math.max(1, size.width);
+    final secondaryFrequency = (2 * math.pi * 1.9) / math.max(1, size.width);
+    final primaryShift = phase * 2 * math.pi;
+    final secondaryShift = -(phase * 2.8 * math.pi);
+
+    final backWavePath = Path()..moveTo(0, backWaveBase);
+    for (double x = 0; x <= size.width; x += 1) {
+      final y =
+          backWaveBase +
+          math.sin((x * primaryFrequency) + primaryShift) *
+              primaryWaveAmplitude;
+      backWavePath.lineTo(x, y);
+    }
+    backWavePath
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+
+    final backWavePaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Colors.white.withValues(alpha: 0.05),
+          primary.withValues(alpha: 0.16),
+        ],
+      ).createShader(Offset.zero & size);
+    canvas.drawPath(backWavePath, backWavePaint);
+
+    final frontWavePath = Path()..moveTo(0, frontWaveBase);
+    for (double x = 0; x <= size.width; x += 1) {
+      final y =
+          frontWaveBase +
+          math.sin((x * secondaryFrequency) + secondaryShift) *
+              secondaryWaveAmplitude;
+      frontWavePath.lineTo(x, y);
+    }
+    frontWavePath
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+
+    final frontWavePaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Colors.white.withValues(alpha: 0.16),
+          Colors.white.withValues(alpha: 0.03),
+        ],
+      ).createShader(Offset.zero & size);
+    canvas.drawPath(frontWavePath, frontWavePaint);
+
+    final shimmerWidth = size.width * 0.28;
+    final shimmerLeft =
+        ((phase * 1.2) % 1.0) * (size.width + shimmerWidth) - shimmerWidth;
+    final shimmerRect = Rect.fromLTWH(
+      shimmerLeft,
+      fillTop,
+      shimmerWidth,
+      size.height - fillTop,
+    );
+    canvas.save();
+    canvas.clipRect(liquidRect);
+    canvas.drawRect(
+      shimmerRect,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: 0.0),
+            Colors.white.withValues(alpha: 0.07),
+            Colors.white.withValues(alpha: 0.16),
+            Colors.white.withValues(alpha: 0.0),
+          ],
+          stops: const [0.0, 0.28, 0.58, 1.0],
+        ).createShader(shimmerRect),
+    );
+    canvas.restore();
+
+    final surfaceHighlight = Path()..moveTo(0, frontWaveBase);
+    for (double x = 0; x <= size.width; x += 1) {
+      final y =
+          frontWaveBase +
+          math.sin((x * secondaryFrequency) + secondaryShift) *
+              secondaryWaveAmplitude;
+      surfaceHighlight.lineTo(x, y);
+    }
+
+    canvas.drawPath(
+      surfaceHighlight,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.25
+        ..color = Colors.white.withValues(alpha: 0.26),
+    );
+
+    final foamPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round
+      ..color = Colors.white.withValues(alpha: 0.18);
+    for (int index = 0; index < 5; index++) {
+      final x = ((index * 0.21) + (phase * 0.35)) % 1.0 * size.width;
+      final arcWidth = size.width * (0.05 + (index * 0.006));
+      final arcRect = Rect.fromCenter(
+        center: Offset(x, frontWaveBase + (index.isEven ? -1.5 : 1.5)),
+        width: arcWidth,
+        height: size.height * 0.024,
+      );
+      canvas.drawArc(arcRect, math.pi * 1.04, math.pi * 0.88, false, foamPaint);
+    }
+
+    final bubblePaint = Paint()..style = PaintingStyle.fill;
+    final bubbleData =
+        <(double xFactor, double yFactor, double radiusFactor, double speed)>{
+          (0.18, 0.22, 0.02, 0.85),
+          (0.34, 0.58, 0.016, 1.1),
+          (0.56, 0.36, 0.024, 0.74),
+          (0.73, 0.68, 0.015, 1.25),
+          (0.86, 0.44, 0.018, 0.93),
+        };
+    canvas.save();
+    canvas.clipRect(liquidRect);
+    for (final bubble in bubbleData) {
+      final travel = ((phase * bubble.$4) + bubble.$2) % 1.0;
+      final bubbleY = size.height - (travel * (size.height - fillTop));
+      if (bubbleY < fillTop + 6) {
+        continue;
+      }
+      final horizontalDrift =
+          math.sin((phase * 2 * math.pi) + (bubble.$1 * 9)) *
+          (size.width * 0.012);
+      final center = Offset(
+        (bubble.$1 * size.width) + horizontalDrift,
+        bubbleY,
+      );
+      final radius = math.max(1.6, size.width * bubble.$3);
+      bubblePaint.color = Colors.white.withValues(alpha: 0.14);
+      canvas.drawCircle(center, radius, bubblePaint);
+      canvas.drawCircle(
+        center.translate(-radius * 0.25, -radius * 0.25),
+        radius * 0.38,
+        Paint()..color = Colors.white.withValues(alpha: 0.2),
+      );
+      canvas.drawCircle(
+        center,
+        radius,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.8
+          ..color = Colors.white.withValues(alpha: 0.22),
+      );
+    }
+    canvas.restore();
+
+    final glowRect = Rect.fromLTWH(
+      0,
+      fillTop - (size.height * 0.08),
+      size.width,
+      size.height * 0.22,
+    );
+    canvas.drawRect(
+      glowRect,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.white.withValues(alpha: 0.12),
+            Colors.white.withValues(alpha: 0.0),
+          ],
+        ).createShader(glowRect),
+    );
+  }
+
+  @override
   bool shouldRepaint(covariant _WaterFillPainter oldDelegate) {
     return oldDelegate.progress != progress ||
         oldDelegate.phase != phase ||
+        oldDelegate.easedPhase != easedPhase ||
         oldDelegate.primary != primary;
   }
 }
 
+class _ChatDeliveryPresentation {
+  final String label;
+  final IconData icon;
+  final Color color;
+
+  const _ChatDeliveryPresentation({
+    required this.label,
+    required this.icon,
+    required this.color,
+  });
+
+  static _ChatDeliveryPresentation? fromState(
+    _ChatMessageDeliveryState? state,
+    Color primary,
+    Color fallbackColor,
+  ) {
+    switch (state) {
+      case _ChatMessageDeliveryState.sending:
+        return _ChatDeliveryPresentation(
+          label: 'Envoi',
+          icon: Icons.schedule_rounded,
+          color: fallbackColor,
+        );
+      case _ChatMessageDeliveryState.sent:
+        return _ChatDeliveryPresentation(
+          label: 'Envoye',
+          icon: Icons.done_rounded,
           color: fallbackColor,
         );
       case _ChatMessageDeliveryState.seen:
@@ -3291,17 +3589,14 @@ class _InlineProductSnapshotCard extends StatelessWidget {
       );
     }
 
-    final appColors = Theme.of(context).appColors;
     final surfaceColor = isMine
-        ? primary.withValues(alpha: 0.18)
-        : appColors.panelMuted;
+        ? primary.withValues(alpha: 0.08)
+        : cardColor.withValues(alpha: 0.92);
     final borderColor = isMine
-        ? primary.withValues(alpha: 0.26)
-        : appColors.inputBorder;
-    final titleColor = isMine
-        ? Theme.of(context).appColors.heroForeground
-        : Theme.of(context).colorScheme.onSurface;
-    final priceColor = isMine ? Colors.white : primary;
+        ? primary.withValues(alpha: 0.22)
+        : Colors.white.withValues(alpha: 0.08);
+    final titleColor = Colors.white.withValues(alpha: 0.96);
+    final priceColor = isMine ? primary : const Color(0xFFF8D66D);
 
     return Material(
       color: Colors.transparent,
