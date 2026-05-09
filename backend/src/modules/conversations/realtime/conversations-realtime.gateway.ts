@@ -74,7 +74,13 @@ type ProductRealtimePayload = {
   type: 'product:updated';
   productId: string;
   actorUserId: string;
-  action: 'liked' | 'unliked' | 'commented' | 'shared';
+  action:
+    | 'liked'
+    | 'unliked'
+    | 'commented'
+    | 'shared'
+    | 'updated'
+    | 'availability_changed';
   product: Record<string, unknown>;
   comment?: Record<string, unknown> | null;
 };

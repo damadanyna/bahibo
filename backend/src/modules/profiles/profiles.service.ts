@@ -538,7 +538,7 @@ export class ProfilesService {
     }
 
     const sellerStats = await this.buildSellerStats(sellerProfileId);
-    return presentPublicSellerProfile(sellerProfile, sellerStats, false);
+    return presentPublicSellerProfile(sellerProfile, sellerStats, false, false);
   }
 
   async getPublicSellerProfileForViewer(sellerProfileId: string, viewerUserId: string) {
@@ -592,6 +592,7 @@ export class ProfilesService {
       sellerProfile,
       sellerStats,
       existingFollow != null,
+      sellerProfile.userId === viewerUserId,
     );
   }
 

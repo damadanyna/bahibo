@@ -91,11 +91,13 @@ export function presentUserProfile(user: UserProfileRecord, sellerStats?: Seller
       : [product.imageUrl],
     id: product.id,
     title: product.title,
+    description: product.description,
     category: product.category.name,
     price: product.priceAmount.toNumber(),
     thumbnail:
       product.productImages[0]?.imageUrl ??
       product.imageUrl,
+    isAvailable: product.isAvailable,
     likesCount: product._count.likes,
     createdAt: product.createdAt.toISOString(),
   })) ?? [];
@@ -151,6 +153,7 @@ export function presentPublicSellerProfile(
   profile: PublicSellerProfileRecord,
   sellerStats?: SellerStats,
   isFollowing = false,
+  includeUnavailableProducts = false,
 ) {
   const resolvedSellerStats: SellerStats = sellerStats ?? {
     followerCount: 0,
@@ -173,19 +176,22 @@ export function presentPublicSellerProfile(
     productCount: resolvedSellerStats.productCount,
     sellerStats: resolvedSellerStats,
     isFollowing,
-    products: profile.products.map((product) => ({
-      id: product.id,
-      title: product.title,
-      description: product.description,
-      category: product.category.name,
-      price: product.priceAmount.toNumber(),
-      images: product.productImages.length > 0
-        ? product.productImages.map((image) => image.imageUrl)
-        : [product.imageUrl],
-      thumbnail: product.productImages[0]?.imageUrl ?? product.imageUrl,
-      likesCount: product._count.likes,
-      createdAt: product.createdAt.toISOString(),
-    })),
+    products: profile.products
+      .filter((product) => includeUnavailableProducts || product.isAvailable)
+      .map((product) => ({
+        id: product.id,
+        title: product.title,
+        description: product.description,
+        category: product.category.name,
+        price: product.priceAmount.toNumber(),
+        images: product.productImages.length > 0
+          ? product.productImages.map((image) => image.imageUrl)
+          : [product.imageUrl],
+        thumbnail: product.productImages[0]?.imageUrl ?? product.imageUrl,
+        isAvailable: product.isAvailable,
+        likesCount: product._count.likes,
+        createdAt: product.createdAt.toISOString(),
+      })),
     isVerified: profile.user.isVerified,
     isSellerCertified: profile.user.isSellerCertified,
     owner: {

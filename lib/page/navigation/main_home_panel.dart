@@ -4,10 +4,14 @@ import 'package:banay/component/app_page_refresh.dart';
 import 'package:banay/component/app_page_skeletons.dart';
 import 'package:banay/component/profile_models.dart';
 import 'package:banay/component/seller_profile_page.dart';
+import 'package:banay/component/ui/dinamic_icon_input.dart';
 import 'package:banay/component/ui/dinamic_followed_people_h_list.dart';
 import 'package:banay/component/user_profile_page.dart';
+import 'package:banay/page/live/live_preview_page.dart';
 import 'package:banay/page/notifications_page.dart';
 import 'package:banay/page/live/live_watch_page.dart';
+import 'package:banay/services/app_api_client.dart';
+import 'package:banay/services/app_auth_service.dart';
 import 'package:banay/services/catalog_api_service.dart';
 import 'package:banay/services/chat_realtime_service.dart';
 import 'package:banay/services/notifications_api_service.dart';
@@ -28,6 +32,7 @@ class _MainHomePanelState extends State<MainHomePanel>
     with AppPageRefreshMixin<MainHomePanel> {
   static const double _offlineBannerBottomOffset = 64;
 
+  final AppAuthService _authService = AppAuthService();
   final CatalogApiService _catalogApiService = CatalogApiService();
   final NotificationsApiService _notificationsApiService =
       NotificationsApiService();
@@ -43,12 +48,20 @@ class _MainHomePanelState extends State<MainHomePanel>
   final int limit = 6;
   bool isLoading = false;
   bool hasMore = true;
+  bool _isSeller = false;
   bool _isLoadingFollowedPeople = true;
+  String _currentDisplayName = 'Boutique BANAY';
+
+  bool _isProductAvailable(Map<String, dynamic> product) {
+    final value = product['isAvailable'];
+    return value is bool ? value : true;
+  }
 
   @override
   void initState() {
     super.initState();
     initializePageRefresh();
+    _loadCurrentUserRole();
     fetchFollowedPeople();
     fetchProducts();
     fetchNotifications();
@@ -107,10 +120,30 @@ class _MainHomePanelState extends State<MainHomePanel>
     await fetchFollowedPeople();
     await fetchProducts();
     await fetchNotifications();
+    await _loadCurrentUserRole();
 
     if (_scrollController.hasClients) {
       _scrollController.jumpTo(0);
     }
+  }
+
+  Future<void> _loadCurrentUserRole() async {
+    try {
+      final user = await _authService.fetchCurrentUser();
+      if (!mounted) {
+        return;
+      }
+
+      final role =
+          (user['role'] as String?)?.trim().toUpperCase() ?? 'CUSTOMER';
+      final displayName = (user['displayName'] as String?)?.trim();
+      setState(() {
+        _isSeller = role == 'SELLER';
+        _currentDisplayName = displayName != null && displayName.isNotEmpty
+            ? displayName
+            : _currentDisplayName;
+      });
+    } catch (_) {}
   }
 
   Future<void> fetchProducts() async {
@@ -122,14 +155,20 @@ class _MainHomePanelState extends State<MainHomePanel>
         limit: limit,
         skip: skip,
       );
-      final List<dynamic> newProducts = List<dynamic>.from(
-        data['products'] as List? ?? const [],
-      );
+      final List<Map<String, dynamic>> newProducts =
+          ((data['products'] as List?) ?? const [])
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .where(_isProductAvailable)
+              .toList();
 
       if (!mounted) return;
 
       setState(() {
         skip += limit;
+        products.removeWhere(
+          (item) => item is Map<String, dynamic> && !_isProductAvailable(item),
+        );
         products.addAll(newProducts);
         hasMore =
             products.length < ((data['total'] as int?) ?? products.length);
@@ -282,17 +321,26 @@ class _MainHomePanelState extends State<MainHomePanel>
   }
 
   Widget _buildFollowedPeopleSection() {
-    if (_isLoadingFollowedPeople) {
-      return const FollowedPeopleHListSkeleton();
-    }
-
-    return DinamicFollowedPeopleHList(
-      people: followedPeople,
-      title: 'Vos abonnements',
-      emptyTitle: 'Aucun abonnement pour le moment',
-      emptyMessage: 'Abonnez-vous a des boutiques pour les retrouver ici.',
-      onPersonTap: _openFollowedPerson,
-      onLiveTap: _openFollowedPersonLive,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_isSeller) ...[
+          _buildSellerLiveButton(Theme.of(context)),
+          const SizedBox(height: 4),
+        ],
+        if (_isLoadingFollowedPeople)
+          const FollowedPeopleHListSkeleton()
+        else
+          DinamicFollowedPeopleHList(
+            people: followedPeople,
+            title: 'Vos abonnements',
+            emptyTitle: 'Aucun abonnement pour le moment',
+            emptyMessage:
+                'Abonnez-vous a des boutiques pour les retrouver ici.',
+            onPersonTap: _openFollowedPerson,
+            onLiveTap: _openFollowedPersonLive,
+          ),
+      ],
     );
   }
 
@@ -353,10 +401,246 @@ class _MainHomePanelState extends State<MainHomePanel>
     return const ProductCardSkeleton(variant: ProductCardVariant.marketplace);
   }
 
+  Future<void> _openLivePreview(String title, String category) async {
+    Map<String, dynamic>? liveInfo;
+    var liveStarted = false;
+
+    try {
+      liveInfo = await _catalogApiService.startCurrentUserLive(
+        title: title,
+        category: category,
+      );
+      liveStarted = true;
+
+      final liveUrl = liveInfo['url']?.toString().trim() ?? '';
+      final liveToken = liveInfo['token']?.toString().trim() ?? '';
+      final roomName = liveInfo['roomName']?.toString().trim() ?? '';
+
+      if (liveUrl.isEmpty || liveToken.isEmpty || roomName.isEmpty) {
+        throw AppApiException(
+          'La configuration LiveKit du serveur est incomplete.',
+        );
+      }
+
+      await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => LivePreviewPage(
+            title: liveInfo?['title']?.toString() ?? title,
+            category: liveInfo?['category']?.toString() ?? category,
+            liveUrl: liveUrl,
+            liveToken: liveToken,
+            roomName: roomName,
+          ),
+        ),
+      );
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Impossible de demarrer le live pour le moment.'),
+        ),
+      );
+    } finally {
+      if (liveStarted) {
+        try {
+          await _catalogApiService.stopCurrentUserLive();
+        } catch (_) {}
+      }
+    }
+  }
+
+  Future<void> _showLaunchLiveSheet() async {
+    final titleController = TextEditingController(
+      text: '$_currentDisplayName en direct',
+    );
+    final categoryController = TextEditingController(
+      text: 'Presentation produit',
+    );
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        final theme = Theme.of(sheetContext);
+        final accentColor = theme.colorScheme.primary;
+        final panelColor = theme.appColors.backgroundBase;
+        final liveColor = theme.colorScheme.secondary;
+
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 16,
+          ),
+          child: Container(
+            decoration: BoxDecoration(
+              color: panelColor,
+              borderRadius: BorderRadius.circular(28),
+            ),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: theme.dividerColor,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: liveColor.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Icon(Icons.live_tv_rounded, color: liveColor),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Creer un live',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Prepare ton direct et rends-le visible tout de suite.',
+                            style: TextStyle(color: theme.appColors.mutedText),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                DynamicIconInput(
+                  controller: titleController,
+                  primary: accentColor,
+                  panelColor: panelColor,
+                  borderColor: accentColor.withOpacity(0.12),
+                  hintText: 'Titre du live',
+                  leadingIcon: Icon(
+                    Icons.mic_external_on_outlined,
+                    color: accentColor,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DynamicIconInput(
+                  controller: categoryController,
+                  primary: accentColor,
+                  panelColor: panelColor,
+                  borderColor: accentColor.withOpacity(0.12),
+                  hintText: 'Theme ou categorie',
+                  leadingIcon: Icon(Icons.sell_outlined, color: accentColor),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      final liveTitle = titleController.text.trim();
+                      final liveCategory = categoryController.text.trim();
+
+                      if (liveTitle.isEmpty) {
+                        ScaffoldMessenger.of(sheetContext).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Ajoute un titre pour lancer le live.',
+                            ),
+                          ),
+                        );
+                        return;
+                      }
+
+                      if (liveCategory.isEmpty) {
+                        ScaffoldMessenger.of(sheetContext).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Ajoute une categorie pour lancer le live.',
+                            ),
+                          ),
+                        );
+                        return;
+                      }
+
+                      Navigator.of(sheetContext).pop();
+                      _openLivePreview(liveTitle, liveCategory);
+                    },
+                    icon: const Icon(Icons.live_tv_rounded, size: 18),
+                    label: const Text('Lancer le live'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: accentColor,
+                      foregroundColor: theme.colorScheme.onPrimary,
+                      minimumSize: const Size.fromHeight(52),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSellerLiveButton(ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: _showLaunchLiveSheet,
+          icon: const Icon(Icons.live_tv_rounded, size: 18),
+          label: const Text('Lancer un live'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green.withValues(alpha: 0.25),
+            foregroundColor: theme.colorScheme.onPrimary,
+            minimumSize: const Size.fromHeight(48),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final appColors = theme.appColors;
+    final visibleProducts = products
+        .whereType<Map<String, dynamic>>()
+        .where(_isProductAvailable)
+        .toList(growable: false);
 
     return Scaffold(
       backgroundColor: appColors.authBackground,
@@ -386,7 +670,7 @@ class _MainHomePanelState extends State<MainHomePanel>
                 children: [
                   RefreshIndicator(
                     onRefresh: refreshPageWithDialog,
-                    child: products.isEmpty && isLoading
+                    child: visibleProducts.isEmpty && isLoading
                         ? ListView(
                             padding: EdgeInsets.zero,
                             physics: const AlwaysScrollableScrollPhysics(),
@@ -402,13 +686,13 @@ class _MainHomePanelState extends State<MainHomePanel>
                             controller: _scrollController,
                             padding: EdgeInsets.zero,
                             physics: const AlwaysScrollableScrollPhysics(),
-                            itemCount: products.length + 2,
+                            itemCount: visibleProducts.length + 2,
                             itemBuilder: (context, index) {
                               if (index == 0) {
                                 return _buildFollowedPeopleSection();
                               }
 
-                              if (index == products.length + 1) {
+                              if (index == visibleProducts.length + 1) {
                                 if (isLoading) {
                                   return Padding(
                                     padding: const EdgeInsets.symmetric(
@@ -434,8 +718,7 @@ class _MainHomePanelState extends State<MainHomePanel>
                               }
 
                               return ProductCard(
-                                product:
-                                    products[index - 1] as Map<String, dynamic>,
+                                product: visibleProducts[index - 1],
                                 variant: ProductCardVariant.marketplace,
                               );
                             },

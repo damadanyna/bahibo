@@ -16,6 +16,7 @@ class ProductCard extends StatefulWidget {
   final Widget Function(Map<String, dynamic> product)? detailPageBuilder;
   final ValueChanged<int>? onTap;
   final ProductCardVariant variant;
+  final Widget? topRightOverlay;
 
   const ProductCard({
     super.key,
@@ -23,6 +24,7 @@ class ProductCard extends StatefulWidget {
     this.detailPageBuilder,
     this.onTap,
     this.variant = ProductCardVariant.editorial,
+    this.topRightOverlay,
   });
 
   Widget buildDetailPage([Map<String, dynamic>? resolvedProduct]) {
@@ -460,6 +462,7 @@ class _ProductCardState extends State<ProductCard> {
         final screenWidth = MediaQuery.sizeOf(context).width;
         final mutedColor = Colors.white.withValues(alpha: 0.84);
         const accentGreen = Color(0xFF159A52);
+        const unavailableAccent = Color(0xFFD84343);
         final favoriteColor = appColors.favoriteAccent;
         final descriptionFontSize = screenWidth < 360 ? 10.5 : 11.0;
         final publicationFontSize = screenWidth < 360 ? 10.5 : 11.0;
@@ -498,7 +501,11 @@ class _ProductCardState extends State<ProductCard> {
             margin: const EdgeInsets.symmetric(vertical: 6),
             decoration: BoxDecoration(
               color: surfaceColor,
-              border: Border.all(color: borderColor.withValues(alpha: 0.32)),
+              border: Border.all(
+                color: (isAvailable ? borderColor : unavailableAccent)
+                    .withValues(alpha: isAvailable ? 0.32 : 0.72),
+                width: isAvailable ? 1 : 1.4,
+              ),
               boxShadow: [
                 BoxShadow(
                   color: theme.colorScheme.shadow.withValues(alpha: 0.08),
@@ -513,6 +520,7 @@ class _ProductCardState extends State<ProductCard> {
                   _buildImageHero(
                     resolvedProduct,
                     badgeLabel: badgeLabel,
+                    isAvailable: isAvailable,
                     isSellerCertified: isSellerCertified,
                     likesCount: likesCount,
                     commentsCount: commentsCount,
@@ -565,15 +573,26 @@ class _ProductCardState extends State<ProductCard> {
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(999),
                                   border: Border.all(
-                                    color: accentGreen.withValues(alpha: 0.7),
+                                    color:
+                                        (isAvailable
+                                                ? accentGreen
+                                                : unavailableAccent)
+                                            .withValues(alpha: 0.7),
                                   ),
+                                  color: isAvailable
+                                      ? Colors.transparent
+                                      : unavailableAccent.withValues(
+                                          alpha: 0.14,
+                                        ),
                                 ),
                                 child: Text(
                                   categoryLabel.toUpperCase(),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: theme.textTheme.labelSmall?.copyWith(
-                                    color: accentGreen,
+                                    color: isAvailable
+                                        ? accentGreen
+                                        : unavailableAccent,
                                     fontSize: 11,
                                     fontWeight: FontWeight.w800,
                                     letterSpacing: 0.4,
@@ -582,6 +601,47 @@ class _ProductCardState extends State<ProductCard> {
                               ),
                             ],
                           ),
+                          if (!isAvailable) ...[
+                            const SizedBox(height: 10),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: unavailableAccent.withValues(
+                                  alpha: 0.18,
+                                ),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: unavailableAccent.withValues(
+                                    alpha: 0.46,
+                                  ),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.visibility_off_rounded,
+                                    size: 18,
+                                    color: Colors.white,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Produit actuellement indisponible',
+                                      style: theme.textTheme.labelLarge
+                                          ?.copyWith(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 8),
                           Text(
                             primaryLine,
@@ -705,6 +765,7 @@ class _ProductCardState extends State<ProductCard> {
   Widget _buildImageHero(
     Map<String, dynamic> resolvedProduct, {
     required String badgeLabel,
+    required bool isAvailable,
     required bool isSellerCertified,
     required int likesCount,
     required int commentsCount,
@@ -741,13 +802,52 @@ class _ProductCardState extends State<ProductCard> {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Colors.transparent,
-                  Colors.transparent,
+                  !isAvailable
+                      ? Colors.black.withValues(alpha: 0.22)
+                      : Colors.transparent,
+                  !isAvailable
+                      ? const Color(0xFFD84343).withValues(alpha: 0.12)
+                      : Colors.transparent,
                   appColors.scrimSoft.withValues(alpha: 0.18),
                 ],
               ),
             ),
           ),
+          if (!isAvailable)
+            Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 22,
+                  vertical: 16,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD84343).withValues(alpha: 0.76),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.18),
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.visibility_off_rounded,
+                      color: Colors.white,
+                      size: 34,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Produit indisponible',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           Positioned(
             left: 12,
             top: 12,
@@ -773,7 +873,9 @@ class _ProductCardState extends State<ProductCard> {
               ),
             ),
           ),
-          if (isSellerCertified)
+          if (widget.topRightOverlay != null)
+            Positioned(right: 12, top: 12, child: widget.topRightOverlay!)
+          else if (isSellerCertified)
             const Positioned(
               right: 12,
               top: 12,

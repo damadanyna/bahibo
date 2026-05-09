@@ -386,41 +386,44 @@ export class SearchService {
     viewerContext: ViewerSearchContext | null,
   ) {
     const fetchTake = Math.min(take * 3, 60);
-    const where = query
-      ? {
-          OR: [
-            { title: { contains: query, mode: 'insensitive' as const } },
-            { description: { contains: query, mode: 'insensitive' as const } },
-            {
-              category: {
-                name: { contains: query, mode: 'insensitive' as const },
-              },
-            },
-            {
-              sellerProfile: {
-                studioName: { contains: query, mode: 'insensitive' as const },
-              },
-            },
-            {
-              sellerProfile: {
-                city: { contains: query, mode: 'insensitive' as const },
-              },
-            },
-            {
-              sellerProfile: {
-                country: { contains: query, mode: 'insensitive' as const },
-              },
-            },
-            {
-              sellerProfile: {
-                user: {
-                  displayName: { contains: query, mode: 'insensitive' as const },
+    const where = {
+      isAvailable: true,
+      ...(query
+        ? {
+            OR: [
+              { title: { contains: query, mode: 'insensitive' as const } },
+              { description: { contains: query, mode: 'insensitive' as const } },
+              {
+                category: {
+                  name: { contains: query, mode: 'insensitive' as const },
                 },
               },
-            },
-          ],
-        }
-      : undefined;
+              {
+                sellerProfile: {
+                  studioName: { contains: query, mode: 'insensitive' as const },
+                },
+              },
+              {
+                sellerProfile: {
+                  city: { contains: query, mode: 'insensitive' as const },
+                },
+              },
+              {
+                sellerProfile: {
+                  country: { contains: query, mode: 'insensitive' as const },
+                },
+              },
+              {
+                sellerProfile: {
+                  user: {
+                    displayName: { contains: query, mode: 'insensitive' as const },
+                  },
+                },
+              },
+            ],
+          }
+        : {}),
+    };
 
     const products = await this.prisma.product.findMany({
       where,

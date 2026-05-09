@@ -46,6 +46,23 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
     'locations': 0,
   };
 
+  bool _isVisibleSuggestionPayload(Map<String, dynamic> item) {
+    final rawType = (item['type'] as String? ?? '').trim().toLowerCase();
+    if (rawType != 'product') {
+      return true;
+    }
+
+    final rawProductData = item['productData'];
+    if (rawProductData is Map) {
+      final productData = Map<String, dynamic>.from(rawProductData);
+      final value = productData['isAvailable'];
+      return value is bool ? value : true;
+    }
+
+    final value = item['isAvailable'];
+    return value is bool ? value : true;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -144,17 +161,17 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
 
     try {
       final response = await _searchApiService.autocomplete(query: query);
-      final rawResults = (response['results'] as List?) ?? const [];
+      final rawResults = ((response['results'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .where(_isVisibleSuggestionPayload)
+          .toList(growable: false);
 
       if (!mounted) return;
 
       setState(() {
         _autocompleteSuggestions = rawResults
-            .whereType<Map>()
-            .map(
-              (item) =>
-                  _SearchSuggestion.fromApi(Map<String, dynamic>.from(item)),
-            )
+            .map(_SearchSuggestion.fromApi)
             .toList();
         _isLoadingAutocomplete = false;
       });
@@ -194,7 +211,11 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
 
     try {
       final response = await _searchApiService.search(query: normalizedQuery);
-      final rawResults = (response['results'] as List?) ?? const [];
+      final rawResults = ((response['results'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .where(_isVisibleSuggestionPayload)
+          .toList(growable: false);
       final counts = Map<String, int>.from(
         ((response['counts'] as Map?) ?? const <String, int>{}).map(
           (key, value) =>
@@ -205,15 +226,11 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
       if (!mounted) return;
 
       setState(() {
-        _suggestions = rawResults
-            .whereType<Map>()
-            .map(
-              (item) =>
-                  _SearchSuggestion.fromApi(Map<String, dynamic>.from(item)),
-            )
-            .toList();
+        _suggestions = rawResults.map(_SearchSuggestion.fromApi).toList();
         _resultCounts = {
-          'products': counts['products'] ?? 0,
+          'products': _suggestions
+              .where((suggestion) => suggestion.type == _SuggestionType.product)
+              .length,
           'users': counts['users'] ?? 0,
           'categories': counts['categories'] ?? 0,
           'locations': counts['locations'] ?? 0,

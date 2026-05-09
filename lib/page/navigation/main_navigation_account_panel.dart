@@ -13,8 +13,12 @@ import 'package:banay/component/ui/dinamic_icon_button.dart';
 import 'package:banay/component/ui/dinamic_icon_combobox.dart';
 import 'package:banay/component/ui/dinamic_icon_input.dart';
 import 'package:banay/component/ui/dinamic_icon_textarea.dart';
+import 'package:banay/component/ui/dinamic_followed_people_h_list.dart';
+import 'package:banay/component/ui/seller_certified_badge.dart';
 import 'package:banay/component/user_list_page.dart';
+import 'package:banay/page/image_viewer_page.dart';
 import 'package:banay/page/dashboard_page.dart';
+import 'package:banay/page/live/live_watch_page.dart';
 import 'package:banay/page/live/live_preview_page.dart';
 import 'package:banay/page/productDetailSeller.dart' as seller_detail;
 import 'package:banay/services/app_api_client.dart';
@@ -26,6 +30,8 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 enum _EditableProfileImageTarget { avatar, cover }
+
+enum _AccountPanelTab { products, statistics, following }
 
 class _SelectedProductImage {
   const _SelectedProductImage.local(this.file) : url = null;
@@ -54,30 +60,54 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   final TextEditingController _searchController = TextEditingController();
   File? _avatarImageFile;
   File? _coverImageFile;
+  List<Map<String, dynamic>> _sellerPublishedProducts = [];
   final List<Map<String, dynamic>> _customStudioProducts = [];
   final Map<String, Map<String, dynamic>> _productOverrides = {};
+  final Set<String> _productAvailabilityBusy = <String>{};
+  final Set<String> _productDeletionBusy = <String>{};
+  final List<Map<String, dynamic>> _followedPeople = [];
   String _searchQuery = '';
   String _studioName = '';
   String _studioAddress = 'Antananarivo, Madagascar';
   String _studioDescription = '';
   bool _isSellerCertified = false;
   bool _isSubmittingSellerCertificationRequest = false;
+  bool _isLoadingFollowedPeople = true;
   String _sellerVerificationRequestStatus = 'NONE';
+  _AccountPanelTab _selectedTab = _AccountPanelTab.products;
 
   UserProfileData get profile => widget.profile ?? defaultSellerProfileData();
 
+  Map<String, dynamic> _withCurrentSellerProfile(Map<String, dynamic> product) {
+    final enrichedProduct = Map<String, dynamic>.from(product);
+    enrichedProduct['sellerName'] = _resolvedStudioName;
+    enrichedProduct['sellerAvatarUrl'] = profile.avatarUrl;
+    enrichedProduct['avatarUrl'] = profile.avatarUrl;
+    enrichedProduct['sellerUserId'] = profile.userId;
+    enrichedProduct['seller'] = {
+      ...(enrichedProduct['seller'] is Map
+          ? Map<String, dynamic>.from(enrichedProduct['seller'] as Map)
+          : <String, dynamic>{}),
+      'name': _resolvedStudioName,
+      'avatarUrl': profile.avatarUrl,
+      'userId': profile.userId,
+      'id': profile.userId,
+    };
+    return enrichedProduct;
+  }
+
   List<Map<String, dynamic>> get _catalogProducts => [
-    ...profile.products.map((product) {
+    ..._sellerPublishedProducts.map((product) {
       final baseProduct = Map<String, dynamic>.from(product);
       final productId = (baseProduct['id'] ?? '').toString();
       final override = _productOverrides[productId];
       if (override == null) {
-        return baseProduct;
+        return _withCurrentSellerProfile(baseProduct);
       }
 
-      return Map<String, dynamic>.from(override);
+      return _withCurrentSellerProfile(Map<String, dynamic>.from(override));
     }),
-    ..._customStudioProducts,
+    ..._customStudioProducts.map(_withCurrentSellerProfile),
   ];
 
   List<Map<String, dynamic>> get _filteredProducts {
@@ -452,8 +482,11 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   void initState() {
     super.initState();
     initializePageRefresh();
+    _seedSellerPublishedProducts();
     _hydrateStudioFields();
     _syncSellerVerificationState();
+    _loadSellerPublishedProducts();
+    _loadFollowedPeople();
     _searchController.addListener(_handleSearchChanged);
     Future.delayed(const Duration(milliseconds: 240), () {
       if (!mounted) return;
@@ -466,9 +499,17 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     super.didUpdateWidget(oldWidget);
 
     if (oldWidget.profile != widget.profile && widget.profile != null) {
+      _seedSellerPublishedProducts();
       _hydrateStudioFields(forceFromProfile: true);
       _syncSellerVerificationState();
+      _loadSellerPublishedProducts();
     }
+  }
+
+  void _seedSellerPublishedProducts() {
+    _sellerPublishedProducts = profile.products
+        .map((product) => Map<String, dynamic>.from(product))
+        .toList();
   }
 
   void _syncSellerVerificationState() {
@@ -503,6 +544,136 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     }
   }
 
+  Future<void> _loadSellerPublishedProducts() async {
+    final sellerProfileId = profile.sellerProfileId?.trim() ?? '';
+    if (sellerProfileId.isEmpty) {
+      return;
+    }
+
+    try {
+      final sellerProfile = await _catalogApiService.fetchSellerProfile(
+        sellerProfileId,
+      );
+      final products = (sellerProfile['products'] as List?)
+          ?.whereType<Map>()
+          .map((product) => Map<String, dynamic>.from(product))
+          .toList();
+
+      if (!mounted || products == null) {
+        return;
+      }
+
+      setState(() {
+        _sellerPublishedProducts = products;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _loadFollowedPeople() async {
+    try {
+      final followedPeople = await _catalogApiService
+          .fetchCurrentUserFollowing();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _followedPeople
+          ..clear()
+          ..addAll(followedPeople);
+        _isLoadingFollowedPeople = false;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _followedPeople.clear();
+        _isLoadingFollowedPeople = false;
+      });
+    }
+  }
+
+  Future<void> _openFollowedPerson(Map<String, dynamic> person) async {
+    final role = person['role']?.toString().trim().toUpperCase() ?? '';
+    final sellerProfileId = person['sellerProfileId']?.toString().trim() ?? '';
+    final userId =
+        person['userId']?.toString().trim() ??
+        person['id']?.toString().trim() ??
+        '';
+
+    if (role == 'SELLER' && sellerProfileId.isNotEmpty) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => FutureBuilder<Map<String, dynamic>>(
+            future: _catalogApiService.fetchSellerProfile(sellerProfileId),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return Scaffold(
+                  backgroundColor: Theme.of(context).appColors.backgroundBase,
+                  body: const Center(child: CircularProgressIndicator()),
+                );
+              }
+
+              return SellerProfilePage(
+                profile: buildSellerProfileFromApi(snapshot.data!),
+              );
+            },
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (userId.isEmpty) {
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => FutureBuilder<Map<String, dynamic>>(
+          future: _catalogApiService.fetchUserProfile(userId),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return Scaffold(
+                backgroundColor: Theme.of(context).appColors.backgroundBase,
+                body: const Center(child: CircularProgressIndicator()),
+              );
+            }
+
+            return UserProfilePage(
+              profile: buildPublicUserProfileFromApi(snapshot.data!),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openFollowedPersonLive(Map<String, dynamic> person) async {
+    if (person['isLive'] != true) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ce live n\'est plus disponible.')),
+      );
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => LiveWatchPage(
+          sellerProfileId: person['sellerProfileId']?.toString().trim() ?? '',
+          sellerName:
+              person['displayName']?.toString() ??
+              person['name']?.toString() ??
+              'Boutique BANAY',
+          sellerAvatarUrl: person['avatarUrl']?.toString() ?? '',
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _searchController.removeListener(_handleSearchChanged);
@@ -514,9 +685,14 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   @override
   Future<void> onPageReload() async {
     if (mounted) {
-      setState(() => _showEntrySkeleton = true);
+      setState(() {
+        _showEntrySkeleton = true;
+        _isLoadingFollowedPeople = true;
+      });
     }
     await Future.delayed(const Duration(milliseconds: 450));
+    await _loadSellerPublishedProducts();
+    await _loadFollowedPeople();
     if (!mounted) return;
     setState(() => _showEntrySkeleton = false);
   }
@@ -619,20 +795,20 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     Color panelColor,
     Color mutedColor,
   ) {
+    if (_isSellerCertified) {
+      return const SizedBox.shrink();
+    }
+
     final isPending = _sellerVerificationRequestStatus == 'PENDING';
     final isRejected = _sellerVerificationRequestStatus == 'REJECTED';
 
-    final title = _isSellerCertified
-        ? 'Boutique certifiee'
-        : isPending
+    final title = isPending
         ? 'Certification en attente'
         : isRejected
         ? 'Demande a renvoyer'
         : 'Certification vendeur';
 
-    final description = _isSellerCertified
-        ? 'Votre boutique a deja ete validee par l\'administration et le badge vendeur certifie est actif.'
-        : isPending
+    final description = isPending
         ? 'Votre demande est en attente. L\'administrateur doit verifier votre boutique avant d\'activer le badge vendeur certifie.'
         : isRejected
         ? 'Votre precedente demande n\'a pas encore ete retenue. Vous pouvez renvoyer une nouvelle demande de certification.'
@@ -687,9 +863,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
           SizedBox(
             width: double.infinity,
             child: DynamicIconButton(
-              text: _isSellerCertified
-                  ? 'Certification active'
-                  : isPending
+              text: isPending
                   ? 'Demande en attente'
                   : isRejected
                   ? 'Renvoyer la demande'
@@ -704,20 +878,15 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                       ),
                     )
                   : Icon(
-                      _isSellerCertified
-                          ? Icons.verified_rounded
-                          : isRejected
+                      isRejected
                           ? Icons.refresh_rounded
                           : Icons.workspace_premium_outlined,
                       size: 18,
                     ),
-              onPressed:
-                  (_isSellerCertified ||
-                      isPending ||
-                      _isSubmittingSellerCertificationRequest)
+              onPressed: (isPending || _isSubmittingSellerCertificationRequest)
                   ? null
                   : _submitSellerCertificationRequest,
-              backgroundColor: (_isSellerCertified || isPending)
+              backgroundColor: isPending
                   ? theme.colorScheme.primary.withValues(alpha: 0.72)
                   : theme.colorScheme.primary,
               foregroundColor: Colors.white,
@@ -1979,6 +2148,15 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     final productId = (product['id'] ?? '').toString();
     final normalizedProduct = Map<String, dynamic>.from(product);
 
+    final existingPublishedIndex = _sellerPublishedProducts.indexWhere(
+      (item) => (item['id'] ?? '').toString() == productId,
+    );
+    if (existingPublishedIndex >= 0) {
+      _sellerPublishedProducts[existingPublishedIndex] = normalizedProduct;
+      _productOverrides.remove(productId);
+      return;
+    }
+
     final existingCustomIndex = _customStudioProducts.indexWhere(
       (item) => (item['id'] ?? '').toString() == productId,
     );
@@ -1997,6 +2175,330 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     }
 
     _customStudioProducts.insert(0, normalizedProduct);
+  }
+
+  void _removeProductFromState(String productId) {
+    _sellerPublishedProducts.removeWhere(
+      (item) => (item['id'] ?? '').toString() == productId,
+    );
+    _customStudioProducts.removeWhere(
+      (item) => (item['id'] ?? '').toString() == productId,
+    );
+    _productOverrides.remove(productId);
+    _productAvailabilityBusy.remove(productId);
+    _productDeletionBusy.remove(productId);
+  }
+
+  Future<bool> _showProductActionConfirmationDialog({
+    required String title,
+    required String message,
+    required String confirmLabel,
+    required IconData icon,
+    required Color iconColor,
+  }) async {
+    final theme = Theme.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 10),
+          contentPadding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          title: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: iconColor.withValues(alpha: 0.14),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: iconColor, size: 30),
+              ),
+              const SizedBox(height: 14),
+              Text(title, textAlign: TextAlign.center),
+            ],
+          ),
+          content: Text(message, textAlign: TextAlign.center),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Annuler'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: iconColor),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(
+                confirmLabel,
+                style: TextStyle(color: theme.colorScheme.onPrimary),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    return confirmed ?? false;
+  }
+
+  Future<void> _confirmAndToggleProductAvailability(
+    Map<String, dynamic> product,
+  ) async {
+    final productName = (product['title'] as String?)?.trim() ?? 'ce produit';
+    final isAvailable = (product['isAvailable'] as bool?) ?? true;
+    final confirmed = await _showProductActionConfirmationDialog(
+      title: isAvailable
+          ? 'Rendre ce produit indisponible ?'
+          : 'Remettre ce produit disponible ?',
+      message: isAvailable
+          ? 'Le produit "$productName" ne sera plus visible comme disponible tant que vous ne le reactivez pas.'
+          : 'Le produit "$productName" redeviendra disponible dans votre catalogue.',
+      confirmLabel: isAvailable ? 'Mettre indisponible' : 'Remettre disponible',
+      icon: isAvailable
+          ? Icons.visibility_off_outlined
+          : Icons.visibility_rounded,
+      iconColor: isAvailable
+          ? Theme.of(context).colorScheme.primary
+          : Theme.of(context).colorScheme.secondary,
+    );
+
+    if (!confirmed || !mounted) {
+      return;
+    }
+
+    await _toggleProductAvailability(product);
+  }
+
+  Future<void> _deleteProduct(Map<String, dynamic> product) async {
+    final productId = (product['id'] ?? '').toString().trim();
+    if (productId.isEmpty || _productDeletionBusy.contains(productId)) {
+      return;
+    }
+
+    setState(() {
+      _productDeletionBusy.add(productId);
+    });
+
+    try {
+      await _catalogApiService.deleteProduct(productId);
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _removeProductFromState(productId);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Le produit a ete supprime.')),
+      );
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+      setState(() {
+        _productDeletionBusy.remove(productId);
+      });
+    }
+  }
+
+  Future<void> _confirmAndDeleteProduct(Map<String, dynamic> product) async {
+    final productName = (product['title'] as String?)?.trim() ?? 'ce produit';
+    final confirmed = await _showProductActionConfirmationDialog(
+      title: 'Supprimer ce produit ?',
+      message:
+          'Le produit "$productName" sera retire de votre catalogue. Cette action est definitive.',
+      confirmLabel: 'Supprimer',
+      icon: Icons.delete_outline_rounded,
+      iconColor: Colors.red.shade400,
+    );
+
+    if (!confirmed || !mounted) {
+      return;
+    }
+
+    await _deleteProduct(product);
+  }
+
+  Future<void> _toggleProductAvailability(Map<String, dynamic> product) async {
+    final productId = (product['id'] ?? '').toString().trim();
+    if (productId.isEmpty || _productAvailabilityBusy.contains(productId)) {
+      return;
+    }
+
+    final nextAvailability = !((product['isAvailable'] as bool?) ?? true);
+    final productTitle = (product['title'] as String?)?.trim() ?? '';
+    final productDescription =
+        (product['description'] as String?)?.trim() ?? '';
+    final productCategory = (product['category'] as String?)?.trim() ?? '';
+    final productPrice = (product['price'] as num?)?.toDouble();
+    final productImages =
+        ((product['images'] as List?)
+            ?.whereType<String>()
+            .map((image) => image.trim())
+            .where((image) => image.isNotEmpty)
+            .toList()) ??
+        <String>[];
+    final thumbnail = (product['thumbnail'] as String?)?.trim() ?? '';
+    final imageOrder = productImages.isNotEmpty
+        ? productImages
+        : thumbnail.isNotEmpty
+        ? <String>[thumbnail]
+        : <String>[];
+
+    if (productTitle.isEmpty ||
+        productDescription.isEmpty ||
+        productCategory.isEmpty ||
+        productPrice == null ||
+        imageOrder.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Impossible de changer la disponibilite: donnees produit incompletes.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _productAvailabilityBusy.add(productId);
+    });
+
+    try {
+      final updatedProduct = await _catalogApiService.updateProduct(
+        productId: productId,
+        title: productTitle,
+        description: productDescription,
+        priceAmount: productPrice,
+        categoryName: productCategory,
+        imageFiles: const <File>[],
+        imageOrder: imageOrder,
+        isAvailable: nextAvailability,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _upsertProductInState(updatedProduct);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            nextAvailability
+                ? 'Le produit est de nouveau disponible.'
+                : 'Le produit est passe en indisponible.',
+          ),
+        ),
+      );
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _productAvailabilityBusy.remove(productId);
+        });
+      }
+    }
+  }
+
+  Widget _buildSellerProductActions(Map<String, dynamic> product) {
+    final theme = Theme.of(context);
+    final productId = (product['id'] ?? '').toString().trim();
+    final isAvailable = (product['isAvailable'] as bool?) ?? true;
+    final isAvailabilityBusy =
+        productId.isNotEmpty && _productAvailabilityBusy.contains(productId);
+    final isDeleteBusy =
+        productId.isNotEmpty && _productDeletionBusy.contains(productId);
+    final isAnyBusy = isAvailabilityBusy || isDeleteBusy;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildSellerProductActionButton(
+          icon: Icons.edit_outlined,
+          tooltip: 'Modifier',
+          onTap: isAnyBusy
+              ? null
+              : () => _showCreateProductSheet(initialProduct: product),
+        ),
+        const SizedBox(width: 8),
+        _buildSellerProductActionButton(
+          icon: Icons.delete_outline_rounded,
+          tooltip: 'Supprimer',
+          onTap: isDeleteBusy ? null : () => _confirmAndDeleteProduct(product),
+          iconColor: Colors.red.shade300,
+          busy: isDeleteBusy,
+        ),
+        const SizedBox(width: 8),
+        _buildSellerProductActionButton(
+          icon: isAvailable
+              ? Icons.visibility_off_outlined
+              : Icons.visibility_rounded,
+          tooltip: isAvailable ? 'Non disponible' : 'Remettre disponible',
+          onTap: isAvailabilityBusy
+              ? null
+              : () => _confirmAndToggleProductAvailability(product),
+          iconColor: isAvailable
+              ? theme.colorScheme.onSurface
+              : theme.colorScheme.primary,
+          busy: isAvailabilityBusy,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSellerProductActionButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback? onTap,
+    Color? iconColor,
+    bool busy = false,
+  }) {
+    final theme = Theme.of(context);
+
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.black.withValues(alpha: 0.48),
+        borderRadius: BorderRadius.circular(999),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(999),
+          child: SizedBox(
+            width: 40,
+            height: 40,
+            child: Center(
+              child: busy
+                  ? SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    )
+                  : Icon(icon, size: 21, color: iconColor ?? Colors.white),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Color _backgroundColor(ThemeData theme) {
@@ -2102,34 +2604,6 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     );
   }
 
-  List<_RankedProductEntry> _buildTopProducts() {
-    final result = <_RankedProductEntry>[];
-    final products = [..._catalogProducts];
-    products.sort((left, right) {
-      final leftLikes = (left['likesCount'] as num?)?.toInt() ?? 0;
-      final rightLikes = (right['likesCount'] as num?)?.toInt() ?? 0;
-      return rightLikes.compareTo(leftLikes);
-    });
-
-    for (var index = 0; index < products.length; index++) {
-      final product = products[index];
-      final likes = (product['likesCount'] as num?)?.toInt() ?? 0;
-      result.add(
-        _RankedProductEntry(
-          rank: index + 1,
-          title: (product['title'] ?? 'Produit').toString(),
-          category: (product['category'] ?? 'Catalogue').toString(),
-          imageUrl: (product['thumbnail'] ?? '').toString(),
-          price: (product['price'] ?? 0).toString(),
-          likes: likes,
-          growth: likes > 0 ? '+0%' : '--',
-        ),
-      );
-    }
-
-    return result;
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -2140,7 +2614,6 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     final accentColor = _accentColor(theme);
     final supportAccentColor = _supportAccentColor(theme);
     final filteredProducts = _filteredProducts;
-    final topProducts = _buildTopProducts();
 
     return Scaffold(
       backgroundColor: backgroundColor,
@@ -2175,74 +2648,15 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                     children: [
                       _buildStudioHero(theme),
                       const SizedBox(height: 18),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: _buildSellerCertificationCard(
-                          theme,
-                          panelColor,
-                          mutedColor,
-                        ),
-                      ),
+                      _buildTabNavigation(theme, panelColor, mutedColor),
                       const SizedBox(height: 18),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: _buildMetricsGrid(
-                          theme,
-                          panelColor,
-                          mutedColor,
-                          accentColor,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: _buildLaunchLiveButton(
-                          theme,
-                          accentColor,
-                          supportAccentColor,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: _buildDashboardCard(
-                          theme,
-                          panelColor,
-                          mutedColor,
-                          accentColor,
-                          supportAccentColor,
-                        ),
-                      ),
-
-                      const SizedBox(height: 18),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: _buildTopProductsSection(
-                          theme,
-                          panelColor,
-                          mutedColor,
-                          accentColor,
-                          topProducts,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: _buildCatalogSection(
-                          theme,
-                          panelColor,
-                          mutedColor,
-                          filteredProducts,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: _buildAccountInfoSection(
-                          theme,
-                          panelColor,
-                          mutedColor,
-                        ),
+                      _buildTabContent(
+                        theme,
+                        panelColor,
+                        mutedColor,
+                        accentColor,
+                        supportAccentColor,
+                        filteredProducts,
                       ),
                     ],
                   ),
@@ -2255,234 +2669,652 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
 
   Widget _buildStudioHero(ThemeData theme) {
     final compact = MediaQuery.sizeOf(context).width < 360;
-    final heroMinHeight = compact ? 372.0 : 344.0;
+    final coverHeight = compact ? 190.0 : 214.0;
+    final summaryOffset = compact ? 64.0 : 72.0;
+    final panelColor = _panelColor(theme);
     final accentColor = _accentColor(theme);
-    final accentSurfaceColor = _accentSurfaceColor(theme);
-    final supportAccentColor = _supportAccentColor(theme);
+    final mutedColor = _mutedColor(theme);
 
-    return Container(
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(28)),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
-        child: Stack(
-          children: [
-            ConstrainedBox(
-              constraints: BoxConstraints(minHeight: heroMinHeight),
-              child: SizedBox(
-                width: double.infinity,
-                child: _buildEditableCoverImage(),
-              ),
-            ),
-            Container(
-              constraints: BoxConstraints(minHeight: heroMinHeight),
-              padding: EdgeInsets.fromLTRB(
-                20,
-                compact ? 16 : 20,
-                20,
-                compact ? 16 : 20,
-              ),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    theme.appColors.scrimSoft,
-                    theme.appColors.scrimStrong,
-                  ],
-                ),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+    return SizedBox(
+      height: coverHeight + summaryOffset,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(30),
+            child: SizedBox(
+              height: coverHeight,
+              width: double.infinity,
+              child: Stack(
+                fit: StackFit.expand,
                 children: [
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: compact ? 10 : 12,
-                      vertical: compact ? 6 : 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: theme.appColors.heroSurface,
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: theme.appColors.heroBorder),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.auto_awesome,
-                          size: 16,
-                          color: theme.appColors.heroForeground,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Account Studio',
-                          style: TextStyle(
-                            color: theme.appColors.heroForeground,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
+                  Hero(
+                    tag: 'account-cover-${profile.userId}',
+                    child: _buildEditableCoverImage(),
                   ),
-                  SizedBox(height: compact ? 18 : 26),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(3),
-                            decoration: BoxDecoration(
-                              color: theme.appColors.heroSurface,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: theme.appColors.heroBorder,
-                              ),
-                            ),
-                            child: _buildEditableAvatar(),
-                          ),
-                          Positioned(
-                            right: -2,
-                            bottom: -2,
-                            child: _buildImageEditButton(
-                              onTap: () => _showImageSourceSheet(
-                                _EditableProfileImageTarget.avatar,
-                              ),
-                              compact: true,
-                            ),
-                          ),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withValues(alpha: 0.08),
+                          Colors.black.withValues(alpha: 0.14),
+                          Colors.black.withValues(alpha: 0.52),
                         ],
                       ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _studioName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: theme.appColors.heroForeground,
-                                fontSize: compact ? 22 : 26,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                            SizedBox(height: compact ? 4 : 6),
-                            Text(
-                              _studioAddress,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: theme.appColors.heroForegroundMuted,
-                                fontWeight: FontWeight.w500,
-                                fontSize: compact ? 13 : 14,
-                              ),
-                            ),
-                            SizedBox(height: compact ? 8 : 10),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                _buildHeroPill(
-                                  icon: _isSellerCertified
-                                      ? Icons.verified_rounded
-                                      : Icons.storefront_rounded,
-                                  label: profile.roleLabel,
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: compact ? 12 : 18),
-                  Text(
-                    _studioDescription,
-                    maxLines: compact ? 1 : 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: theme.appColors.heroForegroundMuted,
-                      height: 1.35,
-                      fontSize: compact ? 13 : 14,
                     ),
-                  ),
-                  SizedBox(height: compact ? 12 : 18),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: _showIdentityEditor,
-                          icon: const Icon(Icons.edit_outlined, size: 18),
-                          label: const Text(
-                            'Modifier profil',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: theme.appColors.heroForeground,
-                            foregroundColor: theme.colorScheme.onSurface,
-                            textStyle: const TextStyle(
-                              fontWeight: FontWeight.w900,
-                            ),
-                            padding: EdgeInsets.symmetric(
-                              vertical: compact ? 10 : 12,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _showCreateProductSheet,
-                          icon: const Icon(Icons.add_box_outlined, size: 18),
-                          label: const Text(
-                            'Creer produit',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: theme.appColors.heroForeground,
-                            backgroundColor: supportAccentColor.withValues(
-                              alpha: theme.brightness == Brightness.dark
-                                  ? 0.22
-                                  : 0.14,
-                            ),
-                            side: BorderSide(
-                              color: supportAccentColor.withValues(
-                                alpha: theme.brightness == Brightness.dark
-                                    ? 0.42
-                                    : 0.24,
-                              ),
-                            ),
-                            padding: EdgeInsets.symmetric(
-                              vertical: compact ? 10 : 12,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
                   ),
                 ],
               ),
             ),
-            Positioned(
-              top: 16,
-              right: 16,
-              child: _buildImageEditButton(
-                onTap: () =>
-                    _showImageSourceSheet(_EditableProfileImageTarget.cover),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: summaryOffset,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => _openImageViewer(
+                  imageUrl: _coverImageFile?.path ?? profile.coverImageUrl,
+                  heroTag: 'account-cover-${profile.userId}',
+                  isLocalFile: _coverImageFile != null,
+                ),
               ),
             ),
-          ],
+          ),
+          Positioned(
+            top: 16,
+            right: 16,
+            child: _buildImageEditButton(
+              onTap: () =>
+                  _showImageSourceSheet(_EditableProfileImageTarget.cover),
+            ),
+          ),
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 0,
+            child: Container(
+              padding: EdgeInsets.fromLTRB(16, compact ? 14 : 16, 16, 16),
+              decoration: BoxDecoration(
+                color: panelColor.withValues(alpha: 0.75),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: _panelBorderColor(theme)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.18),
+                    blurRadius: 24,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(
+                          color: theme.appColors.heroSurface,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: accentColor.withValues(alpha: 0.28),
+                            width: 2,
+                          ),
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          shape: const CircleBorder(),
+                          child: InkWell(
+                            customBorder: const CircleBorder(),
+                            onTap: () => _openImageViewer(
+                              imageUrl:
+                                  _avatarImageFile?.path ?? profile.avatarUrl,
+                              heroTag: 'account-avatar-${profile.userId}',
+                              isLocalFile: _avatarImageFile != null,
+                            ),
+                            child: Hero(
+                              tag: 'account-avatar-${profile.userId}',
+                              child: _buildEditableAvatar(),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        right: -2,
+                        bottom: -2,
+                        child: _buildImageEditButton(
+                          onTap: () => _showImageSourceSheet(
+                            _EditableProfileImageTarget.avatar,
+                          ),
+                          compact: true,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _resolvedStudioName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.w900,
+                            height: 1,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            _buildProfileStatPill(
+                              theme,
+                              value: profile.followerCount,
+                              icon: Icons.groups_rounded,
+                            ),
+                            _buildProfileStatPill(
+                              theme,
+                              value: profile.productCount,
+                              icon: Icons.grid_view_rounded,
+                            ),
+                            _buildProfileEditPill(theme),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        _isSellerCertified
+                            ? const SellerCertifiedMiniBadge()
+                            : Text(
+                                profile.roleLabel,
+                                style: TextStyle(
+                                  color: mutedColor,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openImageViewer({
+    required String imageUrl,
+    required String heroTag,
+    bool isLocalFile = false,
+  }) async {
+    final normalizedUrl = imageUrl.trim();
+    if (normalizedUrl.isEmpty) {
+      return;
+    }
+
+    if (isLocalFile) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => Scaffold(
+            backgroundColor: Colors.black,
+            body: SafeArea(
+              child: Stack(
+                children: [
+                  Center(
+                    child: Hero(
+                      tag: heroTag,
+                      child: InteractiveViewer(
+                        minScale: 1,
+                        maxScale: 5,
+                        child: Image.file(
+                          File(normalizedUrl),
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 12,
+                    left: 12,
+                    child: IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ImageViewerPage(
+          imageUrls: [normalizedUrl],
+          heroTag: heroTag,
+          overlay: ImageViewerOverlayData(
+            sellerName: _resolvedStudioName,
+            sellerUserId: profile.userId,
+            sellerAvatarUrl: profile.avatarUrl,
+            sellerBadge: _isSellerCertified
+                ? 'Vendeur certifie'
+                : profile.roleLabel,
+            isUserProfileImage: true,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTabNavigation(
+    ThemeData theme,
+    Color panelColor,
+    Color mutedColor,
+  ) {
+    final tabs = [
+      (_AccountPanelTab.products, 'Mes produits', Icons.storefront_rounded),
+      (_AccountPanelTab.statistics, 'Statistique', Icons.bar_chart_rounded),
+      (_AccountPanelTab.following, 'Abonnement', Icons.groups_rounded),
+    ];
+
+    final accentColor = _accentColor(theme);
+
+    return Container(
+      padding: const EdgeInsets.only(top: 4),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: _panelBorderColor(theme), width: 1),
+        ),
+      ),
+      child: Row(
+        children: tabs.map((tab) {
+          final isSelected = _selectedTab == tab.$1;
+          return Expanded(
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => setState(() => _selectedTab = tab.$1),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding: const EdgeInsets.fromLTRB(8, 10, 8, 12),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(
+                        color: isSelected ? accentColor : Colors.transparent,
+                        width: 3,
+                      ),
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        tab.$3,
+                        size: 18,
+                        color: isSelected ? accentColor : mutedColor,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        tab.$2,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: isSelected ? accentColor : mutedColor,
+                          fontWeight: isSelected
+                              ? FontWeight.w800
+                              : FontWeight.w600,
+                          fontSize: 12.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildTabContent(
+    ThemeData theme,
+    Color panelColor,
+    Color mutedColor,
+    Color accentColor,
+    Color supportAccentColor,
+    List<Map<String, dynamic>> filteredProducts,
+  ) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 220),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      child: KeyedSubtree(
+        key: ValueKey<_AccountPanelTab>(_selectedTab),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: switch (_selectedTab) {
+            _AccountPanelTab.products => _buildProductsTab(
+              theme,
+              panelColor,
+              mutedColor,
+              accentColor,
+              supportAccentColor,
+              filteredProducts,
+            ),
+            _AccountPanelTab.statistics => _buildStatisticsTab(
+              theme,
+              panelColor,
+              mutedColor,
+              accentColor,
+              supportAccentColor,
+            ),
+            _AccountPanelTab.following => _buildFollowingTab(theme, mutedColor),
+          },
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildProductsTab(
+    ThemeData theme,
+    Color panelColor,
+    Color mutedColor,
+    Color accentColor,
+    Color supportAccentColor,
+    List<Map<String, dynamic>> filteredProducts,
+  ) {
+    return [
+      _buildProductActionsSection(theme, accentColor, filteredProducts.length),
+      _buildCatalogSection(
+        theme,
+        panelColor,
+        mutedColor,
+        filteredProducts,
+        maxItems: null,
+      ),
+    ];
+  }
+
+  List<Widget> _buildStatisticsTab(
+    ThemeData theme,
+    Color panelColor,
+    Color mutedColor,
+    Color accentColor,
+    Color supportAccentColor,
+  ) {
+    return [
+      _buildMetricsGrid(theme, panelColor, mutedColor, accentColor),
+      const SizedBox(height: 18),
+      _buildDashboardCard(
+        theme,
+        panelColor,
+        mutedColor,
+        accentColor,
+        supportAccentColor,
+      ),
+    ];
+  }
+
+  List<Widget> _buildFollowingTab(ThemeData theme, Color mutedColor) {
+    return [_buildFollowingSection(theme, mutedColor)];
+  }
+
+  Widget _buildProductActionsSection(
+    ThemeData theme,
+    Color accentColor,
+    int resultCount,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: _surfaceDecoration(theme, radius: 24, tinted: true),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSectionHeader(theme, 'Mes produits', '$resultCount resultats'),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _showCreateProductSheet,
+                  icon: const Icon(Icons.add_box_outlined, size: 18),
+                  label: const Text('Creer produit'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: theme.colorScheme.onPrimary,
+                    minimumSize: const Size.fromHeight(50),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Rechercher un produit ou une categorie',
+              prefixIcon: const Icon(Icons.search_rounded),
+              suffixIcon: _searchQuery.trim().isEmpty
+                  ? null
+                  : IconButton(
+                      onPressed: _searchController.clear,
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+              filled: true,
+              fillColor: theme.appColors.inputFill.withValues(alpha: 0.58),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFollowingSection(ThemeData theme, Color mutedColor) {
+    final panelColor = _panelColor(theme);
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: _surfaceDecoration(theme),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSectionHeader(
+            theme,
+            'Mes abonnements',
+            '${_followedPeople.length} profil${_followedPeople.length > 1 ? 's' : ''}',
+          ),
+          const SizedBox(height: 14),
+          if (_isLoadingFollowedPeople)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 32),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (_followedPeople.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: panelColor,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: _panelBorderColor(theme)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Aucun abonnement pour le moment',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Abonnez-vous a des boutiques pour les retrouver ici.',
+                    style: TextStyle(
+                      color: mutedColor,
+                      height: 1.35,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            ListView.separated(
+              shrinkWrap: true,
+              primary: false,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _followedPeople.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                final person = _followedPeople[index];
+                return _buildFollowedPersonTile(theme, mutedColor, person);
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFollowedPersonTile(
+    ThemeData theme,
+    Color mutedColor,
+    Map<String, dynamic> person,
+  ) {
+    final name = resolveFollowedPersonName(person);
+    final subtitle = resolveFollowedPersonSubtitle(person);
+    final avatarUrl = resolveFollowedPersonAvatarUrl(person);
+    final userId = resolveFollowedPersonUserId(person);
+    final trailingText = resolveFollowedPersonTrailingText(person);
+    final isLive = isFollowedPersonLive(person);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _openFollowedPerson(person),
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: _surfaceDecoration(theme, radius: 20),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AppCircleNetworkAvatar(
+                imageUrl: avatarUrl,
+                radius: 28,
+                userId: userId,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary.withValues(
+                              alpha: 0.1,
+                            ),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            trailingText,
+                            style: TextStyle(
+                              color: theme.colorScheme.primary,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      isLive
+                          ? resolveFollowedPersonLiveTitle(person)
+                          : subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: isLive ? const Color(0xFFE53935) : mutedColor,
+                        height: 1.35,
+                        fontWeight: isLive ? FontWeight.w700 : FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        TextButton.icon(
+                          onPressed: () => _openFollowedPerson(person),
+                          icon: const Icon(
+                            Icons.person_outline_rounded,
+                            size: 18,
+                          ),
+                          label: const Text('Voir le profil'),
+                        ),
+                        if (isLive) ...[
+                          const SizedBox(width: 8),
+                          ElevatedButton.icon(
+                            onPressed: () => _openFollowedPersonLive(person),
+                            icon: const Icon(Icons.live_tv_rounded, size: 18),
+                            label: const Text('Voir le live'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFE53935),
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2543,7 +3375,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
             onTap: isOpenable ? () => _openMetricUsers(metric.label) : null,
             borderRadius: BorderRadius.circular(22),
             child: Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(16),
               decoration: _surfaceDecoration(
                 theme,
                 radius: 22,
@@ -2552,24 +3384,12 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Align(
-                    alignment: Alignment.topRight,
-                    child: Container(
-                      width: 38,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(999),
-                        color: accentColor.withValues(alpha: 0.2),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
                   Container(
-                    width: 38,
-                    height: 38,
+                    width: 44,
+                    height: 44,
                     decoration: BoxDecoration(
                       gradient: iconBackground,
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(16),
                     ),
                     child: Icon(metric.icon, color: accentColor),
                   ),
@@ -2579,13 +3399,13 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                     alignment: Alignment.centerLeft,
                     child: Text(
                       metric.value,
-                      style: const TextStyle(
-                        fontSize: 24,
+                      style: theme.textTheme.headlineSmall?.copyWith(
                         fontWeight: FontWeight.w900,
+                        height: 1,
                       ),
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Text(
                     metric.label,
                     maxLines: 1,
@@ -2760,128 +3580,32 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     );
   }
 
-  Widget _buildTopProductsSection(
-    ThemeData theme,
-    Color panelColor,
-    Color mutedColor,
-    Color accentColor,
-    List<_RankedProductEntry> topProducts,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: _surfaceDecoration(theme),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildSectionHeader(
-            theme,
-            'Top 10 produits likes',
-            'Produits reels du studio',
-          ),
-          const SizedBox(height: 14),
-          ...topProducts.take(5).map((product) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Row(
-                children: [
-                  Container(
-                    width: 34,
-                    alignment: Alignment.center,
-                    child: Text(
-                      '#${product.rank}',
-                      style: TextStyle(
-                        color: accentColor,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: AppNetworkImage(
-                      imageUrl: product.imageUrl,
-                      width: 64,
-                      height: 64,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          product.title,
-                          style: const TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${product.category} • ${product.price} Ar',
-                          style: TextStyle(color: mutedColor),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.favorite_rounded,
-                            size: 16,
-                            color: theme.appColors.favoriteAccent,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${product.likes}',
-                            style: const TextStyle(fontWeight: FontWeight.w800),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        product.growth,
-                        style: TextStyle(
-                          color: accentColor,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          }),
-        ],
-      ),
-    );
-  }
-
   Widget _buildCatalogSection(
     ThemeData theme,
     Color panelColor,
     Color mutedColor,
-    List<Map<String, dynamic>> filteredProducts,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: _surfaceDecoration(theme),
+    List<Map<String, dynamic>> filteredProducts, {
+    int? maxItems = 3,
+  }) {
+    final visibleProducts = maxItems == null
+        ? filteredProducts
+        : filteredProducts.take(maxItems).toList();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildSectionHeader(
-            theme,
-            'Catalogue studio',
-            '${filteredProducts.length} resultats',
-          ),
-          const SizedBox(height: 14),
           if (filteredProducts.isEmpty)
-            Text(
-              'Aucun produit ne correspond a cette recherche.',
-              style: TextStyle(color: mutedColor),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Text(
+                'Aucun produit ne correspond a cette recherche.',
+                style: TextStyle(color: mutedColor),
+              ),
             )
           else
-            ...filteredProducts.take(3).map((product) {
+            ...visibleProducts.map((product) {
               return Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Column(
@@ -2891,15 +3615,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                       variant: ProductCardVariant.marketplace,
                       detailPageBuilder: (product) =>
                           seller_detail.ProductDetailPage(product: product),
-                    ),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton.icon(
-                        onPressed: () =>
-                            _showCreateProductSheet(initialProduct: product),
-                        icon: const Icon(Icons.edit_outlined, size: 18),
-                        label: const Text('Modifier le produit'),
-                      ),
+                      topRightOverlay: _buildSellerProductActions(product),
                     ),
                   ],
                 ),
@@ -2925,37 +3641,46 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
             children: [
               Expanded(
                 child: Text(
-                  'Informations boutique',
+                  'Informations personnelles',
                   style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
-              TextButton.icon(
+              IconButton(
                 onPressed: _showIdentityEditor,
-                icon: const Icon(Icons.edit_outlined, size: 18),
-                label: const Text('Modifier'),
+                icon: const Icon(Icons.edit_outlined, size: 20),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          _buildInfoRow('Nom', _resolvedStudioName, mutedColor),
-          _buildInfoRow('Adresse', _studioAddress, mutedColor),
+          const SizedBox(height: 6),
           _buildInfoRow(
-            'Description',
-            _studioDescription,
-            mutedColor,
-            multiline: true,
+            icon: Icons.storefront_outlined,
+            label: 'Nom',
+            value: _resolvedStudioName,
+            mutedColor: mutedColor,
+          ),
+          _buildInfoRow(
+            icon: _isSellerCertified
+                ? Icons.verified_rounded
+                : Icons.badge_outlined,
+            label: 'Statut',
+            value: _isSellerCertified
+                ? 'Boutique certifiee'
+                : profile.roleLabel,
+            mutedColor: mutedColor,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildInfoRow(
-    String label,
-    String value,
-    Color mutedColor, {
+  Widget _buildInfoRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color mutedColor,
+    bool highlighted = false,
     bool multiline = false,
   }) {
     return Padding(
@@ -2967,21 +3692,98 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: _panelBorderColor(Theme.of(context))),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
+          crossAxisAlignment: multiline
+              ? CrossAxisAlignment.start
+              : CrossAxisAlignment.center,
           children: [
-            Text(
-              label,
-              style: TextStyle(color: mutedColor, fontWeight: FontWeight.w600),
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: _accentColor(Theme.of(context)).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(icon, color: _accentColor(Theme.of(context))),
             ),
-            const SizedBox(height: 6),
-            Text(
-              value,
-              maxLines: multiline ? 3 : 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w700, height: 1.35),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: mutedColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    value,
+                    maxLines: multiline ? 3 : 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      height: 1.35,
+                      color: highlighted
+                          ? _accentColor(Theme.of(context))
+                          : null,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProfileStatPill(
+    ThemeData theme, {
+    required String value,
+    required IconData icon,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: _accentColor(theme).withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: _accentColor(theme)),
+          const SizedBox(width: 6),
+          Text(
+            value,
+            style: TextStyle(
+              color: _accentColor(theme),
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProfileEditPill(ThemeData theme) {
+    final accentColor = _accentColor(theme);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _showIdentityEditor,
+        borderRadius: BorderRadius.circular(999),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: accentColor.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Icon(Icons.edit_rounded, size: 16, color: accentColor),
         ),
       ),
     );
@@ -3076,7 +3878,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     );
   }
 
-  Widget _buildSectionHeader(ThemeData theme, String title, String meta) {
+  Widget _buildSectionHeader(ThemeData theme, String title, [String? meta]) {
     final accentColor = _accentColor(theme);
 
     return Row(
@@ -3089,17 +3891,18 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
             ),
           ),
         ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: accentColor.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(999),
+        if (meta != null && meta.trim().isNotEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: accentColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              meta,
+              style: TextStyle(color: accentColor, fontWeight: FontWeight.w700),
+            ),
           ),
-          child: Text(
-            meta,
-            style: TextStyle(color: accentColor, fontWeight: FontWeight.w700),
-          ),
-        ),
       ],
     );
   }
@@ -3111,24 +3914,4 @@ class _StudioMetric {
   final IconData icon;
 
   const _StudioMetric(this.label, this.value, this.icon);
-}
-
-class _RankedProductEntry {
-  final int rank;
-  final String title;
-  final String category;
-  final String imageUrl;
-  final String price;
-  final int likes;
-  final String growth;
-
-  const _RankedProductEntry({
-    required this.rank,
-    required this.title,
-    required this.category,
-    required this.imageUrl,
-    required this.price,
-    required this.likes,
-    required this.growth,
-  });
 }

@@ -434,6 +434,12 @@ class CatalogApiService {
       (decoded['data'] as Map?) ?? const <String, dynamic>{},
     );
   }
+
+  Future<Map<String, dynamic>> deleteProduct(String productId) async {
+    final data = await _client.delete(
+      '/products/$productId',
+      authenticated: true,
+    );
+    return Map<String, dynamic>.from(data as Map? ?? const <String, dynamic>{});
+  }
 }
-
-

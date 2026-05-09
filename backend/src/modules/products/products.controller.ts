@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Patch,
   Param,
@@ -88,6 +89,19 @@ export class ProductsController {
         dto,
         this.normalizeUploadedImages(uploadedFiles),
       ),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete(':id')
+  async remove(
+    @Req() req: { user: { userId: string; role: string } },
+    @Param('id') id: string,
+  ) {
+    return {
+      success: true,
+      message: 'Product deleted successfully',
+      data: await this.productsService.remove(req.user, id),
     };
   }
 

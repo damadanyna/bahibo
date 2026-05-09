@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
   IsNumber,
@@ -49,7 +49,21 @@ export class UpdateProductDto {
   categoryName?: string;
 
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(({ value }) => {
+    if (typeof value === 'boolean') {
+      return value;
+    }
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (normalized == 'true') {
+        return true;
+      }
+      if (normalized == 'false') {
+        return false;
+      }
+    }
+    return value;
+  })
   @IsBoolean()
   isAvailable?: boolean;
 

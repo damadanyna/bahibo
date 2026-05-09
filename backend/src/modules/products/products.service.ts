@@ -275,6 +275,14 @@ export class ProductsService {
       },
     });
 
+    if (hasPriceChanged || hasAvailabilityChanged || hasImagesChanged) {
+      this.emitProductUpdatedEvent({
+        product: updatedProduct,
+        actorUserId: currentUser.userId,
+        action: hasAvailabilityChanged ? 'availability_changed' : 'updated',
+      });
+    }
+
     await this.emitSellerProfileUpdatedByProfileId(sellerProfile.id);
     if (hasPriceChanged || hasAvailabilityChanged || hasImagesChanged) {
       await this.pushNotificationsService.sendProductUpdatedNotification({
@@ -289,6 +297,48 @@ export class ProductsService {
       await this.emitNotificationRefreshToSellerFollowers(sellerProfile.id, []);
     }
     return this.toEntity(updatedProduct);
+  }
+
+  async remove(
+    currentUser: { userId: string; role: string },
+    productId: string,
+  ) {
+    const sellerProfile = await this.prisma.sellerProfile.findUnique({
+      where: { userId: currentUser.userId },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!sellerProfile) {
+      throw new BadRequestException('Seller profile not found for this user.');
+    }
+
+    const existingProduct = await this.findProductWithRelations(productId);
+    if (existingProduct.sellerProfile.userId !== currentUser.userId) {
+      throw new NotFoundException('Product not found');
+    }
+
+    const linkedOrderItems = await this.prisma.orderItem.count({
+      where: { productId },
+    });
+    if (linkedOrderItems > 0) {
+      throw new BadRequestException(
+        'Ce produit ne peut pas etre supprime car il est deja lie a une commande.',
+      );
+    }
+
+    await this.prisma.product.delete({
+      where: { id: productId },
+    });
+
+    await this.emitSellerProfileUpdatedByProfileId(sellerProfile.id);
+    await this.emitNotificationRefreshToSellerFollowers(sellerProfile.id, []);
+
+    return {
+      id: existingProduct.id,
+      sellerProfileId: sellerProfile.id,
+    };
   }
 
   async likeProduct(currentUserId: string, productId: string) {
@@ -708,7 +758,13 @@ export class ProductsService {
   private emitProductUpdatedEvent(args: {
     product: ProductWithRelations;
     actorUserId: string;
-    action: 'liked' | 'unliked' | 'commented' | 'shared';
+    action:
+      | 'liked'
+      | 'unliked'
+      | 'commented'
+      | 'shared'
+      | 'updated'
+      | 'availability_changed';
     comment?: Record<string, unknown>;
   }) {
     this.conversationsRealtimeGateway.emitProductEvent({
@@ -731,13 +787,16 @@ export class ProductsService {
       : 10;
     const skip = Number.isFinite(params.skip) ? Math.max(params.skip, 0) : 0;
 
-    const where = params.categorySlug
-      ? {
-          category: {
-            slug: params.categorySlug,
-          },
-        }
-      : {};
+    const where = {
+      isAvailable: true,
+      ...(params.categorySlug
+        ? {
+            category: {
+              slug: params.categorySlug,
+            },
+          }
+        : {}),
+    };
 
     const [items, total] = await Promise.all([
       this.prisma.product.findMany({
