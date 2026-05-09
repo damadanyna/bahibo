@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_config.dart';
 import 'app_api_client.dart';
@@ -11,6 +12,16 @@ import 'cloudinary_image_url.dart';
 import 'session_storage.dart';
 
 class ConversationsApiService {
+  static const String _conversationsListCacheKey =
+      'BANAY.cache.conversations.list';
+  static const String _conversationByIdCachePrefix =
+      'BANAY.cache.conversations.by_id.';
+  static const String _conversationByProductCachePrefix =
+      'BANAY.cache.conversations.by_product.';
+  static const String _conversationByUserCachePrefix =
+      'BANAY.cache.conversations.by_user.';
+  static const Duration _conversationCacheTtl = Duration(minutes: 8);
+
   ConversationsApiService({AppApiClient? client})
     : _client = client ?? AppApiClient();
 
@@ -19,10 +30,24 @@ class ConversationsApiService {
 
   Future<List<Map<String, dynamic>>> fetchConversations() async {
     final data = await _client.get('/conversations', authenticated: true);
-    return (data as List)
+    final normalized = (data as List)
         .whereType<Map>()
         .map((item) => Map<String, dynamic>.from(item))
         .toList();
+    await _writeCacheValue(_conversationsListCacheKey, normalized);
+    return normalized;
+  }
+
+  Future<List<Map<String, dynamic>>?> getCachedConversations() async {
+    final cached = await _readCacheValue(_conversationsListCacheKey);
+    if (cached is! List) {
+      return null;
+    }
+
+    return cached
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
   }
 
   Future<Map<String, dynamic>> fetchConversationById(
@@ -32,7 +57,21 @@ class ConversationsApiService {
       '/conversations/$conversationId',
       authenticated: true,
     );
-    return Map<String, dynamic>.from(data as Map);
+    final normalized = Map<String, dynamic>.from(data as Map);
+    await _writeCacheValue(
+      '$_conversationByIdCachePrefix${conversationId.trim()}',
+      normalized,
+    );
+    await _cacheConversationAliases(normalized, fallbackId: conversationId);
+    return normalized;
+  }
+
+  Future<Map<String, dynamic>?> getCachedConversationById(
+    String conversationId,
+  ) async {
+    return _readCachedConversation(
+      '$_conversationByIdCachePrefix${conversationId.trim()}',
+    );
   }
 
   Future<Map<String, dynamic>> fetchConversationForProduct(
@@ -42,7 +81,21 @@ class ConversationsApiService {
       '/conversations/product/$productId',
       authenticated: true,
     );
-    return Map<String, dynamic>.from(data as Map);
+    final normalized = Map<String, dynamic>.from(data as Map);
+    await _writeCacheValue(
+      '$_conversationByProductCachePrefix${productId.trim()}',
+      normalized,
+    );
+    await _cacheConversationAliases(normalized, fallbackProductId: productId);
+    return normalized;
+  }
+
+  Future<Map<String, dynamic>?> getCachedConversationForProduct(
+    String productId,
+  ) async {
+    return _readCachedConversation(
+      '$_conversationByProductCachePrefix${productId.trim()}',
+    );
   }
 
   Future<Map<String, dynamic>> fetchConversationForUser(
@@ -52,7 +105,110 @@ class ConversationsApiService {
       '/conversations/user/$targetUserId',
       authenticated: true,
     );
-    return Map<String, dynamic>.from(data as Map);
+    final normalized = Map<String, dynamic>.from(data as Map);
+    await _writeCacheValue(
+      '$_conversationByUserCachePrefix${targetUserId.trim()}',
+      normalized,
+    );
+    await _cacheConversationAliases(normalized, fallbackUserId: targetUserId);
+    return normalized;
+  }
+
+  Future<Map<String, dynamic>?> getCachedConversationForUser(
+    String targetUserId,
+  ) async {
+    return _readCachedConversation(
+      '$_conversationByUserCachePrefix${targetUserId.trim()}',
+    );
+  }
+
+  Future<Map<String, dynamic>?> _readCachedConversation(String key) async {
+    final cached = await _readCacheValue(key);
+    if (cached is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(cached);
+  }
+
+  Future<void> _cacheConversationAliases(
+    Map<String, dynamic> conversation, {
+    String? fallbackId,
+    String? fallbackProductId,
+    String? fallbackUserId,
+  }) async {
+    final conversationId =
+        conversation['id']?.toString().trim() ?? fallbackId?.trim() ?? '';
+    if (conversationId.isNotEmpty) {
+      await _writeCacheValue(
+        '$_conversationByIdCachePrefix$conversationId',
+        conversation,
+      );
+    }
+
+    final product = conversation['product'];
+    final productId = product is Map
+        ? product['id']?.toString().trim() ?? fallbackProductId?.trim() ?? ''
+        : fallbackProductId?.trim() ?? '';
+    if (productId.isNotEmpty) {
+      await _writeCacheValue(
+        '$_conversationByProductCachePrefix$productId',
+        conversation,
+      );
+    }
+
+    final participant = conversation['participant'];
+    final userId = participant is Map
+        ? participant['id']?.toString().trim() ?? fallbackUserId?.trim() ?? ''
+        : fallbackUserId?.trim() ?? '';
+    if (userId.isNotEmpty) {
+      await _writeCacheValue(
+        '$_conversationByUserCachePrefix$userId',
+        conversation,
+      );
+    }
+  }
+
+  Future<dynamic> _readCacheValue(String key) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(key);
+    if (raw == null || raw.isEmpty) {
+      return null;
+    }
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) {
+        return null;
+      }
+
+      final cachedAtMillis = (decoded['cachedAt'] as num?)?.toInt();
+      final data = decoded['data'];
+      if (cachedAtMillis == null || data == null) {
+        return null;
+      }
+
+      final cachedAt = DateTime.fromMillisecondsSinceEpoch(cachedAtMillis);
+      if (DateTime.now().difference(cachedAt) > _conversationCacheTtl) {
+        unawaited(prefs.remove(key));
+        return null;
+      }
+
+      return data;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _writeCacheValue(String key, Object data) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      key,
+      jsonEncode({
+        'cachedAt': DateTime.now().millisecondsSinceEpoch,
+        'data': data,
+      }),
+    );
   }
 
   Future<Map<String, dynamic>> sendMessage({

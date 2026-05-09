@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
+import 'package:banay/services/chat_media_cache_service.dart';
 import 'package:banay/services/presence_service.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
 
@@ -36,7 +39,7 @@ class AppImagePlaceholder extends StatelessWidget {
   }
 }
 
-class AppNetworkImage extends StatelessWidget {
+class AppNetworkImage extends StatefulWidget {
   final String imageUrl;
   final double? width;
   final double? height;
@@ -58,6 +61,14 @@ class AppNetworkImage extends StatelessWidget {
     this.errorChild,
   });
 
+  @override
+  State<AppNetworkImage> createState() => _AppNetworkImageState();
+}
+
+class _AppNetworkImageState extends State<AppNetworkImage> {
+  Future<File?>? _fileFuture;
+  File? _resolvedFile;
+
   int? _resolveCacheDimension(double? dimension, double devicePixelRatio) {
     if (dimension == null || !dimension.isFinite || dimension <= 0) {
       return null;
@@ -72,70 +83,162 @@ class AppNetworkImage extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final appColors = Theme.of(context).appColors;
-    final mediaQuery = MediaQuery.maybeOf(context);
-    final devicePixelRatio = mediaQuery?.devicePixelRatio ?? 1.0;
-    final cacheWidth = _resolveCacheDimension(width, devicePixelRatio);
-    final cacheHeight = _resolveCacheDimension(height, devicePixelRatio);
-
-    final image = Image.network(
-      imageUrl,
-      fit: fit,
-      filterQuality: filterQuality,
-      width: width,
-      height: height,
-      cacheWidth: cacheWidth != null && cacheWidth > 0 ? cacheWidth : null,
-      cacheHeight: cacheHeight != null && cacheHeight > 0 ? cacheHeight : null,
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) return child;
-        return AppImagePlaceholder(
-          width: width,
-          height: height,
-          borderRadius: borderRadius,
-          shape: shape,
-          child: Center(
-            child: SizedBox(
-              width: 28,
-              height: 28,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.4,
-                color: appColors.placeholderIcon,
-              ),
-            ),
-          ),
-        );
-      },
-      errorBuilder: (context, error, stackTrace) {
-        return AppImagePlaceholder(
-          width: width,
-          height: height,
-          borderRadius: borderRadius,
-          shape: shape,
-          child: Center(
-            child:
-                errorChild ??
-                Icon(
-                  Icons.image_not_supported,
-                  color: appColors.placeholderIcon,
-                  size: 28,
-                ),
-          ),
-        );
-      },
+  void initState() {
+    super.initState();
+    _resolvedFile = ChatMediaCacheService.instance.peekResolvedFile(
+      widget.imageUrl,
     );
+    _fileFuture = _loadFile();
+  }
 
-    if (shape == BoxShape.circle) {
+  @override
+  void didUpdateWidget(covariant AppNetworkImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imageUrl != widget.imageUrl) {
+      _resolvedFile = ChatMediaCacheService.instance.peekResolvedFile(
+        widget.imageUrl,
+      );
+      _fileFuture = _loadFile();
+    }
+  }
+
+  Future<File?> _loadFile() async {
+    final normalizedUrl = widget.imageUrl.trim();
+    if (normalizedUrl.isEmpty) {
+      return null;
+    }
+
+    try {
+      final file = await ChatMediaCacheService.instance.getOrDownloadFile(
+        normalizedUrl,
+      );
+      if (mounted) {
+        setState(() => _resolvedFile = file);
+      } else {
+        _resolvedFile = file;
+      }
+      return file;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Widget _wrapImage(Widget image) {
+    if (widget.shape == BoxShape.circle) {
       return ClipOval(
-        child: SizedBox(width: width, height: height, child: image),
+        child: SizedBox(
+          width: widget.width,
+          height: widget.height,
+          child: image,
+        ),
       );
     }
 
-    if (borderRadius != null) {
-      return ClipRRect(borderRadius: borderRadius!, child: image);
+    if (widget.borderRadius != null) {
+      return ClipRRect(borderRadius: widget.borderRadius!, child: image);
     }
 
     return image;
+  }
+
+  Widget _buildFallbackNetworkImage({
+    required BuildContext context,
+    required int? cacheWidth,
+    required int? cacheHeight,
+  }) {
+    final appColors = Theme.of(context).appColors;
+    return _wrapImage(
+      Image.network(
+        widget.imageUrl,
+        fit: widget.fit,
+        filterQuality: widget.filterQuality,
+        width: widget.width,
+        height: widget.height,
+        gaplessPlayback: true,
+        cacheWidth: cacheWidth != null && cacheWidth > 0 ? cacheWidth : null,
+        cacheHeight: cacheHeight != null && cacheHeight > 0
+            ? cacheHeight
+            : null,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return AppImagePlaceholder(
+            width: widget.width,
+            height: widget.height,
+            borderRadius: widget.borderRadius,
+            shape: widget.shape,
+            child: Center(
+              child: SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.4,
+                  color: appColors.placeholderIcon,
+                ),
+              ),
+            ),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) {
+          return AppImagePlaceholder(
+            width: widget.width,
+            height: widget.height,
+            borderRadius: widget.borderRadius,
+            shape: widget.shape,
+            child: Center(
+              child:
+                  widget.errorChild ??
+                  Icon(
+                    Icons.image_not_supported,
+                    color: appColors.placeholderIcon,
+                    size: 28,
+                  ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildFileImage(File file) {
+    return _wrapImage(
+      Image.file(
+        file,
+        width: widget.width,
+        height: widget.height,
+        fit: widget.fit,
+        filterQuality: widget.filterQuality,
+        gaplessPlayback: true,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mediaQuery = MediaQuery.maybeOf(context);
+    final devicePixelRatio = mediaQuery?.devicePixelRatio ?? 1.0;
+    final cacheWidth = _resolveCacheDimension(widget.width, devicePixelRatio);
+    final cacheHeight = _resolveCacheDimension(widget.height, devicePixelRatio);
+
+    final resolvedFile = _resolvedFile;
+    if (resolvedFile != null) {
+      return _buildFileImage(resolvedFile);
+    }
+
+    return FutureBuilder<File?>(
+      future: _fileFuture,
+      builder: (context, snapshot) {
+        final file = snapshot.data;
+        if (file != null) {
+          return _buildFileImage(file);
+        }
+
+        return _buildFallbackNetworkImage(
+          context: context,
+          cacheWidth: cacheWidth,
+          cacheHeight: cacheHeight,
+        );
+      },
+    );
   }
 }
 
@@ -209,4 +312,3 @@ class AppCircleNetworkAvatar extends StatelessWidget {
     );
   }
 }
-

@@ -531,6 +531,25 @@ class _ChatPageState extends State<ChatPage>
     return _conversationsApiService.fetchConversationById(_conversationId!);
   }
 
+  Future<Map<String, dynamic>?> _fetchCachedConversationData() {
+    if (widget.conversationUserId?.isNotEmpty ?? false) {
+      return _conversationsApiService.getCachedConversationForUser(
+        widget.conversationUserId!,
+      );
+    }
+    if (_conversationId != null) {
+      return _conversationsApiService.getCachedConversationById(
+        _conversationId!,
+      );
+    }
+    if (widget.conversationProductId?.isNotEmpty ?? false) {
+      return _conversationsApiService.getCachedConversationForProduct(
+        widget.conversationProductId!,
+      );
+    }
+    return Future.value(null);
+  }
+
   Future<void> _refreshConversationSilently() async {
     if (!mounted || !_usesLiveConversation || _isSending) {
       return;
@@ -574,6 +593,15 @@ class _ChatPageState extends State<ChatPage>
     }
 
     try {
+      final cachedData = await _fetchCachedConversationData();
+      if (cachedData != null && mounted) {
+        _applyConversation(cachedData);
+        setState(() {
+          _showEntrySkeleton = false;
+          _loadError = null;
+        });
+      }
+
       final data = await _fetchConversationData();
       _applyConversation(data);
 

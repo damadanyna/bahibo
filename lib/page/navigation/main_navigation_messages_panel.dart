@@ -304,6 +304,27 @@ class _MainNavigationMessagesPanelState
     }
 
     try {
+      if (!silent) {
+        final cachedConversations = await _conversationsApiService
+            .getCachedConversations();
+        if (cachedConversations != null &&
+            cachedConversations.isNotEmpty &&
+            mounted) {
+          final unreadCount = cachedConversations.fold<int>(
+            0,
+            (total, conversation) =>
+                total + (((conversation['unreadCount'] as num?)?.toInt()) ?? 0),
+          );
+          setState(() {
+            _conversations = cachedConversations;
+            _isLoading = false;
+            _loadError = null;
+          });
+          _watchConversationParticipants(cachedConversations);
+          mainNavigationUnreadMessageCountNotifier.value = unreadCount;
+        }
+      }
+
       final conversations = await _conversationsApiService.fetchConversations();
       final unreadCount = conversations.fold<int>(
         0,
