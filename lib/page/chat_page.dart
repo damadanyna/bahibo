@@ -2990,6 +2990,11 @@ class _AttachmentUploadProgressCard extends StatelessWidget {
     final accentColor = isFailed
         ? Colors.redAccent
         : (isWaitingForConnection ? const Color(0xFF4FC3F7) : primary);
+    final waterFillVisualState = isFailed
+        ? _WaterFillVisualState.failed
+        : isWaitingForConnection
+        ? _WaterFillVisualState.waiting
+        : _WaterFillVisualState.uploading;
     final statusText = isFailed
         ? 'Echec de l\'envoi'
         : isWaitingForConnection
@@ -3010,6 +3015,7 @@ class _AttachmentUploadProgressCard extends StatelessWidget {
             _WaterFillProgressLayer(
               progress: normalizedProgress,
               primary: accentColor,
+              visualState: waterFillVisualState,
             ),
             Positioned(
               top: 8,
@@ -3216,13 +3222,17 @@ class _AttachmentUploadProgressCard extends StatelessWidget {
   }
 }
 
+enum _WaterFillVisualState { uploading, waiting, failed }
+
 class _WaterFillProgressLayer extends StatefulWidget {
   final double progress;
   final Color primary;
+  final _WaterFillVisualState visualState;
 
   const _WaterFillProgressLayer({
     required this.progress,
     required this.primary,
+    required this.visualState,
   });
 
   @override
@@ -3266,6 +3276,7 @@ class _WaterFillProgressLayerState extends State<_WaterFillProgressLayer>
             phase: _controller.value,
             easedPhase: _flowAnimation.value,
             primary: widget.primary,
+            visualState: widget.visualState,
           ),
         );
       },
@@ -3278,12 +3289,14 @@ class _WaterFillPainter extends CustomPainter {
   final double phase;
   final double easedPhase;
   final Color primary;
+  final _WaterFillVisualState visualState;
 
   const _WaterFillPainter({
     required this.progress,
     required this.phase,
     required this.easedPhase,
     required this.primary,
+    required this.visualState,
   });
 
   @override
@@ -3291,14 +3304,19 @@ class _WaterFillPainter extends CustomPainter {
     final clampedProgress = progress.clamp(0.0, 1.0);
     final fillTop = size.height * (1 - clampedProgress);
     final liquidRect = Rect.fromLTWH(0, fillTop, size.width, size.height);
+    final isUploading = visualState == _WaterFillVisualState.uploading;
+    final isWaiting = visualState == _WaterFillVisualState.waiting;
+    final topAlpha = isUploading ? 0.52 : (isWaiting ? 0.3 : 0.38);
+    final midAlpha = isUploading ? 0.86 : (isWaiting ? 0.56 : 0.7);
+    final bottomAlpha = isUploading ? 1.0 : (isWaiting ? 0.8 : 0.94);
     final bodyPaint = Paint()
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          primary.withValues(alpha: 0.38),
-          primary.withValues(alpha: 0.7),
-          primary.withValues(alpha: 0.94),
+          primary.withValues(alpha: topAlpha),
+          primary.withValues(alpha: midAlpha),
+          primary.withValues(alpha: bottomAlpha),
         ],
         stops: const [0.0, 0.45, 1.0],
       ).createShader(Offset.zero & size);
@@ -3327,15 +3345,24 @@ class _WaterFillPainter extends CustomPainter {
     );
 
     final pulseOffset =
-        math.sin(easedPhase * 2 * math.pi) * (size.height * 0.012);
+        math.sin(easedPhase * 2 * math.pi) *
+        (size.height * (isUploading ? 0.018 : 0.012));
     final frontWaveBase = fillTop + pulseOffset;
     final backWaveBase = fillTop - (size.height * 0.018) + (pulseOffset * 0.65);
-    final primaryWaveAmplitude = math.max(2.0, size.height * 0.055);
-    final secondaryWaveAmplitude = math.max(1.5, size.height * 0.03);
-    final primaryFrequency = (2 * math.pi * 1.15) / math.max(1, size.width);
-    final secondaryFrequency = (2 * math.pi * 1.9) / math.max(1, size.width);
-    final primaryShift = phase * 2 * math.pi;
-    final secondaryShift = -(phase * 2.8 * math.pi);
+    final primaryWaveAmplitude = math.max(
+      2.0,
+      size.height * (isUploading ? 0.072 : 0.055),
+    );
+    final secondaryWaveAmplitude = math.max(
+      1.5,
+      size.height * (isUploading ? 0.04 : 0.03),
+    );
+    final primaryFrequency =
+        (2 * math.pi * (isUploading ? 1.36 : 1.15)) / math.max(1, size.width);
+    final secondaryFrequency =
+        (2 * math.pi * (isUploading ? 2.18 : 1.9)) / math.max(1, size.width);
+    final primaryShift = phase * (isUploading ? 2.7 : 2.0) * math.pi;
+    final secondaryShift = -(phase * (isUploading ? 3.75 : 2.8) * math.pi);
 
     final backWavePath = Path()..moveTo(0, backWaveBase);
     for (double x = 0; x <= size.width; x += 1) {
@@ -3355,8 +3382,8 @@ class _WaterFillPainter extends CustomPainter {
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          Colors.white.withValues(alpha: 0.05),
-          primary.withValues(alpha: 0.16),
+          Colors.white.withValues(alpha: isUploading ? 0.1 : 0.05),
+          primary.withValues(alpha: isUploading ? 0.24 : 0.16),
         ],
       ).createShader(Offset.zero & size);
     canvas.drawPath(backWavePath, backWavePaint);
@@ -3379,15 +3406,17 @@ class _WaterFillPainter extends CustomPainter {
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          Colors.white.withValues(alpha: 0.16),
-          Colors.white.withValues(alpha: 0.03),
+          Colors.white.withValues(alpha: isUploading ? 0.24 : 0.16),
+          Colors.white.withValues(alpha: isUploading ? 0.06 : 0.03),
         ],
       ).createShader(Offset.zero & size);
     canvas.drawPath(frontWavePath, frontWavePaint);
 
-    final shimmerWidth = size.width * 0.28;
+    final shimmerWidth = size.width * (isUploading ? 0.34 : 0.28);
     final shimmerLeft =
-        ((phase * 1.2) % 1.0) * (size.width + shimmerWidth) - shimmerWidth;
+        ((phase * (isUploading ? 1.95 : 1.2)) % 1.0) *
+            (size.width + shimmerWidth) -
+        shimmerWidth;
     final shimmerRect = Rect.fromLTWH(
       shimmerLeft,
       fillTop,
@@ -3404,8 +3433,8 @@ class _WaterFillPainter extends CustomPainter {
           end: Alignment.bottomRight,
           colors: [
             Colors.white.withValues(alpha: 0.0),
-            Colors.white.withValues(alpha: 0.07),
-            Colors.white.withValues(alpha: 0.16),
+            Colors.white.withValues(alpha: isUploading ? 0.12 : 0.07),
+            Colors.white.withValues(alpha: isUploading ? 0.24 : 0.16),
             Colors.white.withValues(alpha: 0.0),
           ],
           stops: const [0.0, 0.28, 0.58, 1.0],
@@ -3426,17 +3455,20 @@ class _WaterFillPainter extends CustomPainter {
       surfaceHighlight,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.25
-        ..color = Colors.white.withValues(alpha: 0.26),
+        ..strokeWidth = isUploading ? 1.55 : 1.25
+        ..color = Colors.white.withValues(alpha: isUploading ? 0.38 : 0.26),
     );
 
     final foamPaint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2
+      ..strokeWidth = isUploading ? 2.5 : 2
       ..strokeCap = StrokeCap.round
-      ..color = Colors.white.withValues(alpha: 0.18);
-    for (int index = 0; index < 5; index++) {
-      final x = ((index * 0.21) + (phase * 0.35)) % 1.0 * size.width;
+      ..color = Colors.white.withValues(alpha: isUploading ? 0.28 : 0.18);
+    for (int index = 0; index < (isUploading ? 7 : 5); index++) {
+      final x =
+          ((index * 0.17) + (phase * (isUploading ? 0.62 : 0.35))) %
+          1.0 *
+          size.width;
       final arcWidth = size.width * (0.05 + (index * 0.006));
       final arcRect = Rect.fromCenter(
         center: Offset(x, frontWaveBase + (index.isEven ? -1.5 : 1.5)),
@@ -3454,6 +3486,8 @@ class _WaterFillPainter extends CustomPainter {
           (0.56, 0.36, 0.024, 0.74),
           (0.73, 0.68, 0.015, 1.25),
           (0.86, 0.44, 0.018, 0.93),
+          if (isUploading) (0.1, 0.51, 0.013, 1.44),
+          if (isUploading) (0.63, 0.18, 0.014, 1.62),
         };
     canvas.save();
     canvas.clipRect(liquidRect);
@@ -3471,12 +3505,15 @@ class _WaterFillPainter extends CustomPainter {
         bubbleY,
       );
       final radius = math.max(1.6, size.width * bubble.$3);
-      bubblePaint.color = Colors.white.withValues(alpha: 0.14);
+      bubblePaint.color = Colors.white.withValues(
+        alpha: isUploading ? 0.2 : 0.14,
+      );
       canvas.drawCircle(center, radius, bubblePaint);
       canvas.drawCircle(
         center.translate(-radius * 0.25, -radius * 0.25),
         radius * 0.38,
-        Paint()..color = Colors.white.withValues(alpha: 0.2),
+        Paint()
+          ..color = Colors.white.withValues(alpha: isUploading ? 0.28 : 0.2),
       );
       canvas.drawCircle(
         center,
@@ -3484,7 +3521,7 @@ class _WaterFillPainter extends CustomPainter {
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 0.8
-          ..color = Colors.white.withValues(alpha: 0.22),
+          ..color = Colors.white.withValues(alpha: isUploading ? 0.32 : 0.22),
       );
     }
     canvas.restore();
@@ -3502,11 +3539,26 @@ class _WaterFillPainter extends CustomPainter {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Colors.white.withValues(alpha: 0.12),
+            Colors.white.withValues(alpha: isUploading ? 0.2 : 0.12),
             Colors.white.withValues(alpha: 0.0),
           ],
         ).createShader(glowRect),
     );
+
+    if (isUploading) {
+      final sparkPaint = Paint()
+        ..style = PaintingStyle.fill
+        ..color = Colors.white.withValues(alpha: 0.24);
+      for (int index = 0; index < 4; index++) {
+        final x = ((phase * (0.92 + (index * 0.21))) + (index * 0.24)) % 1.0;
+        final y = fillTop + (size.height - fillTop) * (0.12 + (index * 0.11));
+        canvas.drawCircle(
+          Offset(x * size.width, y),
+          1.2 + (index * 0.18),
+          sparkPaint,
+        );
+      }
+    }
   }
 
   @override
@@ -3514,7 +3566,8 @@ class _WaterFillPainter extends CustomPainter {
     return oldDelegate.progress != progress ||
         oldDelegate.phase != phase ||
         oldDelegate.easedPhase != easedPhase ||
-        oldDelegate.primary != primary;
+        oldDelegate.primary != primary ||
+        oldDelegate.visualState != visualState;
   }
 }
 
