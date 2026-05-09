@@ -16,7 +16,7 @@ import 'package:banay/component/ui/dinamic_icon_textarea.dart';
 import 'package:banay/component/ui/dinamic_followed_people_h_list.dart';
 import 'package:banay/component/ui/seller_certified_badge.dart';
 import 'package:banay/component/user_list_page.dart';
-import 'package:banay/page/image_viewer_page.dart';
+import 'package:banay/page/private_image_viewer.dart';
 import 'package:banay/page/dashboard_page.dart';
 import 'package:banay/page/live/live_watch_page.dart';
 import 'package:banay/page/live/live_preview_page.dart';
@@ -3063,7 +3063,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
 
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ImageViewerPage(
+        builder: (_) => PrivateImageViewerPage(
           imageUrls: [normalizedUrl],
           heroTag: heroTag,
           overlay: ImageViewerOverlayData(

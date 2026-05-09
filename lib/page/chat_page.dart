@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:banay/component/app_network_image.dart';
 import 'package:banay/component/app_page_refresh.dart';
@@ -9,10 +10,11 @@ import 'package:banay/component/seller_profile_page.dart';
 import 'package:banay/component/ui/chat_message_input.dart';
 import 'package:banay/component/user_profile_page.dart';
 import 'package:banay/formatter/price_formatter.dart';
-import 'package:banay/page/image_viewer_page.dart';
+import 'package:banay/page/private_image_viewer.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/catalog_api_service.dart';
 import 'package:banay/services/chat_realtime_service.dart';
+import 'package:banay/services/chat_photo_upload_service.dart';
 import 'package:banay/services/cloudinary_image_url.dart';
 import 'package:banay/services/chat_media_cache_service.dart';
 import 'package:banay/services/conversations_api_service.dart';
@@ -80,7 +82,6 @@ class _ChatPageState extends State<ChatPage>
     with AppPageRefreshMixin<ChatPage>, RouteAware {
   static const Duration _conversationPollInterval = Duration(seconds: 3);
   static const Duration _typingStopDelay = Duration(milliseconds: 1200);
-  static const Duration _photoUploadProgressTick = Duration(milliseconds: 18);
   final ConversationsApiService _conversationsApiService =
       ConversationsApiService();
   final CatalogApiService _catalogApiService = CatalogApiService();
@@ -89,12 +90,13 @@ class _ChatPageState extends State<ChatPage>
   final ScrollController _scrollController = ScrollController();
   final List<_ChatMessage> _messages = [];
   final List<_ChatMessage> _pendingMessages = [];
+  List<ChatPhotoUploadTask> _photoUploadTasks = const <ChatPhotoUploadTask>[];
+  final Set<String> _appliedCompletedUploadIds = <String>{};
   final Map<String, GlobalKey> _messageKeys = {};
   StreamSubscription<Map<String, dynamic>>? _realtimeEventsSubscription;
   Timer? _conversationPollTimer;
   Timer? _messageHighlightTimer;
   Timer? _typingStopTimer;
-  Timer? _photoUploadProgressTimer;
   static const int _scrollRetryCount = 4;
   bool _showEntrySkeleton = true;
   bool _isSending = false;
@@ -103,10 +105,6 @@ class _ChatPageState extends State<ChatPage>
   bool _initialMessageHandled = false;
   bool _initialProductContextSent = false;
   bool _conversationBlocked = false;
-  int? _photoUploadProgressPercent;
-  int _photoUploadTargetPercent = 0;
-  String? _uploadingPhotoLabel;
-  String? _photoUploadStatusLabel;
   String? _conversationId;
   String? _loadError;
   Map<String, dynamic>? _conversation;
@@ -120,6 +118,8 @@ class _ChatPageState extends State<ChatPage>
     super.initState();
     initializePageRefresh();
     _conversationId = widget.conversationId;
+    ChatPhotoUploadService.instance.addListener(_handlePhotoUploadsChanged);
+    _syncPhotoUploadTasks();
 
     if (_usesLiveConversation) {
       _bindRealtimeUpdates();
@@ -145,7 +145,7 @@ class _ChatPageState extends State<ChatPage>
     _conversationPollTimer?.cancel();
     _messageHighlightTimer?.cancel();
     _typingStopTimer?.cancel();
-    _photoUploadProgressTimer?.cancel();
+    ChatPhotoUploadService.instance.removeListener(_handlePhotoUploadsChanged);
     _emitTyping(false);
     disposePageRefresh();
     _messageController.dispose();
@@ -185,6 +185,38 @@ class _ChatPageState extends State<ChatPage>
 
   void _syncVisibleConversationRegistration() {
     PushNotificationService.setVisibleConversation(_conversationId);
+  }
+
+  void _handlePhotoUploadsChanged() {
+    _syncPhotoUploadTasks();
+  }
+
+  void _syncPhotoUploadTasks() {
+    final matchingTasks = ChatPhotoUploadService.instance.tasksForTarget(
+      conversationId: _conversationId,
+      productId: widget.conversationProductId,
+      targetUserId: widget.conversationUserId,
+    );
+
+    for (final task in matchingTasks) {
+      final completedConversationData = task.completedConversationData;
+      if (completedConversationData == null ||
+          !_appliedCompletedUploadIds.add(task.id)) {
+        continue;
+      }
+
+      _applyConversation(Map<String, dynamic>.from(completedConversationData));
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _photoUploadTasks = matchingTasks
+          .where((task) => task.isVisibleInChat)
+          .toList(growable: false);
+    });
   }
 
   @override
@@ -595,6 +627,7 @@ class _ChatPageState extends State<ChatPage>
         ),
       );
     _pendingMessages.clear();
+    _syncPhotoUploadTasks();
     final participant = data['participant'];
     final participantUserId = participant is Map
         ? participant['id']?.toString().trim()
@@ -1030,150 +1063,31 @@ class _ChatPageState extends State<ChatPage>
       return;
     }
 
-    try {
-      if (mounted) {
-        setState(() {
-          _uploadingPhotoLabel = attachment.label;
-          _photoUploadProgressPercent = 1;
-          _photoUploadTargetPercent = 1;
-          _photoUploadStatusLabel = 'Preparation de l\'envoi...';
-        });
-      }
-      _animatePhotoUploadProgressTo(3);
+    final previousReplyingToMessage = _replyingToMessage;
+    final replyPayload = await _replyPayload(previousReplyingToMessage);
 
-      final upload = await _conversationsApiService.uploadPhotoAttachment(
-        fileBytes: bytes,
-        fileName: attachment.label,
-        onProgress: (progress) {
-          if (!mounted) {
-            return;
-          }
-
-          setState(() {
-            _photoUploadStatusLabel = 'Televersement de l\'image...';
-          });
-
-          final mappedPercent = (1 + (progress.clamp(0, 1) * 89)).round();
-          _animatePhotoUploadProgressTo(mappedPercent);
-        },
-      );
-
-      if (mounted) {
-        setState(() {
-          _photoUploadStatusLabel = 'Traitement de l\'image...';
-        });
-      }
-      _animatePhotoUploadProgressTo(94);
-
-      final attachmentUrl = upload['attachmentUrl']?.toString().trim() ?? '';
-      if (attachmentUrl.isEmpty) {
-        throw AppApiException('Photo invalide apres upload');
-      }
-
-      await _sendMediaAttachmentMessage(
-        kind: _ChatMessageKind.image,
-        content: 'Photo envoyee',
-        mediaPayload: {
-          'kind': 'IMAGE',
-          'mediaType': 'image',
-          'publicUrl':
-              upload['originalUrl']?.toString().trim().isNotEmpty == true
-              ? upload['originalUrl']!.toString().trim()
-              : attachmentUrl,
-          'fileName': attachment.label,
-          'mimeType': _guessMimeTypeFromFileName(attachment.label, true),
-          'fileSizeBytes': bytes.length,
-          'mediaGroupId': attachment.mediaGroupId,
-          'width': attachment.width,
-          'height': attachment.height,
-          'storageProvider': 'cloudinary',
-          'storageKey': upload['publicId']?.toString(),
-        },
-        pendingMedia: _ChatMessageMedia(
-          mediaType: 'image',
-          publicUrl: upload['originalUrl']?.toString().trim().isNotEmpty == true
-              ? upload['originalUrl']!.toString().trim()
-              : attachmentUrl,
-          previewUrl: attachmentUrl,
-          thumbnailUrl: attachmentUrl,
-          fileName: attachment.label,
-          mimeType: _guessMimeTypeFromFileName(attachment.label, true),
-          fileSizeBytes: bytes.length,
-          mediaGroupId: attachment.mediaGroupId,
-          width: attachment.width,
-          height: attachment.height,
-          storageProvider: 'cloudinary',
-          storageKey: upload['publicId']?.toString(),
-        ),
-      );
-
-      if (mounted) {
-        setState(() {
-          _photoUploadStatusLabel = 'Photo envoyee';
-        });
-      }
-      _animatePhotoUploadProgressTo(100);
-      await Future<void>.delayed(const Duration(milliseconds: 420));
-    } on AppApiException catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
-    } finally {
-      if (mounted) {
-        setState(() {
-          _photoUploadProgressPercent = null;
-          _photoUploadTargetPercent = 0;
-          _uploadingPhotoLabel = null;
-          _photoUploadStatusLabel = null;
-        });
-      }
-      _photoUploadProgressTimer?.cancel();
-      _photoUploadProgressTimer = null;
-    }
-  }
-
-  void _animatePhotoUploadProgressTo(int targetPercent) {
-    final normalizedTarget = targetPercent.clamp(1, 100);
-    _photoUploadTargetPercent = normalizedTarget;
-
-    if (!mounted) {
-      return;
-    }
-
-    final currentPercent = _photoUploadProgressPercent;
-    if (currentPercent == null) {
-      setState(() => _photoUploadProgressPercent = normalizedTarget);
-      return;
-    }
-
-    if (currentPercent >= normalizedTarget) {
-      return;
-    }
-
-    _photoUploadProgressTimer ??= Timer.periodic(_photoUploadProgressTick, (
-      timer,
-    ) {
-      if (!mounted || _photoUploadProgressPercent == null) {
-        timer.cancel();
-        _photoUploadProgressTimer = null;
-        return;
-      }
-
-      final currentValue = _photoUploadProgressPercent!;
-      if (currentValue >= _photoUploadTargetPercent) {
-        timer.cancel();
-        _photoUploadProgressTimer = null;
-        return;
-      }
-
+    if (mounted) {
       setState(() {
-        _photoUploadProgressPercent = currentValue + 1;
+        _replyingToMessage = null;
       });
-    });
+    }
+
+    await ChatPhotoUploadService.instance.enqueuePhotoUpload(
+      target: ChatPhotoUploadTarget(
+        conversationId: _conversationId,
+        productId: widget.conversationProductId,
+        targetUserId: widget.conversationUserId,
+      ),
+      fileBytes: bytes,
+      fileName: attachment.label,
+      width: attachment.width,
+      height: attachment.height,
+      mediaGroupId: attachment.mediaGroupId,
+      replyPayload: replyPayload,
+    );
+
+    _syncPhotoUploadTasks();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _animateToBottom());
   }
 
   Future<void> _sendDocumentAttachment(UiChatAttachment attachment) async {
@@ -1624,7 +1538,7 @@ class _ChatPageState extends State<ChatPage>
 
       await Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => ImageViewerPage(
+          builder: (_) => PrivateImageViewerPage(
             imageUrls: [attachmentUrl],
             onDownloadImage: (imageUrl) =>
                 _downloadAttachmentImage(imageUrl, fileName: product.subtitle),
@@ -1707,7 +1621,7 @@ class _ChatPageState extends State<ChatPage>
 
       await Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => ImageViewerPage(
+          builder: (_) => PrivateImageViewerPage(
             imageUrls: [imageUrl],
             onDownloadImage: (imageUrl) =>
                 _downloadAttachmentImage(imageUrl, fileName: media.fileName),
@@ -1791,7 +1705,7 @@ class _ChatPageState extends State<ChatPage>
     final normalizedInitialIndex = initialIndex.clamp(0, imageUrls.length - 1);
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ImageViewerPage(
+        builder: (_) => PrivateImageViewerPage(
           imageUrls: imageUrls,
           initialIndex: normalizedInitialIndex,
           onDownloadImage: (imageUrl) => _downloadAttachmentImage(imageUrl),
@@ -2194,6 +2108,16 @@ class _ChatPageState extends State<ChatPage>
                                       ),
                                     );
                                   }),
+                                if (_photoUploadTasks.isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  _AttachmentUploadProgressGrid(
+                                    tasks: _photoUploadTasks,
+                                    primary: primary,
+                                    cardColor: incomingBubbleColor,
+                                    subtleText: subtleText,
+                                  ),
+                                  const SizedBox(height: 8),
+                                ],
                                 if (_isParticipantTyping) ...[
                                   const SizedBox(height: 6),
                                   _TypingIndicatorBubble(
@@ -2232,40 +2156,15 @@ class _ChatPageState extends State<ChatPage>
                                 cardColor: incomingBubbleColor,
                               )
                             else
-                              Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (_photoUploadProgressPercent != null) ...[
-                                    _AttachmentUploadProgressCard(
-                                      label:
-                                          _uploadingPhotoLabel ??
-                                          'Photo en cours',
-                                      statusLabel:
-                                          _photoUploadStatusLabel ??
-                                          'Televersement de l\'image...',
-                                      progressPercent:
-                                          _photoUploadProgressPercent!,
-                                      primary: primary,
-                                      cardColor: incomingBubbleColor,
-                                      subtleText: subtleText,
-                                    ),
-                                    const SizedBox(height: 8),
-                                  ],
-                                  AbsorbPointer(
-                                    absorbing:
-                                        _photoUploadProgressPercent != null,
-                                    child: UiChatMessageInput(
-                                      controller: _messageController,
-                                      onAttachmentSelected: _handleAttachment,
-                                      onTextChanged: _handleComposerChanged,
-                                      onSend: _sendMessage,
-                                      primary: primary,
-                                      panelColor: panelColor,
-                                      borderColor: appColors.inputBorder,
-                                      hintText: 'Message',
-                                    ),
-                                  ),
-                                ],
+                              UiChatMessageInput(
+                                controller: _messageController,
+                                onAttachmentSelected: _handleAttachment,
+                                onTextChanged: _handleComposerChanged,
+                                onSend: _sendMessage,
+                                primary: primary,
+                                panelColor: panelColor,
+                                borderColor: appColors.inputBorder,
+                                hintText: 'Message',
                               ),
                           ],
                         ),
@@ -3015,18 +2914,14 @@ class _ChatBubble extends StatelessWidget {
   }
 }
 
-class _AttachmentUploadProgressCard extends StatelessWidget {
-  final String label;
-  final String statusLabel;
-  final int progressPercent;
+class _AttachmentUploadProgressGrid extends StatelessWidget {
+  final List<ChatPhotoUploadTask> tasks;
   final Color primary;
   final Color cardColor;
   final Color subtleText;
 
-  const _AttachmentUploadProgressCard({
-    required this.label,
-    required this.statusLabel,
-    required this.progressPercent,
+  const _AttachmentUploadProgressGrid({
+    required this.tasks,
     required this.primary,
     required this.cardColor,
     required this.subtleText,
@@ -3034,64 +2929,150 @@ class _AttachmentUploadProgressCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final normalizedPercent = progressPercent.clamp(1, 100);
+    final columnCount = tasks.length == 1 ? 1 : 2;
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: tasks.length,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: columnCount,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
+        childAspectRatio: columnCount == 1 ? 2.6 : 0.92,
+      ),
+      itemBuilder: (context, index) {
+        return _AttachmentUploadProgressCard(
+          task: tasks[index],
+          primary: primary,
+          cardColor: cardColor,
+          subtleText: subtleText,
+        );
+      },
+    );
+  }
+}
+
+class _AttachmentUploadProgressCard extends StatelessWidget {
+  final ChatPhotoUploadTask task;
+  final Color primary;
+  final Color cardColor;
+  final Color subtleText;
+
+  const _AttachmentUploadProgressCard({
+    required this.task,
+    required this.primary,
+    required this.cardColor,
+    required this.subtleText,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final normalizedPercent = task.progressPercent.clamp(1, 100);
     final normalizedProgress = normalizedPercent / 100;
     final percentLabel = '$normalizedPercent%';
+    final isWaitingForConnection =
+        task.state == ChatPhotoUploadState.waitingForConnection;
+    final isFailed = task.state == ChatPhotoUploadState.failed;
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
       decoration: BoxDecoration(
         color: cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: primary.withValues(alpha: 0.24)),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isFailed
+              ? Colors.redAccent.withValues(alpha: 0.38)
+              : primary.withValues(alpha: 0.24),
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Row(
-            children: [
-              Icon(Icons.cloud_upload_outlined, color: primary, size: 18),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Envoi de $label',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.96),
-                    fontWeight: FontWeight.w700,
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: SizedBox(
+              width: 58,
+              height: 58,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.memory(task.previewBytes, fit: BoxFit.cover),
+                  Container(color: Colors.black.withValues(alpha: 0.18)),
+                  _WaterFillProgressLayer(
+                    progress: normalizedProgress,
+                    primary: isFailed
+                        ? Colors.redAccent
+                        : (isWaitingForConnection
+                              ? const Color(0xFF4FC3F7)
+                              : primary),
                   ),
-                ),
+                  Center(
+                    child: Icon(
+                      isFailed
+                          ? Icons.error_outline_rounded
+                          : isWaitingForConnection
+                          ? Icons.wifi_off_rounded
+                          : Icons.cloud_upload_outlined,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              Text(
-                percentLabel,
-                style: TextStyle(
-                  color: subtleText,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            statusLabel,
-            style: TextStyle(
-              color: subtleText,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: normalizedProgress,
-              minHeight: 7,
-              backgroundColor: Colors.white.withValues(alpha: 0.10),
-              valueColor: AlwaysStoppedAnimation<Color>(primary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        task.fileName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.96),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      percentLabel,
+                      style: TextStyle(
+                        color: subtleText,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  task.statusLabel,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: subtleText,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _WaterFillProgressTrack(
+                  progress: normalizedProgress,
+                  primary: isFailed
+                      ? Colors.redAccent
+                      : (isWaitingForConnection
+                            ? const Color(0xFF4FC3F7)
+                            : primary),
+                ),
+              ],
             ),
           ),
         ],
@@ -3100,33 +3081,172 @@ class _AttachmentUploadProgressCard extends StatelessWidget {
   }
 }
 
-class _ChatDeliveryPresentation {
-  final String label;
-  final IconData icon;
-  final Color color;
+class _WaterFillProgressTrack extends StatelessWidget {
+  final double progress;
+  final Color primary;
 
-  const _ChatDeliveryPresentation({
-    required this.label,
-    required this.icon,
-    required this.color,
+  const _WaterFillProgressTrack({
+    required this.progress,
+    required this.primary,
   });
 
-  static _ChatDeliveryPresentation? fromState(
-    _ChatMessageDeliveryState? state,
-    Color primary,
-    Color fallbackColor,
-  ) {
-    switch (state) {
-      case _ChatMessageDeliveryState.sending:
-        return _ChatDeliveryPresentation(
-          label: 'Envoi...',
-          icon: Icons.schedule_rounded,
-          color: fallbackColor,
-        );
-      case _ChatMessageDeliveryState.sent:
-        return _ChatDeliveryPresentation(
-          label: 'Envoye',
-          icon: Icons.done_rounded,
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: SizedBox(
+        height: 12,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Container(color: Colors.white.withValues(alpha: 0.08)),
+            _WaterFillProgressLayer(progress: progress, primary: primary),
+          ],
+      ),
+    );
+  }
+              final accentColor = isFailed
+                  ? Colors.redAccent
+                  : (isWaitingForConnection ? const Color(0xFF4FC3F7) : primary);
+}
+
+                padding: const EdgeInsets.all(10),
+  final Color primary;
+
+  const _WaterFillProgressLayer({
+    required this.progress,
+    required this.primary,
+                        ? Colors.redAccent.withValues(alpha: 0.38)
+
+  @override
+  State<_WaterFillProgressLayer> createState() =>
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+
+                    AspectRatio(
+                      aspectRatio: 1,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            Image.memory(task.previewBytes, fit: BoxFit.cover),
+                            Container(color: Colors.black.withValues(alpha: 0.18)),
+                            _WaterFillProgressLayer(
+                              progress: normalizedProgress,
+                              primary: accentColor,
+                            ),
+                            Positioned(
+                              top: 8,
+                              right: 8,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.48),
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(
+                                    color: Colors.white.withValues(alpha: 0.16),
+                                  ),
+                                ),
+                                child: Text(
+                                  '$normalizedPercent%',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    isFailed
+                                        ? Icons.error_outline_rounded
+                                        : isWaitingForConnection
+                                        ? Icons.wifi_off_rounded
+                                        : Icons.cloud_upload_outlined,
+                                    color: Colors.white,
+                                    size: 24,
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    '$normalizedPercent%',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+
+  @override
+                    const SizedBox(height: 10),
+                    Text(
+                      task.fileName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.96),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      task.statusLabel,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: subtleText,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(
+                          isFailed
+                              ? Icons.error_rounded
+                              : isWaitingForConnection
+                              ? Icons.autorenew_rounded
+                              : Icons.water_drop_rounded,
+                          size: 14,
+                          color: accentColor,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            isFailed
+                                ? 'Echec de l\'envoi'
+                                : isWaitingForConnection
+                                ? 'Reprise automatique'
+                                : 'Remplissage en cours',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: accentColor.withValues(alpha: 0.95),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+  bool shouldRepaint(covariant _WaterFillPainter oldDelegate) {
+    return oldDelegate.progress != progress ||
+        oldDelegate.phase != phase ||
+        oldDelegate.primary != primary;
+  }
+}
+
           color: fallbackColor,
         );
       case _ChatMessageDeliveryState.seen:
