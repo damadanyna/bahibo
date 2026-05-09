@@ -28,14 +28,20 @@ type ConversationTypingPayload = {
 };
 
 type ProfileRealtimePayload = {
-  type: 'profile:updated' | 'profile:shop-request-updated';
+  type:
+    | 'profile:updated'
+    | 'profile:shop-request-updated'
+    | 'profile:public-updated';
   userId: string;
   profile: {
     id: string;
-    role: string;
-    shopRequestStatus: string;
-    shopRequestSubmittedAt: string | null;
-    shopRequestReviewedAt: string | null;
+    role?: string;
+    displayName?: string;
+    avatarUrl?: string | null;
+    coverImageUrl?: string | null;
+    shopRequestStatus?: string;
+    shopRequestSubmittedAt?: string | null;
+    shopRequestReviewedAt?: string | null;
     sellerVerificationRequestStatus?: string;
     sellerVerificationRequestedAt?: string | null;
     sellerVerificationReviewedAt?: string | null;
@@ -59,6 +65,7 @@ type PresenceRealtimePayload = {
   type: 'presence:updated';
   userId: string;
   isOnline: boolean;
+  lastSeenAt?: string | null;
 };
 
 type LiveRealtimePayload = {
@@ -146,6 +153,7 @@ export class ConversationsRealtimeGateway
         type: 'presence:updated',
         userId: payload.sub,
         isOnline: true,
+        lastSeenAt: null,
       });
       this.logger.debug(`Socket connected for user ${payload.sub}`);
     } catch {
@@ -156,14 +164,16 @@ export class ConversationsRealtimeGateway
   handleDisconnect(client: Socket) {
     const userId = client.data.userId as string | undefined;
     if (userId != null) {
+      const lastSeenAt = new Date();
       void this.prisma.user.update({
         where: { id: userId },
-        data: { lastSeenAt: new Date() },
+        data: { lastSeenAt },
       }).catch(() => undefined);
       this.emitPresenceEvent({
         type: 'presence:updated',
         userId,
         isOnline: this.isUserConnected(userId),
+        lastSeenAt: lastSeenAt.toISOString(),
       });
       this.logger.debug(`Socket disconnected for user ${userId}`);
     }
@@ -223,6 +233,14 @@ export class ConversationsRealtimeGateway
     }
 
     this.server.to(this.userRoom(userId)).emit('profiles:updated', payload);
+  }
+
+  emitPublicProfileEvent(payload: ProfileRealtimePayload) {
+    if (!this.server) {
+      return;
+    }
+
+    this.server.emit('profiles:updated', payload);
   }
 
   emitNotificationEvent(userId: string, payload: NotificationRealtimePayload) {

@@ -239,7 +239,11 @@ class _SellerProfilePageState extends State<SellerProfilePage>
       return 'En ligne';
     }
 
-    final lastSeenAt = _profileLastSeenAt;
+    final sellerUserId = profile.userId?.trim() ?? '';
+    final liveLastSeen = sellerUserId.isNotEmpty
+        ? PresenceService.instance.lastSeenOf(sellerUserId)
+        : null;
+    final lastSeenAt = liveLastSeen ?? _profileLastSeenAt;
     if (lastSeenAt == null) {
       return 'Hors ligne';
     }

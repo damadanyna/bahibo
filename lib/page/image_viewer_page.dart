@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:banay/component/app_back_button.dart';
 import 'package:banay/component/app_comments_sheet.dart';
@@ -5,6 +7,8 @@ import 'package:banay/component/app_network_image.dart';
 import 'package:banay/component/app_page_skeletons.dart';
 import 'package:banay/component/app_page_refresh.dart';
 import 'package:banay/component/app_share_sheet.dart';
+import 'package:banay/component/chat_media_cached_image.dart';
+import 'package:banay/services/chat_media_cache_service.dart';
 import 'package:banay/services/cloudinary_image_url.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
 
@@ -77,6 +81,7 @@ class ImageViewerPage extends StatefulWidget {
   final List<ImageViewerEntry>? entries;
   final VoidCallback? onSellerTap;
   final VoidCallback? onSellerMessageTap;
+  final Future<void> Function(String imageUrl)? onDownloadImage;
 
   const ImageViewerPage({
     super.key,
@@ -88,6 +93,7 @@ class ImageViewerPage extends StatefulWidget {
     this.entries,
     this.onSellerTap,
     this.onSellerMessageTap,
+    this.onDownloadImage,
   });
 
   @override
@@ -105,30 +111,33 @@ class _ImageViewerPageState extends State<ImageViewerPage>
   bool _showEntrySkeleton = true;
   bool _showChrome = true;
   bool _isDescriptionExpanded = false;
+  bool _isDownloadingImage = false;
   final List<AppCommentItem> _comments = defaultAppComments();
 
   @override
   void initState() {
     super.initState();
     initializePageRefresh();
-    _entries =
-        widget.entries != null && widget.entries!.isNotEmpty
-            ? widget.entries!
-            : <ImageViewerEntry>[
-              ImageViewerEntry(
-                imageUrls: widget.imageUrls,
-                initialIndex: widget.initialIndex,
-                heroTag: widget.heroTag,
-                overlay: widget.overlay,
-              ),
-            ];
+    _entries = widget.entries != null && widget.entries!.isNotEmpty
+        ? widget.entries!
+        : <ImageViewerEntry>[
+            ImageViewerEntry(
+              imageUrls: widget.imageUrls,
+              initialIndex: widget.initialIndex,
+              heroTag: widget.heroTag,
+              overlay: widget.overlay,
+            ),
+          ];
     _currentEntryIndex = widget.initialEntryIndex.clamp(0, _entries.length - 1);
     _currentIndex = _safeImageIndex(_currentEntryIndex);
     _entryImageIndexes[_currentEntryIndex] = _currentIndex;
     _commentCount =
-        _parseCompactCount(_entries[_currentEntryIndex].overlay?.commentsCount) ??
+        _parseCompactCount(
+          _entries[_currentEntryIndex].overlay?.commentsCount,
+        ) ??
         64;
     _entryPageController = PageController(initialPage: _currentEntryIndex);
+    _prefetchViewerNeighborhood(_currentEntryIndex, _currentIndex);
     Future.delayed(const Duration(milliseconds: 180), () {
       if (!mounted) return;
       setState(() => _showEntrySkeleton = false);
@@ -240,6 +249,46 @@ class _ImageViewerPageState extends State<ImageViewerPage>
                     children: [
                       const AppBackButton(),
                       const Spacer(),
+                      if (widget.onDownloadImage != null)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 10),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: _isDownloadingImage
+                                  ? null
+                                  : _handleDownloadCurrentImage,
+                              borderRadius: BorderRadius.circular(999),
+                              child: Ink(
+                                width: 42,
+                                height: 42,
+                                decoration: BoxDecoration(
+                                  color: appColors.overlaySurface,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: appColors.overlayBorder,
+                                  ),
+                                ),
+                                child: Center(
+                                  child: _isDownloadingImage
+                                      ? SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2.2,
+                                            color: appColors.heroForeground,
+                                          ),
+                                        )
+                                      : Icon(
+                                          Icons.download_rounded,
+                                          color: appColors.heroForeground,
+                                          size: 20,
+                                        ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
 
                       const Spacer(),
                       Container(
@@ -301,6 +350,33 @@ class _ImageViewerPageState extends State<ImageViewerPage>
     setState(() => _isDescriptionExpanded = !_isDescriptionExpanded);
   }
 
+  Future<void> _handleDownloadCurrentImage() async {
+    final onDownloadImage = widget.onDownloadImage;
+    if (onDownloadImage == null || _isDownloadingImage) {
+      return;
+    }
+
+    final activeEntry = _entries[_currentEntryIndex];
+    if (activeEntry.imageUrls.isEmpty) {
+      return;
+    }
+
+    final imageIndex = _safeImageIndex(_currentEntryIndex);
+    final imageUrl = activeEntry.imageUrls[imageIndex].trim();
+    if (imageUrl.isEmpty) {
+      return;
+    }
+
+    setState(() => _isDownloadingImage = true);
+    try {
+      await onDownloadImage(imageUrl);
+    } finally {
+      if (mounted) {
+        setState(() => _isDownloadingImage = false);
+      }
+    }
+  }
+
   int _safeImageIndex(int entryIndex) {
     final entry = _entries[entryIndex];
     if (entry.imageUrls.isEmpty) {
@@ -313,7 +389,9 @@ class _ImageViewerPageState extends State<ImageViewerPage>
   void _handleEntryPageChanged(int entryIndex) {
     final nextEntry = _entries[entryIndex];
     final nextImageIndex = _safeImageIndex(entryIndex);
-    final nextCommentCount = _parseCompactCount(nextEntry.overlay?.commentsCount);
+    final nextCommentCount = _parseCompactCount(
+      nextEntry.overlay?.commentsCount,
+    );
 
     setState(() {
       _currentEntryIndex = entryIndex;
@@ -321,6 +399,28 @@ class _ImageViewerPageState extends State<ImageViewerPage>
       _isDescriptionExpanded = false;
       _commentCount = nextCommentCount ?? 64;
     });
+
+    _prefetchViewerNeighborhood(entryIndex, nextImageIndex);
+  }
+
+  void _prefetchViewerNeighborhood(int entryIndex, int imageIndex) {
+    final entry = _entries[entryIndex];
+    if (entry.imageUrls.isEmpty) {
+      return;
+    }
+
+    final urls = <String>{};
+    final indexes = <int>{imageIndex, imageIndex - 1, imageIndex + 1};
+    for (final index in indexes) {
+      if (index < 0 || index >= entry.imageUrls.length) {
+        continue;
+      }
+      urls.add(CloudinaryImageUrl.forViewer(entry.imageUrls[index]));
+    }
+
+    for (final url in urls) {
+      unawaited(ChatMediaCacheService.instance.prefetch(url));
+    }
   }
 
   String _buildCounterLabel() {
@@ -341,9 +441,9 @@ class _ImageViewerPageState extends State<ImageViewerPage>
 
   Widget _buildEntryPage(BuildContext context, int entryIndex) {
     final entry = _entries[entryIndex];
-    final images = entry.imageUrls.map(CloudinaryImageUrl.forViewer).toList(
-      growable: false,
-    );
+    final images = entry.imageUrls
+        .map(CloudinaryImageUrl.forViewer)
+        .toList(growable: false);
     final appColors = Theme.of(context).appColors;
 
     if (images.isEmpty) {
@@ -369,15 +469,13 @@ class _ImageViewerPageState extends State<ImageViewerPage>
         }
         setState(() => _currentIndex = imageIndex);
       },
-      buildImage: ({
-        required imageUrl,
-        required heroTag,
-        required isInitialHero,
-      }) => _buildZoomableImage(
-        imageUrl: imageUrl,
-        heroTag: heroTag,
-        isInitialHero: isInitialHero,
-      ),
+      buildImage:
+          ({required imageUrl, required heroTag, required isInitialHero}) =>
+              _buildZoomableImage(
+                imageUrl: imageUrl,
+                heroTag: heroTag,
+                isInitialHero: isInitialHero,
+              ),
     );
   }
 
@@ -388,7 +486,7 @@ class _ImageViewerPageState extends State<ImageViewerPage>
   }) {
     final appColors = Theme.of(context).appColors;
 
-    Widget image = AppNetworkImage(
+    Widget image = ChatMediaCachedImage(
       imageUrl: imageUrl,
       fit: BoxFit.contain,
       filterQuality: FilterQuality.high,
@@ -446,7 +544,8 @@ class _ImageViewerEntryPage extends StatefulWidget {
     required String imageUrl,
     required String? heroTag,
     required bool isInitialHero,
-  }) buildImage;
+  })
+  buildImage;
 
   const _ImageViewerEntryPage({
     required this.entry,
@@ -551,11 +650,13 @@ class _ZoomableViewerState extends State<_ZoomableViewer> {
     const zoomScale = 3.0;
     final position = details.localPosition;
     final zoomedMatrix = Matrix4.identity()
-      ..translate(
+      ..translateByDouble(
         -position.dx * (zoomScale - 1),
         -position.dy * (zoomScale - 1),
+        0,
+        1,
       )
-      ..scale(zoomScale);
+      ..scaleByDouble(zoomScale, zoomScale, 1, 1);
 
     _transformationController.value = zoomedMatrix;
     setState(() => _isZoomed = true);
@@ -616,11 +717,11 @@ class _ImageViewerOverlay extends StatelessWidget {
         (overlay.sellerName?.trim().isNotEmpty ?? false) ||
         (overlay.sellerAvatarUrl?.trim().isNotEmpty ?? false);
     final showTitle =
-      !overlay.isUserProfileImage &&
-      (overlay.title?.trim().isNotEmpty ?? false);
+        !overlay.isUserProfileImage &&
+        (overlay.title?.trim().isNotEmpty ?? false);
     final showDescription =
-      !overlay.isUserProfileImage &&
-      (overlay.description?.trim().isNotEmpty ?? false);
+        !overlay.isUserProfileImage &&
+        (overlay.description?.trim().isNotEmpty ?? false);
     final showInfoCard = showTitle || showDescription;
     final sellerAvatarUrl = overlay.sellerAvatarUrl?.trim();
     final sellerUserId = overlay.sellerUserId?.trim();
@@ -904,4 +1005,3 @@ class _SellerStatusAvatar extends StatelessWidget {
     );
   }
 }
-

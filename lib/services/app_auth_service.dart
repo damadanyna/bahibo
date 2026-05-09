@@ -175,6 +175,36 @@ class AppAuthService {
     return Map<String, dynamic>.from(data as Map);
   }
 
+  Future<Map<String, dynamic>> updateSellerProfile({
+    String? studioName,
+    String? description,
+    String? city,
+    String? country,
+  }) async {
+    final sellerProfile = <String, dynamic>{};
+
+    if (studioName != null) {
+      sellerProfile['studioName'] = studioName;
+    }
+    if (description != null) {
+      sellerProfile['description'] = description;
+    }
+    if (city != null) {
+      sellerProfile['city'] = city;
+    }
+    if (country != null) {
+      sellerProfile['country'] = country;
+    }
+
+    final data = await _client.patch(
+      '/profiles/me',
+      authenticated: true,
+      body: {'sellerProfile': sellerProfile},
+    );
+
+    return Map<String, dynamic>.from(data as Map);
+  }
+
   Future<Map<String, dynamic>> submitShopRequest() async {
     final data = await _client.post(
       '/profiles/me/shop-request',

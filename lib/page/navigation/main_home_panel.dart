@@ -96,6 +96,127 @@ class _MainHomePanelState extends State<MainHomePanel>
       if (type == 'live:updated') {
         unawaited(fetchFollowedPeople());
       }
+
+      if (type == 'profile:public-updated') {
+        _applyPublicProfileUpdate(event);
+      }
+    });
+  }
+
+  void _applyPublicProfileUpdate(Map<String, dynamic> event) {
+    final userId = event['userId']?.toString().trim() ?? '';
+    final profile = event['profile'];
+    if (userId.isEmpty || profile is! Map) {
+      return;
+    }
+
+    final rawSellerProfile = profile['sellerProfile'];
+    final sellerProfile = rawSellerProfile is Map
+        ? Map<String, dynamic>.from(rawSellerProfile)
+        : const <String, dynamic>{};
+    final sellerProfileId = sellerProfile['id']?.toString().trim() ?? '';
+    final displayName = profile['displayName']?.toString().trim() ?? '';
+    final studioName = sellerProfile['studioName']?.toString().trim() ?? '';
+    final resolvedName = studioName.isNotEmpty ? studioName : displayName;
+    final avatarUrl = profile['avatarUrl']?.toString().trim() ?? '';
+    final coverImageUrl = profile['coverImageUrl']?.toString().trim() ?? '';
+
+    var hasChanged = false;
+
+    final updatedProducts = products.map((entry) {
+      if (entry is! Map) {
+        return entry;
+      }
+
+      final product = Map<String, dynamic>.from(entry);
+      final productSellerProfileId =
+          product['sellerProfileId']?.toString().trim() ??
+          product['seller']?['id']?.toString().trim() ??
+          '';
+      final productSellerUserId =
+          product['sellerUserId']?.toString().trim() ??
+          product['seller']?['userId']?.toString().trim() ??
+          '';
+
+      final matchesProfile =
+          (sellerProfileId.isNotEmpty &&
+              productSellerProfileId == sellerProfileId) ||
+          productSellerUserId == userId;
+      if (!matchesProfile) {
+        return entry;
+      }
+
+      hasChanged = true;
+      if (resolvedName.isNotEmpty) {
+        product['sellerName'] = resolvedName;
+      }
+      if (avatarUrl.isNotEmpty) {
+        product['sellerAvatarUrl'] = avatarUrl;
+        product['avatarUrl'] = avatarUrl;
+      }
+
+      final seller = product['seller'];
+      if (seller is Map) {
+        final nextSeller = Map<String, dynamic>.from(seller);
+        if (resolvedName.isNotEmpty) {
+          nextSeller['name'] = resolvedName;
+          nextSeller['displayName'] = resolvedName;
+        }
+        if (avatarUrl.isNotEmpty) {
+          nextSeller['avatarUrl'] = avatarUrl;
+        }
+        if (sellerProfileId.isNotEmpty) {
+          nextSeller['id'] = sellerProfileId;
+        }
+        nextSeller['userId'] = userId;
+        product['seller'] = nextSeller;
+      }
+
+      return product;
+    }).toList();
+
+    final updatedFollowedPeople = followedPeople.map((person) {
+      final nextPerson = Map<String, dynamic>.from(person);
+      final personUserId =
+          nextPerson['userId']?.toString().trim() ??
+          nextPerson['id']?.toString().trim() ??
+          '';
+      final personSellerProfileId =
+          nextPerson['sellerProfileId']?.toString().trim() ?? '';
+      final matchesProfile =
+          personUserId == userId ||
+          (sellerProfileId.isNotEmpty &&
+              personSellerProfileId == sellerProfileId);
+      if (!matchesProfile) {
+        return person;
+      }
+
+      hasChanged = true;
+      if (resolvedName.isNotEmpty) {
+        nextPerson['displayName'] = resolvedName;
+        nextPerson['name'] = resolvedName;
+      }
+      if (avatarUrl.isNotEmpty) {
+        nextPerson['avatarUrl'] = avatarUrl;
+      }
+      if (coverImageUrl.isNotEmpty) {
+        nextPerson['coverImageUrl'] = coverImageUrl;
+      }
+      if (sellerProfileId.isNotEmpty) {
+        nextPerson['sellerProfileId'] = sellerProfileId;
+      }
+      nextPerson['userId'] = userId;
+      return nextPerson;
+    }).toList();
+
+    if (!mounted || !hasChanged) {
+      return;
+    }
+
+    setState(() {
+      products = updatedProducts;
+      followedPeople = updatedFollowedPeople;
+      _isLoadingFollowedPeople = false;
     });
   }
 

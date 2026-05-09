@@ -42,6 +42,13 @@ enum ChatConversationKind {
   PRODUCT
 }
 
+enum ChatMessageKind {
+  TEXT
+  IMAGE
+  DOCUMENT
+  PRODUCT
+}
+
 model User {
   id              String         @id @default(uuid())
   phoneE164       String         @unique
@@ -367,6 +374,7 @@ model ChatMessage {
   conversationId String
   senderUserId   String
   content        String
+  kind           ChatMessageKind  @default(TEXT)
   replyToMessageId String?
   replyToSenderUserId String?
   replyToSenderName String?
@@ -380,9 +388,37 @@ model ChatMessage {
   readAt         DateTime?
   conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender         User             @relation("MessageSender", fields: [senderUserId], references: [id], onDelete: Cascade)
+  media          ChatMessageMedia?
 
   @@index([conversationId, createdAt])
   @@index([productId])
+}
+
+model ChatMessageMedia {
+  id               String      @id @default(uuid())
+  messageId        String      @unique
+  mediaGroupId     String?
+  mediaType        String
+  mimeType         String?
+  fileName         String?
+  fileSizeBytes    Int?
+  storageProvider  String
+  storageKey       String?
+  publicUrl        String
+  previewUrl       String?
+  thumbnailUrl     String?
+  width            Int?
+  height           Int?
+  encryptionScheme String?
+  encryptionKeyB64 String?
+  encryptionIvB64  String?
+  fileSha256B64    String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  message          ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([mediaGroupId])
+  @@index([mediaType, createdAt])
 }
 
 model Cart {

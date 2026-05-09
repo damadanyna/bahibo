@@ -95,6 +95,11 @@ class _MainNavigationMessagesPanelState
       event,
     ) {
       final eventType = event['type']?.toString();
+      if (eventType == 'profile:public-updated') {
+        _applyPublicProfileUpdate(event);
+        return;
+      }
+
       final conversationId = event['conversationId']?.toString();
 
       if (eventType == 'typing:update' && conversationId != null) {
@@ -116,6 +121,65 @@ class _MainNavigationMessagesPanelState
       }
 
       unawaited(_loadConversations(silent: true));
+    });
+  }
+
+  void _applyPublicProfileUpdate(Map<String, dynamic> event) {
+    final userId = event['userId']?.toString().trim() ?? '';
+    final profile = event['profile'];
+    if (userId.isEmpty || profile is! Map || !mounted) {
+      return;
+    }
+
+    final rawSellerProfile = profile['sellerProfile'];
+    final sellerProfile = rawSellerProfile is Map
+        ? Map<String, dynamic>.from(rawSellerProfile)
+        : const <String, dynamic>{};
+    final displayName = profile['displayName']?.toString().trim() ?? '';
+    final studioName = sellerProfile['studioName']?.toString().trim() ?? '';
+    final resolvedName = studioName.isNotEmpty ? studioName : displayName;
+    final avatarUrl = profile['avatarUrl']?.toString().trim() ?? '';
+    final coverImageUrl = profile['coverImageUrl']?.toString().trim() ?? '';
+    final role = profile['role']?.toString().trim();
+
+    var hasChanged = false;
+    final updatedConversations = _conversations.map((conversation) {
+      final nextConversation = Map<String, dynamic>.from(conversation);
+      final participant = nextConversation['participant'];
+      if (participant is! Map) {
+        return conversation;
+      }
+
+      final nextParticipant = Map<String, dynamic>.from(participant);
+      final participantId = nextParticipant['id']?.toString().trim() ?? '';
+      if (participantId != userId) {
+        return conversation;
+      }
+
+      hasChanged = true;
+      if (resolvedName.isNotEmpty) {
+        nextParticipant['displayName'] = resolvedName;
+        nextParticipant['name'] = resolvedName;
+      }
+      if (avatarUrl.isNotEmpty) {
+        nextParticipant['avatarUrl'] = avatarUrl;
+      }
+      if (coverImageUrl.isNotEmpty) {
+        nextParticipant['coverImageUrl'] = coverImageUrl;
+      }
+      if (role != null && role.isNotEmpty) {
+        nextParticipant['role'] = role;
+      }
+      nextConversation['participant'] = nextParticipant;
+      return nextConversation;
+    }).toList();
+
+    if (!hasChanged) {
+      return;
+    }
+
+    setState(() {
+      _conversations = updatedConversations;
     });
   }
 
@@ -331,6 +395,14 @@ class _MainNavigationMessagesPanelState
   DateTime? _conversationParticipantLastSeen(
     Map<String, dynamic> conversation,
   ) {
+    final participantId = _participantId(conversation);
+    if (participantId != null) {
+      final liveLastSeen = PresenceService.instance.lastSeenOf(participantId);
+      if (liveLastSeen != null) {
+        return liveLastSeen;
+      }
+    }
+
     final participant = conversation['participant'];
     if (participant is! Map) {
       return null;

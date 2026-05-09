@@ -2,8 +2,24 @@ class CloudinaryImageUrl {
   static const String _uploadMarker = '/upload/';
   static const String _viewerTransformation =
       'f_auto,q_auto:best,c_limit,w_2400';
+  static const String _chatThumbnailTransformation =
+      'c_fill,g_auto,h_560,w_560,f_auto,q_auto:eco';
+  static const String _chatMessageTransformation =
+      'c_fill,g_auto,h_1400,w_1400,f_auto,q_auto:good';
 
   static String forViewer(String imageUrl) {
+    return _applyTransformation(imageUrl, _viewerTransformation);
+  }
+
+  static String forChatMessage(String imageUrl) {
+    return _applyTransformation(imageUrl, _chatMessageTransformation);
+  }
+
+  static String forChatThumbnail(String imageUrl) {
+    return _applyTransformation(imageUrl, _chatThumbnailTransformation);
+  }
+
+  static String _applyTransformation(String imageUrl, String transformation) {
     final normalizedUrl = imageUrl.trim();
     if (normalizedUrl.isEmpty ||
         !normalizedUrl.contains('res.cloudinary.com')) {
@@ -30,6 +46,6 @@ class CloudinaryImageUrl {
     final prefix = normalizedUrl.substring(0, afterUploadIndex);
     final suffix = normalizedUrl.substring(versionMatch.start + 1);
 
-    return '$prefix$_viewerTransformation/$suffix';
+    return '$prefix$transformation/$suffix';
   }
 }

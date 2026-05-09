@@ -14,6 +14,9 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushNotificationsService } from '../push-notifications/push-notifications.service';
 import { UpdateProfileDto, UpdateSellerProfileDto } from './dto/update-profile.dto';
+
+const DISPLAY_NAME_CHANGE_COOLDOWN_DAYS = 7;
+const PRESENCE_RECENT_ACTIVITY_WINDOW_MS = 90 * 1000;
 import {
   presentPublicSellerProfile,
   presentPublicUserProfile,
@@ -37,6 +40,18 @@ export class ProfilesService {
       ? await this.buildSellerStats(user.sellerProfile.id)
       : undefined;
     return presentUserProfile(user, sellerStats);
+  }
+
+  private isUserOnline(userId: string, lastSeenAt?: Date | null) {
+    if (this.conversationsRealtimeGateway.isUserConnected(userId)) {
+      return true;
+    }
+
+    if (lastSeenAt == null) {
+      return false;
+    }
+
+    return Date.now() - lastSeenAt.getTime() <= PRESENCE_RECENT_ACTIVITY_WINDOW_MS;
   }
 
   private async findReportTargetUser(reportedUserId: string) {
@@ -616,11 +631,26 @@ export class ProfilesService {
         .filter((value) => value.length > 0),
     )];
 
-    return userIds.map((userId) => ({
-      userId,
-      isOnline: this.conversationsRealtimeGateway.isUserConnected(userId),
-      lastSeenAt: null,
-    }));
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: {
+        id: true,
+        lastSeenAt: true,
+      },
+    });
+    const lastSeenByUserId = new Map(
+      users.map((user) => [user.id, user.lastSeenAt?.toISOString() ?? null]),
+    );
+
+    return userIds.map((userId) => {
+      const userLastSeenAt = users.find((user) => user.id === userId)?.lastSeenAt ?? null;
+
+      return {
+        userId,
+        isOnline: this.isUserOnline(userId, userLastSeenAt),
+        lastSeenAt: lastSeenByUserId.get(userId) ?? null,
+      };
+    });
   }
 
   async followSeller(viewerUserId: string, sellerProfileId: string) {
@@ -1281,6 +1311,20 @@ export class ProfilesService {
         sellerProfile: profile.sellerProfile,
       },
     });
+
+    this.conversationsRealtimeGateway.emitPublicProfileEvent({
+      type: 'profile:public-updated',
+      userId: profile.id,
+      profile: {
+        id: profile.id,
+        role: profile.role,
+        displayName: profile.displayName,
+        avatarUrl: profile.avatarUrl,
+        coverImageUrl: profile.coverImageUrl,
+        isSellerCertified: profile.isSellerCertified,
+        sellerProfile: profile.sellerProfile,
+      },
+    });
   }
 
   async emitSellerMetricsProfileUpdate(userId: string) {
@@ -1483,6 +1527,11 @@ export class ProfilesService {
     dto: UpdateProfileDto,
   ): Prisma.UserUpdateInput {
     const userData: Prisma.UserUpdateInput = {};
+    const now = new Date();
+    const nextAllowedChangeAt = this.getNextDisplayNameChangeAt(
+      existingUser.displayNameChangedAt,
+    );
+    let visibleNameChanged = false;
 
     if (dto.displayName !== undefined) {
       const normalizedDisplayName = dto.displayName.trim();
@@ -1492,20 +1541,36 @@ export class ProfilesService {
       }
 
       if (normalizedDisplayName !== existingUser.displayName.trim()) {
-        const now = new Date();
-        const nextAllowedChangeAt = this.getNextDisplayNameChangeAt(
-          existingUser.displayNameChangedAt,
-        );
-
         if (nextAllowedChangeAt != null && nextAllowedChangeAt.getTime() > now.getTime()) {
           throw new BadRequestException(
-            `Le nom utilisateur ne peut etre modifie qu'une fois tous les 3 mois. Prochaine date autorisee: ${this.formatDisplayNameCooldownDate(nextAllowedChangeAt)}.`,
+            this.buildDisplayNameCooldownMessage(nextAllowedChangeAt, now),
           );
         }
 
         userData.displayName = normalizedDisplayName;
-        userData.displayNameChangedAt = now;
+        visibleNameChanged = true;
       }
+    }
+
+    const requestedStudioName = dto.sellerProfile?.studioName?.trim();
+    const currentVisibleStudioName =
+      existingUser.sellerProfile?.studioName?.trim() ?? existingUser.displayName.trim();
+
+    if (
+      requestedStudioName !== undefined &&
+      requestedStudioName !== currentVisibleStudioName
+    ) {
+      if (nextAllowedChangeAt != null && nextAllowedChangeAt.getTime() > now.getTime()) {
+        throw new BadRequestException(
+          this.buildDisplayNameCooldownMessage(nextAllowedChangeAt, now),
+        );
+      }
+
+      visibleNameChanged = true;
+    }
+
+    if (visibleNameChanged) {
+      userData.displayNameChangedAt = now;
     }
 
     if (dto.avatarUrl !== undefined) {
@@ -1584,8 +1649,24 @@ export class ProfilesService {
     }
 
     const nextAllowedChangeAt = new Date(displayNameChangedAt);
-    nextAllowedChangeAt.setMonth(nextAllowedChangeAt.getMonth() + 3);
+    nextAllowedChangeAt.setDate(nextAllowedChangeAt.getDate() + DISPLAY_NAME_CHANGE_COOLDOWN_DAYS);
     return nextAllowedChangeAt;
+  }
+
+  private getDisplayNameCooldownDaysRemaining(nextAllowedChangeAt: Date, now: Date) {
+    return Math.max(
+      1,
+      Math.ceil(
+        (nextAllowedChangeAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+      ),
+    );
+  }
+
+  private buildDisplayNameCooldownMessage(nextAllowedChangeAt: Date, now: Date) {
+    const remainingDays = this.getDisplayNameCooldownDaysRemaining(nextAllowedChangeAt, now);
+    const dayLabel = remainingDays > 1 ? 'jours' : 'jour';
+
+    return `Le nom utilisateur ne peut etre modifie qu'une fois tous les 7 jours. ${remainingDays} ${dayLabel} restant(s). Prochaine date autorisee: ${this.formatDisplayNameCooldownDate(nextAllowedChangeAt)}.`;
   }
 
   private formatDisplayNameCooldownDate(date: Date) {

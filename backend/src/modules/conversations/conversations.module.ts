@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
+import { CloudinaryService } from '../auth/cloudinary.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { PushNotificationsModule } from '../push-notifications/push-notifications.module';
 import { ConversationsController } from './conversations.controller';
@@ -22,7 +23,7 @@ import { ConversationsService } from './conversations.service';
     }),
   ],
   controllers: [ConversationsController],
-  providers: [ConversationsService, ConversationsRealtimeGateway],
+  providers: [ConversationsService, ConversationsRealtimeGateway, CloudinaryService],
   exports: [ConversationsService, ConversationsRealtimeGateway],
 })
 export class ConversationsModule {}

@@ -106,11 +106,15 @@ class PresenceService {
 
       final isOnline = event['isOnline'] == true;
       final currentValue = _presenceByUserId[userId];
+      final rawLastSeenAt = event['lastSeenAt']?.toString().trim() ?? '';
+      final resolvedLastSeenAt = rawLastSeenAt.isEmpty
+          ? DateTime.now()
+          : DateTime.tryParse(rawLastSeenAt)?.toLocal() ?? DateTime.now();
       _lastPresenceFetchByUserId[userId] = DateTime.now();
       if (isOnline) {
         _lastSeenByUserId.remove(userId);
       } else {
-        _lastSeenByUserId[userId] = DateTime.now();
+        _lastSeenByUserId[userId] = resolvedLastSeenAt;
       }
       if (currentValue == isOnline) {
         return;
@@ -154,10 +158,14 @@ class PresenceService {
         }
         _lastPresenceFetchByUserId[userId] = DateTime.now();
         final isOnline = status['isOnline'] == true;
+        final rawLastSeenAt = status['lastSeenAt']?.toString().trim() ?? '';
+        final parsedLastSeenAt = rawLastSeenAt.isEmpty
+            ? null
+            : DateTime.tryParse(rawLastSeenAt)?.toLocal();
         if (isOnline) {
           _lastSeenByUserId.remove(userId);
         } else {
-          _lastSeenByUserId[userId] = DateTime.now();
+          _lastSeenByUserId[userId] = parsedLastSeenAt ?? DateTime.now();
         }
         if (_presenceByUserId[userId] == isOnline) {
           continue;

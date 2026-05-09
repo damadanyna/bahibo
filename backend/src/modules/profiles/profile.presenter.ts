@@ -65,16 +65,27 @@ type SellerStats = {
   totalLikesCount: number;
 };
 
-function addMonths(date: Date, months: number) {
+const DISPLAY_NAME_CHANGE_COOLDOWN_DAYS = 7;
+
+function addDays(date: Date, days: number) {
   const nextDate = new Date(date);
-  nextDate.setMonth(nextDate.getMonth() + months);
+  nextDate.setDate(nextDate.getDate() + days);
   return nextDate;
 }
 
 export function presentUserProfile(user: UserProfileRecord, sellerStats?: SellerStats) {
   const nextDisplayNameChangeAt = user.displayNameChangedAt != null
-    ? addMonths(user.displayNameChangedAt, 3)
+    ? addDays(user.displayNameChangedAt, DISPLAY_NAME_CHANGE_COOLDOWN_DAYS)
     : null;
+  const displayNameCooldownDaysRemaining = nextDisplayNameChangeAt == null
+    ? 0
+    : Math.max(
+        0,
+        Math.ceil(
+          (nextDisplayNameChangeAt.getTime() - Date.now()) /
+            (1000 * 60 * 60 * 24),
+        ),
+      );
   const productCount = user.sellerProfile?._count.products ?? 0;
   const resolvedSellerStats: SellerStats = sellerStats ?? {
     followerCount: 0,
@@ -110,6 +121,7 @@ export function presentUserProfile(user: UserProfileRecord, sellerStats?: Seller
     displayName: user.displayName,
     displayNameChangedAt: user.displayNameChangedAt?.toISOString() ?? null,
     nextDisplayNameChangeAt: nextDisplayNameChangeAt?.toISOString() ?? null,
+    displayNameCooldownDaysRemaining,
     canChangeDisplayName:
       nextDisplayNameChangeAt == null || nextDisplayNameChangeAt.getTime() <= Date.now(),
     avatarUrl: user.avatarUrl,

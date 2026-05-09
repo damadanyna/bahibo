@@ -8,16 +8,33 @@ import 'package:banay/theme/app_theme_extensions.dart';
 
 enum UiChatAttachmentType { photo, document, quickText }
 
+const Set<String> _allowedPhotoExtensions = <String>{
+  'jpg',
+  'jpeg',
+  'png',
+  'webp',
+  'heic',
+  'heif',
+};
+const int _maxPhotoAttachmentBytes = 10 * 1024 * 1024;
+const int _maxDocumentAttachmentBytes = 12 * 1024 * 1024;
+
 class UiChatAttachment {
   final UiChatAttachmentType type;
   final String label;
   final Uint8List? bytes;
+  final int? width;
+  final int? height;
+  final String? mediaGroupId;
   final String messageText;
 
   const UiChatAttachment({
     required this.type,
     required this.label,
     this.bytes,
+    this.width,
+    this.height,
+    this.mediaGroupId,
     required this.messageText,
   });
 }
@@ -64,6 +81,34 @@ class UiChatMessageInput extends StatefulWidget {
 
 class _UiChatMessageInputState extends State<UiChatMessageInput> {
   final ImagePicker _imagePicker = ImagePicker();
+
+  void _showAttachmentError(String message) {
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  String _fileExtension(String fileName) {
+    final lastDot = fileName.lastIndexOf('.');
+    if (lastDot < 0 || lastDot == fileName.length - 1) {
+      return '';
+    }
+
+    return fileName.substring(lastDot + 1).toLowerCase();
+  }
+
+  String _createMediaGroupId(UiChatAttachmentType type) {
+    final typeLabel = switch (type) {
+      UiChatAttachmentType.photo => 'image',
+      UiChatAttachmentType.document => 'document',
+      UiChatAttachmentType.quickText => 'text',
+    };
+    return '$typeLabel-${DateTime.now().microsecondsSinceEpoch}';
+  }
 
   Future<void> _handleSend() async {
     final text = widget.controller.text.trim();
@@ -131,7 +176,7 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
               _UiAttachmentActionTile(
                 icon: Icons.photo_library_outlined,
                 title: 'Photo',
-                subtitle: 'Ajouter une image dans la discussion',
+                subtitle: 'JPG, PNG, WEBP, HEIC jusqu\'a 10 Mo',
                 primary: widget.primary,
                 isDark: theme.brightness == Brightness.dark,
                 onTap: () {
@@ -142,7 +187,7 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
               _UiAttachmentActionTile(
                 icon: Icons.description_outlined,
                 title: 'Document',
-                subtitle: 'Joindre un document ou un PDF',
+                subtitle: 'PDF, DOC, DOCX, TXT jusqu\'a 12 Mo',
                 primary: widget.primary,
                 isDark: theme.brightness == Brightness.dark,
                 onTap: () {
@@ -170,39 +215,106 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
   }
 
   Future<void> _pickPhoto() async {
-    final file = await _imagePicker.pickImage(source: ImageSource.gallery);
-    if (file == null) return;
-
-    final bytes = await file.readAsBytes();
-    await widget.onAttachmentSelected(
-      UiChatAttachment(
-        type: UiChatAttachmentType.photo,
-        label: file.name,
-        bytes: bytes,
-        messageText: 'Photo importee depuis la galerie',
-      ),
+    final files = await _imagePicker.pickMultiImage(
+      imageQuality: 82,
+      maxWidth: 1600,
+      maxHeight: 1600,
     );
+    if (files.isEmpty) return;
+
+    var hasRejectedPhoto = false;
+    final mediaGroupId = files.length > 1
+        ? _createMediaGroupId(UiChatAttachmentType.photo)
+        : null;
+
+    for (final file in files) {
+      final extension = _fileExtension(file.name);
+      if (!_allowedPhotoExtensions.contains(extension)) {
+        hasRejectedPhoto = true;
+        continue;
+      }
+
+      final fileLength = await file.length();
+      if (fileLength > _maxPhotoAttachmentBytes) {
+        hasRejectedPhoto = true;
+        continue;
+      }
+
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty) {
+        hasRejectedPhoto = true;
+        continue;
+      }
+
+      final decodedImage = await decodeImageFromList(bytes);
+      await widget.onAttachmentSelected(
+        UiChatAttachment(
+          type: UiChatAttachmentType.photo,
+          label: file.name,
+          bytes: bytes,
+          width: decodedImage.width,
+          height: decodedImage.height,
+          mediaGroupId: mediaGroupId,
+          messageText: 'Photo importee depuis la galerie',
+        ),
+      );
+    }
+
+    if (hasRejectedPhoto) {
+      _showAttachmentError(
+        'Certaines photos ont ete ignorees car leur format ou leur taille n\'est pas pris en charge.',
+      );
+    }
   }
 
   Future<void> _pickDocument() async {
     final result = await FilePicker.platform.pickFiles(
       withData: true,
-      allowMultiple: false,
+      allowMultiple: true,
       type: FileType.custom,
       allowedExtensions: widget.documentExtensions,
     );
 
     if (result == null || result.files.isEmpty) return;
 
-    final file = result.files.single;
-    await widget.onAttachmentSelected(
-      UiChatAttachment(
-        type: UiChatAttachmentType.document,
-        label: file.name,
-        bytes: file.bytes,
-        messageText: 'Document ajoute depuis le gestionnaire de fichiers',
-      ),
-    );
+    var hasRejectedDocument = false;
+    final mediaGroupId = result.files.length > 1
+        ? _createMediaGroupId(UiChatAttachmentType.document)
+        : null;
+
+    for (final file in result.files) {
+      final extension = _fileExtension(file.name);
+      if (!widget.documentExtensions.contains(extension)) {
+        hasRejectedDocument = true;
+        continue;
+      }
+
+      if (file.size > _maxDocumentAttachmentBytes) {
+        hasRejectedDocument = true;
+        continue;
+      }
+
+      if (file.bytes == null || file.bytes!.isEmpty) {
+        hasRejectedDocument = true;
+        continue;
+      }
+
+      await widget.onAttachmentSelected(
+        UiChatAttachment(
+          type: UiChatAttachmentType.document,
+          label: file.name,
+          bytes: file.bytes,
+          mediaGroupId: mediaGroupId,
+          messageText: 'Document ajoute depuis le gestionnaire de fichiers',
+        ),
+      );
+    }
+
+    if (hasRejectedDocument) {
+      _showAttachmentError(
+        'Certains documents ont ete ignores car leur format, leur taille ou leur contenu n\'est pas valide.',
+      );
+    }
   }
 
   Future<void> _insertQuickText() async {
@@ -391,4 +503,3 @@ class _UiAttachmentActionTile extends StatelessWidget {
     );
   }
 }
-

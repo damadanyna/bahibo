@@ -8,6 +8,8 @@ import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { PushNotificationsService } from '../push-notifications/push-notifications.service';
+import { CloudinaryService } from '../auth/cloudinary.service';
+import { CreateMediaMessageDto } from './dto/create-media-message.dto';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { ConversationsRealtimeGateway } from './realtime/conversations-realtime.gateway';
 
@@ -26,6 +28,7 @@ const conversationDetailInclude = Prisma.validator<Prisma.ChatConversationInclud
   },
   messages: {
     include: {
+      media: true,
       sender: true,
     },
     orderBy: {
@@ -53,6 +56,7 @@ const conversationListInclude = Prisma.validator<Prisma.ChatConversationInclude>
   },
   messages: {
     include: {
+      media: true,
       sender: true,
     },
     orderBy: {
@@ -69,6 +73,7 @@ type ConversationListItem = Prisma.ChatConversationGetPayload<{
 type ConversationThreadMessage = {
   id: string;
   content: string;
+  kind: 'TEXT' | 'IMAGE' | 'DOCUMENT' | 'PRODUCT';
   createdAt: string;
   readAt: string | null;
   isMine: boolean;
@@ -82,7 +87,27 @@ type ConversationThreadMessage = {
     displayName: string;
     avatarUrl: string | null;
   };
+  media: ConversationMessageMediaPayload | null;
   product: ConversationMessageProductSnapshot | null;
+};
+
+type ConversationMessageMediaPayload = {
+  mediaType: 'image' | 'document';
+  publicUrl: string;
+  previewUrl: string | null;
+  thumbnailUrl: string | null;
+  fileName: string | null;
+  mimeType: string | null;
+  fileSizeBytes: number | null;
+  storageProvider: string;
+  storageKey: string | null;
+  mediaGroupId: string | null;
+  width: number | null;
+  height: number | null;
+  encryptionScheme: string | null;
+  encryptionKeyB64: string | null;
+  encryptionIvB64: string | null;
+  fileSha256B64: string | null;
 };
 
 type ConversationMessageProductSnapshot = {
@@ -94,12 +119,33 @@ type ConversationMessageProductSnapshot = {
 };
 
 type MessageProductSnapshotFields = {
+  kind?: 'TEXT' | 'IMAGE' | 'DOCUMENT' | 'PRODUCT';
   productId: string | null;
   productTitle: string | null;
   productSubtitle: string | null;
   productPriceLabel: string | null;
   productImageUrl: string | null;
+  media?: {
+    mediaType: string;
+    publicUrl: string;
+    previewUrl: string | null;
+    thumbnailUrl: string | null;
+    fileName: string | null;
+    mimeType: string | null;
+    fileSizeBytes: number | null;
+    storageProvider: string;
+    storageKey: string | null;
+    mediaGroupId: string | null;
+    width: number | null;
+    height: number | null;
+    encryptionScheme: string | null;
+    encryptionKeyB64: string | null;
+    encryptionIvB64: string | null;
+    fileSha256B64: string | null;
+  } | null;
 };
+
+const PRESENCE_RECENT_ACTIVITY_WINDOW_MS = 90 * 1000;
 
 type MessageReplyFields = {
   replyToMessageId?: string | null;
@@ -108,13 +154,119 @@ type MessageReplyFields = {
   replyToContent?: string | null;
 };
 
+const maxPhotoAttachmentBytes = 10 * 1024 * 1024;
+const maxDocumentAttachmentBytes = 12 * 1024 * 1024;
+const allowedPhotoAttachmentExtensions = new Set([
+  'jpg',
+  'jpeg',
+  'png',
+  'webp',
+  'heic',
+  'heif',
+]);
+const allowedDocumentAttachmentExtensions = new Set([
+  'pdf',
+  'doc',
+  'docx',
+  'txt',
+]);
+
 @Injectable()
 export class ConversationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pushNotificationsService: PushNotificationsService,
     private readonly conversationsRealtimeGateway: ConversationsRealtimeGateway,
+    private readonly cloudinaryService: CloudinaryService,
   ) {}
+
+  async uploadAttachment(
+    userId: string,
+    file: Express.Multer.File | undefined,
+    type: 'photo' | 'document',
+  ) {
+    if (!file) {
+      throw new BadRequestException('Attachment file is required');
+    }
+
+    this.validateAttachment(file, type);
+
+    if (type === 'photo') {
+      const uploadResult = await this.cloudinaryService.uploadChatImage(
+        file,
+        userId,
+      );
+
+      return {
+        attachmentType: type,
+        fileName: file.originalname,
+        attachmentUrl: uploadResult.imageUrl,
+        originalUrl: uploadResult.originalUrl,
+        previewUrl: uploadResult.previewUrl,
+        thumbnailUrl: uploadResult.thumbnailUrl,
+        publicId: uploadResult.publicId,
+      };
+    }
+
+    const uploadResult = await this.cloudinaryService.uploadChatDocument(
+      file,
+      userId,
+    );
+
+    return {
+      attachmentType: type,
+      fileName: file.originalname,
+      attachmentUrl: uploadResult.fileUrl,
+      originalUrl: uploadResult.originalUrl,
+    };
+  }
+
+  createDirectPhotoUploadSignature(userId: string) {
+    return this.cloudinaryService.createDirectChatImageUploadSignature(userId);
+  }
+
+  private validateAttachment(
+    file: Express.Multer.File,
+    type: 'photo' | 'document',
+  ) {
+    const fileName = file.originalname?.trim() ?? '';
+    const extension = this.extractFileExtension(fileName);
+    const fileSize = file.size ?? file.buffer?.length ?? 0;
+
+    if (type === 'photo') {
+      if (!allowedPhotoAttachmentExtensions.has(extension)) {
+        throw new BadRequestException(
+          'Format de photo non pris en charge. Utilisez JPG, PNG, WEBP ou HEIC.',
+        );
+      }
+      const mimeType = file.mimetype?.trim().toLowerCase() ?? '';
+      if (mimeType.length > 0 && !mimeType.startsWith('image/')) {
+        throw new BadRequestException('Le fichier envoye n\'est pas une image valide.');
+      }
+      if (fileSize > maxPhotoAttachmentBytes) {
+        throw new BadRequestException('La photo depasse la limite de 10 Mo.');
+      }
+      return;
+    }
+
+    if (!allowedDocumentAttachmentExtensions.has(extension)) {
+      throw new BadRequestException(
+        'Format de document non pris en charge. Utilisez PDF, DOC, DOCX ou TXT.',
+      );
+    }
+    if (fileSize > maxDocumentAttachmentBytes) {
+      throw new BadRequestException('Le document depasse la limite de 12 Mo.');
+    }
+  }
+
+  private extractFileExtension(fileName: string) {
+    const lastDot = fileName.lastIndexOf('.');
+    if (lastDot < 0 || lastDot === fileName.length - 1) {
+      return '';
+    }
+
+    return fileName.slice(lastDot + 1).toLowerCase();
+  }
 
   private buildDirectConversationKey(firstUserId: string, secondUserId: string) {
     return [firstUserId, secondUserId].sort().join(':');
@@ -376,15 +528,33 @@ export class ConversationsService {
       productId,
     );
 
-    return this.sendMessage(userId, conversation.id, dto, {
-      id: conversation.product?.id ?? null,
-      title: conversation.product?.title ?? '',
-      subtitle: conversation.product?.subtitle ?? '',
-      priceLabel: conversation.product
-        ? `${conversation.product.price} ${conversation.product.currency}`
-        : '',
-      imageUrl: conversation.product?.imageUrl ?? '',
-    });
+    return this.sendMessage(
+      userId,
+      conversation.id,
+      dto,
+      this.extractDtoProductSnapshot(dto) ?? {
+        id: conversation.product?.id ?? null,
+        title: conversation.product?.title ?? '',
+        subtitle: conversation.product?.subtitle ?? '',
+        priceLabel: conversation.product
+          ? `${conversation.product.price} ${conversation.product.currency}`
+          : '',
+        imageUrl: conversation.product?.imageUrl ?? '',
+      },
+    );
+  }
+
+  async sendMediaMessageForProduct(
+    userId: string,
+    productId: string,
+    dto: CreateMediaMessageDto,
+  ) {
+    const conversation = await this.getOrCreateConversationForProduct(
+      userId,
+      productId,
+    );
+
+    return this.sendMediaMessage(userId, conversation.id, dto);
   }
 
   async sendMessageForUser(
@@ -397,27 +567,25 @@ export class ConversationsService {
       targetUserId,
     );
 
-    const hasProductSnapshot =
-      (dto.productId?.trim().length ?? 0) > 0 ||
-      (dto.productTitle?.trim().length ?? 0) > 0 ||
-      (dto.productSubtitle?.trim().length ?? 0) > 0 ||
-      (dto.productPriceLabel?.trim().length ?? 0) > 0 ||
-      (dto.productImageUrl?.trim().length ?? 0) > 0;
-
     return this.sendMessage(
       userId,
       conversation.id,
       dto,
-      hasProductSnapshot
-        ? {
-            id: dto.productId?.trim() || null,
-            title: dto.productTitle?.trim() ?? '',
-            subtitle: dto.productSubtitle?.trim() ?? '',
-            priceLabel: dto.productPriceLabel?.trim() ?? '',
-            imageUrl: dto.productImageUrl?.trim() ?? '',
-          }
-        : undefined,
+      this.extractDtoProductSnapshot(dto),
     );
+  }
+
+  async sendMediaMessageForUser(
+    userId: string,
+    targetUserId: string,
+    dto: CreateMediaMessageDto,
+  ) {
+    const conversation = await this.getOrCreateConversationForUser(
+      userId,
+      targetUserId,
+    );
+
+    return this.sendMediaMessage(userId, conversation.id, dto);
   }
 
   async sendMessage(
@@ -448,6 +616,9 @@ export class ConversationsService {
 
     await this.assertUsersCanInteract(userId, recipientUserId);
 
+    const effectiveProductSnapshot =
+      this.extractDtoProductSnapshot(dto) ?? productSnapshot;
+
     await this.prisma.$transaction(async (transaction) => {
       await transaction.chatMessage.create({
         data: {
@@ -458,11 +629,11 @@ export class ConversationsService {
           replyToSenderUserId: dto.replyToSenderUserId?.trim() || undefined,
           replyToSenderName: dto.replyToSenderName?.trim() || undefined,
           replyToContent: dto.replyToContent?.trim() || undefined,
-          productId: productSnapshot?.id ?? undefined,
-          productTitle: productSnapshot?.title || undefined,
-          productSubtitle: productSnapshot?.subtitle || undefined,
-          productPriceLabel: productSnapshot?.priceLabel || undefined,
-          productImageUrl: productSnapshot?.imageUrl || undefined,
+          productId: effectiveProductSnapshot?.id ?? undefined,
+          productTitle: effectiveProductSnapshot?.title || undefined,
+          productSubtitle: effectiveProductSnapshot?.subtitle || undefined,
+          productPriceLabel: effectiveProductSnapshot?.priceLabel || undefined,
+          productImageUrl: effectiveProductSnapshot?.imageUrl || undefined,
         },
       });
 
@@ -498,6 +669,135 @@ export class ConversationsService {
     }
 
     return this.getConversation(userId, conversationId);
+  }
+
+  async sendMediaMessage(
+    userId: string,
+    conversationId: string,
+    dto: CreateMediaMessageDto,
+  ) {
+    const mediaPayload = this.extractMediaPayload(dto);
+    const content = (dto.content?.trim() ?? '').length > 0
+      ? dto.content!.trim()
+      : dto.kind === 'IMAGE'
+      ? 'Photo envoyee'
+      : 'Document envoye';
+
+    const conversation = await this.findAccessibleConversation(
+      userId,
+      conversationId,
+    );
+    const recipientUserId = conversation.buyerUserId === userId
+      ? conversation.sellerUserId
+      : conversation.buyerUserId;
+    const sender = conversation.buyerUserId === userId
+      ? conversation.buyer
+      : conversation.seller;
+    const recipient = conversation.buyerUserId === userId
+      ? conversation.seller
+      : conversation.buyer;
+
+    await this.assertUsersCanInteract(userId, recipientUserId);
+
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.chatMessage.create({
+        data: {
+          conversationId: conversation.id,
+          senderUserId: userId,
+          content,
+          kind: dto.kind,
+          replyToMessageId: dto.replyToMessageId?.trim() || undefined,
+          replyToSenderUserId: dto.replyToSenderUserId?.trim() || undefined,
+          replyToSenderName: dto.replyToSenderName?.trim() || undefined,
+          replyToContent: dto.replyToContent?.trim() || undefined,
+          media: {
+            create: {
+              mediaType: mediaPayload.mediaType,
+              mimeType: mediaPayload.mimeType ?? undefined,
+              fileName: mediaPayload.fileName ?? undefined,
+              fileSizeBytes: mediaPayload.fileSizeBytes ?? undefined,
+              storageProvider: mediaPayload.storageProvider,
+              storageKey: mediaPayload.storageKey ?? undefined,
+              publicUrl: mediaPayload.publicUrl,
+              previewUrl: mediaPayload.previewUrl ?? undefined,
+              thumbnailUrl: mediaPayload.thumbnailUrl ?? undefined,
+              width: mediaPayload.width ?? undefined,
+              height: mediaPayload.height ?? undefined,
+              encryptionScheme: mediaPayload.encryptionScheme ?? undefined,
+              encryptionKeyB64: mediaPayload.encryptionKeyB64 ?? undefined,
+              encryptionIvB64: mediaPayload.encryptionIvB64 ?? undefined,
+              fileSha256B64: mediaPayload.fileSha256B64 ?? undefined,
+                mediaGroupId: mediaPayload.mediaGroupId ?? undefined,
+            },
+          },
+        },
+      });
+
+      await transaction.chatConversation.update({
+        where: { id: conversation.id },
+        data: {
+          lastMessageAt: new Date(),
+        },
+      });
+    });
+
+    this.conversationsRealtimeGateway.emitConversationEvent(
+      [conversation.buyerUserId, conversation.sellerUserId],
+      {
+        type: 'message:new',
+        conversationId: conversation.id,
+        actorUserId: userId,
+      },
+    );
+
+    if (!this.conversationsRealtimeGateway.isUserConnected(recipientUserId)) {
+      await this.pushNotificationsService.sendChatMessageNotification({
+        recipientUserId,
+        conversationId: conversation.id,
+        senderDisplayName: sender.displayName,
+        senderAvatarUrl: sender.avatarUrl ?? undefined,
+        senderRoleLabel: this.resolveRoleLabel(sender),
+        recipientDisplayName: recipient.displayName,
+        content,
+        conversationKind: conversation.kind,
+        productId: conversation.productId ?? undefined,
+      });
+    }
+
+    return this.getConversation(userId, conversationId);
+  }
+
+  private extractDtoProductSnapshot(dto: CreateMessageDto) {
+    const hasProductSnapshot =
+      (dto.productId?.trim().length ?? 0) > 0 ||
+      (dto.productTitle?.trim().length ?? 0) > 0 ||
+      (dto.productSubtitle?.trim().length ?? 0) > 0 ||
+      (dto.productPriceLabel?.trim().length ?? 0) > 0 ||
+      (dto.productImageUrl?.trim().length ?? 0) > 0;
+
+    if (!hasProductSnapshot) {
+      return undefined;
+    }
+
+    return {
+      id: dto.productId?.trim() || null,
+      title: dto.productTitle?.trim() ?? '',
+      subtitle: dto.productSubtitle?.trim() ?? '',
+      priceLabel: dto.productPriceLabel?.trim() ?? '',
+      imageUrl: dto.productImageUrl?.trim() ?? '',
+    };
+  }
+
+  private isUserOnline(participant: { id: string; lastSeenAt?: Date | null }) {
+    if (this.conversationsRealtimeGateway.isUserConnected(participant.id)) {
+      return true;
+    }
+
+    if (participant.lastSeenAt == null) {
+      return false;
+    }
+
+    return Date.now() - participant.lastSeenAt.getTime() <= PRESENCE_RECENT_ACTIVITY_WINDOW_MS;
   }
 
   private async findAccessibleConversation(userId: string, conversationId: string) {
@@ -573,7 +873,7 @@ export class ConversationsService {
         displayName: participant.displayName,
         avatarUrl: participant.avatarUrl,
         roleLabel: this.resolveRoleLabel(participant),
-        isOnline: this.conversationsRealtimeGateway.isUserConnected(participant.id),
+        isOnline: this.isUserOnline(participant),
         lastSeenAt: participant.lastSeenAt?.toISOString() ?? null,
       },
       product: conversation.product
@@ -622,7 +922,7 @@ export class ConversationsService {
         displayName: participant.displayName,
         avatarUrl: participant.avatarUrl,
         roleLabel: this.resolveRoleLabel(participant),
-        isOnline: this.conversationsRealtimeGateway.isUserConnected(participant.id),
+        isOnline: this.isUserOnline(participant),
         lastSeenAt: participant.lastSeenAt?.toISOString() ?? null,
       },
       product: conversation.product
@@ -639,6 +939,7 @@ export class ConversationsService {
       messages: conversation.messages.map((message) => ({
         id: message.id,
         content: message.content,
+        kind: message.kind,
         createdAt: message.createdAt.toISOString(),
         readAt: message.readAt?.toISOString() ?? null,
         isMine: message.senderUserId === userId,
@@ -648,6 +949,7 @@ export class ConversationsService {
           displayName: message.sender.displayName,
           avatarUrl: message.sender.avatarUrl,
         },
+        media: this.presentMessageMedia(message),
         product: this.presentMessageProductSnapshot(
           message,
           currentProductSnapshots,
@@ -682,6 +984,7 @@ export class ConversationsService {
         conversation.messages.map<ConversationThreadMessage>((message) => ({
           id: message.id,
           content: message.content,
+          kind: message.kind,
           createdAt: message.createdAt.toISOString(),
           readAt: message.readAt?.toISOString() ?? null,
           isMine: message.senderUserId === userId,
@@ -691,6 +994,7 @@ export class ConversationsService {
             displayName: message.sender.displayName,
             avatarUrl: message.sender.avatarUrl,
           },
+          media: this.presentMessageMedia(message),
           product: this.presentMessageProductSnapshot(
             message,
             currentProductSnapshots,
@@ -717,7 +1021,7 @@ export class ConversationsService {
         displayName: participant.displayName,
         avatarUrl: participant.avatarUrl,
         roleLabel: this.resolveRoleLabel(participant),
-        isOnline: this.conversationsRealtimeGateway.isUserConnected(participant.id),
+        isOnline: this.isUserOnline(participant),
         lastSeenAt: participant.lastSeenAt?.toISOString() ?? null,
       },
       product: null,
@@ -773,6 +1077,10 @@ export class ConversationsService {
     message: MessageProductSnapshotFields,
     currentProductSnapshots?: Map<string, ConversationMessageProductSnapshot>,
   ) {
+    if (message.kind === 'IMAGE' || message.kind === 'DOCUMENT') {
+      return null;
+    }
+
     const currentProductId = message.productId?.trim() ?? '';
     if (
       currentProductId.length > 0 &&
@@ -803,6 +1111,69 @@ export class ConversationsService {
       priceLabel,
       imageUrl,
     };
+  }
+
+  private presentMessageMedia(message: MessageProductSnapshotFields) {
+    if (!message.media) {
+      return null;
+    }
+
+    const mediaType = message.media.mediaType.trim().toLowerCase();
+    if (mediaType !== 'image' && mediaType !== 'document') {
+      return null;
+    }
+
+    return {
+      mediaType,
+      publicUrl: message.media.publicUrl,
+      previewUrl: message.media.previewUrl,
+      thumbnailUrl: message.media.thumbnailUrl,
+      fileName: message.media.fileName,
+      mimeType: message.media.mimeType,
+      fileSizeBytes: message.media.fileSizeBytes,
+      storageProvider: message.media.storageProvider,
+      storageKey: message.media.storageKey,
+      mediaGroupId: message.media.mediaGroupId,
+      width: message.media.width,
+      height: message.media.height,
+      encryptionScheme: message.media.encryptionScheme,
+      encryptionKeyB64: message.media.encryptionKeyB64,
+      encryptionIvB64: message.media.encryptionIvB64,
+      fileSha256B64: message.media.fileSha256B64,
+    } satisfies ConversationMessageMediaPayload;
+  }
+
+  private extractMediaPayload(dto: CreateMediaMessageDto) {
+    const normalizedStorageProvider = dto.storageProvider?.trim() || 'cloudinary';
+    const normalizedStorageKey = dto.storageKey?.trim() || null;
+    const normalizedPublicUrl = dto.publicUrl.trim();
+    const imageVariants =
+      dto.mediaType === 'image' && normalizedStorageProvider.toLowerCase() == 'cloudinary'
+      ? this.cloudinaryService.buildChatImageVariants({
+          publicId: normalizedStorageKey,
+          publicUrl: normalizedPublicUrl,
+        })
+      : { previewUrl: null, thumbnailUrl: null };
+
+    return {
+      mediaType: dto.mediaType,
+      publicUrl: normalizedPublicUrl,
+      previewUrl: dto.previewUrl?.trim() || imageVariants.previewUrl || null,
+      thumbnailUrl:
+        dto.thumbnailUrl?.trim() || imageVariants.thumbnailUrl || null,
+      fileName: dto.fileName?.trim() || null,
+      mimeType: dto.mimeType?.trim() || null,
+      fileSizeBytes: dto.fileSizeBytes ?? null,
+      storageProvider: normalizedStorageProvider,
+      storageKey: normalizedStorageKey,
+      mediaGroupId: dto.mediaGroupId?.trim() || null,
+      width: dto.width ?? null,
+      height: dto.height ?? null,
+      encryptionScheme: dto.encryptionScheme?.trim() || null,
+      encryptionKeyB64: dto.encryptionKeyB64?.trim() || null,
+      encryptionIvB64: dto.encryptionIvB64?.trim() || null,
+      fileSha256B64: dto.fileSha256B64?.trim() || null,
+    } satisfies ConversationMessageMediaPayload;
   }
 
   private presentMessageReply(

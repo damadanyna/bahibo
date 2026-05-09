@@ -3,25 +3,33 @@ import 'dart:async';
 import 'package:banay/component/app_network_image.dart';
 import 'package:banay/component/app_page_refresh.dart';
 import 'package:banay/component/app_page_skeletons.dart';
+import 'package:banay/component/chat_media_cached_image.dart';
 import 'package:banay/component/profile_models.dart';
 import 'package:banay/component/seller_profile_page.dart';
 import 'package:banay/component/ui/chat_message_input.dart';
 import 'package:banay/component/user_profile_page.dart';
 import 'package:banay/formatter/price_formatter.dart';
+import 'package:banay/page/image_viewer_page.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/catalog_api_service.dart';
 import 'package:banay/services/chat_realtime_service.dart';
+import 'package:banay/services/cloudinary_image_url.dart';
+import 'package:banay/services/chat_media_cache_service.dart';
 import 'package:banay/services/conversations_api_service.dart';
 import 'package:banay/services/presence_service.dart';
 import 'package:banay/services/push_notification_service.dart';
 import 'package:banay/services/session_storage.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 typedef ChatProductPageBuilder =
     Widget Function(Map<String, dynamic> product, {bool openedFromChat});
 
 enum _ChatHeaderMenuAction { viewProfile, report }
+
+const String _photoAttachmentIdPrefix = 'attachment:photo:';
+const String _documentAttachmentIdPrefix = 'attachment:document:';
 
 class ChatPage extends StatefulWidget {
   final String? conversationId;
@@ -72,6 +80,7 @@ class _ChatPageState extends State<ChatPage>
     with AppPageRefreshMixin<ChatPage>, RouteAware {
   static const Duration _conversationPollInterval = Duration(seconds: 3);
   static const Duration _typingStopDelay = Duration(milliseconds: 1200);
+  static const Duration _photoUploadProgressTick = Duration(milliseconds: 18);
   final ConversationsApiService _conversationsApiService =
       ConversationsApiService();
   final CatalogApiService _catalogApiService = CatalogApiService();
@@ -85,6 +94,7 @@ class _ChatPageState extends State<ChatPage>
   Timer? _conversationPollTimer;
   Timer? _messageHighlightTimer;
   Timer? _typingStopTimer;
+  Timer? _photoUploadProgressTimer;
   static const int _scrollRetryCount = 4;
   bool _showEntrySkeleton = true;
   bool _isSending = false;
@@ -93,6 +103,10 @@ class _ChatPageState extends State<ChatPage>
   bool _initialMessageHandled = false;
   bool _initialProductContextSent = false;
   bool _conversationBlocked = false;
+  int? _photoUploadProgressPercent;
+  int _photoUploadTargetPercent = 0;
+  String? _uploadingPhotoLabel;
+  String? _photoUploadStatusLabel;
   String? _conversationId;
   String? _loadError;
   Map<String, dynamic>? _conversation;
@@ -131,6 +145,7 @@ class _ChatPageState extends State<ChatPage>
     _conversationPollTimer?.cancel();
     _messageHighlightTimer?.cancel();
     _typingStopTimer?.cancel();
+    _photoUploadProgressTimer?.cancel();
     _emitTyping(false);
     disposePageRefresh();
     _messageController.dispose();
@@ -335,6 +350,14 @@ class _ChatPageState extends State<ChatPage>
     _realtimeEventsSubscription = ChatRealtimeService.instance.events.listen((
       event,
     ) {
+      if (event['type'] == 'profile:public-updated') {
+        final updatedUserId = event['userId']?.toString();
+        if (updatedUserId != null && updatedUserId == _participantUserId) {
+          _applyParticipantProfileUpdate(event);
+        }
+        return;
+      }
+
       final eventConversationId = event['conversationId']?.toString();
       final currentConversationId = _conversationId;
       if (eventConversationId == null || currentConversationId == null) {
@@ -359,6 +382,63 @@ class _ChatPageState extends State<ChatPage>
       }
 
       unawaited(_refreshConversationSilently());
+    });
+  }
+
+  void _applyParticipantProfileUpdate(Map<String, dynamic> event) {
+    final conversation = _conversation;
+    final profile = event['profile'];
+    if (!mounted || conversation == null || profile is! Map) {
+      return;
+    }
+
+    final participant = conversation['participant'];
+    if (participant is! Map) {
+      return;
+    }
+
+    final rawSellerProfile = profile['sellerProfile'];
+    final sellerProfile = rawSellerProfile is Map
+        ? Map<String, dynamic>.from(rawSellerProfile)
+        : const <String, dynamic>{};
+    final displayName = profile['displayName']?.toString().trim() ?? '';
+    final studioName = sellerProfile['studioName']?.toString().trim() ?? '';
+    final resolvedName = studioName.isNotEmpty ? studioName : displayName;
+    final avatarUrl = profile['avatarUrl']?.toString().trim() ?? '';
+    final coverImageUrl = profile['coverImageUrl']?.toString().trim() ?? '';
+    final role = profile['role']?.toString().trim();
+
+    final nextConversation = Map<String, dynamic>.from(conversation);
+    final nextParticipant = Map<String, dynamic>.from(participant);
+    var hasChanged = false;
+
+    if (resolvedName.isNotEmpty &&
+        nextParticipant['displayName'] != resolvedName) {
+      nextParticipant['displayName'] = resolvedName;
+      nextParticipant['name'] = resolvedName;
+      hasChanged = true;
+    }
+    if (avatarUrl.isNotEmpty && nextParticipant['avatarUrl'] != avatarUrl) {
+      nextParticipant['avatarUrl'] = avatarUrl;
+      hasChanged = true;
+    }
+    if (coverImageUrl.isNotEmpty &&
+        nextParticipant['coverImageUrl'] != coverImageUrl) {
+      nextParticipant['coverImageUrl'] = coverImageUrl;
+      hasChanged = true;
+    }
+    if (role != null && role.isNotEmpty && nextParticipant['role'] != role) {
+      nextParticipant['role'] = role;
+      hasChanged = true;
+    }
+
+    if (!hasChanged) {
+      return;
+    }
+
+    nextConversation['participant'] = nextParticipant;
+    setState(() {
+      _conversation = nextConversation;
     });
   }
 
@@ -501,6 +581,7 @@ class _ChatPageState extends State<ChatPage>
           (message) => _ChatMessage(
             id: message['id']?.toString(),
             message: (message['content'] as String?) ?? '',
+            kind: _ChatMessageKind.fromApi(message['kind']),
             time: _formatMessageTime(message['createdAt'] as String?),
             isMine: message['isMine'] == true,
             deliveryState: _resolveDeliveryState(
@@ -508,6 +589,7 @@ class _ChatPageState extends State<ChatPage>
               readAt: message['readAt'] as String?,
             ),
             reply: _ChatMessageReply.fromApi(message['reply']),
+            media: _ChatMessageMedia.fromApi(message['media']),
             product: _ChatMessageProduct.fromApi(message['product']),
           ),
         ),
@@ -532,6 +614,66 @@ class _ChatPageState extends State<ChatPage>
               ? data['blockedMessage']!.toString().trim()
               : 'Cette discussion est bloquee. Vous pouvez lire l\'historique, mais vous ne pouvez plus envoyer de nouveaux messages.')
         : null;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      unawaited(_precacheRecentChatImages());
+    });
+  }
+
+  String _chatImageBubbleUrl(_ChatMessageMedia media) {
+    final thumbnailUrl = media.thumbnailUrl?.trim() ?? '';
+    if (thumbnailUrl.isNotEmpty) {
+      return thumbnailUrl;
+    }
+
+    final previewUrl = media.previewUrl?.trim() ?? '';
+    if (previewUrl.isNotEmpty) {
+      return CloudinaryImageUrl.forChatThumbnail(previewUrl);
+    }
+
+    return CloudinaryImageUrl.forChatThumbnail(media.publicUrl);
+  }
+
+  String _chatImageViewerUrl(_ChatMessageMedia media) {
+    final publicUrl = media.publicUrl.trim();
+    if (publicUrl.isNotEmpty) {
+      return CloudinaryImageUrl.forViewer(publicUrl);
+    }
+
+    final previewUrl = media.previewUrl?.trim() ?? '';
+    if (previewUrl.isNotEmpty) {
+      return CloudinaryImageUrl.forViewer(previewUrl);
+    }
+
+    return '';
+  }
+
+  Future<void> _precacheRecentChatImages() async {
+    final mediaToPrecache = <String>{};
+
+    for (final message in _messages.reversed) {
+      final media = message.media;
+      if (media == null || media.mediaType != 'image') {
+        continue;
+      }
+
+      final imageUrl = _chatImageBubbleUrl(media);
+      if (imageUrl.isEmpty) {
+        continue;
+      }
+
+      mediaToPrecache.add(imageUrl);
+      if (mediaToPrecache.length >= 6) {
+        break;
+      }
+    }
+
+    for (final imageUrl in mediaToPrecache) {
+      await ChatMediaCacheService.instance.prefetch(imageUrl);
+    }
   }
 
   bool _isBlockedError(AppApiException error) {
@@ -720,9 +862,59 @@ class _ChatPageState extends State<ChatPage>
         '${message.time}-${message.isMine ? 'mine' : 'their'}-${message.message.hashCode}';
   }
 
-  GlobalKey _messageItemKey(_ChatMessage message) {
-    final visualKey = _messageReplyKey(message);
-    return _messageKeys.putIfAbsent(visualKey, GlobalKey.new);
+  String _displayMessageReplyKey(_ChatDisplayMessage displayMessage) {
+    if (displayMessage.groupId != null && displayMessage.groupId!.isNotEmpty) {
+      return displayMessage.groupId!;
+    }
+
+    return _messageReplyKey(displayMessage.anchorMessage);
+  }
+
+  GlobalKey _displayMessageItemKey(_ChatDisplayMessage displayMessage) {
+    final visualKey = _displayMessageReplyKey(displayMessage);
+    final key = _messageKeys.putIfAbsent(visualKey, GlobalKey.new);
+
+    for (final message in displayMessage.messages) {
+      final messageId = message.id?.trim() ?? '';
+      if (messageId.isNotEmpty) {
+        _messageKeys[messageId] = key;
+      }
+    }
+
+    return key;
+  }
+
+  List<_ChatDisplayMessage> _buildDisplayMessages(List<_ChatMessage> messages) {
+    final displayMessages = <_ChatDisplayMessage>[];
+    var index = 0;
+
+    while (index < messages.length) {
+      final current = messages[index];
+      final groupId = current.media?.mediaGroupId?.trim() ?? '';
+      if (groupId.isEmpty) {
+        displayMessages.add(_ChatDisplayMessage(messages: [current]));
+        index += 1;
+        continue;
+      }
+
+      final groupedMessages = <_ChatMessage>[current];
+      var nextIndex = index + 1;
+      while (nextIndex < messages.length) {
+        final nextMessage = messages[nextIndex];
+        final nextGroupId = nextMessage.media?.mediaGroupId?.trim() ?? '';
+        if (nextGroupId != groupId) {
+          break;
+        }
+
+        groupedMessages.add(nextMessage);
+        nextIndex += 1;
+      }
+
+      displayMessages.add(_ChatDisplayMessage(messages: groupedMessages));
+      index = nextIndex;
+    }
+
+    return displayMessages;
   }
 
   Future<void> _focusRepliedMessage(String? messageId) async {
@@ -809,12 +1001,387 @@ class _ChatPageState extends State<ChatPage>
     };
   }
 
-  void _handleAttachment(UiChatAttachment attachment) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${attachment.label} n\'est pas encore supporte.'),
-      ),
+  Future<void> _handleAttachment(UiChatAttachment attachment) async {
+    switch (attachment.type) {
+      case UiChatAttachmentType.quickText:
+        _handleComposerChanged(attachment.messageText);
+        return;
+      case UiChatAttachmentType.photo:
+        await _sendPhotoAttachment(attachment);
+        return;
+      case UiChatAttachmentType.document:
+        await _sendDocumentAttachment(attachment);
+        return;
+    }
+  }
+
+  Future<void> _sendPhotoAttachment(UiChatAttachment attachment) async {
+    final bytes = attachment.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Impossible de lire la photo selectionnee.'),
+        ),
+      );
+      return;
+    }
+
+    try {
+      if (mounted) {
+        setState(() {
+          _uploadingPhotoLabel = attachment.label;
+          _photoUploadProgressPercent = 1;
+          _photoUploadTargetPercent = 1;
+          _photoUploadStatusLabel = 'Preparation de l\'envoi...';
+        });
+      }
+      _animatePhotoUploadProgressTo(3);
+
+      final upload = await _conversationsApiService.uploadPhotoAttachment(
+        fileBytes: bytes,
+        fileName: attachment.label,
+        onProgress: (progress) {
+          if (!mounted) {
+            return;
+          }
+
+          setState(() {
+            _photoUploadStatusLabel = 'Televersement de l\'image...';
+          });
+
+          final mappedPercent = (1 + (progress.clamp(0, 1) * 89)).round();
+          _animatePhotoUploadProgressTo(mappedPercent);
+        },
+      );
+
+      if (mounted) {
+        setState(() {
+          _photoUploadStatusLabel = 'Traitement de l\'image...';
+        });
+      }
+      _animatePhotoUploadProgressTo(94);
+
+      final attachmentUrl = upload['attachmentUrl']?.toString().trim() ?? '';
+      if (attachmentUrl.isEmpty) {
+        throw AppApiException('Photo invalide apres upload');
+      }
+
+      await _sendMediaAttachmentMessage(
+        kind: _ChatMessageKind.image,
+        content: 'Photo envoyee',
+        mediaPayload: {
+          'kind': 'IMAGE',
+          'mediaType': 'image',
+          'publicUrl':
+              upload['originalUrl']?.toString().trim().isNotEmpty == true
+              ? upload['originalUrl']!.toString().trim()
+              : attachmentUrl,
+          'fileName': attachment.label,
+          'mimeType': _guessMimeTypeFromFileName(attachment.label, true),
+          'fileSizeBytes': bytes.length,
+          'mediaGroupId': attachment.mediaGroupId,
+          'width': attachment.width,
+          'height': attachment.height,
+          'storageProvider': 'cloudinary',
+          'storageKey': upload['publicId']?.toString(),
+        },
+        pendingMedia: _ChatMessageMedia(
+          mediaType: 'image',
+          publicUrl: upload['originalUrl']?.toString().trim().isNotEmpty == true
+              ? upload['originalUrl']!.toString().trim()
+              : attachmentUrl,
+          previewUrl: attachmentUrl,
+          thumbnailUrl: attachmentUrl,
+          fileName: attachment.label,
+          mimeType: _guessMimeTypeFromFileName(attachment.label, true),
+          fileSizeBytes: bytes.length,
+          mediaGroupId: attachment.mediaGroupId,
+          width: attachment.width,
+          height: attachment.height,
+          storageProvider: 'cloudinary',
+          storageKey: upload['publicId']?.toString(),
+        ),
+      );
+
+      if (mounted) {
+        setState(() {
+          _photoUploadStatusLabel = 'Photo envoyee';
+        });
+      }
+      _animatePhotoUploadProgressTo(100);
+      await Future<void>.delayed(const Duration(milliseconds: 420));
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _photoUploadProgressPercent = null;
+          _photoUploadTargetPercent = 0;
+          _uploadingPhotoLabel = null;
+          _photoUploadStatusLabel = null;
+        });
+      }
+      _photoUploadProgressTimer?.cancel();
+      _photoUploadProgressTimer = null;
+    }
+  }
+
+  void _animatePhotoUploadProgressTo(int targetPercent) {
+    final normalizedTarget = targetPercent.clamp(1, 100);
+    _photoUploadTargetPercent = normalizedTarget;
+
+    if (!mounted) {
+      return;
+    }
+
+    final currentPercent = _photoUploadProgressPercent;
+    if (currentPercent == null) {
+      setState(() => _photoUploadProgressPercent = normalizedTarget);
+      return;
+    }
+
+    if (currentPercent >= normalizedTarget) {
+      return;
+    }
+
+    _photoUploadProgressTimer ??= Timer.periodic(_photoUploadProgressTick, (
+      timer,
+    ) {
+      if (!mounted || _photoUploadProgressPercent == null) {
+        timer.cancel();
+        _photoUploadProgressTimer = null;
+        return;
+      }
+
+      final currentValue = _photoUploadProgressPercent!;
+      if (currentValue >= _photoUploadTargetPercent) {
+        timer.cancel();
+        _photoUploadProgressTimer = null;
+        return;
+      }
+
+      setState(() {
+        _photoUploadProgressPercent = currentValue + 1;
+      });
+    });
+  }
+
+  Future<void> _sendDocumentAttachment(UiChatAttachment attachment) async {
+    final bytes = attachment.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Impossible de lire le document selectionne.'),
+        ),
+      );
+      return;
+    }
+
+    try {
+      final upload = await _conversationsApiService.uploadDocumentAttachment(
+        fileBytes: bytes,
+        fileName: attachment.label,
+      );
+      final attachmentUrl = upload['attachmentUrl']?.toString().trim() ?? '';
+      if (attachmentUrl.isEmpty) {
+        throw AppApiException('Document invalide apres upload');
+      }
+
+      await _sendMediaAttachmentMessage(
+        kind: _ChatMessageKind.document,
+        content: 'Document envoye',
+        mediaPayload: {
+          'kind': 'DOCUMENT',
+          'mediaType': 'document',
+          'publicUrl': attachmentUrl,
+          'fileName': attachment.label,
+          'mimeType': _guessMimeTypeFromFileName(attachment.label, false),
+          'fileSizeBytes': bytes.length,
+          'mediaGroupId': attachment.mediaGroupId,
+          'storageProvider': 'cloudinary',
+          'storageKey': upload['publicId']?.toString(),
+        },
+        pendingMedia: _ChatMessageMedia(
+          mediaType: 'document',
+          publicUrl: attachmentUrl,
+          fileName: attachment.label,
+          mimeType: _guessMimeTypeFromFileName(attachment.label, false),
+          fileSizeBytes: bytes.length,
+          mediaGroupId: attachment.mediaGroupId,
+          storageProvider: 'cloudinary',
+          storageKey: upload['publicId']?.toString(),
+        ),
+      );
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
+  String _fileExtensionLabel(String fileName) {
+    final lastDot = fileName.lastIndexOf('.');
+    if (lastDot < 0 || lastDot == fileName.length - 1) {
+      return 'Fichier';
+    }
+
+    return fileName.substring(lastDot + 1).toUpperCase();
+  }
+
+  String _guessMimeTypeFromFileName(String fileName, bool isImage) {
+    final extension = _fileExtensionLabel(fileName).toLowerCase();
+    if (isImage) {
+      switch (extension) {
+        case 'jpg':
+        case 'jpeg':
+          return 'image/jpeg';
+        case 'png':
+          return 'image/png';
+        case 'webp':
+          return 'image/webp';
+        case 'heic':
+          return 'image/heic';
+        case 'heif':
+          return 'image/heif';
+      }
+      return 'image/jpeg';
+    }
+
+    switch (extension) {
+      case 'pdf':
+        return 'application/pdf';
+      case 'doc':
+        return 'application/msword';
+      case 'docx':
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      case 'txt':
+        return 'text/plain';
+      default:
+        return 'application/octet-stream';
+    }
+  }
+
+  Future<void> _sendMediaAttachmentMessage({
+    required _ChatMessageKind kind,
+    required String content,
+    required Map<String, dynamic> mediaPayload,
+    required _ChatMessageMedia pendingMedia,
+  }) async {
+    final trimmedContent = content.trim();
+    if (trimmedContent.isEmpty ||
+        !_usesLiveConversation ||
+        _isSending ||
+        _conversationBlocked) {
+      return;
+    }
+
+    final pendingMessage = _ChatMessage(
+      id: 'pending-${DateTime.now().microsecondsSinceEpoch}',
+      message: trimmedContent,
+      kind: kind,
+      time: _formatMessageTime(DateTime.now().toIso8601String()),
+      isMine: true,
+      deliveryState: _ChatMessageDeliveryState.sending,
+      reply: _replyingToMessage == null
+          ? null
+          : _ChatMessageReply(
+              messageId: _replyingToMessage!.id,
+              senderLabel: _replyAuthorLabel(_replyingToMessage!),
+              content: _replyingToMessage!.message,
+            ),
+      media: pendingMedia,
     );
+    final previousReplyingToMessage = _replyingToMessage;
+
+    _typingStopTimer?.cancel();
+    _emitTyping(false);
+    setState(() {
+      _isSending = true;
+      _pendingMessages.add(pendingMessage);
+      _replyingToMessage = null;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _animateToBottom());
+
+    try {
+      final replyPayload = await _replyPayload(previousReplyingToMessage);
+      final data =
+          (widget.conversationProductId?.isNotEmpty ?? false) &&
+              (widget.conversationUserId?.isNotEmpty ?? false) == false
+          ? await _conversationsApiService.sendProductMediaMessage(
+              productId: widget.conversationProductId!,
+              mediaPayload: {'content': trimmedContent, ...mediaPayload},
+              reply: replyPayload,
+            )
+          : (widget.conversationUserId?.isNotEmpty ?? false)
+          ? await _conversationsApiService.sendUserMediaMessage(
+              targetUserId: widget.conversationUserId!,
+              mediaPayload: {'content': trimmedContent, ...mediaPayload},
+              reply: replyPayload,
+            )
+          : _conversationId != null
+          ? await _conversationsApiService.sendMediaMessage(
+              conversationId: _conversationId!,
+              mediaPayload: {'content': trimmedContent, ...mediaPayload},
+              reply: replyPayload,
+            )
+          : await _conversationsApiService.sendMediaMessage(
+              conversationId: _conversationId!,
+              mediaPayload: {'content': trimmedContent, ...mediaPayload},
+              reply: replyPayload,
+            );
+
+      _applyConversation(data);
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _showEntrySkeleton = false;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) => _animateToBottom());
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      if (_isBlockedError(error)) {
+        setState(() {
+          _conversationBlocked = true;
+          _loadError = error.message;
+        });
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+      setState(() {
+        _pendingMessages.removeWhere(
+          (message) => message.id == pendingMessage.id,
+        );
+        _replyingToMessage = previousReplyingToMessage;
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isSending = false);
+      }
+    }
   }
 
   void _scheduleScrollToBottom({int remaining = _scrollRetryCount}) {
@@ -954,6 +1521,292 @@ class _ChatPageState extends State<ChatPage>
         context,
       ).showSnackBar(SnackBar(content: Text(error.message)));
     }
+  }
+
+  bool _isAttachmentSnapshot(_ChatMessageProduct product) {
+    final id = product.id?.trim() ?? '';
+    return id.startsWith(_photoAttachmentIdPrefix) ||
+        id.startsWith(_documentAttachmentIdPrefix);
+  }
+
+  bool _isPhotoAttachmentSnapshot(_ChatMessageProduct product) {
+    final id = product.id?.trim() ?? '';
+    return id.startsWith(_photoAttachmentIdPrefix);
+  }
+
+  bool _isDocumentAttachmentSnapshot(_ChatMessageProduct product) {
+    final id = product.id?.trim() ?? '';
+    return id.startsWith(_documentAttachmentIdPrefix);
+  }
+
+  String? _extractAttachmentUrl(_ChatMessageProduct product) {
+    final imageUrl = product.imageUrl.trim();
+    if (imageUrl.isNotEmpty) {
+      return imageUrl;
+    }
+
+    final id = product.id?.trim() ?? '';
+    if (id.startsWith(_photoAttachmentIdPrefix)) {
+      return Uri.decodeComponent(id.substring(_photoAttachmentIdPrefix.length));
+    }
+    if (id.startsWith(_documentAttachmentIdPrefix)) {
+      return Uri.decodeComponent(
+        id.substring(_documentAttachmentIdPrefix.length),
+      );
+    }
+
+    return null;
+  }
+
+  Future<void> _downloadAttachmentImage(
+    String imageUrl, {
+    String? fileName,
+  }) async {
+    final normalizedUrl = imageUrl.trim();
+    if (normalizedUrl.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Image indisponible pour le telechargement.'),
+        ),
+      );
+      return;
+    }
+
+    final uri = Uri.tryParse(normalizedUrl);
+    if (uri == null) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Lien de telechargement invalide.')),
+      );
+      return;
+    }
+
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          opened
+              ? 'Ouverture du telechargement${fileName == null || fileName.trim().isEmpty ? '' : ' : ${fileName.trim()}'}'
+              : 'Impossible d\'ouvrir le telechargement pour le moment.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openAttachmentSnapshot(_ChatMessageProduct product) async {
+    if (_isPhotoAttachmentSnapshot(product)) {
+      final attachmentUrl = _extractAttachmentUrl(product);
+      if (attachmentUrl == null || attachmentUrl.isEmpty) {
+        if (!mounted) {
+          return;
+        }
+
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Photo indisponible.')));
+        return;
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ImageViewerPage(
+            imageUrls: [attachmentUrl],
+            onDownloadImage: (imageUrl) =>
+                _downloadAttachmentImage(imageUrl, fileName: product.subtitle),
+            overlay: ImageViewerOverlayData(
+              title: product.title,
+              description: product.subtitle,
+              sellerName: _sellerNameValue,
+              sellerUserId: _participantUserId,
+              sellerAvatarUrl: _avatarUrlValue,
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (_isDocumentAttachmentSnapshot(product)) {
+      final attachmentUrl = _extractAttachmentUrl(product);
+      if (attachmentUrl == null || attachmentUrl.isEmpty) {
+        if (!mounted) {
+          return;
+        }
+
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Document indisponible.')));
+        return;
+      }
+
+      final uri = Uri.tryParse(attachmentUrl);
+      if (uri == null) {
+        if (!mounted) {
+          return;
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Lien du document invalide.')),
+        );
+        return;
+      }
+
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Impossible d\'ouvrir ce document pour le moment.'),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _openChatMedia(_ChatMessageMedia media) async {
+    if (media.mediaType == 'image') {
+      final imageUrl = _chatImageViewerUrl(media);
+      if (imageUrl.isEmpty) {
+        if (!mounted) {
+          return;
+        }
+
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Photo indisponible.')));
+        return;
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      try {
+        await ChatMediaCacheService.instance.prefetch(imageUrl);
+      } catch (_) {
+        // Ignore prefetch failures and continue to the viewer.
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ImageViewerPage(
+            imageUrls: [imageUrl],
+            onDownloadImage: (imageUrl) =>
+                _downloadAttachmentImage(imageUrl, fileName: media.fileName),
+            overlay: ImageViewerOverlayData(
+              title: 'Photo',
+              description: media.fileName,
+              sellerName: _sellerNameValue,
+              sellerUserId: _participantUserId,
+              sellerAvatarUrl: _avatarUrlValue,
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    final uri = Uri.tryParse(media.publicUrl.trim());
+    if (uri == null) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Lien du document invalide.')),
+      );
+      return;
+    }
+
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Impossible d\'ouvrir ce document pour le moment.'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _openChatMediaGroup(
+    List<_ChatMessageMedia> mediaItems, {
+    int initialIndex = 0,
+  }) async {
+    if (mediaItems.isEmpty) {
+      return;
+    }
+
+    final allImages = mediaItems.every((media) => media.mediaType == 'image');
+    if (!allImages) {
+      final normalizedIndex = initialIndex.clamp(0, mediaItems.length - 1);
+      await _openChatMedia(mediaItems[normalizedIndex]);
+      return;
+    }
+
+    final imageUrls = mediaItems
+        .map(_chatImageViewerUrl)
+        .where((imageUrl) => imageUrl.isNotEmpty)
+        .toList(growable: false);
+    if (imageUrls.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Photos indisponibles.')));
+      return;
+    }
+
+    for (final imageUrl in imageUrls.take(4)) {
+      try {
+        await ChatMediaCacheService.instance.prefetch(imageUrl);
+      } catch (_) {
+        // Ignore prefetch failures and continue to the viewer.
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    final normalizedInitialIndex = initialIndex.clamp(0, imageUrls.length - 1);
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ImageViewerPage(
+          imageUrls: imageUrls,
+          initialIndex: normalizedInitialIndex,
+          onDownloadImage: (imageUrl) => _downloadAttachmentImage(imageUrl),
+          overlay: ImageViewerOverlayData(
+            title: imageUrls.length > 1 ? 'Photos' : 'Photo',
+            description: imageUrls.length > 1
+                ? '${imageUrls.length} photos envoyees'
+                : mediaItems.first.fileName,
+            sellerName: _sellerNameValue,
+            sellerUserId: _participantUserId,
+            sellerAvatarUrl: _avatarUrlValue,
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _openParticipantProfile() async {
@@ -1188,7 +2041,10 @@ class _ChatPageState extends State<ChatPage>
     final subtleText = appColors.mutedText;
     final sellerName = _sellerNameValue;
     final avatarUrl = _avatarUrlValue;
-    final displayMessages = [..._messages, ..._pendingMessages];
+    final displayMessages = _buildDisplayMessages([
+      ..._messages,
+      ..._pendingMessages,
+    ]);
 
     return Scaffold(
       backgroundColor: background,
@@ -1267,10 +2123,15 @@ class _ChatPageState extends State<ChatPage>
                                     cardColor: incomingBubbleColor,
                                   )
                                 else
-                                  ...displayMessages.map((chat) {
-                                    final visualKey = _messageReplyKey(chat);
+                                  ...displayMessages.map((displayMessage) {
+                                    final chat = displayMessage.anchorMessage;
+                                    final visualKey = _displayMessageReplyKey(
+                                      displayMessage,
+                                    );
                                     return Padding(
-                                      key: _messageItemKey(chat),
+                                      key: _displayMessageItemKey(
+                                        displayMessage,
+                                      ),
                                       padding: const EdgeInsets.only(bottom: 6),
                                       child: _SwipeReplyWrapper(
                                         isMine: chat.isMine,
@@ -1278,7 +2139,8 @@ class _ChatPageState extends State<ChatPage>
                                         onReply: () =>
                                             _setReplyingToMessage(chat),
                                         child: _ChatBubble(
-                                          message: chat.message,
+                                          message: displayMessage.messageText,
+                                          kind: chat.kind,
                                           time: chat.time,
                                           isMine: chat.isMine,
                                           deliveryState: chat.deliveryState,
@@ -1293,11 +2155,30 @@ class _ChatPageState extends State<ChatPage>
                                               : () => _focusRepliedMessage(
                                                   chat.reply!.messageId,
                                                 ),
+                                          mediaItems: displayMessage.mediaItems,
+                                          onMediaTapAtIndex:
+                                              displayMessage.mediaItems.isEmpty
+                                              ? null
+                                              : (mediaIndex) =>
+                                                    _openChatMediaGroup(
+                                                      displayMessage.mediaItems,
+                                                      initialIndex: mediaIndex,
+                                                    ),
                                           product: chat.product,
                                           onProductTap:
-                                              !widget.showInlineProductSnapshots ||
+                                              displayMessage
+                                                      .mediaItems
+                                                      .isNotEmpty ||
+                                                  !widget
+                                                      .showInlineProductSnapshots ||
                                                   chat.product == null
                                               ? null
+                                              : _isAttachmentSnapshot(
+                                                  chat.product!,
+                                                )
+                                              ? () => _openAttachmentSnapshot(
+                                                  chat.product!,
+                                                )
                                               : () => _openMessageProductCard(
                                                   chat.product!,
                                                 ),
@@ -1351,15 +2232,40 @@ class _ChatPageState extends State<ChatPage>
                                 cardColor: incomingBubbleColor,
                               )
                             else
-                              UiChatMessageInput(
-                                controller: _messageController,
-                                onAttachmentSelected: _handleAttachment,
-                                onTextChanged: _handleComposerChanged,
-                                onSend: _sendMessage,
-                                primary: primary,
-                                panelColor: panelColor,
-                                borderColor: appColors.inputBorder,
-                                hintText: 'Message',
+                              Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (_photoUploadProgressPercent != null) ...[
+                                    _AttachmentUploadProgressCard(
+                                      label:
+                                          _uploadingPhotoLabel ??
+                                          'Photo en cours',
+                                      statusLabel:
+                                          _photoUploadStatusLabel ??
+                                          'Televersement de l\'image...',
+                                      progressPercent:
+                                          _photoUploadProgressPercent!,
+                                      primary: primary,
+                                      cardColor: incomingBubbleColor,
+                                      subtleText: subtleText,
+                                    ),
+                                    const SizedBox(height: 8),
+                                  ],
+                                  AbsorbPointer(
+                                    absorbing:
+                                        _photoUploadProgressPercent != null,
+                                    child: UiChatMessageInput(
+                                      controller: _messageController,
+                                      onAttachmentSelected: _handleAttachment,
+                                      onTextChanged: _handleComposerChanged,
+                                      onSend: _sendMessage,
+                                      primary: primary,
+                                      panelColor: panelColor,
+                                      borderColor: appColors.inputBorder,
+                                      hintText: 'Message',
+                                    ),
+                                  ),
+                                ],
                               ),
                           ],
                         ),
@@ -1685,21 +2591,86 @@ class _ProductContextCard extends StatelessWidget {
 class _ChatMessage {
   final String? id;
   final String message;
+  final _ChatMessageKind kind;
   final String time;
   final bool isMine;
   final _ChatMessageDeliveryState? deliveryState;
   final _ChatMessageReply? reply;
+  final _ChatMessageMedia? media;
   final _ChatMessageProduct? product;
 
   const _ChatMessage({
     this.id,
     required this.message,
+    this.kind = _ChatMessageKind.text,
     required this.time,
     required this.isMine,
     this.deliveryState,
     this.reply,
+    this.media,
     this.product,
   });
+}
+
+class _ChatDisplayMessage {
+  final List<_ChatMessage> messages;
+
+  const _ChatDisplayMessage({required this.messages})
+    : assert(messages.length > 0);
+
+  _ChatMessage get anchorMessage => messages.last;
+
+  String? get groupId {
+    final value = messages.first.media?.mediaGroupId?.trim() ?? '';
+    return value.isEmpty ? null : value;
+  }
+
+  List<_ChatMessageMedia> get mediaItems => messages
+      .map((message) => message.media)
+      .whereType<_ChatMessageMedia>()
+      .toList(growable: false);
+
+  String get messageText {
+    if (messages.length == 1) {
+      return anchorMessage.message;
+    }
+
+    final normalizedMessages = messages
+        .map((message) => message.message.trim())
+        .where((message) => message.isNotEmpty)
+        .toSet();
+    if (normalizedMessages.length != 1) {
+      return '';
+    }
+
+    final message = normalizedMessages.first;
+    if (message == 'Photo envoyee' || message == 'Document envoye') {
+      return '';
+    }
+
+    return message;
+  }
+}
+
+enum _ChatMessageKind {
+  text,
+  image,
+  document,
+  product;
+
+  static _ChatMessageKind fromApi(dynamic value) {
+    final normalized = value?.toString().trim().toUpperCase() ?? '';
+    switch (normalized) {
+      case 'IMAGE':
+        return _ChatMessageKind.image;
+      case 'DOCUMENT':
+        return _ChatMessageKind.document;
+      case 'PRODUCT':
+        return _ChatMessageKind.product;
+      default:
+        return _ChatMessageKind.text;
+    }
+  }
 }
 
 enum _ChatMessageDeliveryState { sending, sent, seen }
@@ -1780,14 +2751,83 @@ class _ChatMessageProduct {
   }
 }
 
+class _ChatMessageMedia {
+  final String mediaType;
+  final String publicUrl;
+  final String? previewUrl;
+  final String? thumbnailUrl;
+  final String? fileName;
+  final String? mimeType;
+  final int? fileSizeBytes;
+  final String? mediaGroupId;
+  final int? width;
+  final int? height;
+  final String storageProvider;
+  final String? storageKey;
+
+  const _ChatMessageMedia({
+    required this.mediaType,
+    required this.publicUrl,
+    this.previewUrl,
+    this.thumbnailUrl,
+    this.fileName,
+    this.mimeType,
+    this.fileSizeBytes,
+    this.mediaGroupId,
+    this.width,
+    this.height,
+    required this.storageProvider,
+    this.storageKey,
+  });
+
+  static _ChatMessageMedia? fromApi(dynamic value) {
+    if (value is! Map) {
+      return null;
+    }
+
+    final mediaType = value['mediaType']?.toString().trim().toLowerCase() ?? '';
+    final publicUrl = value['publicUrl']?.toString().trim() ?? '';
+    if (mediaType.isEmpty || publicUrl.isEmpty) {
+      return null;
+    }
+
+    return _ChatMessageMedia(
+      mediaType: mediaType,
+      publicUrl: publicUrl,
+      previewUrl: value['previewUrl']?.toString().trim(),
+      thumbnailUrl: value['thumbnailUrl']?.toString().trim(),
+      fileName: value['fileName']?.toString().trim(),
+      mimeType: value['mimeType']?.toString().trim(),
+      fileSizeBytes: value['fileSizeBytes'] is int
+          ? value['fileSizeBytes'] as int
+          : int.tryParse(value['fileSizeBytes']?.toString() ?? ''),
+      mediaGroupId: value['mediaGroupId']?.toString().trim(),
+      width: value['width'] is int
+          ? value['width'] as int
+          : int.tryParse(value['width']?.toString() ?? ''),
+      height: value['height'] is int
+          ? value['height'] as int
+          : int.tryParse(value['height']?.toString() ?? ''),
+      storageProvider:
+          value['storageProvider']?.toString().trim().isNotEmpty == true
+          ? value['storageProvider']!.toString().trim()
+          : 'cloudinary',
+      storageKey: value['storageKey']?.toString().trim(),
+    );
+  }
+}
+
 class _ChatBubble extends StatelessWidget {
   final String message;
+  final _ChatMessageKind kind;
   final String time;
   final bool isMine;
   final _ChatMessageDeliveryState? deliveryState;
   final _ChatMessageReply? reply;
   final bool isHighlighted;
   final VoidCallback? onReplyTap;
+  final List<_ChatMessageMedia> mediaItems;
+  final ValueChanged<int>? onMediaTapAtIndex;
   final _ChatMessageProduct? product;
   final VoidCallback? onProductTap;
   final String avatarUrl;
@@ -1799,12 +2839,15 @@ class _ChatBubble extends StatelessWidget {
 
   const _ChatBubble({
     required this.message,
+    this.kind = _ChatMessageKind.text,
     required this.time,
     required this.isMine,
     this.deliveryState,
     this.reply,
     this.isHighlighted = false,
     this.onReplyTap,
+    this.mediaItems = const <_ChatMessageMedia>[],
+    this.onMediaTapAtIndex,
     this.product,
     this.onProductTap,
     required this.avatarUrl,
@@ -1879,6 +2922,41 @@ class _ChatBubble extends StatelessWidget {
                     ),
                     const SizedBox(height: 10),
                   ],
+                  if (mediaItems.isNotEmpty && onMediaTapAtIndex != null) ...[
+                    mediaItems.length == 1
+                        ? _InlineChatMediaCard(
+                            media: mediaItems.first,
+                            isMine: isMine,
+                            primary: primary,
+                            cardColor: incomingBubbleColor,
+                            subtleText: metaColor,
+                            imageUrl: mediaItems.first.mediaType == 'image'
+                                ? CloudinaryImageUrl.forChatThumbnail(
+                                    mediaItems.first.thumbnailUrl
+                                                ?.trim()
+                                                .isNotEmpty ==
+                                            true
+                                        ? mediaItems.first.thumbnailUrl!.trim()
+                                        : mediaItems.first.previewUrl
+                                                  ?.trim()
+                                                  .isNotEmpty ==
+                                              true
+                                        ? mediaItems.first.previewUrl!.trim()
+                                        : mediaItems.first.publicUrl,
+                                  )
+                                : null,
+                            onTap: () => onMediaTapAtIndex!(0),
+                          )
+                        : _InlineChatMediaGroupCard(
+                            mediaItems: mediaItems,
+                            isMine: isMine,
+                            primary: primary,
+                            cardColor: incomingBubbleColor,
+                            subtleText: metaColor,
+                            onTapAtIndex: onMediaTapAtIndex!,
+                          ),
+                    if (message.trim().isNotEmpty) const SizedBox(height: 10),
+                  ],
                   if (product != null && onProductTap != null) ...[
                     _InlineProductSnapshotCard(
                       product: product!,
@@ -1888,18 +2966,19 @@ class _ChatBubble extends StatelessWidget {
                       subtleText: metaColor,
                       onTap: onProductTap,
                     ),
-                    const SizedBox(height: 10),
+                    if (message.trim().isNotEmpty) const SizedBox(height: 10),
                   ],
-                  Text(
-                    message,
-                    style: TextStyle(
-                      color: textColor,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                      height: 1.35,
+                  if (message.trim().isNotEmpty)
+                    Text(
+                      message,
+                      style: TextStyle(
+                        color: textColor,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        height: 1.35,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 6),
+                  if (message.trim().isNotEmpty) const SizedBox(height: 6),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -1928,6 +3007,91 @@ class _ChatBubble extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AttachmentUploadProgressCard extends StatelessWidget {
+  final String label;
+  final String statusLabel;
+  final int progressPercent;
+  final Color primary;
+  final Color cardColor;
+  final Color subtleText;
+
+  const _AttachmentUploadProgressCard({
+    required this.label,
+    required this.statusLabel,
+    required this.progressPercent,
+    required this.primary,
+    required this.cardColor,
+    required this.subtleText,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final normalizedPercent = progressPercent.clamp(1, 100);
+    final normalizedProgress = normalizedPercent / 100;
+    final percentLabel = '$normalizedPercent%';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: primary.withValues(alpha: 0.24)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.cloud_upload_outlined, color: primary, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Envoi de $label',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.96),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                percentLabel,
+                style: TextStyle(
+                  color: subtleText,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            statusLabel,
+            style: TextStyle(
+              color: subtleText,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: normalizedProgress,
+              minHeight: 7,
+              backgroundColor: Colors.white.withValues(alpha: 0.10),
+              valueColor: AlwaysStoppedAnimation<Color>(primary),
             ),
           ),
         ],
@@ -1996,6 +3160,17 @@ class _InlineProductSnapshotCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (_isPhotoAttachmentProduct(product)) {
+      return _InlineChatPhotoCard(
+        product: product,
+        isMine: isMine,
+        primary: primary,
+        cardColor: cardColor,
+        subtleText: subtleText,
+        onTap: onTap,
+      );
+    }
+
     final appColors = Theme.of(context).appColors;
     final surfaceColor = isMine
         ? primary.withValues(alpha: 0.18)
@@ -2077,6 +3252,517 @@ class _InlineProductSnapshotCard extends StatelessWidget {
                   ],
                 ),
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  bool _isPhotoAttachmentProduct(_ChatMessageProduct product) {
+    final id = product.id?.trim() ?? '';
+    return id.startsWith(_photoAttachmentIdPrefix) &&
+        product.imageUrl.isNotEmpty;
+  }
+}
+
+class _InlineChatMediaCard extends StatelessWidget {
+  final _ChatMessageMedia media;
+  final bool isMine;
+  final Color primary;
+  final Color cardColor;
+  final Color subtleText;
+  final VoidCallback? onTap;
+  final String? imageUrl;
+
+  const _InlineChatMediaCard({
+    required this.media,
+    required this.isMine,
+    required this.primary,
+    required this.cardColor,
+    required this.subtleText,
+    this.imageUrl,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (media.mediaType == 'image') {
+      return _InlineChatMediaImageCard(
+        media: media,
+        isMine: isMine,
+        primary: primary,
+        cardColor: cardColor,
+        subtleText: subtleText,
+        imageUrl: imageUrl ?? media.publicUrl,
+        onTap: onTap,
+      );
+    }
+
+    return _InlineChatDocumentCard(
+      media: media,
+      isMine: isMine,
+      primary: primary,
+      subtleText: subtleText,
+      onTap: onTap,
+    );
+  }
+}
+
+class _InlineChatMediaGroupCard extends StatelessWidget {
+  final List<_ChatMessageMedia> mediaItems;
+  final bool isMine;
+  final Color primary;
+  final Color cardColor;
+  final Color subtleText;
+  final ValueChanged<int> onTapAtIndex;
+
+  const _InlineChatMediaGroupCard({
+    required this.mediaItems,
+    required this.isMine,
+    required this.primary,
+    required this.cardColor,
+    required this.subtleText,
+    required this.onTapAtIndex,
+  });
+
+  String _resolveImageUrl(_ChatMessageMedia media) {
+    final thumbnailUrl = media.thumbnailUrl?.trim() ?? '';
+    if (thumbnailUrl.isNotEmpty) {
+      return thumbnailUrl;
+    }
+
+    final previewUrl = media.previewUrl?.trim() ?? '';
+    if (previewUrl.isNotEmpty) {
+      return CloudinaryImageUrl.forChatThumbnail(previewUrl);
+    }
+
+    return CloudinaryImageUrl.forChatThumbnail(media.publicUrl);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final allImages = mediaItems.every((media) => media.mediaType == 'image');
+    if (allImages) {
+      final visibleItems = mediaItems.take(4).toList(growable: false);
+      final hiddenCount = mediaItems.length - visibleItems.length;
+      final borderColor = isMine
+          ? primary.withValues(alpha: 0.28)
+          : Theme.of(context).appColors.inputBorder;
+
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: cardColor,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: borderColor),
+        ),
+        child: GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: visibleItems.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            crossAxisSpacing: 6,
+            mainAxisSpacing: 6,
+            childAspectRatio: 1,
+          ),
+          itemBuilder: (context, index) {
+            final media = visibleItems[index];
+            final showOverlay =
+                index == visibleItems.length - 1 && hiddenCount > 0;
+            return Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => onTapAtIndex(index),
+                borderRadius: BorderRadius.circular(14),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      ChatMediaCachedImage(
+                        imageUrl: _resolveImageUrl(media),
+                        fit: BoxFit.cover,
+                      ),
+                      if (showOverlay)
+                        Container(
+                          color: Colors.black.withValues(alpha: 0.56),
+                          alignment: Alignment.center,
+                          child: Text(
+                            '+$hiddenCount',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 24,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      );
+    }
+
+    final visibleItems = mediaItems.take(4).toList(growable: false);
+    final hiddenCount = mediaItems.length - visibleItems.length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var index = 0; index < visibleItems.length; index++) ...[
+          _InlineChatDocumentCard(
+            media: visibleItems[index],
+            isMine: isMine,
+            primary: primary,
+            subtleText: subtleText,
+            onTap: () => onTapAtIndex(index),
+          ),
+          if (index < visibleItems.length - 1) const SizedBox(height: 6),
+        ],
+        if (hiddenCount > 0) ...[
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '+$hiddenCount autres fichiers',
+                style: TextStyle(
+                  color: subtleText,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _InlineChatMediaImageCard extends StatelessWidget {
+  final _ChatMessageMedia media;
+  final bool isMine;
+  final Color primary;
+  final Color cardColor;
+  final Color subtleText;
+  final VoidCallback? onTap;
+  final String imageUrl;
+
+  const _InlineChatMediaImageCard({
+    required this.media,
+    required this.isMine,
+    required this.primary,
+    required this.cardColor,
+    required this.subtleText,
+    required this.imageUrl,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final borderColor = isMine
+        ? primary.withValues(alpha: 0.28)
+        : Theme.of(context).appColors.inputBorder;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Ink(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: cardColor,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: borderColor),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(17),
+                  bottom: Radius.circular(16),
+                ),
+                child: AspectRatio(
+                  aspectRatio: 4 / 5,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      ChatMediaCachedImage(
+                        imageUrl: imageUrl,
+                        width: 280,
+                        height: 350,
+                        fit: BoxFit.cover,
+                      ),
+                      Positioned(
+                        right: 10,
+                        bottom: 10,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.54),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.open_in_full_rounded,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                              SizedBox(width: 6),
+                              Text(
+                                'Plein ecran',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if ((media.fileName ?? '').trim().isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                  child: Text(
+                    media.fileName!.trim(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: subtleText,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InlineChatDocumentCard extends StatelessWidget {
+  final _ChatMessageMedia media;
+  final bool isMine;
+  final Color primary;
+  final Color subtleText;
+  final VoidCallback? onTap;
+
+  const _InlineChatDocumentCard({
+    required this.media,
+    required this.isMine,
+    required this.primary,
+    required this.subtleText,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final appColors = Theme.of(context).appColors;
+    final surfaceColor = isMine
+        ? primary.withValues(alpha: 0.18)
+        : appColors.panelMuted;
+    final borderColor = isMine
+        ? primary.withValues(alpha: 0.26)
+        : appColors.inputBorder;
+    final titleColor = isMine
+        ? Theme.of(context).appColors.heroForeground
+        : Theme.of(context).colorScheme.onSurface;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Ink(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: surfaceColor,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: borderColor),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: primary.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  Icons.description_rounded,
+                  color: primary,
+                  size: 26,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      (media.fileName ?? 'Document').trim(),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: titleColor,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                      ),
+                    ),
+                    if ((media.mimeType ?? '').trim().isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        media.mimeType!.trim(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: subtleText,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InlineChatPhotoCard extends StatelessWidget {
+  final _ChatMessageProduct product;
+  final bool isMine;
+  final Color primary;
+  final Color cardColor;
+  final Color subtleText;
+  final VoidCallback? onTap;
+
+  const _InlineChatPhotoCard({
+    required this.product,
+    required this.isMine,
+    required this.primary,
+    required this.cardColor,
+    required this.subtleText,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final borderColor = isMine
+        ? primary.withValues(alpha: 0.28)
+        : Theme.of(context).appColors.inputBorder;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Ink(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: cardColor,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: borderColor),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(17),
+                  bottom: Radius.circular(16),
+                ),
+                child: AspectRatio(
+                  aspectRatio: 4 / 5,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      AppNetworkImage(
+                        imageUrl: product.imageUrl,
+                        fit: BoxFit.cover,
+                      ),
+                      Positioned(
+                        right: 10,
+                        bottom: 10,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.54),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.open_in_full_rounded,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                              SizedBox(width: 6),
+                              Text(
+                                'Plein ecran',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if (product.subtitle.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                  child: Text(
+                    product.subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: subtleText,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
             ],
           ),
         ),

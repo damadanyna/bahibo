@@ -72,6 +72,9 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   String _studioDescription = '';
   bool _isSellerCertified = false;
   bool _isSubmittingSellerCertificationRequest = false;
+  bool _isSavingIdentity = false;
+  bool _isUploadingAvatarImage = false;
+  bool _isUploadingCoverImage = false;
   bool _isLoadingFollowedPeople = true;
   String _sellerVerificationRequestStatus = 'NONE';
   _AccountPanelTab _selectedTab = _AccountPanelTab.products;
@@ -478,6 +481,29 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     return withoutQuotes.trim();
   }
 
+  (String?, String?) _splitStudioAddress(String rawAddress) {
+    final normalizedAddress = rawAddress.trim();
+    if (normalizedAddress.isEmpty) {
+      return (null, null);
+    }
+
+    final parts = normalizedAddress
+        .split(',')
+        .map(_sanitizeDisplayText)
+        .where((part) => part.isNotEmpty)
+        .toList();
+
+    if (parts.isEmpty) {
+      return (null, null);
+    }
+
+    if (parts.length == 1) {
+      return (parts.first, null);
+    }
+
+    return (parts.first, parts.sublist(1).join(', '));
+  }
+
   @override
   void initState() {
     super.initState();
@@ -498,11 +524,23 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   void didUpdateWidget(covariant MainNavigationAccountPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
 
+    final previousAvatarUrl = oldWidget.profile?.avatarUrl ?? '';
+    final nextAvatarUrl = widget.profile?.avatarUrl ?? '';
+    final previousCoverImageUrl = oldWidget.profile?.coverImageUrl ?? '';
+    final nextCoverImageUrl = widget.profile?.coverImageUrl ?? '';
+
     if (oldWidget.profile != widget.profile && widget.profile != null) {
       _seedSellerPublishedProducts();
       _hydrateStudioFields(forceFromProfile: true);
       _syncSellerVerificationState();
       _loadSellerPublishedProducts();
+
+      if (previousAvatarUrl != nextAvatarUrl) {
+        _avatarImageFile = null;
+      }
+      if (previousCoverImageUrl != nextCoverImageUrl) {
+        _coverImageFile = null;
+      }
     }
   }
 
@@ -903,6 +941,13 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     _EditableProfileImageTarget target,
     ImageSource source,
   ) async {
+    final isUploadInProgress = target == _EditableProfileImageTarget.avatar
+        ? _isUploadingAvatarImage
+        : _isUploadingCoverImage;
+    if (isUploadInProgress) {
+      return;
+    }
+
     final file = await _imagePicker.pickImage(
       source: source,
       imageQuality: 85,
@@ -910,13 +955,64 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     );
     if (file == null || !mounted) return;
 
+    final selectedFile = File(file.path);
+    final previousAvatarImageFile = _avatarImageFile;
+    final previousCoverImageFile = _coverImageFile;
+
     setState(() {
       if (target == _EditableProfileImageTarget.avatar) {
-        _avatarImageFile = File(file.path);
+        _avatarImageFile = selectedFile;
+        _isUploadingAvatarImage = true;
       } else {
-        _coverImageFile = File(file.path);
+        _coverImageFile = selectedFile;
+        _isUploadingCoverImage = true;
       }
     });
+
+    try {
+      if (target == _EditableProfileImageTarget.avatar) {
+        await _authService.uploadAvatarImage(imageFile: selectedFile);
+      } else {
+        await _authService.uploadCoverImage(imageFile: selectedFile);
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            target == _EditableProfileImageTarget.avatar
+                ? 'Photo de profil mise a jour.'
+                : 'Photo de couverture mise a jour.',
+          ),
+        ),
+      );
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _avatarImageFile = previousAvatarImageFile;
+        _coverImageFile = previousCoverImageFile;
+      });
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) {
+        setState(() {
+          if (target == _EditableProfileImageTarget.avatar) {
+            _isUploadingAvatarImage = false;
+          } else {
+            _isUploadingCoverImage = false;
+          }
+        });
+      }
+    }
   }
 
   Future<void> _showImageSourceSheet(_EditableProfileImageTarget target) async {
@@ -969,6 +1065,8 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
         final theme = Theme.of(sheetContext);
         final accentColor = _accentColor(theme);
         final inputPanelColor = _backgroundColor(theme);
+        final sheetMessenger = ScaffoldMessenger.of(sheetContext);
+        final pageMessenger = ScaffoldMessenger.of(context);
         return Padding(
           padding: EdgeInsets.only(
             left: 16,
@@ -1004,7 +1102,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                   controller: nameController,
                   primary: accentColor,
                   panelColor: inputPanelColor,
-                  borderColor: accentColor.withOpacity(0.12),
+                  borderColor: accentColor.withValues(alpha: 0.12),
                   hintText: 'Nom boutique',
                   leadingIcon: Icon(
                     Icons.storefront_outlined,
@@ -1016,7 +1114,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                   controller: addressController,
                   primary: accentColor,
                   panelColor: inputPanelColor,
-                  borderColor: accentColor.withOpacity(0.12),
+                  borderColor: accentColor.withValues(alpha: 0.12),
                   hintText: 'Adresse',
                   leadingIcon: Icon(
                     Icons.location_on_outlined,
@@ -1037,23 +1135,83 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        final sanitizedStudioName = _sanitizeDisplayText(
-                          nameController.text,
+                    onPressed: () async {
+                      if (_isSavingIdentity) {
+                        return;
+                      }
+
+                      final sanitizedStudioName = _sanitizeDisplayText(
+                        nameController.text,
+                      );
+                      final sanitizedStudioAddress = _sanitizeDisplayText(
+                        addressController.text,
+                      );
+                      final sanitizedStudioDescription = _sanitizeDisplayText(
+                        descriptionController.text,
+                      );
+
+                      if (sanitizedStudioName.isEmpty) {
+                        sheetMessenger.showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Le nom de la boutique est obligatoire.',
+                            ),
+                          ),
                         );
-                        if (sanitizedStudioName.isNotEmpty) {
-                          _studioName = sanitizedStudioName;
-                        }
-                        if (addressController.text.trim().isNotEmpty) {
-                          _studioAddress = addressController.text.trim();
-                        }
-                        if (descriptionController.text.trim().isNotEmpty) {
-                          _studioDescription = descriptionController.text
-                              .trim();
-                        }
+                        return;
+                      }
+
+                      final (city, country) = _splitStudioAddress(
+                        sanitizedStudioAddress,
+                      );
+
+                      setState(() {
+                        _isSavingIdentity = true;
                       });
-                      Navigator.of(sheetContext).pop();
+
+                      try {
+                        await _authService.updateSellerProfile(
+                          studioName: sanitizedStudioName,
+                          description: sanitizedStudioDescription,
+                          city: city,
+                          country: country,
+                        );
+
+                        if (!mounted) {
+                          return;
+                        }
+
+                        setState(() {
+                          _studioName = sanitizedStudioName;
+                          _studioAddress = sanitizedStudioAddress;
+                          _studioDescription = sanitizedStudioDescription;
+                        });
+
+                        if (!sheetContext.mounted) {
+                          return;
+                        }
+
+                        Navigator.of(sheetContext).pop();
+                        pageMessenger.showSnackBar(
+                          const SnackBar(
+                            content: Text('Profil boutique mis a jour.'),
+                          ),
+                        );
+                      } on AppApiException catch (error) {
+                        if (!mounted) {
+                          return;
+                        }
+
+                        sheetMessenger.showSnackBar(
+                          SnackBar(content: Text(error.message)),
+                        );
+                      } finally {
+                        if (mounted) {
+                          setState(() {
+                            _isSavingIdentity = false;
+                          });
+                        }
+                      }
                     },
                     child: const Text('Enregistrer'),
                   ),

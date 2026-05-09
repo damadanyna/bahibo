@@ -124,7 +124,8 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
     _realtimeEventsSubscription = ChatRealtimeService.instance.events.listen((
       event,
     ) {
-      if (event['type'] != 'profile:shop-request-updated') {
+      if (event['type'] != 'profile:shop-request-updated' &&
+          event['type'] != 'profile:updated') {
         return;
       }
 
@@ -153,6 +154,28 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
     return !DateTime.now().isBefore(nextChangeAt);
   }
 
+  int? get _displayNameCooldownDaysRemaining {
+    final nextChangeAt = _nextDisplayNameChangeAt;
+    if (nextChangeAt == null) {
+      return null;
+    }
+
+    final remainingMilliseconds =
+        nextChangeAt.millisecondsSinceEpoch -
+        DateTime.now().millisecondsSinceEpoch;
+    if (remainingMilliseconds <= 0) {
+      return 0;
+    }
+
+    return (remainingMilliseconds / Duration.millisecondsPerDay).ceil();
+  }
+
+  String _formatRemainingDaysLabel(int remainingDays) {
+    return remainingDays > 1
+        ? '$remainingDays jours restants'
+        : '1 jour restant';
+  }
+
   String _formatDate(DateTime value) {
     final day = value.day.toString().padLeft(2, '0');
     final month = value.month.toString().padLeft(2, '0');
@@ -163,14 +186,16 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
   String get _displayNamePolicyLabel {
     final nextChangeAt = _nextDisplayNameChangeAt;
     if (nextChangeAt == null) {
-      return 'Vous pouvez modifier votre nom maintenant. Apres chaque modification, le prochain changement sera disponible dans 3 mois.';
+      return 'Vous pouvez modifier votre nom maintenant. Apres chaque modification, le prochain changement sera disponible dans 7 jours.';
     }
 
     if (_canUpdateDisplayName) {
-      return 'Vous pouvez modifier votre nom maintenant. Le nom utilisateur ne peut etre modifie qu\'une fois tous les 3 mois.';
+      return 'Vous pouvez modifier votre nom maintenant. Le nom utilisateur ne peut etre modifie qu\'une fois tous les 7 jours.';
     }
 
-    return 'Le nom utilisateur ne peut etre modifie qu\'une fois tous les 3 mois. Prochaine date autorisee: ${_formatDate(nextChangeAt)}.';
+    final remainingDays = _displayNameCooldownDaysRemaining ?? 0;
+
+    return 'Le nom utilisateur ne peut etre modifie qu\'une fois tous les 7 jours. ${_formatRemainingDaysLabel(remainingDays)}. Prochaine date autorisee: ${_formatDate(nextChangeAt)}.';
   }
 
   Future<void> _showDisplayNameEditor() async {
@@ -182,7 +207,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
           return AlertDialog(
             title: const Text('Modification limitee'),
             content: Text(
-              'Le nom utilisateur ne peut etre modifie qu\'une fois tous les 3 mois. Vous pourrez le changer a nouveau a partir du ${_formatDate(nextChangeAt!)}.',
+              'Le nom utilisateur ne peut etre modifie qu\'une fois tous les 7 jours. ${_formatRemainingDaysLabel(_displayNameCooldownDaysRemaining ?? 0)}. Vous pourrez le changer a nouveau a partir du ${_formatDate(nextChangeAt!)}.',
             ),
             actions: [
               TextButton(
@@ -198,8 +223,8 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
 
     final controller = TextEditingController(text: _displayName);
     final nextChangeHint = _displayNameChangedAt == null
-        ? 'Apres cette modification, vous devrez attendre 3 mois avant de pouvoir rechanger ce nom.'
-        : 'Le prochain changement sera disponible 3 mois apres cette modification.';
+        ? 'Apres cette modification, vous devrez attendre 7 jours avant de pouvoir rechanger ce nom.'
+        : 'Le prochain changement sera disponible 7 jours apres cette modification.';
 
     final nextName = await showDialog<String>(
       context: context,
@@ -287,7 +312,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
           content: Text(
             _nextDisplayNameChangeAt == null
                 ? 'Nom utilisateur mis a jour.'
-                : 'Nom utilisateur mis a jour. Prochain changement possible le ${_formatDate(_nextDisplayNameChangeAt!)}.',
+                : 'Nom utilisateur mis a jour. ${_formatRemainingDaysLabel(_displayNameCooldownDaysRemaining ?? 7)} avant le prochain changement, a partir du ${_formatDate(_nextDisplayNameChangeAt!)}.',
           ),
         ),
       );
@@ -1300,5 +1325,3 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
     );
   }
 }
-
-

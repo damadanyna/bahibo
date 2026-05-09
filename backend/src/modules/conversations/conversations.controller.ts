@@ -1,6 +1,18 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Req,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CreateMediaMessageDto } from './dto/create-media-message.dto';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { ConversationsService } from './conversations.service';
 
@@ -80,6 +92,23 @@ export class ConversationsController {
     };
   }
 
+  @Post('product/:productId/media-messages')
+  async sendProductMediaMessage(
+    @Req() req: { user: { userId: string } },
+    @Param('productId') productId: string,
+    @Body() dto: CreateMediaMessageDto,
+  ) {
+    return {
+      success: true,
+      message: 'Media message sent successfully',
+      data: await this.conversationsService.sendMediaMessageForProduct(
+        req.user.userId,
+        productId,
+        dto,
+      ),
+    };
+  }
+
   @Post('user/:targetUserId/messages')
   async sendUserMessage(
     @Req() req: { user: { userId: string } },
@@ -90,6 +119,23 @@ export class ConversationsController {
       success: true,
       message: 'Message sent successfully',
       data: await this.conversationsService.sendMessageForUser(
+        req.user.userId,
+        targetUserId,
+        dto,
+      ),
+    };
+  }
+
+  @Post('user/:targetUserId/media-messages')
+  async sendUserMediaMessage(
+    @Req() req: { user: { userId: string } },
+    @Param('targetUserId') targetUserId: string,
+    @Body() dto: CreateMediaMessageDto,
+  ) {
+    return {
+      success: true,
+      message: 'Media message sent successfully',
+      data: await this.conversationsService.sendMediaMessageForUser(
         req.user.userId,
         targetUserId,
         dto,
@@ -110,6 +156,70 @@ export class ConversationsController {
         req.user.userId,
         conversationId,
         dto,
+      ),
+    };
+  }
+
+  @Post(':conversationId/media-messages')
+  async sendMediaMessage(
+    @Req() req: { user: { userId: string } },
+    @Param('conversationId') conversationId: string,
+    @Body() dto: CreateMediaMessageDto,
+  ) {
+    return {
+      success: true,
+      message: 'Media message sent successfully',
+      data: await this.conversationsService.sendMediaMessage(
+        req.user.userId,
+        conversationId,
+        dto,
+      ),
+    };
+  }
+
+  @Post('attachments/photo')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadPhotoAttachment(
+    @Req() req: { user: { userId: string } },
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return {
+      success: true,
+      message: 'Photo attachment uploaded successfully',
+      data: await this.conversationsService.uploadAttachment(
+        req.user.userId,
+        file,
+        'photo',
+      ),
+    };
+  }
+
+  @Post('attachments/photo/direct-signature')
+  async createDirectPhotoUploadSignature(
+    @Req() req: { user: { userId: string } },
+  ) {
+    return {
+      success: true,
+      message: 'Direct photo upload signature created successfully',
+      data: this.conversationsService.createDirectPhotoUploadSignature(
+        req.user.userId,
+      ),
+    };
+  }
+
+  @Post('attachments/document')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadDocumentAttachment(
+    @Req() req: { user: { userId: string } },
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return {
+      success: true,
+      message: 'Document attachment uploaded successfully',
+      data: await this.conversationsService.uploadAttachment(
+        req.user.userId,
+        file,
+        'document',
       ),
     };
   }
