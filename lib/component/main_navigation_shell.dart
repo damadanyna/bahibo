@@ -176,20 +176,25 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
     );
   }
 
-  Future<bool> _handleWillPop() async {
+  Future<void> _handleBackNavigation() async {
+    if (_currentIndex == 2 &&
+        MainNavigationMessagesPanel.closeEmbeddedConversationIfOpen()) {
+      return;
+    }
+
     if (_navigationHistory.isNotEmpty) {
       final previousIndex = _navigationHistory.removeLast();
       if (mounted) {
         setState(() => _currentIndex = previousIndex);
       }
-      return false;
+      return;
     }
 
     if (_currentIndex != 0) {
       if (mounted) {
         setState(() => _currentIndex = 0);
       }
-      return false;
+      return;
     }
 
     final now = DateTime.now();
@@ -208,11 +213,10 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
             duration: _exitConfirmationWindow,
           ),
         );
-      return false;
+      return;
     }
 
     await SystemNavigator.pop();
-    return false;
   }
 
   @override
@@ -221,14 +225,19 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
     final pages = [
       const MainHomePanel(),
       const MainNavigationSearchPanel(),
-      const MainNavigationMessagesPanel(),
+      MainNavigationMessagesPanel(key: MainNavigationMessagesPanel.panelKey),
       _usesSellerAccountPanel
           ? MainNavigationAccountPanel(profile: _sellerAccountProfile)
           : const MainSimpleUser(),
     ];
 
-    return WillPopScope(
-      onWillPop: _handleWillPop,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          unawaited(_handleBackNavigation());
+        }
+      },
       child: Scaffold(
         backgroundColor: theme.cardColor,
         body: Stack(
@@ -240,14 +249,26 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
               left: 0,
               right: 0,
               bottom: 0,
-              child: ValueListenableBuilder<int>(
-                valueListenable: mainNavigationUnreadMessageCountNotifier,
-                builder: (context, unreadMessageCount, _) => MainNavigationBar(
-                  currentIndex: _currentIndex,
-                  items: BANAYMainNavigationItems,
-                  unreadMessageCount: unreadMessageCount,
-                  onTap: _handleNavigationSelection,
-                ),
+              child: ValueListenableBuilder<bool>(
+                valueListenable: mainNavigationChatOpenNotifier,
+                builder: (context, isChatOpen, _) {
+                  final shouldHideNavigationBar =
+                      _currentIndex == 2 && isChatOpen;
+                  if (shouldHideNavigationBar) {
+                    return const SizedBox.shrink();
+                  }
+
+                  return ValueListenableBuilder<int>(
+                    valueListenable: mainNavigationUnreadMessageCountNotifier,
+                    builder: (context, unreadMessageCount, _) =>
+                        MainNavigationBar(
+                          currentIndex: _currentIndex,
+                          items: BANAYMainNavigationItems,
+                          unreadMessageCount: unreadMessageCount,
+                          onTap: _handleNavigationSelection,
+                        ),
+                  );
+                },
               ),
             ),
           ],

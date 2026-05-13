@@ -47,3 +47,15 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+.flutter-offline-repo/
+.flutter-offline-repo-v2/
+
+.flutter-offline-repo/
+.flutter-offline-repo-v2/
+build/
+.dart_tool/
+.gradle/
+android/.gradle/
+*.apk
+*.aab

@@ -26,19 +26,19 @@ const conversationDetailInclude = Prisma.validator<Prisma.ChatConversationInclud
       },
     },
   },
-  messages: {
-    include: {
-      media: true,
-      sender: true,
-    },
-    orderBy: {
-      createdAt: 'asc',
-    },
-  },
 });
 
 type ConversationDetail = Prisma.ChatConversationGetPayload<{
   include: typeof conversationDetailInclude;
+}>;
+
+const conversationMessageInclude = Prisma.validator<Prisma.ChatMessageInclude>()({
+  media: true,
+  sender: true,
+});
+
+type ConversationMessageDetail = Prisma.ChatMessageGetPayload<{
+  include: typeof conversationMessageInclude;
 }>;
 
 const conversationListInclude = Prisma.validator<Prisma.ChatConversationInclude>()({
@@ -90,6 +90,8 @@ type ConversationThreadMessage = {
   media: ConversationMessageMediaPayload | null;
   product: ConversationMessageProductSnapshot | null;
 };
+
+type ConversationRealtimeMessage = Omit<ConversationThreadMessage, 'isMine'>;
 
 type ConversationMessageMediaPayload = {
   mediaType: 'image' | 'document';
@@ -146,6 +148,20 @@ type MessageProductSnapshotFields = {
 };
 
 const PRESENCE_RECENT_ACTIVITY_WINDOW_MS = 90 * 1000;
+const DEFAULT_MESSAGES_PAGE_SIZE = 8;
+const MAX_MESSAGES_PAGE_SIZE = 50;
+
+type ConversationMessagesPageOptions = {
+  limit?: number;
+  beforeMessageId?: string;
+};
+
+type ConversationMessagesPage = {
+  messages: ConversationMessageDetail[];
+  limit: number;
+  hasOlderMessages: boolean;
+  oldestLoadedMessageId: string | null;
+};
 
 type MessageReplyFields = {
   replyToMessageId?: string | null;
@@ -363,7 +379,11 @@ export class ConversationsService {
     );
   }
 
-  async getOrCreateConversationForProduct(userId: string, productId: string) {
+  async getOrCreateConversationForProduct(
+    userId: string,
+    productId: string,
+    pageOptions?: ConversationMessagesPageOptions,
+  ) {
     const product = await this.prisma.product.findUnique({
       where: { id: productId },
       include: {
@@ -404,7 +424,11 @@ export class ConversationsService {
       if (readCount > 0) {
         this.emitConversationRead(existingConversation, userId);
       }
-      return this.presentConversationDetail(existingConversation, userId);
+      return this.presentConversationDetail(
+        existingConversation,
+        userId,
+        pageOptions,
+      );
     }
 
     await this.assertUsersCanInteract(userId, sellerUserId);
@@ -419,10 +443,14 @@ export class ConversationsService {
       include: conversationDetailInclude,
     });
 
-    return this.presentConversationDetail(conversation, userId);
+    return this.presentConversationDetail(conversation, userId, pageOptions);
   }
 
-  async getOrCreateConversationForUser(userId: string, targetUserId: string) {
+  async getOrCreateConversationForUser(
+    userId: string,
+    targetUserId: string,
+    pageOptions?: ConversationMessagesPageOptions,
+  ) {
     if (!targetUserId.trim()) {
       throw new BadRequestException('Target user is required');
     }
@@ -484,6 +512,7 @@ export class ConversationsService {
         directConversation ?? conversations[conversations.length - 1],
         conversations,
         userId,
+        pageOptions,
       );
     }
 
@@ -503,10 +532,15 @@ export class ConversationsService {
       createdConversation,
       [createdConversation],
       userId,
+      pageOptions,
     );
   }
 
-  async getConversation(userId: string, conversationId: string) {
+  async getConversation(
+    userId: string,
+    conversationId: string,
+    pageOptions?: ConversationMessagesPageOptions,
+  ) {
     const conversation = await this.findAccessibleConversation(
       userId,
       conversationId,
@@ -515,7 +549,56 @@ export class ConversationsService {
     if (readCount > 0) {
       this.emitConversationRead(conversation, userId);
     }
-    return this.presentConversationDetail(conversation, userId);
+    return this.presentConversationDetail(conversation, userId, pageOptions);
+  }
+
+  async deleteMessage(userId: string, conversationId: string, messageId: string) {
+    const conversation = await this.findAccessibleConversation(
+      userId,
+      conversationId,
+    );
+    const message = await this.prisma.chatMessage.findFirst({
+      where: {
+        id: messageId,
+        conversationId,
+      },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    if (message.senderUserId !== userId) {
+      throw new ForbiddenException('You can only delete your own messages.');
+    }
+
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.chatMessage.delete({
+        where: {
+          id: messageId,
+        },
+      });
+
+      const latestMessage = await transaction.chatMessage.findFirst({
+        where: {
+          conversationId,
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      });
+
+      await transaction.chatConversation.update({
+        where: {
+          id: conversationId,
+        },
+        data: {
+          lastMessageAt: latestMessage?.createdAt ?? conversation.createdAt,
+        },
+      });
+    });
+
+    return this.getConversation(userId, conversationId, {
+      limit: DEFAULT_MESSAGES_PAGE_SIZE,
+    });
   }
 
   async sendMessageForProduct(
@@ -619,8 +702,9 @@ export class ConversationsService {
     const effectiveProductSnapshot =
       this.extractDtoProductSnapshot(dto) ?? productSnapshot;
 
+    let createdMessage: ConversationMessageDetail | null = null;
     await this.prisma.$transaction(async (transaction) => {
-      await transaction.chatMessage.create({
+      createdMessage = await transaction.chatMessage.create({
         data: {
           conversationId: conversation.id,
           senderUserId: userId,
@@ -635,6 +719,7 @@ export class ConversationsService {
           productPriceLabel: effectiveProductSnapshot?.priceLabel || undefined,
           productImageUrl: effectiveProductSnapshot?.imageUrl || undefined,
         },
+        include: conversationMessageInclude,
       });
 
       await transaction.chatConversation.update({
@@ -651,6 +736,9 @@ export class ConversationsService {
         type: 'message:new',
         conversationId: conversation.id,
         actorUserId: userId,
+        message: createdMessage
+          ? this.presentRealtimeMessage(createdMessage)
+          : null,
       },
     );
 
@@ -699,8 +787,9 @@ export class ConversationsService {
 
     await this.assertUsersCanInteract(userId, recipientUserId);
 
+    let createdMessage: ConversationMessageDetail | null = null;
     await this.prisma.$transaction(async (transaction) => {
-      await transaction.chatMessage.create({
+      createdMessage = await transaction.chatMessage.create({
         data: {
           conversationId: conversation.id,
           senderUserId: userId,
@@ -731,6 +820,7 @@ export class ConversationsService {
             },
           },
         },
+        include: conversationMessageInclude,
       });
 
       await transaction.chatConversation.update({
@@ -747,6 +837,9 @@ export class ConversationsService {
         type: 'message:new',
         conversationId: conversation.id,
         actorUserId: userId,
+        message: createdMessage
+          ? this.presentRealtimeMessage(createdMessage)
+          : null,
       },
     );
 
@@ -849,8 +942,29 @@ export class ConversationsService {
         type: 'conversation:read',
         conversationId: conversation.id,
         actorUserId: userId,
+        readAt: new Date().toISOString(),
       },
     );
+  }
+
+  private presentRealtimeMessage(
+    message: ConversationMessageDetail,
+  ): ConversationRealtimeMessage {
+    return {
+      id: message.id,
+      content: message.content,
+      kind: message.kind,
+      createdAt: message.createdAt.toISOString(),
+      readAt: message.readAt?.toISOString() ?? null,
+      reply: this.presentRealtimeMessageReply(message),
+      sender: {
+        id: message.sender.id,
+        displayName: message.sender.displayName,
+        avatarUrl: message.sender.avatarUrl,
+      },
+      media: this.presentMessageMedia(message),
+      product: this.presentMessageProductSnapshot(message),
+    };
   }
 
   private async presentConversationListItem(
@@ -901,9 +1015,144 @@ export class ConversationsService {
     };
   }
 
+  private normalizeMessagesPageLimit(limit?: number) {
+    if (!Number.isFinite(limit)) {
+      return DEFAULT_MESSAGES_PAGE_SIZE;
+    }
+
+    return Math.min(
+      Math.max(Math.trunc(limit ?? DEFAULT_MESSAGES_PAGE_SIZE), 1),
+      MAX_MESSAGES_PAGE_SIZE,
+    );
+  }
+
+  private async resolveBeforeMessageCursor(
+    beforeMessageId: string | undefined,
+    matcher?: (message: { id: string; conversationId: string; senderUserId: string }) => boolean,
+  ) {
+    const normalizedBeforeMessageId = beforeMessageId?.trim() ?? '';
+    if (normalizedBeforeMessageId.length === 0) {
+      return null;
+    }
+
+    const anchorMessage = await this.prisma.chatMessage.findUnique({
+      where: { id: normalizedBeforeMessageId },
+      select: {
+        id: true,
+        conversationId: true,
+        senderUserId: true,
+        createdAt: true,
+      },
+    });
+
+    if (!anchorMessage || (matcher != null && !matcher(anchorMessage))) {
+      throw new NotFoundException('Message de pagination introuvable');
+    }
+
+    return anchorMessage;
+  }
+
+  private buildBeforeMessageWhere(cursor: { id: string; createdAt: Date } | null) {
+    if (cursor == null) {
+      return undefined;
+    }
+
+    return {
+      OR: [
+        {
+          createdAt: {
+            lt: cursor.createdAt,
+          },
+        },
+        {
+          createdAt: cursor.createdAt,
+          id: {
+            lt: cursor.id,
+          },
+        },
+      ],
+    } satisfies Prisma.ChatMessageWhereInput;
+  }
+
+  private async loadConversationMessagesPage(
+    conversationId: string,
+    pageOptions?: ConversationMessagesPageOptions,
+  ): Promise<ConversationMessagesPage> {
+    const take = this.normalizeMessagesPageLimit(pageOptions?.limit);
+    const cursor = await this.resolveBeforeMessageCursor(
+      pageOptions?.beforeMessageId,
+      (message) => message.conversationId === conversationId,
+    );
+    const beforeWhere = this.buildBeforeMessageWhere(cursor);
+    const records = await this.prisma.chatMessage.findMany({
+      where: {
+        conversationId,
+        ...(beforeWhere == null ? {} : beforeWhere),
+      },
+      include: conversationMessageInclude,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: take + 1,
+    });
+    const hasOlderMessages = records.length > take;
+    const pageRecords = (hasOlderMessages ? records.slice(0, take) : records)
+      .slice()
+      .reverse();
+
+    return {
+      messages: pageRecords,
+      limit: take,
+      hasOlderMessages,
+      oldestLoadedMessageId: pageRecords[0]?.id ?? null,
+    };
+  }
+
+  private async loadConversationThreadMessagesPage(
+    userId: string,
+    targetUserId: string,
+    pageOptions?: ConversationMessagesPageOptions,
+  ): Promise<ConversationMessagesPage> {
+    const take = this.normalizeMessagesPageLimit(pageOptions?.limit);
+    const cursor = await this.resolveBeforeMessageCursor(
+      pageOptions?.beforeMessageId,
+    );
+    const beforeWhere = this.buildBeforeMessageWhere(cursor);
+    const records = await this.prisma.chatMessage.findMany({
+      where: {
+        conversation: {
+          OR: [
+            {
+              buyerUserId: userId,
+              sellerUserId: targetUserId,
+            },
+            {
+              buyerUserId: targetUserId,
+              sellerUserId: userId,
+            },
+          ],
+        },
+        ...(beforeWhere == null ? {} : beforeWhere),
+      },
+      include: conversationMessageInclude,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: take + 1,
+    });
+    const hasOlderMessages = records.length > take;
+    const pageRecords = (hasOlderMessages ? records.slice(0, take) : records)
+      .slice()
+      .reverse();
+
+    return {
+      messages: pageRecords,
+      limit: take,
+      hasOlderMessages,
+      oldestLoadedMessageId: pageRecords[0]?.id ?? null,
+    };
+  }
+
   private async presentConversationDetail(
     conversation: ConversationDetail,
     userId: string,
+    pageOptions?: ConversationMessagesPageOptions,
   ) {
     const isBuyer = conversation.buyerUserId === userId;
     const participant = isBuyer ? conversation.seller : conversation.buyer;
@@ -911,8 +1160,12 @@ export class ConversationsService {
       userId,
       participant.id,
     );
+    const page = await this.loadConversationMessagesPage(
+      conversation.id,
+      pageOptions,
+    );
     const currentProductSnapshots = await this.buildCurrentProductSnapshotMap(
-      conversation.messages,
+      page.messages,
     );
 
     return {
@@ -936,7 +1189,7 @@ export class ConversationsService {
             currency: conversation.product.currencyCode,
           }
         : null,
-      messages: conversation.messages.map((message) => ({
+      messages: page.messages.map((message) => ({
         id: message.id,
         content: message.content,
         kind: message.kind,
@@ -958,6 +1211,11 @@ export class ConversationsService {
       kind: conversation.kind,
       createdAt: conversation.createdAt.toISOString(),
       lastMessageAt: conversation.lastMessageAt.toISOString(),
+      pagination: {
+        limit: page.limit,
+        hasOlderMessages: page.hasOlderMessages,
+        oldestLoadedMessageId: page.oldestLoadedMessageId,
+      },
       ...blockState,
     };
   }
@@ -966,6 +1224,7 @@ export class ConversationsService {
     anchorConversation: ConversationDetail,
     conversations: ConversationDetail[],
     userId: string,
+    pageOptions?: ConversationMessagesPageOptions,
   ) {
     const anchorIsBuyer = anchorConversation.buyerUserId === userId;
     const participant = anchorIsBuyer
@@ -975,13 +1234,16 @@ export class ConversationsService {
       userId,
       participant.id,
     );
+    const page = await this.loadConversationThreadMessagesPage(
+      userId,
+      participant.id,
+      pageOptions,
+    );
     const currentProductSnapshots = await this.buildCurrentProductSnapshotMap(
-      conversations.flatMap((conversation) => conversation.messages),
+      page.messages,
     );
 
-    const messages = conversations
-      .flatMap((conversation) =>
-        conversation.messages.map<ConversationThreadMessage>((message) => ({
+    const messages = page.messages.map<ConversationThreadMessage>((message) => ({
           id: message.id,
           content: message.content,
           kind: message.kind,
@@ -999,13 +1261,7 @@ export class ConversationsService {
             message,
             currentProductSnapshots,
           ),
-        })),
-      )
-      .sort(
-        (first, second) =>
-          new Date(first.createdAt).getTime() -
-          new Date(second.createdAt).getTime(),
-      );
+        }));
 
     const createdAt = conversations
       .map((conversation) => conversation.createdAt)
@@ -1029,6 +1285,11 @@ export class ConversationsService {
       kind: 'DIRECT',
       createdAt: createdAt.toISOString(),
       lastMessageAt: lastMessageAt.toISOString(),
+      pagination: {
+        limit: page.limit,
+        hasOlderMessages: page.hasOlderMessages,
+        oldestLoadedMessageId: page.oldestLoadedMessageId,
+      },
       ...blockState,
     };
   }
@@ -1195,6 +1456,23 @@ export class ConversationsService {
         : (((message.replyToSenderName?.trim().length ?? 0) > 0)
               ? message.replyToSenderName!.trim()
               : 'Message'),
+      content,
+    };
+  }
+
+  private presentRealtimeMessageReply(message: MessageReplyFields) {
+    const content = message.replyToContent?.trim() ?? '';
+
+    if (content.length === 0) {
+      return null;
+    }
+
+    return {
+      messageId: message.replyToMessageId ?? null,
+      senderLabel:
+        ((message.replyToSenderName?.trim().length ?? 0) > 0)
+          ? message.replyToSenderName!.trim()
+          : 'Message',
       content,
     };
   }

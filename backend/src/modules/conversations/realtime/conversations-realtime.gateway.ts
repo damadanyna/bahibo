@@ -19,6 +19,32 @@ type ConversationRealtimePayload = {
   type: 'message:new' | 'conversation:read' | 'conversation:blocked';
   conversationId: string;
   actorUserId: string;
+  readAt?: string | null;
+  message?: {
+    id: string;
+    content: string;
+    kind: 'TEXT' | 'IMAGE' | 'DOCUMENT' | 'PRODUCT';
+    createdAt: string;
+    readAt: string | null;
+    reply: {
+      messageId: string | null;
+      senderLabel: string;
+      content: string;
+    } | null;
+    sender: {
+      id: string;
+      displayName: string;
+      avatarUrl: string | null;
+    };
+    media: Record<string, unknown> | null;
+    product: {
+      id: string | null;
+      title: string;
+      subtitle: string;
+      priceLabel: string;
+      imageUrl: string;
+    } | null;
+  } | null;
 };
 
 type ConversationTypingPayload = {

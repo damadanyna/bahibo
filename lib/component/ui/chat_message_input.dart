@@ -16,6 +16,7 @@ const Set<String> _allowedPhotoExtensions = <String>{
   'heic',
   'heif',
 };
+const int _maxPhotoSelectionPerBatch = 15;
 const int _maxPhotoAttachmentBytes = 10 * 1024 * 1024;
 const int _maxDocumentAttachmentBytes = 12 * 1024 * 1024;
 
@@ -215,14 +216,20 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
   }
 
   Future<void> _pickPhoto() async {
-    final files = await _imagePicker.pickMultiImage(
+    final pickedFiles = await _imagePicker.pickMultiImage(
       imageQuality: 82,
       maxWidth: 1600,
       maxHeight: 1600,
     );
-    if (files.isEmpty) return;
+    if (pickedFiles.isEmpty) return;
 
-    var hasRejectedPhoto = false;
+    final hasSelectionOverflow =
+        pickedFiles.length > _maxPhotoSelectionPerBatch;
+    final files = pickedFiles
+        .take(_maxPhotoSelectionPerBatch)
+        .toList(growable: false);
+
+    var hasRejectedPhoto = hasSelectionOverflow;
     final mediaGroupId = files.length > 1
         ? _createMediaGroupId(UiChatAttachmentType.photo)
         : null;
@@ -262,7 +269,9 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
 
     if (hasRejectedPhoto) {
       _showAttachmentError(
-        'Certaines photos ont ete ignorees car leur format ou leur taille n\'est pas pris en charge.',
+        hasSelectionOverflow
+            ? 'Maximum 15 images par chargement. Les images supplementaires ont ete ignorees.'
+            : 'Certaines photos ont ete ignorees car leur format ou leur taille n\'est pas pris en charge.',
       );
     }
   }

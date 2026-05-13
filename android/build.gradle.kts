@@ -1,5 +1,8 @@
 allprojects {
     repositories {
+        maven {
+            url = uri(rootProject.file("../.flutter-offline-repo-v2/download.flutter.io"))
+        }
         google()
         mavenCentral()
     }

@@ -1,9 +1,11 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
+  Query,
   Req,
   UploadedFile,
   UseGuards,
@@ -34,6 +36,8 @@ export class ConversationsController {
   async findOrCreateForProduct(
     @Req() req: { user: { userId: string } },
     @Param('productId') productId: string,
+    @Query('limit') limit?: string,
+    @Query('beforeMessageId') beforeMessageId?: string,
   ) {
     return {
       success: true,
@@ -41,6 +45,10 @@ export class ConversationsController {
       data: await this.conversationsService.getOrCreateConversationForProduct(
         req.user.userId,
         productId,
+        {
+          limit: Number(limit ?? '8'),
+          beforeMessageId,
+        },
       ),
     };
   }
@@ -49,6 +57,8 @@ export class ConversationsController {
   async findOrCreateForUser(
     @Req() req: { user: { userId: string } },
     @Param('targetUserId') targetUserId: string,
+    @Query('limit') limit?: string,
+    @Query('beforeMessageId') beforeMessageId?: string,
   ) {
     return {
       success: true,
@@ -56,6 +66,10 @@ export class ConversationsController {
       data: await this.conversationsService.getOrCreateConversationForUser(
         req.user.userId,
         targetUserId,
+        {
+          limit: Number(limit ?? '8'),
+          beforeMessageId,
+        },
       ),
     };
   }
@@ -64,6 +78,8 @@ export class ConversationsController {
   async findOne(
     @Req() req: { user: { userId: string } },
     @Param('conversationId') conversationId: string,
+    @Query('limit') limit?: string,
+    @Query('beforeMessageId') beforeMessageId?: string,
   ) {
     return {
       success: true,
@@ -71,6 +87,27 @@ export class ConversationsController {
       data: await this.conversationsService.getConversation(
         req.user.userId,
         conversationId,
+        {
+          limit: Number(limit ?? '8'),
+          beforeMessageId,
+        },
+      ),
+    };
+  }
+
+  @Delete(':conversationId/messages/:messageId')
+  async deleteMessage(
+    @Req() req: { user: { userId: string } },
+    @Param('conversationId') conversationId: string,
+    @Param('messageId') messageId: string,
+  ) {
+    return {
+      success: true,
+      message: 'Message deleted successfully',
+      data: await this.conversationsService.deleteMessage(
+        req.user.userId,
+        conversationId,
+        messageId,
       ),
     };
   }

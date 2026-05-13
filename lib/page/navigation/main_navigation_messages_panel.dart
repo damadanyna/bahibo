@@ -20,6 +20,9 @@ import 'package:flutter/material.dart';
 
 final ValueNotifier<int> mainNavigationUnreadMessageCountNotifier =
     ValueNotifier<int>(0);
+final ValueNotifier<bool> mainNavigationChatOpenNotifier = ValueNotifier<bool>(
+  false,
+);
 
 int get mainNavigationUnreadMessageCount =>
     mainNavigationUnreadMessageCountNotifier.value;
@@ -27,7 +30,18 @@ int get mainNavigationUnreadMessageCount =>
 enum _MessagesPanelMenuAction { theme, blockedUsers, logout }
 
 class MainNavigationMessagesPanel extends StatefulWidget {
+  static final GlobalKey panelKey = GlobalKey();
+
   const MainNavigationMessagesPanel({super.key});
+
+  static bool closeEmbeddedConversationIfOpen() {
+    final state = panelKey.currentState;
+    if (state is! _MainNavigationMessagesPanelState) {
+      return false;
+    }
+
+    return state._closeEmbeddedConversationIfOpen();
+  }
 
   @override
   State<MainNavigationMessagesPanel> createState() =>
@@ -36,7 +50,9 @@ class MainNavigationMessagesPanel extends StatefulWidget {
 
 class _MainNavigationMessagesPanelState
     extends State<MainNavigationMessagesPanel> {
-  static const Duration _conversationsPollInterval = Duration(seconds: 5);
+  static const Duration _conversationsPollInterval = Duration(seconds: 15);
+  static const int _warmConversationLimit = 3;
+  static const int _warmConversationMessageLimit = 8;
 
   final AppAuthService _authService = AppAuthService();
   final ConversationsApiService _conversationsApiService =
@@ -48,6 +64,9 @@ class _MainNavigationMessagesPanelState
   StreamSubscription<Map<String, dynamic>>? _realtimeEventsSubscription;
   List<Map<String, dynamic>> _conversations = const [];
   final Map<String, bool> _typingConversationStates = {};
+  final Map<String, Widget> _embeddedConversationPages = <String, Widget>{};
+  String? _activeEmbeddedConversationKey;
+  bool _isRealtimeConnected = false;
   bool _isLoading = true;
   bool _isLoadingConversations = false;
   String? _loadError;
@@ -80,12 +99,46 @@ class _MainNavigationMessagesPanelState
     setState(() => _searchQuery = nextQuery);
   }
 
+  bool _closeEmbeddedConversationIfOpen() {
+    if (_activeEmbeddedConversationKey == null) {
+      return false;
+    }
+
+    if (mounted) {
+      setState(() => _activeEmbeddedConversationKey = null);
+    } else {
+      _activeEmbeddedConversationKey = null;
+    }
+    mainNavigationChatOpenNotifier.value = false;
+    return true;
+  }
+
   void _startConversationsPolling() {
     _conversationsPollTimer?.cancel();
     _conversationsPollTimer = Timer.periodic(
       _conversationsPollInterval,
       (_) => unawaited(_loadConversations(silent: true)),
     );
+  }
+
+  void _stopConversationsPolling() {
+    _conversationsPollTimer?.cancel();
+    _conversationsPollTimer = null;
+  }
+
+  void _setRealtimeConnectionState(bool isConnected) {
+    if (_isRealtimeConnected == isConnected) {
+      return;
+    }
+
+    _isRealtimeConnected = isConnected;
+    if (isConnected) {
+      _stopConversationsPolling();
+      unawaited(_loadConversations(silent: true));
+      return;
+    }
+
+    _startConversationsPolling();
   }
 
   void _bindRealtimeUpdates() {
@@ -95,6 +148,15 @@ class _MainNavigationMessagesPanelState
       event,
     ) {
       final eventType = event['type']?.toString();
+      if (eventType == ChatRealtimeService.connectedEventType) {
+        _setRealtimeConnectionState(true);
+        return;
+      }
+      if (eventType == ChatRealtimeService.disconnectedEventType) {
+        _setRealtimeConnectionState(false);
+        return;
+      }
+
       if (eventType == 'profile:public-updated') {
         _applyPublicProfileUpdate(event);
         return;
@@ -120,8 +182,127 @@ class _MainNavigationMessagesPanelState
         _typingConversationStates.remove(conversationId);
       }
 
+      if (_applyIncrementalConversationEvent(event)) {
+        return;
+      }
+
       unawaited(_loadConversations(silent: true));
     });
+  }
+
+  void _updateUnreadCountNotifier([List<Map<String, dynamic>>? conversations]) {
+    final source = conversations ?? _conversations;
+    mainNavigationUnreadMessageCountNotifier.value = source.fold<int>(
+      0,
+      (total, conversation) =>
+          total + (((conversation['unreadCount'] as num?)?.toInt()) ?? 0),
+    );
+  }
+
+  bool _applyIncrementalConversationEvent(Map<String, dynamic> event) {
+    final eventType = event['type']?.toString();
+    final conversationId = event['conversationId']?.toString().trim() ?? '';
+    if (conversationId.isEmpty) {
+      return false;
+    }
+
+    final conversationIndex = _conversations.indexWhere(
+      (conversation) => _conversationId(conversation) == conversationId,
+    );
+    if (conversationIndex < 0) {
+      return false;
+    }
+
+    switch (eventType) {
+      case 'message:new':
+        final rawMessage = event['message'];
+        if (rawMessage is! Map) {
+          return false;
+        }
+
+        final currentConversation = _conversations[conversationIndex];
+        final nextConversation = Map<String, dynamic>.from(currentConversation);
+        final participantId = _participantId(currentConversation)?.trim() ?? '';
+        final actorUserId = event['actorUserId']?.toString().trim() ?? '';
+        final isIncoming =
+            participantId.isNotEmpty && actorUserId == participantId;
+        final nextLastMessage = Map<String, dynamic>.from(rawMessage)
+          ..['isMine'] = !isIncoming;
+
+        nextConversation['lastMessage'] = nextLastMessage;
+        nextConversation['lastMessageAt'] =
+            nextLastMessage['createdAt']?.toString() ??
+            currentConversation['lastMessageAt'];
+        if (isIncoming) {
+          final unreadCount = _conversationUnreadCount(currentConversation);
+          nextConversation['unreadCount'] = unreadCount + 1;
+        }
+
+        _replaceConversationInList(nextConversation);
+        return true;
+      case 'conversation:read':
+        final currentConversation = _conversations[conversationIndex];
+        final participantId = _participantId(currentConversation)?.trim() ?? '';
+        final actorUserId = event['actorUserId']?.toString().trim() ?? '';
+        final nextConversation = Map<String, dynamic>.from(currentConversation);
+        if (participantId.isNotEmpty && actorUserId != participantId) {
+          nextConversation['unreadCount'] = 0;
+        }
+        _replaceConversationInList(nextConversation, preserveOrdering: true);
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  void _replaceConversationInList(
+    Map<String, dynamic> nextConversation, {
+    bool preserveOrdering = false,
+  }) {
+    final nextConversationId = _conversationId(nextConversation);
+    if (nextConversationId == null) {
+      return;
+    }
+
+    final nextConversations = _conversations
+        .map((conversation) {
+          if (_conversationId(conversation) != nextConversationId) {
+            return conversation;
+          }
+
+          return nextConversation;
+        })
+        .map((conversation) => Map<String, dynamic>.from(conversation))
+        .toList(growable: false);
+
+    if (!preserveOrdering) {
+      nextConversations.sort((first, second) {
+        final secondDate = _conversationLastMessageDate(second);
+        final firstDate = _conversationLastMessageDate(first);
+        if (firstDate == null && secondDate == null) {
+          return 0;
+        }
+        if (firstDate == null) {
+          return 1;
+        }
+        if (secondDate == null) {
+          return -1;
+        }
+        return secondDate.compareTo(firstDate);
+      });
+    }
+
+    if (!mounted) {
+      _conversations = nextConversations;
+      _updateUnreadCountNotifier(nextConversations);
+      return;
+    }
+
+    setState(() {
+      _conversations = nextConversations;
+    });
+    _watchConversationParticipants(nextConversations);
+    _updateUnreadCountNotifier(nextConversations);
   }
 
   void _applyPublicProfileUpdate(Map<String, dynamic> event) {
@@ -310,27 +491,17 @@ class _MainNavigationMessagesPanelState
         if (cachedConversations != null &&
             cachedConversations.isNotEmpty &&
             mounted) {
-          final unreadCount = cachedConversations.fold<int>(
-            0,
-            (total, conversation) =>
-                total + (((conversation['unreadCount'] as num?)?.toInt()) ?? 0),
-          );
           setState(() {
             _conversations = cachedConversations;
             _isLoading = false;
             _loadError = null;
           });
           _watchConversationParticipants(cachedConversations);
-          mainNavigationUnreadMessageCountNotifier.value = unreadCount;
+          _updateUnreadCountNotifier(cachedConversations);
         }
       }
 
       final conversations = await _conversationsApiService.fetchConversations();
-      final unreadCount = conversations.fold<int>(
-        0,
-        (total, conversation) =>
-            total + (((conversation['unreadCount'] as num?)?.toInt()) ?? 0),
-      );
 
       if (!mounted) return;
       setState(() {
@@ -339,7 +510,8 @@ class _MainNavigationMessagesPanelState
         _loadError = null;
       });
       _watchConversationParticipants(conversations);
-      mainNavigationUnreadMessageCountNotifier.value = unreadCount;
+      _warmRecentConversations(conversations);
+      _updateUnreadCountNotifier(conversations);
     } on AppApiException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -350,7 +522,7 @@ class _MainNavigationMessagesPanelState
         _loadError = silent ? _loadError : error.message;
       });
       if (!silent) {
-        mainNavigationUnreadMessageCountNotifier.value = 0;
+        _updateUnreadCountNotifier(const <Map<String, dynamic>>[]);
       }
     } finally {
       _isLoadingConversations = false;
@@ -359,6 +531,25 @@ class _MainNavigationMessagesPanelState
 
   bool _conversationIsUnread(Map<String, dynamic> conversation) {
     return ((conversation['unreadCount'] as num?)?.toInt() ?? 0) > 0;
+  }
+
+  void _warmRecentConversations(List<Map<String, dynamic>> conversations) {
+    final groupedConversations = _groupConversationsByParticipant(
+      conversations,
+    );
+    final conversationIds = groupedConversations
+        .map(_conversationId)
+        .whereType<String>()
+        .take(_warmConversationLimit);
+
+    for (final conversationId in conversationIds) {
+      unawaited(
+        _conversationsApiService.warmConversationById(
+          conversationId,
+          limit: _warmConversationMessageLimit,
+        ),
+      );
+    }
   }
 
   String _conversationName(Map<String, dynamic> conversation) {
@@ -786,25 +977,57 @@ class _MainNavigationMessagesPanelState
 
   void _openConversation(Map<String, dynamic> conversation) {
     final conversationId = _conversationId(conversation);
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ChatPage(
-          conversationId: conversationId,
-          productPageBuilder: (product, {openedFromChat = false}) =>
-              ProductDetailPage(
-                product: product,
-                openedFromChat: openedFromChat,
-              ),
-          sellerName: _conversationName(conversation),
-          sellerRole:
-              ((conversation['participant'] as Map?)?['roleLabel']
-                  as String?) ??
-              'Utilisateur',
-          avatarUrl: _conversationAvatar(conversation),
+    if (conversationId != null) {
+      unawaited(
+        _conversationsApiService.warmConversationById(
+          conversationId,
+          limit: _warmConversationMessageLimit,
         ),
+      );
+    }
+
+    final conversationKey =
+        conversationId ??
+        'participant:${_participantId(conversation) ?? _conversationName(conversation)}';
+
+    _embeddedConversationPages.putIfAbsent(
+      conversationKey,
+      () => ChatPage(
+        key: ValueKey<String>('messages-panel:$conversationKey'),
+        conversationId: conversationId,
+        onCloseRequested: _closeEmbeddedConversationIfOpen,
+        productPageBuilder: (product, {openedFromChat = false}) =>
+            ProductDetailPage(product: product, openedFromChat: openedFromChat),
+        sellerName: _conversationName(conversation),
+        sellerRole:
+            ((conversation['participant'] as Map?)?['roleLabel'] as String?) ??
+            'Utilisateur',
+        avatarUrl: _conversationAvatar(conversation),
       ),
-    ).then((_) => _loadConversations());
+    );
+
+    if (!mounted) {
+      _activeEmbeddedConversationKey = conversationKey;
+      mainNavigationChatOpenNotifier.value = true;
+      return;
+    }
+
+    setState(() => _activeEmbeddedConversationKey = conversationKey);
+    mainNavigationChatOpenNotifier.value = true;
+  }
+
+  List<Widget> _buildEmbeddedConversationLayers() {
+    return _embeddedConversationPages.entries
+        .map((entry) {
+          final isVisible = entry.key == _activeEmbeddedConversationKey;
+          return Positioned.fill(
+            child: Offstage(
+              offstage: !isVisible,
+              child: IgnorePointer(ignoring: !isVisible, child: entry.value),
+            ),
+          );
+        })
+        .toList(growable: false);
   }
 
   @override
@@ -830,272 +1053,284 @@ class _MainNavigationMessagesPanelState
           }).toList();
     _watchConversationParticipants(filteredConversations);
 
-    return Scaffold(
-      backgroundColor: scaffoldColor,
-      body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: _refreshPanel,
-          color: primary,
-          child: ValueListenableBuilder<int>(
-            valueListenable: PresenceService.instance.changes,
-            builder: (context, presenceVersion, child) {
-              if (_isLoading) {
-                return ListView(
-                  padding: const EdgeInsets.fromLTRB(0, 6, 0, 26),
-                  children: const [
-                    MainNavigationMessagesSkeleton(
-                      showStories: true,
-                      showInvitationCard: true,
-                    ),
-                  ],
-                );
-              }
+    final listContent = RefreshIndicator(
+      onRefresh: _refreshPanel,
+      color: primary,
+      child: ValueListenableBuilder<int>(
+        valueListenable: PresenceService.instance.changes,
+        builder: (context, presenceVersion, child) {
+          if (_isLoading) {
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(0, 6, 0, 26),
+              children: const [
+                MainNavigationMessagesSkeleton(
+                  showStories: true,
+                  showInvitationCard: true,
+                ),
+              ],
+            );
+          }
 
-              return ListView(
-                padding: const EdgeInsets.fromLTRB(18, 20, 18, 120),
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(18, 20, 18, 120),
+            children: [
+              Row(
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Messages',
-                          style: theme.textTheme.headlineMedium?.copyWith(
-                            fontWeight: FontWeight.w900,
-                          ),
+                  Expanded(
+                    child: Text(
+                      'Messages',
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  PopupMenuButton<_MessagesPanelMenuAction>(
+                    onSelected: (action) => _handleMenuSelection(action),
+                    tooltip: 'Plus',
+                    padding: EdgeInsets.zero,
+                    color: surfaceColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(
+                        value: _MessagesPanelMenuAction.theme,
+                        child: _MessagesPanelMenuItem(
+                          icon: Icons.palette_outlined,
+                          label: 'Theme',
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      PopupMenuButton<_MessagesPanelMenuAction>(
-                        onSelected: (action) => _handleMenuSelection(action),
-                        tooltip: 'Plus',
-                        padding: EdgeInsets.zero,
-                        color: surfaceColor,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                      PopupMenuItem(
+                        value: _MessagesPanelMenuAction.blockedUsers,
+                        child: _MessagesPanelMenuItem(
+                          icon: Icons.block_rounded,
+                          label: 'Personnes bloquees',
                         ),
-                        itemBuilder: (context) => const [
-                          PopupMenuItem(
-                            value: _MessagesPanelMenuAction.theme,
-                            child: _MessagesPanelMenuItem(
-                              icon: Icons.palette_outlined,
-                              label: 'Theme',
-                            ),
-                          ),
-                          PopupMenuItem(
-                            value: _MessagesPanelMenuAction.blockedUsers,
-                            child: _MessagesPanelMenuItem(
-                              icon: Icons.block_rounded,
-                              label: 'Personnes bloquees',
-                            ),
-                          ),
-                          PopupMenuItem(
-                            value: _MessagesPanelMenuAction.logout,
-                            child: _MessagesPanelMenuItem(
-                              icon: Icons.logout_rounded,
-                              label: 'Deconnexion',
-                            ),
-                          ),
-                        ],
-                        child: SizedBox(
-                          width: 32,
-                          height: 32,
-                          child: Icon(
-                            Icons.more_vert_rounded,
-                            color: theme.colorScheme.onSurface,
-                          ),
+                      ),
+                      PopupMenuItem(
+                        value: _MessagesPanelMenuAction.logout,
+                        child: _MessagesPanelMenuItem(
+                          icon: Icons.logout_rounded,
+                          label: 'Deconnexion',
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 18),
-                  DynamicIconInput(
-                    controller: _searchController,
-                    primary: theme.colorScheme.primary,
-                    panelColor: theme.cardColor,
-                    borderColor: appColors.inputBorder,
-                    hintText: 'Rechercher dans les messages...',
-                    contentPadding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
-                    leadingSize: 24,
-                    leadingIcon: Icon(
-                      Icons.search_rounded,
-                      color: theme.colorScheme.primary,
-                      size: 22,
+                    child: SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: Icon(
+                        Icons.more_vert_rounded,
+                        color: theme.colorScheme.onSurface,
+                      ),
                     ),
-                    trailingIcon: _searchController.text.trim().isEmpty
-                        ? null
-                        : Icon(
-                            Icons.close_rounded,
-                            color: theme.appColors.mutedText,
-                            size: 20,
-                          ),
-                    trailingSize: 32,
-                    onTrailingTap: () {
-                      _searchController.clear();
-                      if (mounted) {
-                        setState(() => _searchQuery = '');
-                      }
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              DynamicIconInput(
+                controller: _searchController,
+                primary: theme.colorScheme.primary,
+                panelColor: theme.cardColor,
+                borderColor: appColors.inputBorder,
+                hintText: 'Rechercher dans les messages...',
+                contentPadding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
+                leadingSize: 24,
+                leadingIcon: Icon(
+                  Icons.search_rounded,
+                  color: theme.colorScheme.primary,
+                  size: 22,
+                ),
+                trailingIcon: _searchController.text.trim().isEmpty
+                    ? null
+                    : Icon(
+                        Icons.close_rounded,
+                        color: theme.appColors.mutedText,
+                        size: 20,
+                      ),
+                trailingSize: 32,
+                onTrailingTap: () {
+                  _searchController.clear();
+                  if (mounted) {
+                    setState(() => _searchQuery = '');
+                  }
+                },
+              ),
+              const SizedBox(height: 20),
+              if (filteredConversations.isNotEmpty) ...[
+                SizedBox(
+                  height: 98,
+                  child: ListView.separated(
+                    padding: EdgeInsets.zero,
+                    scrollDirection: Axis.horizontal,
+                    itemCount: filteredConversations.length,
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(width: 14),
+                    itemBuilder: (context, index) {
+                      final conversation = filteredConversations[index];
+                      return NavigationMessageStoryAvatar(
+                        name: _conversationName(conversation).split(' ').first,
+                        avatarUrl: _conversationAvatar(conversation),
+                        userId: _participantId(conversation),
+                        isActive: _conversationIsUnread(conversation),
+                        isOnline: _conversationParticipantIsOnline(
+                          conversation,
+                        ),
+                        primary: primary,
+                        labelColor: strongTextColor,
+                        haloColor: theme.colorScheme.onSurface,
+                        onTap: () => _openConversation(conversation),
+                      );
                     },
                   ),
-                  const SizedBox(height: 20),
-                  if (filteredConversations.isNotEmpty) ...[
-                    SizedBox(
-                      height: 98,
-                      child: ListView.separated(
-                        padding: EdgeInsets.zero,
-                        scrollDirection: Axis.horizontal,
-                        itemCount: filteredConversations.length,
-                        separatorBuilder: (context, index) =>
-                            const SizedBox(width: 14),
-                        itemBuilder: (context, index) {
-                          final conversation = filteredConversations[index];
-                          return NavigationMessageStoryAvatar(
-                            name: _conversationName(
-                              conversation,
-                            ).split(' ').first,
-                            avatarUrl: _conversationAvatar(conversation),
-                            userId: _participantId(conversation),
-                            isActive: _conversationIsUnread(conversation),
-                            isOnline: _conversationParticipantIsOnline(
-                              conversation,
-                            ),
-                            primary: primary,
-                            labelColor: strongTextColor,
-                            haloColor: theme.colorScheme.onSurface,
-                            onTap: () => _openConversation(conversation),
-                          );
-                        },
+                ),
+              ],
+              if (_invitationBadgeCount > 0)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(0, 12, 0, 8),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () {},
+                    child: Ink(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
                       ),
-                    ),
-                  ],
-                  if (_invitationBadgeCount > 0)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(0, 12, 0, 8),
-                      child: InkWell(
+                      decoration: BoxDecoration(
+                        color: surfaceColor,
                         borderRadius: BorderRadius.circular(16),
-                        onTap: () {},
-                        child: Ink(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
-                          decoration: BoxDecoration(
-                            color: surfaceColor,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                constraints: const BoxConstraints(minWidth: 24),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme.error,
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
-                                child: Text(
-                                  _invitationBadgeCount > 9
-                                      ? '9+'
-                                      : '$_invitationBadgeCount',
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 12,
-                                  ),
-                                ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            constraints: const BoxConstraints(minWidth: 24),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.error,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              _invitationBadgeCount > 9
+                                  ? '9+'
+                                  : '$_invitationBadgeCount',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 12,
                               ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  'Nouvelles invitations par message',
-                                  style: TextStyle(
-                                    color: strongTextColor.withValues(
-                                      alpha: 0.92,
-                                    ),
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 15,
-                                  ),
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Nouvelles invitations par message',
+                              style: TextStyle(
+                                color: strongTextColor.withValues(alpha: 0.92),
+                                fontWeight: FontWeight.w800,
+                                fontSize: 15,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  if (_loadError != null)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(0, 8, 0, 0),
-                      child: Container(
-                        padding: const EdgeInsets.all(18),
-                        decoration: BoxDecoration(
-                          color: surfaceColor,
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _loadError!,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.error,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            TextButton(
-                              onPressed: _loadConversations,
-                              child: const Text('Reessayer'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  else if (filteredConversations.isEmpty)
-                    _buildInfoCard(
-                      context,
-                      text: normalizedQuery.isEmpty
-                          ? 'Aucune conversation pour le moment.'
-                          : 'Aucun message ne correspond a votre recherche.',
-                      color: mutedColor,
-                    )
-                  else
-                    ...List.generate(filteredConversations.length, (index) {
-                      final conversation = filteredConversations[index];
-                      return Padding(
-                        padding: EdgeInsets.fromLTRB(
-                          0,
-                          index == 0 ? 4 : 2,
-                          0,
-                          index == filteredConversations.length - 1 ? 0 : 2,
-                        ),
-                        child: NavigationConversationTile(
-                          name: _conversationName(conversation),
-                          preview: _conversationPreview(conversation),
-                          statusLabel: _conversationStatusLabel(conversation),
-                          time: _conversationTime(conversation),
-                          avatarUrl: _conversationAvatar(conversation),
-                          userId: _participantId(conversation),
-                          isTyping: _conversationIsTyping(conversation),
-                          unread: _conversationIsUnread(conversation),
-                          unreadCount: _conversationUnreadCount(conversation),
-                          isOnline: _conversationParticipantIsOnline(
-                            conversation,
+                  ),
+                ),
+              if (_loadError != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(0, 8, 0, 0),
+                  child: Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: surfaceColor,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _loadError!,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.error,
+                            fontWeight: FontWeight.w700,
                           ),
-                          isMuted: _conversationIsMuted(conversation),
-                          showReplyChip: _conversationShowsReplyChip(
-                            conversation,
-                          ),
-                          primary: primary,
-                          isDark: theme.brightness == Brightness.dark,
-                          onTap: () => _openConversation(conversation),
                         ),
-                      );
-                    }),
-                ],
-              );
-            },
+                        const SizedBox(height: 12),
+                        TextButton(
+                          onPressed: _loadConversations,
+                          child: const Text('Reessayer'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else if (filteredConversations.isEmpty)
+                _buildInfoCard(
+                  context,
+                  text: normalizedQuery.isEmpty
+                      ? 'Aucune conversation pour le moment.'
+                      : 'Aucun message ne correspond a votre recherche.',
+                  color: mutedColor,
+                )
+              else
+                ...List.generate(filteredConversations.length, (index) {
+                  final conversation = filteredConversations[index];
+                  return Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      0,
+                      index == 0 ? 4 : 2,
+                      0,
+                      index == filteredConversations.length - 1 ? 0 : 2,
+                    ),
+                    child: NavigationConversationTile(
+                      name: _conversationName(conversation),
+                      preview: _conversationPreview(conversation),
+                      statusLabel: _conversationStatusLabel(conversation),
+                      time: _conversationTime(conversation),
+                      avatarUrl: _conversationAvatar(conversation),
+                      userId: _participantId(conversation),
+                      isTyping: _conversationIsTyping(conversation),
+                      unread: _conversationIsUnread(conversation),
+                      unreadCount: _conversationUnreadCount(conversation),
+                      isOnline: _conversationParticipantIsOnline(conversation),
+                      isMuted: _conversationIsMuted(conversation),
+                      showReplyChip: _conversationShowsReplyChip(conversation),
+                      primary: primary,
+                      isDark: theme.brightness == Brightness.dark,
+                      onTap: () => _openConversation(conversation),
+                    ),
+                  );
+                }),
+            ],
+          );
+        },
+      ),
+    );
+
+    return PopScope(
+      canPop: _activeEmbeddedConversationKey == null,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          _closeEmbeddedConversationIfOpen();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: scaffoldColor,
+        body: SafeArea(
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: Offstage(
+                  offstage: _activeEmbeddedConversationKey != null,
+                  child: listContent,
+                ),
+              ),
+              ..._buildEmbeddedConversationLayers(),
+            ],
           ),
         ),
       ),

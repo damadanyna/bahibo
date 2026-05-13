@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
@@ -9,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'api_config.dart';
 import 'app_api_client.dart';
 import 'cloudinary_image_url.dart';
+import 'local_conversation_store.dart';
 import 'session_storage.dart';
 
 class ConversationsApiService {
@@ -21,12 +23,39 @@ class ConversationsApiService {
   static const String _conversationByUserCachePrefix =
       'BANAY.cache.conversations.by_user.';
   static const Duration _conversationCacheTtl = Duration(minutes: 8);
+  static final Map<String, _ConversationCacheEntry> _memoryCache =
+      <String, _ConversationCacheEntry>{};
+  static final Map<String, Future<void>> _warmConversationRequests =
+      <String, Future<void>>{};
 
   ConversationsApiService({AppApiClient? client})
     : _client = client ?? AppApiClient();
 
   final AppApiClient _client;
   final SessionStorage _sessionStorage = SessionStorage();
+  final LocalConversationStore _localConversationStore =
+      LocalConversationStore.instance;
+
+  Map<String, String>? _conversationQueryParameters({
+    int? limit,
+    String? beforeMessageId,
+  }) {
+    final parameters = <String, String>{};
+    if (limit != null && limit > 0) {
+      parameters['limit'] = limit.toString();
+    }
+
+    final normalizedBeforeMessageId = beforeMessageId?.trim() ?? '';
+    if (normalizedBeforeMessageId.isNotEmpty) {
+      parameters['beforeMessageId'] = normalizedBeforeMessageId;
+    }
+
+    return parameters.isEmpty ? null : parameters;
+  }
+
+  bool _shouldCacheConversationPage(String? beforeMessageId) {
+    return (beforeMessageId?.trim().isEmpty ?? true);
+  }
 
   Future<List<Map<String, dynamic>>> fetchConversations() async {
     final data = await _client.get('/conversations', authenticated: true);
@@ -36,6 +65,18 @@ class ConversationsApiService {
         .toList();
     await _writeCacheValue(_conversationsListCacheKey, normalized);
     return normalized;
+  }
+
+  List<Map<String, dynamic>>? peekCachedConversations() {
+    final cached = _peekCacheValue(_conversationsListCacheKey);
+    if (cached is! List) {
+      return null;
+    }
+
+    return cached
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
   }
 
   Future<List<Map<String, dynamic>>?> getCachedConversations() async {
@@ -51,18 +92,30 @@ class ConversationsApiService {
   }
 
   Future<Map<String, dynamic>> fetchConversationById(
-    String conversationId,
-  ) async {
+    String conversationId, {
+    int? limit,
+    String? beforeMessageId,
+  }) async {
     final data = await _client.get(
       '/conversations/$conversationId',
+      queryParameters: _conversationQueryParameters(
+        limit: limit,
+        beforeMessageId: beforeMessageId,
+      ),
       authenticated: true,
     );
     final normalized = Map<String, dynamic>.from(data as Map);
-    await _writeCacheValue(
-      '$_conversationByIdCachePrefix${conversationId.trim()}',
+    await _localConversationStore.saveConversationSnapshot(
       normalized,
+      fallbackId: conversationId,
     );
-    await _cacheConversationAliases(normalized, fallbackId: conversationId);
+    if (_shouldCacheConversationPage(beforeMessageId)) {
+      await _writeCacheValue(
+        '$_conversationByIdCachePrefix${conversationId.trim()}',
+        normalized,
+      );
+      await _cacheConversationAliases(normalized, fallbackId: conversationId);
+    }
     return normalized;
   }
 
@@ -74,19 +127,49 @@ class ConversationsApiService {
     );
   }
 
+  Future<Map<String, dynamic>?> getStoredConversationById(
+    String conversationId, {
+    int? limit,
+    String? beforeMessageId,
+  }) {
+    return _localConversationStore.getConversationById(
+      conversationId,
+      limit: limit,
+      beforeMessageId: beforeMessageId,
+    );
+  }
+
+  Map<String, dynamic>? peekCachedConversationById(String conversationId) {
+    return _peekCachedConversation(
+      '$_conversationByIdCachePrefix${conversationId.trim()}',
+    );
+  }
+
   Future<Map<String, dynamic>> fetchConversationForProduct(
-    String productId,
-  ) async {
+    String productId, {
+    int? limit,
+    String? beforeMessageId,
+  }) async {
     final data = await _client.get(
       '/conversations/product/$productId',
+      queryParameters: _conversationQueryParameters(
+        limit: limit,
+        beforeMessageId: beforeMessageId,
+      ),
       authenticated: true,
     );
     final normalized = Map<String, dynamic>.from(data as Map);
-    await _writeCacheValue(
-      '$_conversationByProductCachePrefix${productId.trim()}',
+    await _localConversationStore.saveConversationSnapshot(
       normalized,
+      fallbackProductId: productId,
     );
-    await _cacheConversationAliases(normalized, fallbackProductId: productId);
+    if (_shouldCacheConversationPage(beforeMessageId)) {
+      await _writeCacheValue(
+        '$_conversationByProductCachePrefix${productId.trim()}',
+        normalized,
+      );
+      await _cacheConversationAliases(normalized, fallbackProductId: productId);
+    }
     return normalized;
   }
 
@@ -98,19 +181,49 @@ class ConversationsApiService {
     );
   }
 
+  Future<Map<String, dynamic>?> getStoredConversationForProduct(
+    String productId, {
+    int? limit,
+    String? beforeMessageId,
+  }) {
+    return _localConversationStore.getConversationForProduct(
+      productId,
+      limit: limit,
+      beforeMessageId: beforeMessageId,
+    );
+  }
+
+  Map<String, dynamic>? peekCachedConversationForProduct(String productId) {
+    return _peekCachedConversation(
+      '$_conversationByProductCachePrefix${productId.trim()}',
+    );
+  }
+
   Future<Map<String, dynamic>> fetchConversationForUser(
-    String targetUserId,
-  ) async {
+    String targetUserId, {
+    int? limit,
+    String? beforeMessageId,
+  }) async {
     final data = await _client.get(
       '/conversations/user/$targetUserId',
+      queryParameters: _conversationQueryParameters(
+        limit: limit,
+        beforeMessageId: beforeMessageId,
+      ),
       authenticated: true,
     );
     final normalized = Map<String, dynamic>.from(data as Map);
-    await _writeCacheValue(
-      '$_conversationByUserCachePrefix${targetUserId.trim()}',
+    await _localConversationStore.saveConversationSnapshot(
       normalized,
+      fallbackUserId: targetUserId,
     );
-    await _cacheConversationAliases(normalized, fallbackUserId: targetUserId);
+    if (_shouldCacheConversationPage(beforeMessageId)) {
+      await _writeCacheValue(
+        '$_conversationByUserCachePrefix${targetUserId.trim()}',
+        normalized,
+      );
+      await _cacheConversationAliases(normalized, fallbackUserId: targetUserId);
+    }
     return normalized;
   }
 
@@ -122,8 +235,64 @@ class ConversationsApiService {
     );
   }
 
+  Future<Map<String, dynamic>?> getStoredConversationForUser(
+    String targetUserId, {
+    int? limit,
+    String? beforeMessageId,
+  }) {
+    return _localConversationStore.getConversationForUser(
+      targetUserId,
+      limit: limit,
+      beforeMessageId: beforeMessageId,
+    );
+  }
+
+  Map<String, dynamic>? peekCachedConversationForUser(String targetUserId) {
+    return _peekCachedConversation(
+      '$_conversationByUserCachePrefix${targetUserId.trim()}',
+    );
+  }
+
+  Future<void> warmConversationById(String conversationId, {int limit = 8}) {
+    final normalizedConversationId = conversationId.trim();
+    if (normalizedConversationId.isEmpty) {
+      return Future.value();
+    }
+
+    final cacheKey = '$_conversationByIdCachePrefix$normalizedConversationId';
+    if (_peekCacheValue(cacheKey) != null) {
+      return Future.value();
+    }
+
+    final requestKey = '$cacheKey|$limit';
+    final inFlight = _warmConversationRequests[requestKey];
+    if (inFlight != null) {
+      return inFlight;
+    }
+
+    final request =
+        fetchConversationById(
+          normalizedConversationId,
+          limit: limit,
+        ).then((_) {}).catchError((_) {}).whenComplete(() {
+          _warmConversationRequests.remove(requestKey);
+        });
+
+    _warmConversationRequests[requestKey] = request;
+    return request;
+  }
+
   Future<Map<String, dynamic>?> _readCachedConversation(String key) async {
     final cached = await _readCacheValue(key);
+    if (cached is! Map) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(cached);
+  }
+
+  Map<String, dynamic>? _peekCachedConversation(String key) {
+    final cached = _peekCacheValue(key);
     if (cached is! Map) {
       return null;
     }
@@ -170,6 +339,11 @@ class ConversationsApiService {
   }
 
   Future<dynamic> _readCacheValue(String key) async {
+    final inMemory = _peekCacheValue(key);
+    if (inMemory != null) {
+      return inMemory;
+    }
+
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(key);
     if (raw == null || raw.isEmpty) {
@@ -190,17 +364,34 @@ class ConversationsApiService {
 
       final cachedAt = DateTime.fromMillisecondsSinceEpoch(cachedAtMillis);
       if (DateTime.now().difference(cachedAt) > _conversationCacheTtl) {
+        _memoryCache.remove(key);
         unawaited(prefs.remove(key));
         return null;
       }
 
+      _writeMemoryCacheValue(key, data, cachedAt: cachedAt);
       return data;
     } catch (_) {
       return null;
     }
   }
 
+  dynamic _peekCacheValue(String key) {
+    final entry = _memoryCache[key];
+    if (entry == null) {
+      return null;
+    }
+
+    if (DateTime.now().difference(entry.cachedAt) > _conversationCacheTtl) {
+      _memoryCache.remove(key);
+      return null;
+    }
+
+    return _cloneCacheData(entry.data);
+  }
+
   Future<void> _writeCacheValue(String key, Object data) async {
+    _writeMemoryCacheValue(key, data);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       key,
@@ -209,6 +400,21 @@ class ConversationsApiService {
         'data': data,
       }),
     );
+  }
+
+  void _writeMemoryCacheValue(String key, Object data, {DateTime? cachedAt}) {
+    _memoryCache[key] = _ConversationCacheEntry(
+      cachedAt: cachedAt ?? DateTime.now(),
+      data: _cloneCacheData(data),
+    );
+  }
+
+  dynamic _cloneCacheData(Object? data) {
+    if (data == null) {
+      return null;
+    }
+
+    return jsonDecode(jsonEncode(data));
   }
 
   Future<Map<String, dynamic>> sendMessage({
@@ -221,7 +427,12 @@ class ConversationsApiService {
       body: {'content': content, if (reply != null) ...reply},
       authenticated: true,
     );
-    return Map<String, dynamic>.from(data as Map);
+    final normalized = Map<String, dynamic>.from(data as Map);
+    await _localConversationStore.saveConversationSnapshot(
+      normalized,
+      fallbackId: conversationId,
+    );
+    return normalized;
   }
 
   Future<Map<String, dynamic>> sendProductMessage({
@@ -234,7 +445,12 @@ class ConversationsApiService {
       body: {'content': content, if (reply != null) ...reply},
       authenticated: true,
     );
-    return Map<String, dynamic>.from(data as Map);
+    final normalized = Map<String, dynamic>.from(data as Map);
+    await _localConversationStore.saveConversationSnapshot(
+      normalized,
+      fallbackProductId: productId,
+    );
+    return normalized;
   }
 
   Future<Map<String, dynamic>> sendUserMessage({
@@ -252,7 +468,12 @@ class ConversationsApiService {
       },
       authenticated: true,
     );
-    return Map<String, dynamic>.from(data as Map);
+    final normalized = Map<String, dynamic>.from(data as Map);
+    await _localConversationStore.saveConversationSnapshot(
+      normalized,
+      fallbackUserId: targetUserId,
+    );
+    return normalized;
   }
 
   Future<Map<String, dynamic>> sendMediaMessage({
@@ -265,7 +486,12 @@ class ConversationsApiService {
       body: {...mediaPayload, if (reply != null) ...reply},
       authenticated: true,
     );
-    return Map<String, dynamic>.from(data as Map);
+    final normalized = Map<String, dynamic>.from(data as Map);
+    await _localConversationStore.saveConversationSnapshot(
+      normalized,
+      fallbackId: conversationId,
+    );
+    return normalized;
   }
 
   Future<Map<String, dynamic>> sendProductMediaMessage({
@@ -278,7 +504,12 @@ class ConversationsApiService {
       body: {...mediaPayload, if (reply != null) ...reply},
       authenticated: true,
     );
-    return Map<String, dynamic>.from(data as Map);
+    final normalized = Map<String, dynamic>.from(data as Map);
+    await _localConversationStore.saveConversationSnapshot(
+      normalized,
+      fallbackProductId: productId,
+    );
+    return normalized;
   }
 
   Future<Map<String, dynamic>> sendUserMediaMessage({
@@ -289,6 +520,22 @@ class ConversationsApiService {
     final data = await _client.post(
       '/conversations/user/$targetUserId/media-messages',
       body: {...mediaPayload, if (reply != null) ...reply},
+      authenticated: true,
+    );
+    final normalized = Map<String, dynamic>.from(data as Map);
+    await _localConversationStore.saveConversationSnapshot(
+      normalized,
+      fallbackUserId: targetUserId,
+    );
+    return normalized;
+  }
+
+  Future<Map<String, dynamic>> deleteMessage({
+    required String conversationId,
+    required String messageId,
+  }) async {
+    final data = await _client.delete(
+      '/conversations/$conversationId/messages/$messageId',
       authenticated: true,
     );
     return Map<String, dynamic>.from(data as Map);
@@ -488,8 +735,17 @@ class ConversationsApiService {
   }
 }
 
+class _ConversationCacheEntry {
+  const _ConversationCacheEntry({required this.cachedAt, required this.data});
+
+  final DateTime cachedAt;
+  final dynamic data;
+}
+
 class _ProgressMultipartRequest extends http.MultipartRequest {
   _ProgressMultipartRequest(super.method, super.url, {this.onProgress});
+
+  static const int _progressChunkSize = 16 * 1024;
 
   final void Function(double progress)? onProgress;
 
@@ -508,10 +764,22 @@ class _ProgressMultipartRequest extends http.MultipartRequest {
     final progressStream = byteStream.transform(
       StreamTransformer<List<int>, List<int>>.fromHandlers(
         handleData: (chunk, sink) {
-          sentBytes += chunk.length;
-          final progress = sentBytes / totalBytes;
-          onProgress!(progress.clamp(0, 1).toDouble());
-          sink.add(chunk);
+          if (chunk.isEmpty) {
+            return;
+          }
+
+          for (
+            var offset = 0;
+            offset < chunk.length;
+            offset += _progressChunkSize
+          ) {
+            final end = math.min(offset + _progressChunkSize, chunk.length);
+            final slice = chunk.sublist(offset, end);
+            sentBytes += slice.length;
+            final progress = sentBytes / totalBytes;
+            onProgress!(progress.clamp(0, 1).toDouble());
+            sink.add(slice);
+          }
         },
         handleDone: (sink) {
           onProgress!(1);
