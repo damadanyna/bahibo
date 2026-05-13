@@ -145,65 +145,6 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
     ).showSnackBar(SnackBar(content: Text('Numero SIM detecte: $hint')));
   }
 
-  Future<bool> _confirmManualPhoneEntry() async {
-    final decision = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Verification SIM indisponible'),
-        content: const Text(
-          'Le telephone ne fournit pas automatiquement le numero de la carte SIM. Voulez-vous continuer avec le numero saisi manuellement ?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Annuler'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Continuer'),
-          ),
-        ],
-      ),
-    );
-
-    return decision ?? false;
-  }
-
-  Future<bool> _verifyPhoneMatchesSim(String phoneE164) async {
-    final simHint = _simPhoneHint ?? await _requestSimPhoneHint();
-
-    if (simHint == null || simHint.isEmpty) {
-      if (!mounted) {
-        return false;
-      }
-
-      return _confirmManualPhoneEntry();
-    }
-
-    final simCountry = _resolveCountryFromPhone(simHint);
-    final simDialCode = simCountry == null
-        ? _selectedCountryDialCode
-        : countryCodes[simCountry]!;
-
-    final enteredDigits = _digitsOnly(phoneE164);
-    final simDigits = _digitsOnly(simHint);
-    final enteredLocal = _extractLocalDigits(phoneE164);
-    final simLocal = _extractLocalDigits(simHint, dialCode: simDialCode);
-    final isMatch = enteredDigits == simDigits || enteredLocal == simLocal;
-
-    if (!isMatch && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Le numero saisi ne correspond pas au numero detecte sur la carte SIM du telephone.',
-          ),
-        ),
-      );
-    }
-
-    return isMatch;
-  }
-
   @override
   void dispose() {
     countryController.dispose();
@@ -228,12 +169,6 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
           content: Text('Selectionnez un pays et saisissez un numero valide.'),
         ),
       );
-      return;
-    }
-
-    final simMatches = await _verifyPhoneMatchesSim(fullPhoneNumber);
-
-    if (!simMatches) {
       return;
     }
 
@@ -523,5 +458,3 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
     );
   }
 }
-
-

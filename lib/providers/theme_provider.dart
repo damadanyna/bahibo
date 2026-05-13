@@ -19,7 +19,7 @@ const Color _BANAYProductCardBackgroundDark = Color.fromARGB(41, 22, 22, 22);
 
 class ThemeProvider extends ChangeNotifier {
   static const String _themeKey = 'theme_mode';
-  ThemeMode _themeMode = ThemeMode.system;
+  ThemeMode _themeMode = ThemeMode.dark;
 
   ThemeMode get themeMode => _themeMode;
 
@@ -29,9 +29,16 @@ class ThemeProvider extends ChangeNotifier {
 
   Future<void> _loadThemeFromPrefs() async {
     final prefs = await SharedPreferences.getInstance();
-    final themeIndex =
-        prefs.getInt(_themeKey) ?? 0; // 0 = system, 1 = light, 2 = dark
-    _themeMode = ThemeMode.values[themeIndex];
+    final themeIndex = prefs.getInt(_themeKey);
+    final savedThemeMode =
+        themeIndex != null &&
+            themeIndex >= 0 &&
+            themeIndex < ThemeMode.values.length
+        ? ThemeMode.values[themeIndex]
+        : ThemeMode.dark;
+    _themeMode = savedThemeMode == ThemeMode.system
+        ? ThemeMode.dark
+        : savedThemeMode;
     notifyListeners();
   }
 
@@ -43,10 +50,7 @@ class ThemeProvider extends ChangeNotifier {
   void toggleTheme() {
     if (_themeMode == ThemeMode.light) {
       _themeMode = ThemeMode.dark;
-    } else if (_themeMode == ThemeMode.dark) {
-      _themeMode = ThemeMode.light;
     } else {
-      // Si c'est system, on passe en light
       _themeMode = ThemeMode.light;
     }
     _saveThemeToPrefs();
@@ -54,7 +58,7 @@ class ThemeProvider extends ChangeNotifier {
   }
 
   void setThemeMode(ThemeMode mode) {
-    _themeMode = mode;
+    _themeMode = mode == ThemeMode.system ? ThemeMode.dark : mode;
     _saveThemeToPrefs();
     notifyListeners();
   }

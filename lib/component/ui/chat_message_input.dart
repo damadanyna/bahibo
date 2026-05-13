@@ -24,6 +24,7 @@ class UiChatAttachment {
   final UiChatAttachmentType type;
   final String label;
   final Uint8List? bytes;
+  final int? sizeBytes;
   final int? width;
   final int? height;
   final String? mediaGroupId;
@@ -33,6 +34,7 @@ class UiChatAttachment {
     required this.type,
     required this.label,
     this.bytes,
+    this.sizeBytes,
     this.width,
     this.height,
     this.mediaGroupId,
@@ -57,6 +59,8 @@ class UiChatMessageInput extends StatefulWidget {
   final List<String> documentExtensions;
   final bool autoClearOnSend;
   final bool enableQuickText;
+  final bool canSendWithoutText;
+  final bool allowMultipleDocumentSelection;
   final UiChatTextChangedCallback? onTextChanged;
 
   const UiChatMessageInput({
@@ -73,6 +77,8 @@ class UiChatMessageInput extends StatefulWidget {
     this.documentExtensions = const ['pdf', 'doc', 'docx', 'txt'],
     this.autoClearOnSend = true,
     this.enableQuickText = true,
+    this.canSendWithoutText = false,
+    this.allowMultipleDocumentSelection = true,
     this.onTextChanged,
   });
 
@@ -113,7 +119,7 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
 
   Future<void> _handleSend() async {
     final text = widget.controller.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty && !widget.canSendWithoutText) return;
     await widget.onSend(text);
     if (widget.autoClearOnSend && mounted) {
       widget.controller.clear();
@@ -259,6 +265,7 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
           type: UiChatAttachmentType.photo,
           label: file.name,
           bytes: bytes,
+          sizeBytes: fileLength,
           width: decodedImage.width,
           height: decodedImage.height,
           mediaGroupId: mediaGroupId,
@@ -279,7 +286,7 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
   Future<void> _pickDocument() async {
     final result = await FilePicker.platform.pickFiles(
       withData: true,
-      allowMultiple: true,
+      allowMultiple: widget.allowMultipleDocumentSelection,
       type: FileType.custom,
       allowedExtensions: widget.documentExtensions,
     );
@@ -313,6 +320,7 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
           type: UiChatAttachmentType.document,
           label: file.name,
           bytes: file.bytes,
+          sizeBytes: file.size,
           mediaGroupId: mediaGroupId,
           messageText: 'Document ajoute depuis le gestionnaire de fichiers',
         ),

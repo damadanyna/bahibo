@@ -37,6 +37,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
   final List<Map<String, dynamic>> _notifications = [];
   StreamSubscription<Map<String, dynamic>>? _realtimeEventsSubscription;
+  final TextEditingController _feedbackController = TextEditingController();
+  bool _isSubmittingFeedback = false;
 
   @override
   void initState() {
@@ -52,6 +54,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
   @override
   void dispose() {
     _realtimeEventsSubscription?.cancel();
+    _feedbackController.dispose();
     super.dispose();
   }
 
@@ -308,20 +311,182 @@ class _NotificationsPageState extends State<NotificationsPage> {
         );
         return;
       case _NotificationAppBarAction.comment:
-        await _showInfoSheet(
-          context,
-          title: 'Commentaires',
-          icon: Icons.rate_review_outlined,
-          paragraphs: const [
-            'Vous pouvez nous envoyer vos remarques sur les notifications, la recherche ou l\'affichage des produits afin d\'ameliorer l\'experience utilisateur.',
-            'Vos commentaires nous aident a prioriser les corrections et les nouvelles fonctionnalites de l\'application.',
-          ],
-        );
+        await _showFeedbackSheet(context);
         return;
       case _NotificationAppBarAction.logout:
         await _logout(context);
         return;
     }
+  }
+
+  Future<void> _showFeedbackSheet(BuildContext context) {
+    _feedbackController.clear();
+
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        final sheetTheme = Theme.of(sheetContext);
+        final bottomInset = MediaQuery.of(sheetContext).viewInsets.bottom;
+
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(12, 0, 12, 12 + bottomInset),
+            child: StatefulBuilder(
+              builder: (sheetContext, setSheetState) {
+                Future<void> submitFeedback() async {
+                  final message = _feedbackController.text.trim();
+                  if (message.isEmpty || _isSubmittingFeedback) {
+                    return;
+                  }
+
+                  setState(() {
+                    _isSubmittingFeedback = true;
+                  });
+                  setSheetState(() {});
+
+                  try {
+                    await _notificationsApiService.sendFeedback(message);
+                    if (!mounted || !sheetContext.mounted) {
+                      return;
+                    }
+
+                    _feedbackController.clear();
+                    Navigator.of(sheetContext).pop();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Commentaire envoye a l\'admin.'),
+                      ),
+                    );
+                  } on AppApiException catch (error) {
+                    if (!mounted || !sheetContext.mounted) {
+                      return;
+                    }
+
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text(error.message)));
+                  } finally {
+                    if (mounted) {
+                      setState(() {
+                        _isSubmittingFeedback = false;
+                      });
+                    }
+                    if (sheetContext.mounted) {
+                      setSheetState(() {});
+                    }
+                  }
+                }
+
+                return Container(
+                  decoration: BoxDecoration(
+                    color: sheetTheme.cardColor,
+                    borderRadius: BorderRadius.circular(28),
+                  ),
+                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Align(
+                        child: Container(
+                          width: 44,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: sheetTheme.dividerColor.withValues(
+                              alpha: 0.5,
+                            ),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Row(
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: sheetTheme.colorScheme.primary.withValues(
+                                alpha: 0.12,
+                              ),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Icon(
+                              Icons.rate_review_outlined,
+                              color: sheetTheme.colorScheme.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Text(
+                              'Commentaires',
+                              style: sheetTheme.textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      Text(
+                        'Envoie ton commentaire directement a l\'admin pour signaler un probleme ou proposer une amelioration.',
+                        style: sheetTheme.textTheme.bodyMedium?.copyWith(
+                          color: sheetTheme.colorScheme.onSurface.withValues(
+                            alpha: 0.76,
+                          ),
+                          height: 1.5,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: _feedbackController,
+                        minLines: 4,
+                        maxLines: 6,
+                        maxLength: 1000,
+                        textInputAction: TextInputAction.newline,
+                        decoration: const InputDecoration(
+                          hintText: 'Ecris ton commentaire ici...',
+                        ),
+                        onChanged: (_) => setSheetState(() {}),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: Tooltip(
+                          message: 'Envoyer ce commentaire a l\'admin',
+                          child: FilledButton.icon(
+                            onPressed:
+                                _feedbackController.text.trim().isEmpty ||
+                                    _isSubmittingFeedback
+                                ? null
+                                : submitFeedback,
+                            icon: _isSubmittingFeedback
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.send_rounded),
+                            label: Text(
+                              _isSubmittingFeedback ? 'Envoi...' : 'Envoyer',
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _openNotification(
@@ -337,6 +502,16 @@ class _NotificationsPageState extends State<NotificationsPage> {
     final type = (notification['type'] as String? ?? '').trim();
 
     switch (type) {
+      case 'user_feedback':
+        await _showInfoSheet(
+          context,
+          title: notification['title']?.toString() ?? 'Commentaire utilisateur',
+          icon: Icons.rate_review_outlined,
+          paragraphs: [
+            notification['content']?.toString() ?? '',
+          ].where((paragraph) => paragraph.trim().isNotEmpty).toList(),
+        );
+        return;
       case 'product_added':
       case 'product_updated':
         await _openProductNotification(context, notification);
@@ -638,14 +813,14 @@ class _NotificationsEmptyState extends StatelessWidget {
             ),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Text(
-            'Les nouvelles activites de vos produits, messages et abonnes apparaitront ici.',
+            'Les nouvelles activites de vos vendeurs et produits apparaitront ici.',
+            textAlign: TextAlign.center,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: colorScheme.onSurface.withValues(alpha: 0.62),
-              height: 1.35,
+              height: 1.45,
             ),
-            textAlign: TextAlign.center,
           ),
         ],
       ),
@@ -1084,5 +1259,3 @@ class _NotificationMenuItem extends StatelessWidget {
     );
   }
 }
-
-

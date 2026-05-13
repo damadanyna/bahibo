@@ -244,6 +244,19 @@ export class ConversationsController {
     };
   }
 
+  @Post('attachments/document/direct-signature')
+  async createDirectDocumentUploadSignature(
+    @Req() req: { user: { userId: string } },
+  ) {
+    return {
+      success: true,
+      message: 'Direct document upload signature created successfully',
+      data: this.conversationsService.createDirectDocumentUploadSignature(
+        req.user.userId,
+      ),
+    };
+  }
+
   @Post('attachments/document')
   @UseInterceptors(FileInterceptor('file'))
   async uploadDocumentAttachment(

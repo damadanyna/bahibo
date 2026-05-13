@@ -1,6 +1,7 @@
-import { Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CreateNotificationFeedbackDto } from './dto/create-notification-feedback.dto';
 import { NotificationsService } from './notifications.service';
 
 @Controller('notifications')
@@ -30,6 +31,19 @@ export class NotificationsController {
         req.user.userId,
         notificationId,
       ),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('feedback')
+  async createFeedback(
+    @Req() req: { user: { userId: string } },
+    @Body() dto: CreateNotificationFeedbackDto,
+  ) {
+    return {
+      success: true,
+      message: 'Feedback sent successfully',
+      data: await this.notificationsService.createFeedback(req.user.userId, dto),
     };
   }
 }

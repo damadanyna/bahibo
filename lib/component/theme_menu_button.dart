@@ -103,7 +103,7 @@ Future<void> showThemeSelectionSheet(BuildContext context) {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  ...ThemeMode.values.map(
+                  ...[ThemeMode.light, ThemeMode.dark].map(
                     (mode) => Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: _ThemeModeTile(
@@ -283,10 +283,10 @@ _ThemeModePresentation _themeModePresentation(
       );
     case ThemeMode.system:
       return _ThemeModePresentation(
-        title: 'Systeme',
-        subtitle: 'Suit automatiquement le theme de ton appareil.',
-        icon: Icons.devices_rounded,
-        tint: theme.colorScheme.secondary,
+        title: 'Mode sombre',
+        subtitle: 'Ambiance nocturne avec contraste plus doux.',
+        icon: Icons.dark_mode_rounded,
+        tint: appColors.heroAccent,
       );
   }
 }
@@ -304,4 +304,3 @@ class _ThemeModePresentation {
     required this.tint,
   });
 }
-

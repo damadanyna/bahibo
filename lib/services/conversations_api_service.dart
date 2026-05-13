@@ -7,11 +7,9 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'api_config.dart';
 import 'app_api_client.dart';
 import 'cloudinary_image_url.dart';
 import 'local_conversation_store.dart';
-import 'session_storage.dart';
 
 class ConversationsApiService {
   static const String _conversationsListCacheKey =
@@ -32,7 +30,6 @@ class ConversationsApiService {
     : _client = client ?? AppApiClient();
 
   final AppApiClient _client;
-  final SessionStorage _sessionStorage = SessionStorage();
   final LocalConversationStore _localConversationStore =
       LocalConversationStore.instance;
 
@@ -612,34 +609,44 @@ class ConversationsApiService {
     required Uint8List fileBytes,
     required String fileName,
     void Function(double progress)? onProgress,
-  }) {
-    return _uploadAttachment(
-      endpointPath: '/conversations/attachments/document',
-      fileBytes: fileBytes,
-      fileName: fileName,
-      onProgress: onProgress,
-    );
-  }
-
-  Future<Map<String, dynamic>> _uploadAttachment({
-    required String endpointPath,
-    required Uint8List fileBytes,
-    required String fileName,
-    void Function(double progress)? onProgress,
   }) async {
-    final accessToken = await _sessionStorage.getAccessToken();
-    if (accessToken == null || accessToken.isEmpty) {
-      throw AppApiException('Session invalide');
+    final signature = await _client.post(
+      '/conversations/attachments/document/direct-signature',
+      authenticated: true,
+    );
+    final signatureData = Map<String, dynamic>.from(signature as Map);
+    final cloudName = signatureData['cloudName']?.toString().trim() ?? '';
+    final apiKey = signatureData['apiKey']?.toString().trim() ?? '';
+    final folder = signatureData['folder']?.toString().trim() ?? '';
+    final publicId = signatureData['publicId']?.toString().trim() ?? '';
+    final signatureValue = signatureData['signature']?.toString().trim() ?? '';
+    final timestamp = signatureData['timestamp'];
+    if (cloudName.isEmpty ||
+        apiKey.isEmpty ||
+        folder.isEmpty ||
+        publicId.isEmpty ||
+        signatureValue.isEmpty ||
+        timestamp == null) {
+      throw AppApiException('Signature Cloudinary invalide');
     }
 
-    final uri = Uri.parse('${ApiConfig.baseUrl}$endpointPath');
+    final uploadUri = Uri.parse(
+      'https://api.cloudinary.com/v1_1/$cloudName/raw/upload',
+    );
     final contentType = _resolveMultipartContentType(
-      endpointPath: endpointPath,
+      endpointPath: '/conversations/attachments/document',
       fileName: fileName,
     );
     final request =
-        _ProgressMultipartRequest('POST', uri, onProgress: onProgress)
-          ..headers['Authorization'] = 'Bearer $accessToken'
+        _ProgressMultipartRequest('POST', uploadUri, onProgress: onProgress)
+          ..fields.addAll({
+            'api_key': apiKey,
+            'timestamp': timestamp.toString(),
+            'folder': folder,
+            'public_id': publicId,
+            'overwrite': 'true',
+            'signature': signatureValue,
+          })
           ..files.add(
             http.MultipartFile.fromBytes(
               'file',
@@ -649,10 +656,19 @@ class ConversationsApiService {
             ),
           );
 
-    final decoded = await _sendMultipartRequest(request);
-    return Map<String, dynamic>.from(
-      (decoded['data'] as Map?) ?? const <String, dynamic>{},
-    );
+    final response = await _sendMultipartRequest(request);
+    final secureUrl = response['secure_url']?.toString().trim() ?? '';
+    if (secureUrl.isEmpty) {
+      throw AppApiException('Upload Cloudinary incomplet');
+    }
+
+    return {
+      'attachmentType': 'document',
+      'fileName': fileName,
+      'attachmentUrl': secureUrl,
+      'originalUrl': secureUrl,
+      'publicId': response['public_id']?.toString(),
+    };
   }
 
   Future<Map<String, dynamic>> _sendMultipartRequest(

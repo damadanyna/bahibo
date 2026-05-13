@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { CreateNotificationFeedbackDto } from './dto/create-notification-feedback.dto';
 import { NotificationEntity } from './entities/notification.entity';
 
 @Injectable()
@@ -13,6 +14,17 @@ export class NotificationsService {
   }
 
   async findAll(userId: string): Promise<NotificationEntity[]> {
+    const currentUser = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        role: true,
+      },
+    });
+
+    if (currentUser?.role === 'ADMIN') {
+      return this.findAdminNotifications(userId);
+    }
+
     const sellerProfile = await this.prisma.sellerProfile.findUnique({
       where: { userId },
       include: {
@@ -343,6 +355,22 @@ export class NotificationsService {
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt)));
   }
 
+  async createFeedback(userId: string, dto: CreateNotificationFeedbackDto) {
+    const trimmedMessage = dto.message.trim();
+
+    return this.prisma.userFeedback.create({
+      data: {
+        userId,
+        message: trimmedMessage,
+      },
+      select: {
+        id: true,
+        message: true,
+        createdAt: true,
+      },
+    });
+  }
+
   async markAsRead(userId: string, notificationId: string) {
     return this.prisma.notificationReadState.upsert({
       where: {
@@ -363,6 +391,47 @@ export class NotificationsService {
         readAt: true,
       },
     });
+  }
+
+  private async findAdminNotifications(
+    userId: string,
+  ): Promise<NotificationEntity[]> {
+    const feedbackEntries = await this.prisma.userFeedback.findMany({
+      include: {
+        user: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 50,
+    });
+
+    const feedbackNotifications: NotificationEntity[] = feedbackEntries.map(
+      (feedback) => ({
+        id: `notif-user-feedback-${feedback.id}`,
+        type: 'user_feedback',
+        title: 'Nouveau commentaire utilisateur',
+        body: feedback.message,
+        isRead: false,
+        createdAt: feedback.createdAt.toISOString(),
+        seller: {
+          id: feedback.user.id,
+          name: feedback.user.displayName,
+          avatarUrl: feedback.user.avatarUrl ?? 'https://i.pravatar.cc/240?img=12',
+        },
+        product: null,
+        actors: [
+          {
+            id: feedback.user.id,
+            name: feedback.user.displayName,
+            avatarUrl: feedback.user.avatarUrl ?? 'https://i.pravatar.cc/240?img=12',
+            timeLabel: this.buildRelativeTimeLabel(feedback.createdAt),
+          },
+        ],
+      }),
+    );
+
+    return this.applyReadStates(userId, feedbackNotifications);
   }
 
   private async applyReadStates(

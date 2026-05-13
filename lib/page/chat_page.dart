@@ -105,6 +105,9 @@ class _ChatPageState extends State<ChatPage>
   final List<_ChatMessage> _pendingTextMessages = [];
   final List<_ChatMessage> _pendingMessages = [];
   List<ChatPhotoUploadTask> _photoUploadTasks = const <ChatPhotoUploadTask>[];
+  final List<_DocumentUploadTask> _documentUploadTasks =
+      <_DocumentUploadTask>[];
+  UiChatAttachment? _pendingDocumentAttachment;
   final Set<String> _appliedCompletedUploadIds = <String>{};
   final Set<String> _selectedDisplayMessageKeys = <String>{};
   final Map<String, GlobalKey> _messageKeys = {};
@@ -116,7 +119,7 @@ class _ChatPageState extends State<ChatPage>
   Timer? _typingStopTimer;
   static const int _scrollRetryCount = 4;
   bool _showEntrySkeleton = true;
-  bool _isSending = false;
+  bool _isSendingTextMessage = false;
   bool _isParticipantTyping = false;
   bool _isTypingEventActive = false;
   bool _initialMessageHandled = false;
@@ -1042,7 +1045,7 @@ class _ChatPageState extends State<ChatPage>
   Future<void> _refreshConversationSilently({
     bool updateFromLocalStore = false,
   }) async {
-    if (!mounted || !_usesLiveConversation || _isSending) {
+    if (!mounted || !_usesLiveConversation || _isSendingTextMessage) {
       return;
     }
 
@@ -2065,10 +2068,50 @@ class _ChatPageState extends State<ChatPage>
 
   Future<void> _sendMessage(String text) async {
     final content = text.trim();
-    if (content.isEmpty ||
+    final pendingDocumentAttachment = _pendingDocumentAttachment;
+    if ((content.isEmpty && pendingDocumentAttachment == null) ||
         !_usesLiveConversation ||
-        _isSending ||
+        _isSendingTextMessage ||
         _conversationBlocked) {
+      return;
+    }
+
+    if (pendingDocumentAttachment != null) {
+      final previousReplyingToMessage = _replyingToMessage;
+      final replyPayload = await _replyPayload(previousReplyingToMessage);
+      final pendingReply = previousReplyingToMessage == null
+          ? null
+          : _ChatMessageReply(
+              messageId: previousReplyingToMessage.id,
+              senderLabel: _replyAuthorLabel(previousReplyingToMessage),
+              content: previousReplyingToMessage.message,
+            );
+
+      _typingStopTimer?.cancel();
+      _emitTyping(false);
+      if (mounted) {
+        setState(() {
+          if (identical(
+            _pendingDocumentAttachment,
+            pendingDocumentAttachment,
+          )) {
+            _pendingDocumentAttachment = null;
+          }
+          _replyingToMessage = null;
+        });
+        if (content.isNotEmpty) {
+          _messageController.clear();
+        }
+      }
+
+      unawaited(
+        _sendDocumentAttachment(
+          pendingDocumentAttachment,
+          messageContent: content,
+          replyPayload: replyPayload,
+          pendingReply: pendingReply,
+        ),
+      );
       return;
     }
 
@@ -2103,7 +2146,7 @@ class _ChatPageState extends State<ChatPage>
     _typingStopTimer?.cancel();
     _emitTyping(false);
     setState(() {
-      _isSending = true;
+      _isSendingTextMessage = true;
       _replyingToMessage = null;
     });
     _messageController.clear();
@@ -2133,7 +2176,7 @@ class _ChatPageState extends State<ChatPage>
       });
     } finally {
       if (mounted) {
-        setState(() => _isSending = false);
+        setState(() => _isSendingTextMessage = false);
       }
     }
   }
@@ -2358,9 +2401,56 @@ class _ChatPageState extends State<ChatPage>
         await _sendPhotoAttachment(attachment);
         return;
       case UiChatAttachmentType.document:
-        await _sendDocumentAttachment(attachment);
+        _queueDocumentAttachment(attachment);
         return;
     }
+  }
+
+  void _queueDocumentAttachment(UiChatAttachment attachment) {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _pendingDocumentAttachment = attachment;
+    });
+  }
+
+  void _clearPendingDocumentAttachment() {
+    if (!mounted || _pendingDocumentAttachment == null) {
+      return;
+    }
+
+    setState(() {
+      _pendingDocumentAttachment = null;
+    });
+  }
+
+  void _upsertDocumentUploadTask(_DocumentUploadTask nextTask) {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      final existingIndex = _documentUploadTasks.indexWhere(
+        (task) => task.id == nextTask.id,
+      );
+      if (existingIndex >= 0) {
+        _documentUploadTasks[existingIndex] = nextTask;
+      } else {
+        _documentUploadTasks.add(nextTask);
+      }
+    });
+  }
+
+  void _removeDocumentUploadTask(String taskId) {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _documentUploadTasks.removeWhere((task) => task.id == taskId);
+    });
   }
 
   Future<void> _sendPhotoAttachment(UiChatAttachment attachment) async {
@@ -2405,7 +2495,12 @@ class _ChatPageState extends State<ChatPage>
     WidgetsBinding.instance.addPostFrameCallback((_) => _animateToBottom());
   }
 
-  Future<void> _sendDocumentAttachment(UiChatAttachment attachment) async {
+  Future<void> _sendDocumentAttachment(
+    UiChatAttachment attachment, {
+    String? messageContent,
+    Map<String, dynamic>? replyPayload,
+    _ChatMessageReply? pendingReply,
+  }) async {
     final bytes = attachment.bytes;
     if (bytes == null || bytes.isEmpty) {
       if (!mounted) {
@@ -2420,28 +2515,20 @@ class _ChatPageState extends State<ChatPage>
       return;
     }
 
-    final progressNotifier = ValueNotifier<_DocumentUploadProgress>(
-      const _DocumentUploadProgress(
+    final trimmedMessageContent = messageContent?.trim() ?? '';
+    final composerHadText = trimmedMessageContent.isNotEmpty;
+
+    final taskId = 'document-upload-${DateTime.now().microsecondsSinceEpoch}';
+    _upsertDocumentUploadTask(
+      _DocumentUploadTask(
+        id: taskId,
+        fileName: attachment.label,
+        fileSizeBytes: attachment.sizeBytes ?? bytes.length,
         progress: 0,
         statusText: 'Preparation du document...',
       ),
     );
-    final rootNavigator = Navigator.of(context, rootNavigator: true);
-
-    unawaited(
-      showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        useRootNavigator: true,
-        builder: (dialogContext) {
-          return _DocumentUploadProgressDialog(
-            progressListenable: progressNotifier,
-          );
-        },
-      ),
-    );
-
-    await Future<void>.delayed(const Duration(milliseconds: 20));
+    WidgetsBinding.instance.addPostFrameCallback((_) => _animateToBottom());
 
     try {
       final upload = await _conversationsApiService.uploadDocumentAttachment(
@@ -2450,28 +2537,40 @@ class _ChatPageState extends State<ChatPage>
         onProgress: (progress) {
           final normalizedProgress = progress.clamp(0, 1).toDouble();
           final isUploadStreamComplete = normalizedProgress >= 1;
-          progressNotifier.value = _DocumentUploadProgress(
-            progress: isUploadStreamComplete
-                ? 0.94
-                : (normalizedProgress * 0.94),
-            statusText: isUploadStreamComplete
-                ? 'Traitement du document sur le serveur...'
-                : 'Upload du document en cours...',
+          _upsertDocumentUploadTask(
+            _DocumentUploadTask(
+              id: taskId,
+              fileName: attachment.label,
+              fileSizeBytes: attachment.sizeBytes ?? bytes.length,
+              progress: isUploadStreamComplete
+                  ? 0.94
+                  : (normalizedProgress * 0.94),
+              statusText: isUploadStreamComplete
+                  ? 'Traitement du document sur le serveur...'
+                  : 'Upload du document en cours...',
+            ),
           );
         },
       );
-      progressNotifier.value = const _DocumentUploadProgress(
-        progress: 0.98,
-        statusText: 'Finalisation du document...',
+      _upsertDocumentUploadTask(
+        _DocumentUploadTask(
+          id: taskId,
+          fileName: attachment.label,
+          fileSizeBytes: attachment.sizeBytes ?? bytes.length,
+          progress: 0.98,
+          statusText: 'Finalisation du document...',
+        ),
       );
       final attachmentUrl = upload['attachmentUrl']?.toString().trim() ?? '';
       if (attachmentUrl.isEmpty) {
         throw AppApiException('Document invalide apres upload');
       }
 
-      await _sendMediaAttachmentMessage(
+      final messageSent = await _sendMediaAttachmentMessage(
         kind: _ChatMessageKind.document,
-        content: 'Document envoye',
+        content: composerHadText ? trimmedMessageContent : 'Document envoye',
+        replyPayload: replyPayload,
+        pendingReply: pendingReply,
         mediaPayload: {
           'kind': 'DOCUMENT',
           'mediaType': 'document',
@@ -2495,20 +2594,47 @@ class _ChatPageState extends State<ChatPage>
         ),
       );
 
-      progressNotifier.value = const _DocumentUploadProgress(
-        progress: 1,
-        statusText: 'Document importe avec succes.',
+      if (!messageSent) {
+        _upsertDocumentUploadTask(
+          _DocumentUploadTask(
+            id: taskId,
+            fileName: attachment.label,
+            fileSizeBytes: attachment.sizeBytes ?? bytes.length,
+            progress: 1,
+            statusText: 'Echec lors de l\'injection dans la conversation.',
+            hasFailed: true,
+          ),
+        );
+        return;
+      }
+
+      _upsertDocumentUploadTask(
+        _DocumentUploadTask(
+          id: taskId,
+          fileName: attachment.label,
+          fileSizeBytes: attachment.sizeBytes ?? bytes.length,
+          progress: 1,
+          statusText: 'Document importe avec succes.',
+        ),
       );
 
-      if (rootNavigator.mounted && rootNavigator.canPop()) {
-        rootNavigator.pop();
+      if (mounted) {
+        setState(() {});
       }
-      progressNotifier.dispose();
+      Future<void>.delayed(const Duration(milliseconds: 1200), () {
+        _removeDocumentUploadTask(taskId);
+      });
     } on AppApiException catch (error) {
-      if (rootNavigator.mounted && rootNavigator.canPop()) {
-        rootNavigator.pop();
-      }
-      progressNotifier.dispose();
+      _upsertDocumentUploadTask(
+        _DocumentUploadTask(
+          id: taskId,
+          fileName: attachment.label,
+          fileSizeBytes: attachment.sizeBytes ?? bytes.length,
+          progress: 1,
+          statusText: error.message,
+          hasFailed: true,
+        ),
+      );
       if (!mounted) {
         return;
       }
@@ -2517,10 +2643,16 @@ class _ChatPageState extends State<ChatPage>
         context,
       ).showSnackBar(SnackBar(content: Text(error.message)));
     } catch (error) {
-      if (rootNavigator.mounted && rootNavigator.canPop()) {
-        rootNavigator.pop();
-      }
-      progressNotifier.dispose();
+      _upsertDocumentUploadTask(
+        _DocumentUploadTask(
+          id: taskId,
+          fileName: attachment.label,
+          fileSizeBytes: attachment.sizeBytes ?? bytes.length,
+          progress: 1,
+          statusText: 'Upload impossible: $error',
+          hasFailed: true,
+        ),
+      );
       if (!mounted) {
         return;
       }
@@ -2538,6 +2670,19 @@ class _ChatPageState extends State<ChatPage>
     }
 
     return fileName.substring(lastDot + 1).toUpperCase();
+  }
+
+  String _formatAttachmentSize(int bytes) {
+    if (bytes < 1024) {
+      return '$bytes B';
+    }
+    if (bytes < 1024 * 1024) {
+      final kiloBytes = bytes / 1024;
+      return '${kiloBytes.toStringAsFixed(kiloBytes >= 100 ? 0 : 1)} KB';
+    }
+
+    final megaBytes = bytes / (1024 * 1024);
+    return '${megaBytes.toStringAsFixed(megaBytes >= 10 ? 0 : 1)} MB';
   }
 
   String _guessMimeTypeFromFileName(String fileName, bool isImage) {
@@ -2573,18 +2718,19 @@ class _ChatPageState extends State<ChatPage>
     }
   }
 
-  Future<void> _sendMediaAttachmentMessage({
+  Future<bool> _sendMediaAttachmentMessage({
     required _ChatMessageKind kind,
     required String content,
     required Map<String, dynamic> mediaPayload,
     required _ChatMessageMedia pendingMedia,
+    Map<String, dynamic>? replyPayload,
+    _ChatMessageReply? pendingReply,
   }) async {
     final trimmedContent = content.trim();
     if (trimmedContent.isEmpty ||
         !_usesLiveConversation ||
-        _isSending ||
         _conversationBlocked) {
-      return;
+      return false;
     }
 
     final pendingMessage = _ChatMessage(
@@ -2595,66 +2741,58 @@ class _ChatPageState extends State<ChatPage>
       time: _formatMessageTime(DateTime.now().toIso8601String()),
       isMine: true,
       deliveryState: _ChatMessageDeliveryState.sending,
-      reply: _replyingToMessage == null
-          ? null
-          : _ChatMessageReply(
-              messageId: _replyingToMessage!.id,
-              senderLabel: _replyAuthorLabel(_replyingToMessage!),
-              content: _replyingToMessage!.message,
-            ),
+      reply: pendingReply,
       media: pendingMedia,
     );
-    final previousReplyingToMessage = _replyingToMessage;
 
     _typingStopTimer?.cancel();
     _emitTyping(false);
     setState(() {
-      _isSending = true;
       _pendingMessages.add(pendingMessage);
-      _replyingToMessage = null;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _animateToBottom());
 
     try {
-      final replyPayload = await _replyPayload(previousReplyingToMessage);
+      final effectiveReplyPayload = replyPayload;
       final data =
           (widget.conversationProductId?.isNotEmpty ?? false) &&
               (widget.conversationUserId?.isNotEmpty ?? false) == false
           ? await _conversationsApiService.sendProductMediaMessage(
               productId: widget.conversationProductId!,
               mediaPayload: {'content': trimmedContent, ...mediaPayload},
-              reply: replyPayload,
+              reply: effectiveReplyPayload,
             )
           : (widget.conversationUserId?.isNotEmpty ?? false)
           ? await _conversationsApiService.sendUserMediaMessage(
               targetUserId: widget.conversationUserId!,
               mediaPayload: {'content': trimmedContent, ...mediaPayload},
-              reply: replyPayload,
+              reply: effectiveReplyPayload,
             )
           : _conversationId != null
           ? await _conversationsApiService.sendMediaMessage(
               conversationId: _conversationId!,
               mediaPayload: {'content': trimmedContent, ...mediaPayload},
-              reply: replyPayload,
+              reply: effectiveReplyPayload,
             )
           : await _conversationsApiService.sendMediaMessage(
               conversationId: _conversationId!,
               mediaPayload: {'content': trimmedContent, ...mediaPayload},
-              reply: replyPayload,
+              reply: effectiveReplyPayload,
             );
 
       _applyConversation(data);
       if (!mounted) {
-        return;
+        return false;
       }
 
       setState(() {
         _showEntrySkeleton = false;
       });
       WidgetsBinding.instance.addPostFrameCallback((_) => _animateToBottom());
+      return true;
     } on AppApiException catch (error) {
       if (!mounted) {
-        return;
+        return false;
       }
 
       if (_isBlockedError(error)) {
@@ -2670,12 +2808,8 @@ class _ChatPageState extends State<ChatPage>
         _pendingMessages.removeWhere(
           (message) => message.id == pendingMessage.id,
         );
-        _replyingToMessage = previousReplyingToMessage;
       });
-    } finally {
-      if (mounted) {
-        setState(() => _isSending = false);
-      }
+      return false;
     }
   }
 
@@ -3624,6 +3758,16 @@ class _ChatPageState extends State<ChatPage>
                                   ),
                                   const SizedBox(height: 8),
                                 ],
+                                if (_documentUploadTasks.isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  _DocumentUploadProgressList(
+                                    tasks: _documentUploadTasks,
+                                    primary: primary,
+                                    cardColor: incomingBubbleColor,
+                                    subtleText: subtleText,
+                                  ),
+                                  const SizedBox(height: 8),
+                                ],
                                 if (_isParticipantTyping) ...[
                                   const SizedBox(height: 6),
                                   _TypingIndicatorBubble(
@@ -3654,6 +3798,26 @@ class _ChatPageState extends State<ChatPage>
                                   onClose: _clearReplyingToMessage,
                                 ),
                               ),
+                            if (_pendingDocumentAttachment != null)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: _PendingDocumentComposerCard(
+                                  primary: primary,
+                                  appColors: appColors,
+                                  fileTypeLabel: _fileExtensionLabel(
+                                    _pendingDocumentAttachment!.label,
+                                  ),
+                                  fileName: _pendingDocumentAttachment!.label,
+                                  fileSizeLabel: _formatAttachmentSize(
+                                    _pendingDocumentAttachment!.sizeBytes ??
+                                        _pendingDocumentAttachment!
+                                            .bytes
+                                            ?.length ??
+                                        0,
+                                  ),
+                                  onClose: _clearPendingDocumentAttachment,
+                                ),
+                              ),
                             if (_conversationBlocked)
                               _ChatInfoCard(
                                 text:
@@ -3670,6 +3834,9 @@ class _ChatPageState extends State<ChatPage>
                                 primary: primary,
                                 panelColor: panelColor,
                                 borderColor: appColors.inputBorder,
+                                canSendWithoutText:
+                                    _pendingDocumentAttachment != null,
+                                allowMultipleDocumentSelection: false,
                                 hintText: 'Message',
                               ),
                           ],
@@ -4133,8 +4300,17 @@ class _ChatDisplayMessage {
       .toList(growable: false);
 
   String get messageText {
+    bool isPlaceholderText(String value) {
+      final normalized = value.trim();
+      return normalized == 'Photo envoyee' ||
+          normalized == 'Document envoye' ||
+          normalized == '...' ||
+          normalized == '…';
+    }
+
     if (messages.length == 1) {
-      return anchorMessage.message;
+      final singleMessage = anchorMessage.message.trim();
+      return isPlaceholderText(singleMessage) ? '' : anchorMessage.message;
     }
 
     final normalizedMessages = messages
@@ -4146,7 +4322,7 @@ class _ChatDisplayMessage {
     }
 
     final message = normalizedMessages.first;
-    if (message == 'Photo envoyee' || message == 'Document envoye') {
+    if (isPlaceholderText(message)) {
       return '';
     }
 
@@ -4360,13 +4536,21 @@ class _DeleteMessagesProgress {
   int get percent => (progress * 100).round().clamp(0, 100);
 }
 
-class _DocumentUploadProgress {
+class _DocumentUploadTask {
+  final String id;
+  final String fileName;
+  final int fileSizeBytes;
   final double progress;
   final String statusText;
+  final bool hasFailed;
 
-  const _DocumentUploadProgress({
+  const _DocumentUploadTask({
+    required this.id,
+    required this.fileName,
+    required this.fileSizeBytes,
     required this.progress,
     required this.statusText,
+    this.hasFailed = false,
   });
 
   int get percent => (progress * 100).round().clamp(0, 100);
@@ -4415,6 +4599,7 @@ class _ChatBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasCaptionText = message.trim().isNotEmpty;
     final bubbleColor = isMine ? outgoingBubbleColor : incomingBubbleColor;
     final textColor = Colors.white.withValues(alpha: 0.96);
     final metaColor = isMine
@@ -4473,6 +4658,7 @@ class _ChatBubble extends StatelessWidget {
                     ? _InlineChatMediaCard(
                         media: mediaItems.first,
                         isMine: isMine,
+                        emphasizeBorder: hasCaptionText,
                         primary: primary,
                         cardColor: incomingBubbleColor,
                         subtleText: metaColor,
@@ -4498,6 +4684,7 @@ class _ChatBubble extends StatelessWidget {
                     : _InlineChatMediaGroupCard(
                         mediaItems: mediaItems,
                         isMine: isMine,
+                        emphasizeBorder: hasCaptionText,
                         primary: primary,
                         cardColor: incomingBubbleColor,
                         subtleText: metaColor,
@@ -4608,6 +4795,37 @@ class _AttachmentUploadProgressGrid extends StatelessWidget {
           },
         );
       },
+    );
+  }
+}
+
+class _DocumentUploadProgressList extends StatelessWidget {
+  final List<_DocumentUploadTask> tasks;
+  final Color primary;
+  final Color cardColor;
+  final Color subtleText;
+
+  const _DocumentUploadProgressList({
+    required this.tasks,
+    required this.primary,
+    required this.cardColor,
+    required this.subtleText,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        for (var index = 0; index < tasks.length; index++) ...[
+          _DocumentUploadProgressCard(
+            task: tasks[index],
+            primary: primary,
+            cardColor: cardColor,
+            subtleText: subtleText,
+          ),
+          if (index < tasks.length - 1) const SizedBox(height: 8),
+        ],
+      ],
     );
   }
 }
@@ -4730,115 +4948,140 @@ class _DeleteMessagesProgressDialog extends StatelessWidget {
   }
 }
 
-class _DocumentUploadProgressDialog extends StatelessWidget {
-  final ValueNotifier<_DocumentUploadProgress> progressListenable;
+class _DocumentUploadProgressCard extends StatelessWidget {
+  final _DocumentUploadTask task;
+  final Color primary;
+  final Color cardColor;
+  final Color subtleText;
 
-  const _DocumentUploadProgressDialog({required this.progressListenable});
+  const _DocumentUploadProgressCard({
+    required this.task,
+    required this.primary,
+    required this.cardColor,
+    required this.subtleText,
+  });
+
+  String _formatSize(int bytes) {
+    if (bytes < 1024) {
+      return '$bytes B';
+    }
+    if (bytes < 1024 * 1024) {
+      final kiloBytes = bytes / 1024;
+      return '${kiloBytes.toStringAsFixed(kiloBytes >= 100 ? 0 : 1)} KB';
+    }
+
+    final megaBytes = bytes / (1024 * 1024);
+    return '${megaBytes.toStringAsFixed(megaBytes >= 10 ? 0 : 1)} MB';
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final appColors = theme.appColors;
+    final accentColor = task.hasFailed ? Colors.redAccent : primary;
+    final visualState = task.hasFailed
+        ? _WaterFillVisualState.failed
+        : _WaterFillVisualState.uploading;
 
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-      child: ValueListenableBuilder<_DocumentUploadProgress>(
-        valueListenable: progressListenable,
-        builder: (context, progress, child) {
-          return Container(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
-            decoration: BoxDecoration(
-              color: appColors.panelBackground,
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: appColors.inputBorder),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.24),
-                  blurRadius: 28,
-                  offset: const Offset(0, 12),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(24),
-                  child: SizedBox(
-                    width: 132,
-                    height: 132,
-                    child: Stack(
-                      fit: StackFit.expand,
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: accentColor.withValues(alpha: 0.14)),
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: SizedBox(
+              width: 68,
+              height: 68,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Container(color: Colors.black.withValues(alpha: 0.18)),
+                  _WaterFillProgressLayer(
+                    progress: task.progress.clamp(0, 1),
+                    primary: accentColor,
+                    visualState: visualState,
+                  ),
+                  Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Container(color: Colors.black.withValues(alpha: 0.16)),
-                        _WaterFillProgressLayer(
-                          progress: progress.progress,
-                          primary: theme.colorScheme.primary,
-                          visualState: _WaterFillVisualState.uploading,
+                        const Icon(
+                          Icons.description_rounded,
+                          color: Colors.white,
+                          size: 22,
                         ),
-                        Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                Icons.description_rounded,
-                                color: Colors.white,
-                                size: 34,
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                '${progress.percent}%',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ],
+                        const SizedBox(height: 4),
+                        Text(
+                          '${task.percent}%',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
                       ],
                     ),
                   ),
-                ),
-                const SizedBox(height: 18),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Text(
-                  'Upload du document',
-                  textAlign: TextAlign.center,
+                  task.fileName,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: theme.colorScheme.onSurface,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w900,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _formatSize(task.fileSizeBytes),
+                  style: TextStyle(
+                    color: subtleText,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  progress.statusText,
-                  textAlign: TextAlign.center,
+                  task.statusText,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: appColors.mutedText,
-                    fontSize: 13,
+                    color: task.hasFailed ? Colors.redAccent : subtleText,
+                    fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    height: 1.35,
+                    height: 1.25,
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 10),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(999),
                   child: LinearProgressIndicator(
-                    minHeight: 8,
-                    value: progress.progress,
-                    color: theme.colorScheme.primary,
-                    backgroundColor: theme.colorScheme.primary.withValues(
-                      alpha: 0.16,
-                    ),
+                    minHeight: 7,
+                    value: task.progress.clamp(0, 1),
+                    color: accentColor,
+                    backgroundColor: accentColor.withValues(alpha: 0.16),
                   ),
                 ),
               ],
             ),
-          );
-        },
+          ),
+        ],
       ),
     );
   }
@@ -4895,28 +5138,6 @@ class _AttachmentUploadProgressCard extends StatelessWidget {
               progress: normalizedProgress,
               primary: accentColor,
               visualState: waterFillVisualState,
-            ),
-            Positioned(
-              top: 8,
-              right: 8,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.48),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.16),
-                  ),
-                ),
-                child: Text(
-                  '$normalizedPercent%',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
             ),
             Center(
               child: Column(
@@ -5616,6 +5837,7 @@ class _InlineProductSnapshotCard extends StatelessWidget {
 class _InlineChatMediaCard extends StatelessWidget {
   final _ChatMessageMedia media;
   final bool isMine;
+  final bool emphasizeBorder;
   final Color primary;
   final Color cardColor;
   final Color subtleText;
@@ -5625,6 +5847,7 @@ class _InlineChatMediaCard extends StatelessWidget {
   const _InlineChatMediaCard({
     required this.media,
     required this.isMine,
+    required this.emphasizeBorder,
     required this.primary,
     required this.cardColor,
     required this.subtleText,
@@ -5638,6 +5861,7 @@ class _InlineChatMediaCard extends StatelessWidget {
       return _InlineChatMediaImageCard(
         media: media,
         isMine: isMine,
+        emphasizeBorder: emphasizeBorder,
         primary: primary,
         cardColor: cardColor,
         subtleText: subtleText,
@@ -5649,6 +5873,7 @@ class _InlineChatMediaCard extends StatelessWidget {
     return _InlineChatDocumentCard(
       media: media,
       isMine: isMine,
+      emphasizeBorder: emphasizeBorder,
       primary: primary,
       subtleText: subtleText,
       onTap: onTap,
@@ -5659,6 +5884,7 @@ class _InlineChatMediaCard extends StatelessWidget {
 class _InlineChatMediaGroupCard extends StatelessWidget {
   final List<_ChatMessageMedia> mediaItems;
   final bool isMine;
+  final bool emphasizeBorder;
   final Color primary;
   final Color cardColor;
   final Color subtleText;
@@ -5667,6 +5893,7 @@ class _InlineChatMediaGroupCard extends StatelessWidget {
   const _InlineChatMediaGroupCard({
     required this.mediaItems,
     required this.isMine,
+    required this.emphasizeBorder,
     required this.primary,
     required this.cardColor,
     required this.subtleText,
@@ -5694,7 +5921,9 @@ class _InlineChatMediaGroupCard extends StatelessWidget {
       final visibleItems = mediaItems.take(4).toList(growable: false);
       final hiddenCount = mediaItems.length - visibleItems.length;
       final borderColor = isMine
-          ? primary.withValues(alpha: 0.28)
+          ? (emphasizeBorder
+                ? primary.withValues(alpha: 0.28)
+                : Colors.transparent)
           : Theme.of(context).appColors.inputBorder;
 
       return Container(
@@ -5765,6 +5994,7 @@ class _InlineChatMediaGroupCard extends StatelessWidget {
           _InlineChatDocumentCard(
             media: visibleItems[index],
             isMine: isMine,
+            emphasizeBorder: emphasizeBorder,
             primary: primary,
             subtleText: subtleText,
             onTap: onTapAtIndex == null ? null : () => onTapAtIndex!(index),
@@ -5800,6 +6030,7 @@ class _InlineChatMediaGroupCard extends StatelessWidget {
 class _InlineChatMediaImageCard extends StatelessWidget {
   final _ChatMessageMedia media;
   final bool isMine;
+  final bool emphasizeBorder;
   final Color primary;
   final Color cardColor;
   final Color subtleText;
@@ -5809,6 +6040,7 @@ class _InlineChatMediaImageCard extends StatelessWidget {
   const _InlineChatMediaImageCard({
     required this.media,
     required this.isMine,
+    required this.emphasizeBorder,
     required this.primary,
     required this.cardColor,
     required this.subtleText,
@@ -5819,7 +6051,9 @@ class _InlineChatMediaImageCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final borderColor = isMine
-        ? primary.withValues(alpha: 0.28)
+        ? (emphasizeBorder
+              ? primary.withValues(alpha: 0.28)
+              : Colors.transparent)
         : Theme.of(context).appColors.inputBorder;
 
     return Material(
@@ -5915,6 +6149,7 @@ class _InlineChatMediaImageCard extends StatelessWidget {
 class _InlineChatDocumentCard extends StatelessWidget {
   final _ChatMessageMedia media;
   final bool isMine;
+  final bool emphasizeBorder;
   final Color primary;
   final Color subtleText;
   final VoidCallback? onTap;
@@ -5922,6 +6157,7 @@ class _InlineChatDocumentCard extends StatelessWidget {
   const _InlineChatDocumentCard({
     required this.media,
     required this.isMine,
+    required this.emphasizeBorder,
     required this.primary,
     required this.subtleText,
     this.onTap,
@@ -5934,7 +6170,9 @@ class _InlineChatDocumentCard extends StatelessWidget {
         ? primary.withValues(alpha: 0.18)
         : appColors.panelMuted;
     final borderColor = isMine
-        ? primary.withValues(alpha: 0.26)
+        ? (emphasizeBorder
+              ? primary.withValues(alpha: 0.26)
+              : Colors.transparent)
         : appColors.inputBorder;
     final titleColor = isMine
         ? Theme.of(context).appColors.heroForeground
@@ -6433,6 +6671,121 @@ class _ReplyComposerCard extends StatelessWidget {
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     height: 1.25,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          InkWell(
+            onTap: onClose,
+            borderRadius: BorderRadius.circular(999),
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: Icon(
+                Icons.close_rounded,
+                color: appColors.mutedText,
+                size: 20,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PendingDocumentComposerCard extends StatelessWidget {
+  final Color primary;
+  final AppThemeColors appColors;
+  final String fileTypeLabel;
+  final String fileName;
+  final String fileSizeLabel;
+  final VoidCallback onClose;
+
+  const _PendingDocumentComposerCard({
+    required this.primary,
+    required this.appColors,
+    required this.fileTypeLabel,
+    required this.fileName,
+    required this.fileSizeLabel,
+    required this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+      decoration: BoxDecoration(
+        color: appColors.panelBackground,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: appColors.inputBorder),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(Icons.description_rounded, color: primary, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: primary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        fileTypeLabel,
+                        style: TextStyle(
+                          color: primary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        fileSizeLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: appColors.mutedText,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  fileName,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurface,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    height: 1.2,
                   ),
                 ),
               ],

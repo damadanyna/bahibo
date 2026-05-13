@@ -12,6 +12,107 @@ const prisma = new PrismaClient();
 async function main() {
   const passwordHash = await bcrypt.hash('bahibo123', 10);
 
+  await prisma.user.upsert({
+    where: { phoneE164: '+261340000999' },
+    update: {
+      displayName: 'Admin Demo',
+      passwordHash,
+      avatarUrl: 'https://i.pravatar.cc/240?img=3',
+      isVerified: true,
+      role: UserRole.ADMIN,
+    },
+    create: {
+      id: 'user-admin-demo',
+      phoneE164: '+261340000999',
+      displayName: 'Admin Demo',
+      passwordHash,
+      avatarUrl: 'https://i.pravatar.cc/240?img=3',
+      isVerified: true,
+      role: UserRole.ADMIN,
+      cart: {
+        create: {},
+      },
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { phoneE164: '+261340000444' },
+    update: {
+      displayName: 'Shop Pending Demo',
+      passwordHash,
+      avatarUrl: 'https://i.pravatar.cc/240?img=21',
+      isVerified: true,
+      role: UserRole.CUSTOMER,
+      shopRequestStatus: 'PENDING',
+      shopRequestSubmittedAt: new Date('2026-05-10T08:00:00.000Z'),
+      shopRequestReviewedAt: null,
+    },
+    create: {
+      id: 'user-shop-pending-demo',
+      phoneE164: '+261340000444',
+      displayName: 'Shop Pending Demo',
+      passwordHash,
+      avatarUrl: 'https://i.pravatar.cc/240?img=21',
+      isVerified: true,
+      role: UserRole.CUSTOMER,
+      shopRequestStatus: 'PENDING',
+      shopRequestSubmittedAt: new Date('2026-05-10T08:00:00.000Z'),
+      shopRequestReviewedAt: null,
+      cart: {
+        create: {},
+      },
+    },
+  });
+
+  const sellerVerificationUser = await prisma.user.upsert({
+    where: { phoneE164: '+261340000555' },
+    update: {
+      displayName: 'Seller Verify Demo',
+      passwordHash,
+      avatarUrl: 'https://i.pravatar.cc/240?img=24',
+      isVerified: true,
+      role: UserRole.SELLER,
+      isSellerCertified: false,
+      sellerVerificationRequestStatus: 'PENDING',
+      sellerVerificationRequestedAt: new Date('2026-05-11T09:00:00.000Z'),
+      sellerVerificationReviewedAt: null,
+    },
+    create: {
+      id: 'user-seller-verify-demo',
+      phoneE164: '+261340000555',
+      displayName: 'Seller Verify Demo',
+      passwordHash,
+      avatarUrl: 'https://i.pravatar.cc/240?img=24',
+      isVerified: true,
+      role: UserRole.SELLER,
+      isSellerCertified: false,
+      sellerVerificationRequestStatus: 'PENDING',
+      sellerVerificationRequestedAt: new Date('2026-05-11T09:00:00.000Z'),
+      sellerVerificationReviewedAt: null,
+      cart: {
+        create: {},
+      },
+    },
+  });
+
+  await prisma.sellerProfile.upsert({
+    where: { userId: sellerVerificationUser.id },
+    update: {
+      studioName: 'Seller Verify Demo Shop',
+      description: 'Compte de test pour verification vendeur admin.',
+      city: 'Antananarivo',
+      country: 'Madagascar',
+    },
+    create: {
+      id: 'seller-profile-verify-demo',
+      userId: sellerVerificationUser.id,
+      studioName: 'Seller Verify Demo Shop',
+      description: 'Compte de test pour verification vendeur admin.',
+      city: 'Antananarivo',
+      country: 'Madagascar',
+    },
+  });
+
   const customer = await prisma.user.upsert({
     where: { phoneE164: '+261341234567' },
     update: {
@@ -34,6 +135,19 @@ async function main() {
     },
     include: {
       cart: true,
+    },
+  });
+
+  await prisma.userFeedback.upsert({
+    where: { id: 'feedback-admin-demo-1' },
+    update: {
+      userId: customer.id,
+      message: 'Bonjour admin, ceci est un commentaire de test pour la boite de notifications.',
+    },
+    create: {
+      id: 'feedback-admin-demo-1',
+      userId: customer.id,
+      message: 'Bonjour admin, ceci est un commentaire de test pour la boite de notifications.',
     },
   });
 

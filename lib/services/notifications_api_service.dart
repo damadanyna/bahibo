@@ -66,6 +66,12 @@ class NotificationsApiService {
       authenticated: true,
     );
   }
+
+  Future<void> sendFeedback(String message) async {
+    await _client.post(
+      '/notifications/feedback',
+      authenticated: true,
+      body: {'message': message},
+    );
+  }
 }
-
-

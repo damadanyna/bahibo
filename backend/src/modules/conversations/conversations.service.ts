@@ -241,6 +241,12 @@ export class ConversationsService {
     return this.cloudinaryService.createDirectChatImageUploadSignature(userId);
   }
 
+  createDirectDocumentUploadSignature(userId: string) {
+    return this.cloudinaryService.createDirectChatDocumentUploadSignature(
+      userId,
+    );
+  }
+
   private validateAttachment(
     file: Express.Multer.File,
     type: 'photo' | 'document',

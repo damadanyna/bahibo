@@ -2,7 +2,12 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
 
-type UploadImageVariant = 'avatar' | 'cover' | 'product' | 'chat-image';
+type UploadImageVariant =
+  | 'avatar'
+  | 'cover'
+  | 'product'
+  | 'chat-image'
+  | 'chat-document';
 
 @Injectable()
 export class CloudinaryService {
@@ -63,6 +68,39 @@ export class CloudinaryService {
     const timestamp = Math.floor(Date.now() / 1000);
     const folder = this.resolveFolder('chat-image');
     const publicId = `${sanitizedIdentifier}-chat-image-${Date.now()}`;
+    const signature = cloudinary.utils.api_sign_request(
+      {
+        folder,
+        overwrite: 'true',
+        public_id: publicId,
+        timestamp,
+      },
+      apiSecret,
+    );
+
+    return {
+      cloudName,
+      apiKey,
+      timestamp,
+      folder,
+      publicId,
+      overwrite: true,
+      signature,
+    };
+  }
+
+  createDirectChatDocumentUploadSignature(identifier: string) {
+    if (!this.isConfigured()) {
+      throw new BadRequestException('Cloudinary is not configured');
+    }
+
+    const cloudName = this.configService.get<string>('CLOUDINARY_CLOUD_NAME')!;
+    const apiKey = this.configService.get<string>('CLOUDINARY_API_KEY')!;
+    const apiSecret = this.configService.get<string>('CLOUDINARY_API_SECRET')!;
+    const sanitizedIdentifier = identifier.replace(/[^a-zA-Z0-9]/g, '');
+    const timestamp = Math.floor(Date.now() / 1000);
+    const folder = this.resolveFolder('chat-document');
+    const publicId = `${sanitizedIdentifier}-chat-document-${Date.now()}`;
     const signature = cloudinary.utils.api_sign_request(
       {
         folder,
@@ -193,6 +231,10 @@ export class CloudinaryService {
 
     if (variant === 'chat-image') {
       return 'BANAY/chat-images';
+    }
+
+    if (variant === 'chat-document') {
+      return 'BANAY/chat-documents';
     }
 
     return 'BANAY/profile-avatars';

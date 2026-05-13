@@ -1,134 +1,181 @@
-Liste des endpoints API - Cote administrateur
+BASE URL
+/api/v1
 
-Base URL: /api/v1
+COMPTE ADMIN TEST OTP
+phoneE164: +261340000999
+countryName: Madagascar
+countryDialCode: +261
 
-1. GET /api/v1/profiles/admin/shop-requests/pending
-Description:
-- Liste les demandes de creation de boutique en attente.
-- Retourne les informations du compte utilisateur et, si present, le profil vendeur associe.
-Parametres:
-- Path params: aucun
-- Query params: aucun
-- Body: aucun
+IDS TEST
+shopPendingUserId: user-shop-pending-demo
+sellerVerificationUserId: user-seller-verify-demo
+feedbackNotificationId: notif-user-feedback-feedback-admin-demo-1
 
-2. POST /api/v1/profiles/admin/shop-requests/:userId/approve
-Description:
-- Approuve une demande de boutique.
-- Le compte utilisateur passe au role SELLER.
-- Le statut de la demande passe a APPROVED.
-- Cree un seller profile si necessaire.
-Parametres:
-- Path params: userId (string) -> identifiant de l'utilisateur a approuver
-- Query params: aucun
-- Body: aucun
+HEADERS JSON
+Content-Type: application/json
 
-3. POST /api/v1/profiles/admin/shop-requests/:userId/pending
-Description:
-- Remet une demande de boutique a l'etat PENDING.
-- Le compte repasse au role CUSTOMER si possible.
-- Supprime le seller profile si la boutique n'a ni produits ni commandes.
-Parametres:
-- Path params: userId (string) -> identifiant de l'utilisateur a remettre en attente
-- Query params: aucun
-- Body: aucun
+1) REQUEST OTP ADMIN
+POST /api/v1/auth/otp/request
+query: none
+body:
+{
+	"countryName": "Madagascar",
+	"countryDialCode": "+261",
+	"phoneE164": "+261340000999"
+}
 
-4. GET /api/v1/profiles/admin/seller-verification-requests/pending
-Description:
-- Liste les demandes de certification vendeur en attente.
-- Retourne les informations du vendeur et son seller profile.
-Parametres:
-- Path params: aucun
-- Query params: aucun
-- Body: aucun
+curl:
+curl -X POST http://localhost:4000/api/v1/auth/otp/request ^
+	-H "Content-Type: application/json" ^
+	-d "{\"countryName\":\"Madagascar\",\"countryDialCode\":\"+261\",\"phoneE164\":\"+261340000999\"}"
 
-5. POST /api/v1/profiles/admin/seller-verification-requests/:userId/approve
-Description:
-- Valide la certification d'un vendeur.
-- Le champ isSellerCertified passe a true.
-- Le statut de la demande passe a APPROVED.
-Parametres:
-- Path params: userId (string) -> identifiant du vendeur a certifier
-- Query params: aucun
-- Body: aucun
+use:
+- prendre la valeur `debugCode` dans la reponse si `deliveryMode` = `console`
 
-6. POST /api/v1/profiles/admin/seller-verification-requests/:userId/pending
-Description:
-- Remet une demande de certification vendeur a l'etat PENDING.
-- Retire la certification si elle avait deja ete accordee.
-Parametres:
-- Path params: userId (string) -> identifiant du vendeur a remettre en attente
-- Query params: aucun
-- Body: aucun
+2) VERIFY OTP ADMIN
+POST /api/v1/auth/otp/verify
+query: none
+body:
+{
+	"phoneE164": "+261340000999",
+	"otpCode": "<debugCode>"
+}
 
-7. GET /api/v1/profiles/admin/reports
-Description:
-- Recupere tous les signalements utilisateurs.
-- Inclut le reporter, l'utilisateur signale, la raison, les details et la date de creation.
-Parametres:
-- Path params: aucun
-- Query params: aucun
-- Body: aucun
+curl:
+curl -X POST http://localhost:4000/api/v1/auth/otp/verify ^
+	-H "Content-Type: application/json" ^
+	-d "{\"phoneE164\":\"+261340000999\",\"otpCode\":\"<debugCode>\"}"
 
-AUTHENTIFICATION ADMINISTRATEUR
+use:
+- prendre `accessToken` et `refreshToken` dans la reponse
 
-Ces endpoints servent a la connexion et a la gestion de session pour acceder aux routes administrateur.
+3) CHECK ADMIN SESSION
+GET /api/v1/auth/me
+query: none
+body: none
 
-Headers d'authentification a retenir:
-- Authorization: Bearer <accessToken> -> requis pour les routes protegees comme /api/v1/auth/me et toutes les routes /profiles/admin/*
-- Content-Type: application/json -> requis pour les requetes avec body JSON
+curl:
+curl http://localhost:4000/api/v1/auth/me ^
+	-H "Authorization: Bearer <accessToken>"
 
-8. POST /api/v1/auth/login
-Description:
-- Connecte un administrateur a la plateforme.
-Parametres:
-- Path params: aucun
-- Query params: aucun
-- Body:
-	- phoneE164 (string) -> numero de telephone au format international
-	- password (string) -> mot de passe du compte
-Utilisation:
-- Endpoint de connexion initiale
-- Retour attendu: accessToken et refreshToken
+4) REFRESH TOKEN
+POST /api/v1/auth/refresh
+query: none
+body:
+{
+	"refreshToken": "<refreshToken>"
+}
 
-9. POST /api/v1/auth/refresh
-Description:
-- Renouvelle le token d'acces apres connexion.
-Parametres:
-- Path params: aucun
-- Query params: aucun
-- Body:
-	- refreshToken (string) -> token de renouvellement
-Utilisation:
-- Endpoint a utiliser quand l'accessToken expire
-- Retour attendu: nouveau accessToken et parfois un nouveau refreshToken
+curl:
+curl -X POST http://localhost:4000/api/v1/auth/refresh ^
+	-H "Content-Type: application/json" ^
+	-d "{\"refreshToken\":\"<refreshToken>\"}"
 
-10. POST /api/v1/auth/logout
-Description:
-- Deconnecte l'utilisateur authentifie.
-Parametres:
-- Path params: aucun
-- Query params: aucun
-- Body:
-	- refreshToken (string) -> token de session a invalider
-Utilisation:
-- Endpoint de fermeture de session
-- Invalide le refreshToken cote serveur
+5) LOGOUT
+POST /api/v1/auth/logout
+query: none
+body:
+{
+	"refreshToken": "<refreshToken>"
+}
 
-11. GET /api/v1/auth/me
-Description:
-- Retourne le profil de l'utilisateur connecte.
-- Permet de verifier si le compte courant a le role ADMIN.
-Parametres:
-- Path params: aucun
-- Query params: aucun
-- Body: aucun
-Headers:
-- Authorization: Bearer <accessToken>
-Utilisation:
-- Endpoint de verification de session
-- Permet de confirmer que l'utilisateur courant est bien administrateur
+curl:
+curl -X POST http://localhost:4000/api/v1/auth/logout ^
+	-H "Authorization: Bearer <accessToken>" ^
+	-H "Content-Type: application/json" ^
+	-d "{\"refreshToken\":\"<refreshToken>\"}"
 
-Remarque:
-- Toutes les routes /profiles/admin/* necessitent une authentification JWT.
-- L'acces est autorise uniquement aux utilisateurs dont le role est ADMIN.
-- Les endpoints auth proteges utilisent le header Authorization: Bearer <token>.
+6) LIST PENDING SHOP REQUESTS
+GET /api/v1/profiles/admin/shop-requests/pending
+query: none
+body: none
+
+curl:
+curl http://localhost:4000/api/v1/profiles/admin/shop-requests/pending ^
+	-H "Authorization: Bearer <accessToken>"
+
+7) APPROVE SHOP REQUEST
+POST /api/v1/profiles/admin/shop-requests/user-shop-pending-demo/approve
+query: none
+body: none
+
+curl:
+curl -X POST http://localhost:4000/api/v1/profiles/admin/shop-requests/user-shop-pending-demo/approve ^
+	-H "Authorization: Bearer <accessToken>"
+
+8) RESET SHOP REQUEST TO PENDING
+POST /api/v1/profiles/admin/shop-requests/user-shop-pending-demo/pending
+query: none
+body: none
+
+curl:
+curl -X POST http://localhost:4000/api/v1/profiles/admin/shop-requests/user-shop-pending-demo/pending ^
+	-H "Authorization: Bearer <accessToken>"
+
+9) LIST PENDING SELLER VERIFICATION REQUESTS
+GET /api/v1/profiles/admin/seller-verification-requests/pending
+query: none
+body: none
+
+curl:
+curl http://localhost:4000/api/v1/profiles/admin/seller-verification-requests/pending ^
+	-H "Authorization: Bearer <accessToken>"
+
+10) APPROVE SELLER VERIFICATION REQUEST
+POST /api/v1/profiles/admin/seller-verification-requests/user-seller-verify-demo/approve
+query: none
+body: none
+
+curl:
+curl -X POST http://localhost:4000/api/v1/profiles/admin/seller-verification-requests/user-seller-verify-demo/approve ^
+	-H "Authorization: Bearer <accessToken>"
+
+11) RESET SELLER VERIFICATION TO PENDING
+POST /api/v1/profiles/admin/seller-verification-requests/user-seller-verify-demo/pending
+query: none
+body: none
+
+curl:
+curl -X POST http://localhost:4000/api/v1/profiles/admin/seller-verification-requests/user-seller-verify-demo/pending ^
+	-H "Authorization: Bearer <accessToken>"
+
+12) LIST ALL REPORTS
+GET /api/v1/profiles/admin/reports
+query: none
+body: none
+
+curl:
+curl http://localhost:4000/api/v1/profiles/admin/reports ^
+	-H "Authorization: Bearer <accessToken>"
+
+13) LIST ADMIN NOTIFICATIONS
+GET /api/v1/notifications
+query: none
+body: none
+
+curl:
+curl http://localhost:4000/api/v1/notifications ^
+	-H "Authorization: Bearer <accessToken>"
+
+14) MARK ADMIN NOTIFICATION AS READ
+POST /api/v1/notifications/notif-user-feedback-feedback-admin-demo-1/read
+query: none
+body: none
+
+curl:
+curl -X POST http://localhost:4000/api/v1/notifications/notif-user-feedback-feedback-admin-demo-1/read ^
+	-H "Authorization: Bearer <accessToken>"
+
+15) USER SENDS COMMENT TO ADMIN
+POST /api/v1/notifications/feedback
+query: none
+body:
+{
+	"message": "Bonjour admin, ceci est un commentaire de test pour la boite de notifications."
+}
+
+curl:
+curl -X POST http://localhost:4000/api/v1/notifications/feedback ^
+	-H "Authorization: Bearer <accessToken>" ^
+	-H "Content-Type: application/json" ^
+	-d "{\"message\":\"Bonjour admin, ceci est un commentaire de test pour la boite de notifications.\"}"
