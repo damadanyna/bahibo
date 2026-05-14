@@ -19,7 +19,7 @@ POST /api/v1/auth/otp/request
 query: none
 body:
 {
-	"countryName": "Madagascar",
+	"c e": "Madagascar",
 	"countryDialCode": "+261",
 	"phoneE164": "+261340000999"
 }

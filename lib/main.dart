@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:banay/auth/session_gate.dart';
+import 'package:banay/services/api_config.dart';
 import 'package:banay/services/chat_realtime_service.dart';
 import 'package:banay/services/location_permission_service.dart';
 import 'package:banay/providers/theme_provider.dart';
@@ -12,6 +15,7 @@ enum _LocationPermissionDialogAction { later, continueRequest }
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  _configureDevelopmentTlsOverride();
   await PushNotificationService.initialize();
 
   // Désactiver la rotation et forcer le mode portrait
@@ -20,6 +24,26 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
   runApp(const MyApp());
+}
+
+void _configureDevelopmentTlsOverride() {
+  final host = Uri.tryParse(ApiConfig.baseUrl)?.host;
+  if (host != '77.37.51.154') {
+    return;
+  }
+
+  HttpOverrides.global = _BanayDevHttpOverrides();
+}
+
+class _BanayDevHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    final client = super.createHttpClient(context);
+    client.badCertificateCallback = (cert, host, port) {
+      return host == '77.37.51.154';
+    };
+    return client;
+  }
 }
 
 class MyApp extends StatelessWidget {
