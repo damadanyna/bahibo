@@ -722,7 +722,8 @@ export class ProfilesService {
       | 'product_like'
       | 'product_comment'
       | 'followed_seller_activity'
-      | 'seller_follow',
+      | 'seller_follow'
+      | 'shop_request_approved',
   ) {
     const unreadCount = await this.notificationsService.countUnread(userId);
     this.conversationsRealtimeGateway.emitNotificationEvent(userId, {
@@ -1158,6 +1159,16 @@ export class ProfilesService {
 
     const profile = await this.getCurrentUserProfile(userId);
     this.emitShopRequestProfileUpdate(profile);
+    await this.emitNotificationUpdatedEvent(userId, 'shop_request_approved');
+    const sellerStudioName = profile.sellerProfile?.studioName?.trim() ?? '';
+    await this.pushNotificationsService.sendShopRequestApprovedNotification({
+      recipientUserId: userId,
+      sellerProfileId: profile.sellerProfile?.id,
+      sellerDisplayName: sellerStudioName.length > 0
+        ? sellerStudioName
+        : profile.displayName,
+      sellerAvatarUrl: profile.avatarUrl ?? undefined,
+    });
     return profile;
   }
 

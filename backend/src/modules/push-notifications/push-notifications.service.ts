@@ -71,6 +71,13 @@ type SendSellerFollowNotificationArgs = {
   sellerProfileId: string;
 };
 
+type SendShopRequestApprovedNotificationArgs = {
+  recipientUserId: string;
+  sellerProfileId?: string;
+  sellerDisplayName: string;
+  sellerAvatarUrl?: string;
+};
+
 @Injectable()
 export class PushNotificationsService {
   private readonly logger = new Logger(PushNotificationsService.name);
@@ -587,6 +594,80 @@ export class PushNotificationsService {
         followerUserId: args.followerUserId,
         sellerName: args.followerDisplayName,
         sellerAvatarUrl: args.followerAvatarUrl ?? '',
+      },
+      android: {
+        priority: 'high',
+        notification: {
+          channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
+          sound: ANDROID_NOTIFICATION_SOUND,
+          clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+        },
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: 'default',
+          },
+        },
+      },
+    });
+
+    const invalidTokens = response.responses
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => {
+        const code = item.error?.code;
+        return (
+          code === 'messaging/invalid-registration-token' ||
+          code === 'messaging/registration-token-not-registered'
+        );
+      })
+      .map(({ index }) => deviceTokens[index].token);
+
+    if (invalidTokens.length > 0) {
+      await this.prisma.userDeviceToken.deleteMany({
+        where: {
+          token: {
+            in: invalidTokens,
+          },
+        },
+      });
+    }
+  }
+
+  async sendShopRequestApprovedNotification(
+    args: SendShopRequestApprovedNotificationArgs,
+  ) {
+    const deviceTokens = await this.prisma.userDeviceToken.findMany({
+      where: {
+        userId: args.recipientUserId,
+      },
+      select: {
+        token: true,
+      },
+    });
+
+    if (deviceTokens.length === 0) {
+      return;
+    }
+
+    if (!this.firebaseApp) {
+      this.logger.warn(
+        `Skipping shop approval notification for user ${args.recipientUserId} because Firebase Admin is not configured.`,
+      );
+      return;
+    }
+
+    const response = await getMessaging(this.firebaseApp).sendEachForMulticast({
+      tokens: deviceTokens.map((deviceToken) => deviceToken.token),
+      notification: {
+        title: 'Demande boutique approuvee',
+        body: 'Votre compte a ete passe en boutique. Vous pouvez maintenant publier vos produits.',
+      },
+      data: {
+        type: 'shop_request_approved',
+        sellerProfileId: args.sellerProfileId ?? '',
+        sellerName: args.sellerDisplayName,
+        sellerAvatarUrl: args.sellerAvatarUrl ?? '',
       },
       android: {
         priority: 'high',

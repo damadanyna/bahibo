@@ -14,12 +14,12 @@ feedbackNotificationId: notif-user-feedback-feedback-admin-demo-1
 HEADERS JSON
 Content-Type: application/json
 
-1) REQUEST OTP ADMIN
+1) REQUEST OTP ADMINje fai
 POST /api/v1/auth/otp/request
 query: none
 body:
 {
-	"c e": "Madagascar",
+	"countryName": "Madagascar",
 	"countryDialCode": "+261",
 	"phoneE164": "+261340000999"
 }
@@ -144,14 +144,23 @@ GET /api/v1/profiles/admin/reports
 query: none
 body: none
 
+use:
+- cet endpoint retourne les signalements utilisateur stockes dans `UserReport`
+- cet endpoint ne retourne pas les commentaires / feedback utilisateur envoyes a l'admin
+
 curl:
 curl http://localhost:4000/api/v1/profiles/admin/reports ^
 	-H "Authorization: Bearer <accessToken>"
 
-13) LIST ADMIN NOTIFICATIONS
+13) LIST ADMIN FEEDBACK NOTIFICATIONS
 GET /api/v1/notifications
 query: none
 body: none
+
+use:
+- pour un compte admin, cet endpoint retourne la boite de notifications admin
+- les feedbacks utilisateur apparaissent ici avec `type = "user_feedback"`
+- la source est la table `UserFeedback`, pas `UserReport`
 
 curl:
 curl http://localhost:4000/api/v1/notifications ^

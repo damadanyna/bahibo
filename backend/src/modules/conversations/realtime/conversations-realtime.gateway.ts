@@ -83,7 +83,8 @@ type NotificationRealtimePayload = {
     | 'product_like'
     | 'product_comment'
     | 'followed_seller_activity'
-    | 'seller_follow';
+    | 'seller_follow'
+    | 'shop_request_approved';
   unreadCount?: number;
 };
 

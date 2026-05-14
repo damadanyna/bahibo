@@ -17,7 +17,18 @@ export class NotificationsService {
     const currentUser = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
+        id: true,
+        displayName: true,
+        avatarUrl: true,
         role: true,
+        shopRequestStatus: true,
+        shopRequestReviewedAt: true,
+        sellerProfile: {
+          select: {
+            id: true,
+            studioName: true,
+          },
+        },
       },
     });
 
@@ -206,8 +217,13 @@ export class NotificationsService {
       userId,
     );
 
+    const shopRequestApprovalNotifications = this.buildShopRequestApprovalNotifications(
+      currentUser,
+    );
+
     if (!sellerProfile) {
       return this.applyReadStates(userId, [
+        ...shopRequestApprovalNotifications,
         ...followerCommentNotifications,
         ...productUpdateNotifications,
         ...productNotifications,
@@ -344,6 +360,7 @@ export class NotificationsService {
     );
 
     return this.applyReadStates(userId, [
+      ...shopRequestApprovalNotifications,
       ...sellerFollowNotifications,
       ...productCommentNotifications,
       ...productLikeNotifications,
@@ -432,6 +449,59 @@ export class NotificationsService {
     );
 
     return this.applyReadStates(userId, feedbackNotifications);
+  }
+
+  private buildShopRequestApprovalNotifications(
+    currentUser:
+      | {
+          id: string;
+          displayName: string;
+          avatarUrl: string | null;
+          role: string;
+          shopRequestStatus: string;
+          shopRequestReviewedAt: Date | null;
+          sellerProfile: {
+            id: string;
+            studioName: string;
+          } | null;
+        }
+      | null,
+  ): NotificationEntity[] {
+    if (
+      !currentUser ||
+      currentUser.shopRequestStatus !== 'APPROVED' ||
+      currentUser.shopRequestReviewedAt == null
+    ) {
+      return [];
+    }
+
+    const sellerStudioName = currentUser.sellerProfile?.studioName?.trim() ?? '';
+    const sellerName = sellerStudioName.length > 0
+      ? sellerStudioName
+      : currentUser.displayName;
+
+    return [
+      {
+        id: `notif-shop-request-approved-${currentUser.id}-${currentUser.shopRequestReviewedAt.getTime()}`,
+        type: 'shop_request_approved',
+        title: 'Demande boutique approuvee',
+        body: `Votre compte ${sellerName} est maintenant actif comme boutique. Vous pouvez publier vos produits.`,
+        isRead: false,
+        createdAt: currentUser.shopRequestReviewedAt.toISOString(),
+        sellerProfile: currentUser.sellerProfile
+          ? {
+              id: currentUser.sellerProfile.id,
+              studioName: currentUser.sellerProfile.studioName,
+            }
+          : null,
+        seller: {
+          id: currentUser.id,
+          name: sellerName,
+          avatarUrl: currentUser.avatarUrl ?? 'https://i.pravatar.cc/240?img=12',
+        },
+        product: null,
+      },
+    ];
   }
 
   private async applyReadStates(
