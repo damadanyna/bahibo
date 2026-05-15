@@ -6,6 +6,7 @@ import 'package:banay/services/chat_realtime_service.dart';
 import 'package:banay/services/location_permission_service.dart';
 import 'package:banay/providers/theme_provider.dart';
 import 'package:banay/services/push_notification_service.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
@@ -27,20 +28,32 @@ void main() async {
 }
 
 void _configureDevelopmentTlsOverride() {
-  final host = Uri.tryParse(ApiConfig.baseUrl)?.host;
-  if (host != '77.37.51.154') {
+  if (kReleaseMode) {
     return;
   }
 
-  HttpOverrides.global = _BanayDevHttpOverrides();
+  final apiUri = Uri.tryParse(ApiConfig.baseUrl);
+  final host = apiUri?.host;
+  if (apiUri == null ||
+      apiUri.scheme != 'https' ||
+      host == null ||
+      host.isEmpty) {
+    return;
+  }
+
+  HttpOverrides.global = _BanayDevHttpOverrides(allowedHost: host);
 }
 
 class _BanayDevHttpOverrides extends HttpOverrides {
+  _BanayDevHttpOverrides({required this.allowedHost});
+
+  final String allowedHost;
+
   @override
   HttpClient createHttpClient(SecurityContext? context) {
     final client = super.createHttpClient(context);
     client.badCertificateCallback = (cert, host, port) {
-      return host == '77.37.51.154';
+      return host == allowedHost;
     };
     return client;
   }

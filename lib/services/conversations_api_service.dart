@@ -538,6 +538,16 @@ class ConversationsApiService {
     return Map<String, dynamic>.from(data as Map);
   }
 
+  Future<Map<String, dynamic>> markConversationRead({
+    required String conversationId,
+  }) async {
+    final data = await _client.post(
+      '/conversations/$conversationId/read',
+      authenticated: true,
+    );
+    return Map<String, dynamic>.from(data as Map);
+  }
+
   Future<Map<String, dynamic>> uploadPhotoAttachment({
     required Uint8List fileBytes,
     required String fileName,

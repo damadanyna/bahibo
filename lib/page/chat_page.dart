@@ -104,6 +104,9 @@ class _ChatPageState extends State<ChatPage>
   final List<_ChatMessage> _messages = [];
   final List<_ChatMessage> _pendingTextMessages = [];
   final List<_ChatMessage> _pendingMessages = [];
+  final Set<String> _pendingTextMessageIdsInFlight = <String>{};
+  final Set<String> _deliveredMessageIds = <String>{};
+  bool _isMarkingConversationRead = false;
   List<ChatPhotoUploadTask> _photoUploadTasks = const <ChatPhotoUploadTask>[];
   final List<_DocumentUploadTask> _documentUploadTasks =
       <_DocumentUploadTask>[];
@@ -131,6 +134,7 @@ class _ChatPageState extends State<ChatPage>
   bool _restoredConversationView = false;
   bool _hasOlderMessages = false;
   bool _showScrollToLatestButton = false;
+  int _ignoredNextNonPendingLocalStoreChanges = 0;
   double? _pendingRestoredScrollOffset;
   String? _conversationId;
   String? _loadError;
@@ -237,6 +241,78 @@ class _ChatPageState extends State<ChatPage>
 
   void _syncVisibleConversationRegistration() {
     PushNotificationService.setVisibleConversation(_conversationId);
+  }
+
+  bool _hasUnreadIncomingMessages() {
+    return _messages.any(
+      (message) => !message.isMine && message.createdAt != null,
+    );
+  }
+
+  Future<void> _markConversationReadIfVisible() async {
+    final conversationId = _conversationId?.trim() ?? '';
+    if (!_usesLiveConversation ||
+        conversationId.isEmpty ||
+        !(_route?.isCurrent ?? false) ||
+        _isMarkingConversationRead ||
+        !_hasUnreadIncomingMessages()) {
+      return;
+    }
+
+    _isMarkingConversationRead = true;
+    try {
+      await _conversationsApiService.markConversationRead(
+        conversationId: conversationId,
+      );
+    } on AppApiException {
+      // Keep the current UI state; a later visible refresh can retry.
+    } finally {
+      _isMarkingConversationRead = false;
+    }
+  }
+
+  void _markMessagesDelivered(Iterable<String> messageIds) {
+    final normalizedMessageIds = messageIds
+        .map((messageId) => messageId.trim())
+        .where((messageId) => messageId.isNotEmpty)
+        .toSet();
+    if (normalizedMessageIds.isEmpty) {
+      return;
+    }
+
+    _deliveredMessageIds.addAll(normalizedMessageIds);
+    for (var index = 0; index < _messages.length; index += 1) {
+      final message = _messages[index];
+      final messageId = message.id?.trim() ?? '';
+      if (!normalizedMessageIds.contains(messageId) ||
+          message.deliveryState == _ChatMessageDeliveryState.seen ||
+          message.deliveryState == _ChatMessageDeliveryState.delivered) {
+        continue;
+      }
+
+      _messages[index] = _copyMessageWithDeliveryState(
+        message,
+        _ChatMessageDeliveryState.delivered,
+      );
+    }
+  }
+
+  _ChatMessage _copyMessageWithDeliveryState(
+    _ChatMessage message,
+    _ChatMessageDeliveryState? deliveryState,
+  ) {
+    return _ChatMessage(
+      id: message.id,
+      message: message.message,
+      kind: message.kind,
+      createdAt: message.createdAt,
+      time: message.time,
+      isMine: message.isMine,
+      deliveryState: deliveryState,
+      reply: message.reply,
+      media: message.media,
+      product: message.product,
+    );
   }
 
   String? _conversationViewStateKey() {
@@ -450,11 +526,13 @@ class _ChatPageState extends State<ChatPage>
   @override
   void didPush() {
     _syncVisibleConversationRegistration();
+    unawaited(_markConversationReadIfVisible());
   }
 
   @override
   void didPopNext() {
     _syncVisibleConversationRegistration();
+    unawaited(_markConversationReadIfVisible());
   }
 
   @override
@@ -632,6 +710,12 @@ class _ChatPageState extends State<ChatPage>
             return;
           }
 
+          if (!change.includesPendingTextMessages &&
+              _ignoredNextNonPendingLocalStoreChanges > 0) {
+            _ignoredNextNonPendingLocalStoreChanges -= 1;
+            return;
+          }
+
           unawaited(
             _hydrateConversationFromLocalStore(
               mergeRecentMessages: true,
@@ -726,6 +810,28 @@ class _ChatPageState extends State<ChatPage>
           message['isMine'] = actorUserId != participantUserId;
         }
 
+        final nextMessages = _parseConversationMessages([message]);
+        final shouldStayPinnedToBottom = !_showScrollToLatestButton;
+        if (nextMessages.isNotEmpty) {
+          if (mounted) {
+            setState(() {
+              _mergeMessagesInPlace(nextMessages);
+              _loadError = null;
+              _showEntrySkeleton = false;
+            });
+          } else {
+            _mergeMessagesInPlace(nextMessages);
+            _loadError = null;
+            _showEntrySkeleton = false;
+          }
+          if (shouldStayPinnedToBottom) {
+            WidgetsBinding.instance.addPostFrameCallback(
+              (_) => _animateToBottom(),
+            );
+          }
+        }
+
+        _ignoredNextNonPendingLocalStoreChanges += 1;
         await _localConversationStore.upsertMessage(
           conversationId: currentConversationId,
           message: message,
@@ -734,6 +840,9 @@ class _ChatPageState extends State<ChatPage>
               ? participantUserId
               : widget.conversationUserId,
         );
+        if (message['isMine'] != true && (_route?.isCurrent ?? false)) {
+          unawaited(_markConversationReadIfVisible());
+        }
         return true;
       case 'conversation:read':
         final actorUserId = event['actorUserId']?.toString().trim() ?? '';
@@ -748,9 +857,49 @@ class _ChatPageState extends State<ChatPage>
         final readAt =
             event['readAt']?.toString().trim() ??
             DateTime.now().toIso8601String();
+        if (mounted) {
+          setState(() {
+            _markOutgoingMessagesSeen();
+          });
+        } else {
+          _markOutgoingMessagesSeen();
+        }
+        _ignoredNextNonPendingLocalStoreChanges += 1;
         await _localConversationStore.markOutgoingMessagesRead(
           conversationId: currentConversationId,
           readAt: readAt,
+        );
+        return true;
+      case 'conversation:delivered':
+        final actorUserId = event['actorUserId']?.toString().trim() ?? '';
+        final participantUserId = _participantUserId?.trim() ?? '';
+        if (actorUserId.isEmpty || participantUserId.isEmpty) {
+          return false;
+        }
+        if (actorUserId != participantUserId) {
+          return true;
+        }
+
+        final messageId = event['messageId']?.toString().trim() ?? '';
+        if (messageId.isEmpty) {
+          return false;
+        }
+
+        final deliveredAt =
+            event['deliveredAt']?.toString().trim() ??
+            DateTime.now().toIso8601String();
+        if (mounted) {
+          setState(() {
+            _markMessagesDelivered([messageId]);
+          });
+        } else {
+          _markMessagesDelivered([messageId]);
+        }
+        _ignoredNextNonPendingLocalStoreChanges += 1;
+        await _localConversationStore.markMessageDelivered(
+          conversationId: currentConversationId,
+          messageId: messageId,
+          deliveredAt: deliveredAt,
         );
         return true;
       default:
@@ -1133,6 +1282,7 @@ class _ChatPageState extends State<ChatPage>
 
       final data = await _fetchConversationData();
       _applyLoadedConversation(data);
+      unawaited(_markConversationReadIfVisible());
 
       if (!_initialMessageHandled) {
         _initialMessageHandled = true;
@@ -1154,6 +1304,18 @@ class _ChatPageState extends State<ChatPage>
       unawaited(_drainPendingTextMessages());
     } on AppApiException catch (error) {
       if (!mounted) return;
+      await _hydrateConversationFromLocalStore(
+        mergeRecentMessages: true,
+        limit: _recentConversationMessageLimit,
+      );
+      if (!mounted) return;
+      if (_messages.isNotEmpty || _pendingTextMessages.isNotEmpty) {
+        setState(() {
+          _showEntrySkeleton = false;
+          _loadError = null;
+        });
+        return;
+      }
       _applyConversationError(error, showEntrySkeleton: false);
     }
   }
@@ -1238,11 +1400,22 @@ class _ChatPageState extends State<ChatPage>
     String pendingMessageId, {
     bool showFailureSnackBar = true,
   }) async {
+    if (!_pendingTextMessageIdsInFlight.add(pendingMessageId)) {
+      return true;
+    }
+
     final pendingMessage = await _localConversationStore.getPendingTextMessage(
       pendingMessageId,
     );
     if (pendingMessage == null) {
+      _pendingTextMessageIdsInFlight.remove(pendingMessageId);
       return false;
+    }
+
+    if (pendingMessage.status == LocalPendingTextMessageStatus.sending) {
+      await _syncPendingTextMessagesFromStore();
+      _pendingTextMessageIdsInFlight.remove(pendingMessageId);
+      return true;
     }
 
     await _localConversationStore.markPendingTextMessageSending(
@@ -1327,6 +1500,8 @@ class _ChatPageState extends State<ChatPage>
         ).showSnackBar(SnackBar(content: Text(error.message)));
       }
       return false;
+    } finally {
+      _pendingTextMessageIdsInFlight.remove(pendingMessageId);
     }
   }
 
@@ -1346,6 +1521,9 @@ class _ChatPageState extends State<ChatPage>
       for (final pendingMessage in pendingMessages) {
         if (!mounted) {
           return;
+        }
+        if (pendingMessage.status == LocalPendingTextMessageStatus.sending) {
+          continue;
         }
         await _sendPendingTextMessageById(
           pendingMessage.id,
@@ -1525,15 +1703,22 @@ class _ChatPageState extends State<ChatPage>
     return rawMessages
         .whereType<Map>()
         .map((message) {
+          final messageId = message['id']?.toString();
           final createdAt = message['createdAt'] as String?;
+          final deliveredAt = message['deliveredAt']?.toString().trim() ?? '';
+          if (deliveredAt.isNotEmpty &&
+              (messageId?.trim().isNotEmpty ?? false)) {
+            _deliveredMessageIds.add(messageId!.trim());
+          }
           return _ChatMessage(
-            id: message['id']?.toString(),
+            id: messageId,
             message: (message['content'] as String?) ?? '',
             kind: _ChatMessageKind.fromApi(message['kind']),
             createdAt: createdAt,
             time: _formatMessageTime(createdAt),
             isMine: message['isMine'] == true,
             deliveryState: _resolveDeliveryState(
+              messageId: messageId,
               isMine: message['isMine'] == true,
               readAt: message['readAt'] as String?,
             ),
@@ -1561,6 +1746,119 @@ class _ChatPageState extends State<ChatPage>
     _messages
       ..clear()
       ..addAll(merged);
+  }
+
+  void _markOutgoingMessagesSeen() {
+    for (var index = 0; index < _messages.length; index += 1) {
+      final message = _messages[index];
+      if (!message.isMine ||
+          message.deliveryState == _ChatMessageDeliveryState.seen) {
+        continue;
+      }
+
+      if ((message.id?.trim().isNotEmpty ?? false)) {
+        _deliveredMessageIds.remove(message.id!.trim());
+      }
+      _messages[index] = _copyMessageWithDeliveryState(
+        message,
+        _ChatMessageDeliveryState.seen,
+      );
+    }
+  }
+
+  List<_ChatMessage> _messagesForDisplay() {
+    final confirmedMessages = List<_ChatMessage>.from(_messages);
+    final unmatchedConfirmedIndexes = <int>{
+      for (var index = 0; index < confirmedMessages.length; index += 1) index,
+    };
+    final visiblePendingTextMessages = <_ChatMessage>[];
+
+    for (final pendingMessage in _pendingTextMessages) {
+      final matchingConfirmedIndex = _findMatchingConfirmedMessageIndex(
+        pendingMessage,
+        confirmedMessages,
+        unmatchedConfirmedIndexes,
+      );
+      if (matchingConfirmedIndex != null) {
+        unmatchedConfirmedIndexes.remove(matchingConfirmedIndex);
+        continue;
+      }
+
+      visiblePendingTextMessages.add(pendingMessage);
+    }
+
+    return <_ChatMessage>[
+      ...confirmedMessages,
+      ...visiblePendingTextMessages,
+      ..._pendingMessages,
+    ]..sort(_compareChatMessages);
+  }
+
+  int? _findMatchingConfirmedMessageIndex(
+    _ChatMessage pendingMessage,
+    List<_ChatMessage> confirmedMessages,
+    Set<int> unmatchedConfirmedIndexes,
+  ) {
+    final pendingContent = pendingMessage.message.trim();
+    if (!pendingMessage.isMine ||
+        pendingMessage.kind != _ChatMessageKind.text ||
+        pendingContent.isEmpty) {
+      return null;
+    }
+
+    final pendingCreatedAt = DateTime.tryParse(pendingMessage.createdAt ?? '');
+    int? bestIndex;
+    Duration? bestDistance;
+
+    for (final index in unmatchedConfirmedIndexes) {
+      final confirmedMessage = confirmedMessages[index];
+      if (!_messagesMatchForDisplay(pendingMessage, confirmedMessage)) {
+        continue;
+      }
+
+      final confirmedCreatedAt = DateTime.tryParse(
+        confirmedMessage.createdAt ?? '',
+      );
+      final distance = pendingCreatedAt == null || confirmedCreatedAt == null
+          ? Duration.zero
+          : confirmedCreatedAt.difference(pendingCreatedAt).abs();
+      if (distance > const Duration(seconds: 30)) {
+        continue;
+      }
+
+      if (bestDistance == null || distance < bestDistance) {
+        bestIndex = index;
+        bestDistance = distance;
+      }
+    }
+
+    return bestIndex;
+  }
+
+  bool _messagesMatchForDisplay(
+    _ChatMessage pendingMessage,
+    _ChatMessage confirmedMessage,
+  ) {
+    if (!confirmedMessage.isMine ||
+        confirmedMessage.kind != pendingMessage.kind ||
+        confirmedMessage.message.trim() != pendingMessage.message.trim()) {
+      return false;
+    }
+
+    final pendingReply = pendingMessage.reply;
+    final confirmedReply = confirmedMessage.reply;
+    if ((pendingReply == null) != (confirmedReply == null)) {
+      return false;
+    }
+    if (pendingReply != null && confirmedReply != null) {
+      if (pendingReply.messageId != confirmedReply.messageId ||
+          pendingReply.senderLabel != confirmedReply.senderLabel ||
+          pendingReply.content != confirmedReply.content) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   String _chatMessageKey(_ChatMessage message, int index) {
@@ -1670,6 +1968,20 @@ class _ChatPageState extends State<ChatPage>
     );
   }
 
+  void _showUndeletableMessageHint() {
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Seuls les messages que vous avez envoyes peuvent etre supprimes.',
+        ),
+      ),
+    );
+  }
+
   void _enterSelectionMode(_ChatDisplayMessage displayMessage) {
     final selectionKey = _displayMessageSelectionKey(displayMessage);
     if (_selectedDisplayMessageKeys.contains(selectionKey)) {
@@ -1680,6 +1992,9 @@ class _ChatPageState extends State<ChatPage>
     setState(() {
       _selectedDisplayMessageKeys.add(selectionKey);
     });
+    if (!_canDeleteDisplayMessage(displayMessage)) {
+      _showUndeletableMessageHint();
+    }
   }
 
   void _toggleDisplayMessageSelection(_ChatDisplayMessage displayMessage) {
@@ -1878,7 +2193,7 @@ class _ChatPageState extends State<ChatPage>
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Aucun des messages selectionnes ne peut etre supprime.',
+            'Suppression impossible: seuls les messages que vous avez envoyes peuvent etre supprimes.',
           ),
         ),
       );
@@ -1959,7 +2274,7 @@ class _ChatPageState extends State<ChatPage>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '$skippedCount message(s) non supprimable(s) ont ete ignores.',
+            '$skippedCount message(s) ont ete ignores. Seuls vos propres messages peuvent etre supprimes.',
           ),
         ),
       );
@@ -2039,6 +2354,7 @@ class _ChatPageState extends State<ChatPage>
   }
 
   _ChatMessageDeliveryState? _resolveDeliveryState({
+    required String? messageId,
     required bool isMine,
     required String? readAt,
   }) {
@@ -2046,9 +2362,18 @@ class _ChatPageState extends State<ChatPage>
       return null;
     }
 
+    final normalizedMessageId = messageId?.trim() ?? '';
     final normalizedReadAt = readAt?.trim() ?? '';
     if (normalizedReadAt.isNotEmpty) {
+      if (normalizedMessageId.isNotEmpty) {
+        _deliveredMessageIds.remove(normalizedMessageId);
+      }
       return _ChatMessageDeliveryState.seen;
+    }
+
+    if (normalizedMessageId.isNotEmpty &&
+        _deliveredMessageIds.contains(normalizedMessageId)) {
+      return _ChatMessageDeliveryState.delivered;
     }
 
     return _ChatMessageDeliveryState.sent;
@@ -2074,6 +2399,14 @@ class _ChatPageState extends State<ChatPage>
         _isSendingTextMessage ||
         _conversationBlocked) {
       return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _isSendingTextMessage = true;
+      });
+    } else {
+      _isSendingTextMessage = true;
     }
 
     if (pendingDocumentAttachment != null) {
@@ -2146,7 +2479,6 @@ class _ChatPageState extends State<ChatPage>
     _typingStopTimer?.cancel();
     _emitTyping(false);
     setState(() {
-      _isSendingTextMessage = true;
       _replyingToMessage = null;
     });
     _messageController.clear();
@@ -3470,13 +3802,12 @@ class _ChatPageState extends State<ChatPage>
     final subtleText = appColors.mutedText;
     final sellerName = _sellerNameValue;
     final avatarUrl = _avatarUrlValue;
-    final displayMessages = _buildDisplayMessages([
-      ..._messages,
-      ..._pendingTextMessages,
-      ..._pendingMessages,
-    ]);
+    final displayMessages = _buildDisplayMessages(_messagesForDisplay());
     final selectedDisplayMessages = _selectedDisplayMessages(displayMessages);
     final selectedCount = selectedDisplayMessages.length;
+    final selectedDeletableCount = selectedDisplayMessages
+        .where(_canDeleteDisplayMessage)
+        .length;
     final isSelectionMode = _isSelectionMode;
     final nextMessageKeys = <String, GlobalKey>{};
 
@@ -3531,7 +3862,7 @@ class _ChatPageState extends State<ChatPage>
                                 selectedDisplayMessages,
                               )
                             : null,
-                        onDeleteSelection: selectedCount > 0
+                        onDeleteSelection: selectedDeletableCount > 0
                             ? () => _deleteSelectedMessages(
                                 selectedDisplayMessages,
                               )
@@ -3721,6 +4052,8 @@ class _ChatPageState extends State<ChatPage>
                                                 avatarUrl: avatarUrl,
                                                 participantUserId:
                                                     _participantUserId,
+                                                participantIsOnline:
+                                                    _participantIsOnlineValue,
                                                 primary: primary,
                                                 incomingBubbleColor:
                                                     incomingBubbleColor,
@@ -4351,7 +4684,7 @@ enum _ChatMessageKind {
   }
 }
 
-enum _ChatMessageDeliveryState { sending, sent, seen }
+enum _ChatMessageDeliveryState { sending, sent, delivered, seen }
 
 class _ChatMessageReply {
   final String? messageId;
@@ -4571,6 +4904,7 @@ class _ChatBubble extends StatelessWidget {
   final VoidCallback? onProductTap;
   final String avatarUrl;
   final String? participantUserId;
+  final bool participantIsOnline;
   final Color primary;
   final Color incomingBubbleColor;
   final Color outgoingBubbleColor;
@@ -4591,6 +4925,7 @@ class _ChatBubble extends StatelessWidget {
     this.onProductTap,
     required this.avatarUrl,
     this.participantUserId,
+    this.participantIsOnline = false,
     required this.primary,
     required this.incomingBubbleColor,
     required this.outgoingBubbleColor,
@@ -4605,11 +4940,10 @@ class _ChatBubble extends StatelessWidget {
     final metaColor = isMine
         ? primary.withValues(alpha: 0.74)
         : subtleText.withValues(alpha: 0.92);
-    final delivery = _ChatDeliveryPresentation.fromState(
-      deliveryState,
-      primary,
-      metaColor,
-    );
+    final normalizedParticipantUserId = participantUserId?.trim() ?? '';
+    if (isMine && normalizedParticipantUserId.isNotEmpty) {
+      PresenceService.instance.watchUser(normalizedParticipantUserId);
+    }
 
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
@@ -4714,31 +5048,42 @@ class _ChatBubble extends StatelessWidget {
                   ),
                 ),
               if (message.trim().isNotEmpty) const SizedBox(height: 6),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    time,
-                    style: TextStyle(
-                      color: const Color.fromARGB(113, 192, 192, 192),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  if (isMine && delivery != null) ...[
-                    const SizedBox(width: 4),
-                    Icon(delivery.icon, size: 15, color: delivery.color),
-                    const SizedBox(width: 4),
-                    Text(
-                      delivery.label,
-                      style: TextStyle(
-                        color: delivery.color,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
+              ValueListenableBuilder<int>(
+                valueListenable: PresenceService.instance.changes,
+                builder: (context, value, child) {
+                  final delivery = _ChatDeliveryPresentation.fromState(
+                    deliveryState,
+                    primary,
+                    metaColor,
+                  );
+
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        time,
+                        style: TextStyle(
+                          color: const Color.fromARGB(113, 192, 192, 192),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                  ],
-                ],
+                      if (isMine && delivery != null) ...[
+                        const SizedBox(width: 4),
+                        Icon(delivery.icon, size: 15, color: delivery.color),
+                        const SizedBox(width: 4),
+                        Text(
+                          delivery.label,
+                          style: TextStyle(
+                            color: delivery.color,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                },
               ),
             ],
           ),
@@ -5698,6 +6043,12 @@ class _ChatDeliveryPresentation {
         return _ChatDeliveryPresentation(
           label: 'Envoye',
           icon: Icons.done_rounded,
+          color: fallbackColor,
+        );
+      case _ChatMessageDeliveryState.delivered:
+        return _ChatDeliveryPresentation(
+          label: 'Distribue',
+          icon: Icons.done_all_rounded,
           color: fallbackColor,
         );
       case _ChatMessageDeliveryState.seen:

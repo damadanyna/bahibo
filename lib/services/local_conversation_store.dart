@@ -312,6 +312,66 @@ class LocalConversationStore {
     _emitChange(conversationId: normalizedConversationId, cacheKeys: aliases);
   }
 
+  Future<void> markMessageDelivered({
+    required String conversationId,
+    required String messageId,
+    required String deliveredAt,
+  }) async {
+    final normalizedConversationId = conversationId.trim();
+    final normalizedMessageId = messageId.trim();
+    final normalizedDeliveredAt = deliveredAt.trim();
+    if (normalizedConversationId.isEmpty ||
+        normalizedMessageId.isEmpty ||
+        normalizedDeliveredAt.isEmpty) {
+      return;
+    }
+
+    final database = await _openDatabase();
+    final accountKey = await _currentAccountKey();
+    final recordKey = _messageRecordKey(
+      accountKey,
+      normalizedConversationId,
+      normalizedMessageId,
+    );
+    final record = await _messageStore.record(recordKey).get(database);
+    if (record == null) {
+      return;
+    }
+
+    final payload = record['payload'] as String?;
+    if (payload == null || payload.isEmpty) {
+      return;
+    }
+
+    final message = Map<String, dynamic>.from(
+      jsonDecode(payload) as Map<String, dynamic>,
+    );
+    final existingReadAt = message['readAt']?.toString().trim() ?? '';
+    if (existingReadAt.isNotEmpty) {
+      return;
+    }
+
+    final existingDeliveredAt = message['deliveredAt']?.toString().trim() ?? '';
+    if (existingDeliveredAt.isNotEmpty) {
+      return;
+    }
+
+    message['deliveredAt'] = normalizedDeliveredAt;
+
+    await _messageStore.record(recordKey).put(database, <String, Object?>{
+      ...record,
+      'payload': jsonEncode(message),
+      'updatedAt': DateTime.now().millisecondsSinceEpoch,
+    });
+
+    final aliases = await _knownConversationAliases(
+      database,
+      accountKey: accountKey,
+      conversationId: normalizedConversationId,
+    );
+    _emitChange(conversationId: normalizedConversationId, cacheKeys: aliases);
+  }
+
   Future<void> markOutgoingMessagesRead({
     required String conversationId,
     required String readAt,

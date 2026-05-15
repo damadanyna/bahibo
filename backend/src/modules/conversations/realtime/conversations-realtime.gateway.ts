@@ -16,9 +16,15 @@ import { Server, Socket } from 'socket.io';
 import { PrismaService } from '../../prisma/prisma.service';
 
 type ConversationRealtimePayload = {
-  type: 'message:new' | 'conversation:read' | 'conversation:blocked';
+  type:
+    | 'message:new'
+    | 'conversation:delivered'
+    | 'conversation:read'
+    | 'conversation:blocked';
   conversationId: string;
   actorUserId: string;
+  deliveredAt?: string | null;
+  messageId?: string | null;
   readAt?: string | null;
   message?: {
     id: string;
@@ -176,6 +182,7 @@ export class ConversationsRealtimeGateway
         where: { id: payload.sub },
         data: { lastSeenAt: new Date() },
       });
+      await this.emitPendingMessageDeliveries(payload.sub);
       this.emitPresenceEvent({
         type: 'presence:updated',
         userId: payload.sub,
@@ -192,6 +199,7 @@ export class ConversationsRealtimeGateway
     const userId = client.data.userId as string | undefined;
     if (userId != null) {
       const lastSeenAt = new Date();
+      const isOnline = this.isUserConnected(userId, client.id);
       void this.prisma.user.update({
         where: { id: userId },
         data: { lastSeenAt },
@@ -199,7 +207,7 @@ export class ConversationsRealtimeGateway
       this.emitPresenceEvent({
         type: 'presence:updated',
         userId,
-        isOnline: this.isUserConnected(userId),
+        isOnline,
         lastSeenAt: lastSeenAt.toISOString(),
       });
       this.logger.debug(`Socket disconnected for user ${userId}`);
@@ -254,6 +262,17 @@ export class ConversationsRealtimeGateway
     }
   }
 
+  emitConversationDeliveredEvent(
+    userId: string,
+    payload: ConversationRealtimePayload,
+  ) {
+    if (!this.server) {
+      return;
+    }
+
+    this.server.to(this.userRoom(userId)).emit('conversations:updated', payload);
+  }
+
   emitProfileEvent(userId: string, payload: ProfileRealtimePayload) {
     if (!this.server) {
       return;
@@ -305,12 +324,67 @@ export class ConversationsRealtimeGateway
     this.server.emit('products:updated', payload);
   }
 
-  isUserConnected(userId: string) {
+  isUserConnected(userId: string, excludingSocketId?: string) {
     if (!this.server) {
       return false;
     }
 
-    return (this.server.sockets.adapter.rooms.get(this.userRoom(userId))?.size ?? 0) > 0;
+    const room = this.server.sockets.adapter.rooms.get(this.userRoom(userId));
+    if (room == null || room.size === 0) {
+      return false;
+    }
+
+    if (excludingSocketId == null || excludingSocketId.trim().length === 0) {
+      return true;
+    }
+
+    for (const socketId of room) {
+      if (socketId !== excludingSocketId) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private async emitPendingMessageDeliveries(userId: string) {
+    if (!this.server) {
+      return;
+    }
+
+    const unreadMessages = await this.prisma.chatMessage.findMany({
+      where: {
+        senderUserId: {
+          not: userId,
+        },
+        readAt: null,
+        conversation: {
+          OR: [
+            {
+              buyerUserId: userId,
+            },
+            {
+              sellerUserId: userId,
+            },
+          ],
+        },
+      },
+      select: {
+        id: true,
+        conversationId: true,
+        senderUserId: true,
+      },
+    });
+
+    for (const message of unreadMessages) {
+      this.emitConversationDeliveredEvent(message.senderUserId, {
+        type: 'conversation:delivered',
+        conversationId: message.conversationId,
+        actorUserId: userId,
+        messageId: message.id,
+        deliveredAt: new Date().toISOString(),
+      });
+    }
   }
 
   private extractAccessToken(client: Socket) {

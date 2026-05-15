@@ -95,6 +95,21 @@ export class ConversationsController {
     };
   }
 
+  @Post(':conversationId/read')
+  async markConversationRead(
+    @Req() req: { user: { userId: string } },
+    @Param('conversationId') conversationId: string,
+  ) {
+    return {
+      success: true,
+      message: 'Conversation marked as read successfully',
+      data: await this.conversationsService.markConversationRead(
+        req.user.userId,
+        conversationId,
+      ),
+    };
+  }
+
   @Delete(':conversationId/messages/:messageId')
   async deleteMessage(
     @Req() req: { user: { userId: string } },

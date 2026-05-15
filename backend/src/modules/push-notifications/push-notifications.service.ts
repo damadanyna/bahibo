@@ -120,14 +120,14 @@ export class PushNotificationsService {
     });
 
     if (deviceTokens.length == 0) {
-      return;
+      return false;
     }
 
     if (!this.firebaseApp) {
       this.logger.warn(
         `Skipping push notification for conversation ${args.conversationId} because Firebase Admin is not configured.`,
       );
-      return;
+      return false;
     }
 
     const response = await getMessaging(this.firebaseApp).sendEachForMulticast({
@@ -182,6 +182,8 @@ export class PushNotificationsService {
         },
       });
     }
+
+    return response.successCount > 0;
   }
 
   async sendProductPublishedNotification(

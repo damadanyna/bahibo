@@ -16,7 +16,6 @@ import { PushNotificationsService } from '../push-notifications/push-notificatio
 import { UpdateProfileDto, UpdateSellerProfileDto } from './dto/update-profile.dto';
 
 const DISPLAY_NAME_CHANGE_COOLDOWN_DAYS = 7;
-const PRESENCE_RECENT_ACTIVITY_WINDOW_MS = 90 * 1000;
 import {
   presentPublicSellerProfile,
   presentPublicUserProfile,
@@ -42,16 +41,8 @@ export class ProfilesService {
     return presentUserProfile(user, sellerStats);
   }
 
-  private isUserOnline(userId: string, lastSeenAt?: Date | null) {
-    if (this.conversationsRealtimeGateway.isUserConnected(userId)) {
-      return true;
-    }
-
-    if (lastSeenAt == null) {
-      return false;
-    }
-
-    return Date.now() - lastSeenAt.getTime() <= PRESENCE_RECENT_ACTIVITY_WINDOW_MS;
+  private isUserOnline(userId: string, _lastSeenAt?: Date | null) {
+    return this.conversationsRealtimeGateway.isUserConnected(userId);
   }
 
   private async findReportTargetUser(reportedUserId: string) {

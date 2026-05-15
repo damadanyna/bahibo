@@ -147,7 +147,6 @@ type MessageProductSnapshotFields = {
   } | null;
 };
 
-const PRESENCE_RECENT_ACTIVITY_WINDOW_MS = 90 * 1000;
 const DEFAULT_MESSAGES_PAGE_SIZE = 8;
 const MAX_MESSAGES_PAGE_SIZE = 50;
 
@@ -426,10 +425,6 @@ export class ConversationsService {
     });
 
     if (existingConversation) {
-      const readCount = await this.markConversationAsRead(existingConversation.id, userId);
-      if (readCount > 0) {
-        this.emitConversationRead(existingConversation, userId);
-      }
       return this.presentConversationDetail(
         existingConversation,
         userId,
@@ -502,18 +497,6 @@ export class ConversationsService {
     });
 
     if (conversations.length > 0) {
-      const readCounts = await Promise.all(
-        conversations.map((conversation) =>
-          this.markConversationAsRead(conversation.id, userId),
-        ),
-      );
-
-      for (var index = 0; index < conversations.length; index += 1) {
-        if (readCounts[index] > 0) {
-          this.emitConversationRead(conversations[index], userId);
-        }
-      }
-
       return this.presentConversationThreadDetail(
         directConversation ?? conversations[conversations.length - 1],
         conversations,
@@ -551,11 +534,24 @@ export class ConversationsService {
       userId,
       conversationId,
     );
+    return this.presentConversationDetail(conversation, userId, pageOptions);
+  }
+
+  async markConversationRead(userId: string, conversationId: string) {
+    const conversation = await this.findAccessibleConversation(
+      userId,
+      conversationId,
+    );
     const readCount = await this.markConversationAsRead(conversation.id, userId);
     if (readCount > 0) {
       this.emitConversationRead(conversation, userId);
     }
-    return this.presentConversationDetail(conversation, userId, pageOptions);
+
+    return {
+      conversationId: conversation.id,
+      readCount,
+      readAt: new Date().toISOString(),
+    };
   }
 
   async deleteMessage(userId: string, conversationId: string, messageId: string) {
@@ -709,6 +705,7 @@ export class ConversationsService {
       this.extractDtoProductSnapshot(dto) ?? productSnapshot;
 
     let createdMessage: ConversationMessageDetail | null = null;
+    let createdMessageId: string | null = null;
     await this.prisma.$transaction(async (transaction) => {
       createdMessage = await transaction.chatMessage.create({
         data: {
@@ -727,6 +724,7 @@ export class ConversationsService {
         },
         include: conversationMessageInclude,
       });
+      createdMessageId = createdMessage.id;
 
       await transaction.chatConversation.update({
         where: { id: conversation.id },
@@ -748,18 +746,25 @@ export class ConversationsService {
       },
     );
 
-    if (!this.conversationsRealtimeGateway.isUserConnected(recipientUserId)) {
+    const recipientConnected = this.conversationsRealtimeGateway.isUserConnected(
+      recipientUserId,
+    );
+    if (!recipientConnected) {
       await this.pushNotificationsService.sendChatMessageNotification({
-        recipientUserId,
-        conversationId: conversation.id,
-        senderDisplayName: sender.displayName,
-        senderAvatarUrl: sender.avatarUrl ?? undefined,
-        senderRoleLabel: this.resolveRoleLabel(sender),
-        recipientDisplayName: recipient.displayName,
-        content,
-        conversationKind: conversation.kind,
-        productId: conversation.productId ?? undefined,
-      });
+          recipientUserId,
+          conversationId: conversation.id,
+          senderDisplayName: sender.displayName,
+          senderAvatarUrl: sender.avatarUrl ?? undefined,
+          senderRoleLabel: this.resolveRoleLabel(sender),
+          recipientDisplayName: recipient.displayName,
+          content,
+          conversationKind: conversation.kind,
+          productId: conversation.productId ?? undefined,
+        });
+    }
+
+    if (createdMessageId && recipientConnected) {
+      this.emitConversationDelivered(conversation, recipientUserId, createdMessageId);
     }
 
     return this.getConversation(userId, conversationId);
@@ -794,6 +799,7 @@ export class ConversationsService {
     await this.assertUsersCanInteract(userId, recipientUserId);
 
     let createdMessage: ConversationMessageDetail | null = null;
+    let createdMessageId: string | null = null;
     await this.prisma.$transaction(async (transaction) => {
       createdMessage = await transaction.chatMessage.create({
         data: {
@@ -828,6 +834,7 @@ export class ConversationsService {
         },
         include: conversationMessageInclude,
       });
+      createdMessageId = createdMessage.id;
 
       await transaction.chatConversation.update({
         where: { id: conversation.id },
@@ -849,18 +856,25 @@ export class ConversationsService {
       },
     );
 
-    if (!this.conversationsRealtimeGateway.isUserConnected(recipientUserId)) {
+    const recipientConnected = this.conversationsRealtimeGateway.isUserConnected(
+      recipientUserId,
+    );
+    if (!recipientConnected) {
       await this.pushNotificationsService.sendChatMessageNotification({
-        recipientUserId,
-        conversationId: conversation.id,
-        senderDisplayName: sender.displayName,
-        senderAvatarUrl: sender.avatarUrl ?? undefined,
-        senderRoleLabel: this.resolveRoleLabel(sender),
-        recipientDisplayName: recipient.displayName,
-        content,
-        conversationKind: conversation.kind,
-        productId: conversation.productId ?? undefined,
-      });
+          recipientUserId,
+          conversationId: conversation.id,
+          senderDisplayName: sender.displayName,
+          senderAvatarUrl: sender.avatarUrl ?? undefined,
+          senderRoleLabel: this.resolveRoleLabel(sender),
+          recipientDisplayName: recipient.displayName,
+          content,
+          conversationKind: conversation.kind,
+          productId: conversation.productId ?? undefined,
+        });
+    }
+
+    if (createdMessageId && recipientConnected) {
+      this.emitConversationDelivered(conversation, recipientUserId, createdMessageId);
     }
 
     return this.getConversation(userId, conversationId);
@@ -888,15 +902,7 @@ export class ConversationsService {
   }
 
   private isUserOnline(participant: { id: string; lastSeenAt?: Date | null }) {
-    if (this.conversationsRealtimeGateway.isUserConnected(participant.id)) {
-      return true;
-    }
-
-    if (participant.lastSeenAt == null) {
-      return false;
-    }
-
-    return Date.now() - participant.lastSeenAt.getTime() <= PRESENCE_RECENT_ACTIVITY_WINDOW_MS;
+    return this.conversationsRealtimeGateway.isUserConnected(participant.id);
   }
 
   private async findAccessibleConversation(userId: string, conversationId: string) {
@@ -949,6 +955,26 @@ export class ConversationsService {
         conversationId: conversation.id,
         actorUserId: userId,
         readAt: new Date().toISOString(),
+      },
+    );
+  }
+
+  private emitConversationDelivered(
+    conversation: { id: string; buyerUserId: string; sellerUserId: string },
+    recipientUserId: string,
+    messageId: string,
+  ) {
+    const senderUserId = conversation.buyerUserId === recipientUserId
+      ? conversation.sellerUserId
+      : conversation.buyerUserId;
+    this.conversationsRealtimeGateway.emitConversationDeliveredEvent(
+      senderUserId,
+      {
+        type: 'conversation:delivered',
+        conversationId: conversation.id,
+        actorUserId: recipientUserId,
+        messageId,
+        deliveredAt: new Date().toISOString(),
       },
     );
   }
@@ -1052,7 +1078,7 @@ export class ConversationsService {
     });
 
     if (!anchorMessage || (matcher != null && !matcher(anchorMessage))) {
-      throw new NotFoundException('Message de pagination introuvable');
+      return null;
     }
 
     return anchorMessage;
