@@ -16,6 +16,7 @@ enum _LocationPermissionDialogAction { later, continueRequest }
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await ApiConfig.initialize();
   _configureDevelopmentTlsOverride();
   await PushNotificationService.initialize();
 

@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter analyze *)",
+      "PowerShell(New-NetFirewallRule -DisplayName \"BANAY Dev Server \\(port 4000\\)\" -Direction Inbound -Protocol TCP -LocalPort 4000 -Action Allow -Profile Any -ErrorAction Stop)",
+      "PowerShell(Test-NetConnection -ComputerName 192.168.131.62 -Port 4000)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://192.168.131.62:4000/api/v1 --connect-timeout 3)",
+      "Bash(adb devices *)",
+      "PowerShell($adb = \"$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $adb devices)",
+      "PowerShell($adb = \"$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $adb -s R5CN80NL5GB install -r \"C:\\\\Users\\\\Banay\\\\Documents\\\\project 2026\\\\bahibo\\\\build\\\\app\\\\outputs\\\\flutter-apk\\\\app-debug.apk\" 2>&1)",
+      "Bash(ipconfig)",
+      "Bash(ipconfig /all)"
+    ]
+  }
+}

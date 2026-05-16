@@ -2,21 +2,19 @@ import 'package:flutter/foundation.dart';
 
 import 'app_api_client.dart';
 
-final ValueNotifier<int> notificationsUnreadCountNotifier = ValueNotifier<int>(
-  0,
-);
-
-void syncNotificationsUnreadCount(List<Map<String, dynamic>> notifications) {
-  notificationsUnreadCountNotifier.value = notifications
-      .where((notification) => notification['unread'] == true)
-      .length;
-}
-
 class NotificationsApiService {
   NotificationsApiService({AppApiClient? client})
     : _client = client ?? AppApiClient();
 
   final AppApiClient _client;
+
+  // Global reactive counter — listened to by the navigation shell badge.
+  static final ValueNotifier<int> unreadCountNotifier = ValueNotifier<int>(0);
+
+  static void syncUnreadCount(List<Map<String, dynamic>> notifications) {
+    unreadCountNotifier.value =
+        notifications.where((n) => n['unread'] == true).length;
+  }
 
   Future<List<Map<String, dynamic>>> fetchNotifications() async {
     final data = await _client.get('/notifications', authenticated: true);
@@ -56,7 +54,7 @@ class NotificationsApiService {
         'unread': !(map['isRead'] == true),
       };
     }).toList();
-    syncNotificationsUnreadCount(notifications);
+    syncUnreadCount(notifications);
     return notifications;
   }
 

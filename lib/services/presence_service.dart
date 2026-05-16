@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:banay/services/app_logger.dart';
 import 'package:banay/services/catalog_api_service.dart';
 import 'package:banay/services/chat_realtime_service.dart';
 import 'package:flutter/foundation.dart';
@@ -177,9 +178,10 @@ class PresenceService {
       if (hasChanges) {
         _version.value += 1;
       }
-    } catch (_) {
+    } catch (e) {
       // Keep previous values on transient errors so a failed fetch does not
       // permanently force users to appear offline.
+      AppLogger.warning('PresenceService', 'Failed to fetch user presence', e);
     }
   }
 }

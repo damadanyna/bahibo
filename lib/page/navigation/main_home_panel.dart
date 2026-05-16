@@ -88,7 +88,7 @@ class _MainHomePanelState extends State<MainHomePanel>
       if (type == 'notifications:updated') {
         final unreadCount = (event['unreadCount'] as num?)?.toInt();
         if (unreadCount != null) {
-          notificationsUnreadCountNotifier.value = unreadCount;
+          NotificationsApiService.unreadCountNotifier.value = unreadCount;
         }
         unawaited(fetchNotifications());
       }
@@ -331,7 +331,7 @@ class _MainHomePanelState extends State<MainHomePanel>
           ..clear()
           ..addAll(data);
       });
-      syncNotificationsUnreadCount(_notifications);
+      NotificationsApiService.syncUnreadCount(_notifications);
     } catch (_) {}
   }
 
@@ -351,7 +351,7 @@ class _MainHomePanelState extends State<MainHomePanel>
                 ..clear()
                 ..addAll(updatedNotifications);
             });
-            syncNotificationsUnreadCount(_notifications);
+            NotificationsApiService.syncUnreadCount(_notifications);
           },
         ),
       ),
@@ -467,7 +467,7 @@ class _MainHomePanelState extends State<MainHomePanel>
 
   Widget _buildNotificationButton(ThemeData theme) {
     return ValueListenableBuilder<int>(
-      valueListenable: notificationsUnreadCountNotifier,
+      valueListenable: NotificationsApiService.unreadCountNotifier,
       builder: (context, unreadNotificationCount, _) => Stack(
         clipBehavior: Clip.none,
         children: [

@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
 import 'api_config.dart';
+import 'app_logger.dart';
 import 'chat_realtime_service.dart';
 import 'presence_service.dart';
 import 'session_storage.dart';
@@ -21,6 +23,10 @@ class AppApiClient {
   AppApiClient({SessionStorage? sessionStorage})
     : _sessionStorage = sessionStorage ?? SessionStorage();
 
+  static const Duration _requestTimeout = Duration(seconds: 20);
+  static const int _maxRetries = 2;
+  static const String _tag = 'AppApiClient';
+
   final SessionStorage _sessionStorage;
   Future<bool>? _refreshSessionFuture;
 
@@ -29,7 +35,7 @@ class AppApiClient {
     Map<String, String>? queryParameters,
     bool authenticated = false,
   }) {
-    return _request(
+    return _requestWithRetry(
       'GET',
       path,
       queryParameters: queryParameters,
@@ -42,7 +48,12 @@ class AppApiClient {
     Map<String, dynamic>? body,
     bool authenticated = false,
   }) {
-    return _request('POST', path, body: body, authenticated: authenticated);
+    return _requestWithRetry(
+      'POST',
+      path,
+      body: body,
+      authenticated: authenticated,
+    );
   }
 
   Future<dynamic> patch(
@@ -50,11 +61,53 @@ class AppApiClient {
     Map<String, dynamic>? body,
     bool authenticated = false,
   }) {
-    return _request('PATCH', path, body: body, authenticated: authenticated);
+    return _requestWithRetry(
+      'PATCH',
+      path,
+      body: body,
+      authenticated: authenticated,
+    );
   }
 
   Future<dynamic> delete(String path, {bool authenticated = false}) {
-    return _request('DELETE', path, authenticated: authenticated);
+    return _requestWithRetry('DELETE', path, authenticated: authenticated);
+  }
+
+  Future<dynamic> _requestWithRetry(
+    String method,
+    String path, {
+    Map<String, String>? queryParameters,
+    Map<String, dynamic>? body,
+    bool authenticated = false,
+  }) async {
+    int attempt = 0;
+    while (true) {
+      try {
+        return await _request(
+          method,
+          path,
+          queryParameters: queryParameters,
+          body: body,
+          authenticated: authenticated,
+        );
+      } on AppApiException catch (e) {
+        // Retry only on network-level errors (no statusCode) and only on
+        // idempotent methods to avoid duplicate mutations.
+        final isNetworkError = e.statusCode == null;
+        final isIdempotent = method == 'GET' || method == 'DELETE';
+        if (isNetworkError && isIdempotent && attempt < _maxRetries) {
+          attempt++;
+          final backoff = Duration(milliseconds: 400 * attempt);
+          AppLogger.warning(
+            _tag,
+            'Retry $attempt/$_maxRetries for $method $path after ${backoff.inMilliseconds}ms',
+          );
+          await Future<void>.delayed(backoff);
+          continue;
+        }
+        rethrow;
+      }
+    }
   }
 
   Future<dynamic> _request(
@@ -81,27 +134,40 @@ class AppApiClient {
       headers['Authorization'] = 'Bearer $token';
     }
 
+    AppLogger.debug(_tag, '$method $uri');
+
     late final http.Response response;
 
     try {
-      response = switch (method) {
-        'GET' => await http.get(uri, headers: headers),
-        'POST' => await http.post(
+      final Future<http.Response> call = switch (method) {
+        'GET' => http.get(uri, headers: headers),
+        'POST' => http.post(
           uri,
           headers: headers,
           body: jsonEncode(body ?? <String, dynamic>{}),
         ),
-        'PATCH' => await http.patch(
+        'PATCH' => http.patch(
           uri,
           headers: headers,
           body: jsonEncode(body ?? <String, dynamic>{}),
         ),
-        'DELETE' => await http.delete(uri, headers: headers),
+        'DELETE' => http.delete(uri, headers: headers),
         _ => throw AppApiException('Methode HTTP non supportee'),
       };
-    } catch (_) {
+      response = await call.timeout(_requestTimeout);
+    } on SocketException catch (e) {
+      AppLogger.warning(_tag, 'Network unreachable for $method $path', e);
+      throw AppApiException('Impossible de joindre le serveur BANAY');
+    } on HttpException catch (e) {
+      AppLogger.warning(_tag, 'HTTP error for $method $path', e);
+      throw AppApiException('Impossible de joindre le serveur BANAY');
+    } catch (e) {
+      // Covers timeout (TimeoutException) and any other transport error.
+      AppLogger.warning(_tag, 'Request failed for $method $path', e);
       throw AppApiException('Impossible de joindre le serveur BANAY');
     }
+
+    AppLogger.debug(_tag, '${response.statusCode} $method $uri');
 
     final decoded = response.body.isEmpty
         ? <String, dynamic>{}
@@ -126,6 +192,10 @@ class AppApiClient {
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final message = (decoded['message'] as String?) ?? 'Erreur serveur';
+      AppLogger.warning(
+        _tag,
+        'Server error ${response.statusCode} for $method $path: $message',
+      );
       throw AppApiException(message, statusCode: response.statusCode);
     }
 
@@ -134,9 +204,7 @@ class AppApiClient {
 
   Future<bool> _refreshSession() async {
     final existingRefresh = _refreshSessionFuture;
-    if (existingRefresh != null) {
-      return existingRefresh;
-    }
+    if (existingRefresh != null) return existingRefresh;
 
     final refreshFuture = _performRefreshSession();
     _refreshSessionFuture = refreshFuture;
@@ -153,9 +221,7 @@ class AppApiClient {
   Future<bool> _performRefreshSession() async {
     final refreshToken = await _sessionStorage.getRefreshToken();
     if (refreshToken == null || refreshToken.isEmpty) {
-      ChatRealtimeService.instance.disconnect();
-      PresenceService.instance.reset();
-      await _sessionStorage.clear();
+      await _invalidateSession();
       return false;
     }
 
@@ -163,19 +229,20 @@ class AppApiClient {
     http.Response response;
 
     try {
-      response = await http.post(
-        uri,
-        headers: const {'Content-Type': 'application/json'},
-        body: jsonEncode({'refreshToken': refreshToken}),
-      );
-    } catch (_) {
+      response = await http
+          .post(
+            uri,
+            headers: const {'Content-Type': 'application/json'},
+            body: jsonEncode({'refreshToken': refreshToken}),
+          )
+          .timeout(_requestTimeout);
+    } catch (e) {
+      AppLogger.warning(_tag, 'Token refresh failed', e);
       return false;
     }
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      ChatRealtimeService.instance.disconnect();
-      PresenceService.instance.reset();
-      await _sessionStorage.clear();
+      await _invalidateSession();
       return false;
     }
 
@@ -195,9 +262,7 @@ class AppApiClient {
         accessToken.isEmpty ||
         nextRefreshToken == null ||
         nextRefreshToken.isEmpty) {
-      ChatRealtimeService.instance.disconnect();
-      PresenceService.instance.reset();
-      await _sessionStorage.clear();
+      await _invalidateSession();
       return false;
     }
 
@@ -210,5 +275,11 @@ class AppApiClient {
       countryDialCode: user['countryDialCode'] as String?,
     );
     return true;
+  }
+
+  Future<void> _invalidateSession() async {
+    ChatRealtimeService.instance.disconnect();
+    PresenceService.instance.reset();
+    await _sessionStorage.clear();
   }
 }

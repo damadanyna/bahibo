@@ -44,7 +44,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
   void initState() {
     super.initState();
     _notifications.addAll(widget.notifications);
-    syncNotificationsUnreadCount(_notifications);
+    NotificationsApiService.syncUnreadCount(_notifications);
     _bindRealtimeNotifications();
     if (_notifications.isEmpty) {
       unawaited(_refreshNotifications());
@@ -84,7 +84,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
           ..clear()
           ..addAll(data);
       });
-      syncNotificationsUnreadCount(_notifications);
+      NotificationsApiService.syncUnreadCount(_notifications);
       _publishNotificationsChanged();
     } on AppApiException {
       // Ignore transient refresh failures for realtime updates.
@@ -119,7 +119,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
     setState(() {
       _notifications[index] = {..._notifications[index], 'unread': false};
     });
-    syncNotificationsUnreadCount(_notifications);
+    NotificationsApiService.syncUnreadCount(_notifications);
     _publishNotificationsChanged();
 
     try {
@@ -132,7 +132,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
       setState(() {
         _notifications[index] = previousNotification;
       });
-      syncNotificationsUnreadCount(_notifications);
+      NotificationsApiService.syncUnreadCount(_notifications);
       _publishNotificationsChanged();
       ScaffoldMessenger.of(
         context,
