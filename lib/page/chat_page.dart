@@ -1963,6 +1963,10 @@ class _ChatPageState extends State<ChatPage>
   }
 
   void _enterSelectionMode(_ChatDisplayMessage displayMessage) {
+    if (_isSystemDisplayMessage(displayMessage)) {
+      return;
+    }
+
     final selectionKey = _displayMessageSelectionKey(displayMessage);
     if (_selectedDisplayMessageKeys.contains(selectionKey)) {
       return;
@@ -1978,6 +1982,10 @@ class _ChatPageState extends State<ChatPage>
   }
 
   void _toggleDisplayMessageSelection(_ChatDisplayMessage displayMessage) {
+    if (_isSystemDisplayMessage(displayMessage)) {
+      return;
+    }
+
     final selectionKey = _displayMessageSelectionKey(displayMessage);
     setState(() {
       if (!_selectedDisplayMessageKeys.add(selectionKey)) {
@@ -2008,6 +2016,13 @@ class _ChatPageState extends State<ChatPage>
           ),
         )
         .toList(growable: false);
+  }
+
+  bool _isSystemDisplayMessage(_ChatDisplayMessage displayMessage) {
+    final normalizedMessage = displayMessage.anchorMessage.message
+        .trim()
+        .toLowerCase();
+    return normalizedMessage == 'message supprime';
   }
 
   _DeleteMessageBatch _buildDeleteMessageBatch(
@@ -4973,10 +4988,24 @@ class _ChatBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasCaptionText = message.trim().isNotEmpty;
-    final bubbleColor = isMine ? outgoingBubbleColor : incomingBubbleColor;
-    final textColor = Colors.white.withValues(alpha: 0.96);
-    final metaColor = isMine
+    final normalizedMessage = message.trim();
+    final isDeletedPlaceholder =
+        normalizedMessage.toLowerCase() == 'message supprime';
+    final hasCaptionText = normalizedMessage.isNotEmpty;
+    final deletedAccent = isMine
+        ? const Color(0xFF2E8B57)
+        : subtleText.withValues(alpha: 0.92);
+    final bubbleColor = isDeletedPlaceholder
+        ? deletedAccent.withValues(alpha: 0.09)
+        : isMine
+        ? outgoingBubbleColor
+        : incomingBubbleColor;
+    final textColor = isDeletedPlaceholder
+        ? deletedAccent
+        : Colors.white.withValues(alpha: 0.96);
+    final metaColor = isDeletedPlaceholder
+        ? deletedAccent.withValues(alpha: 0.88)
+        : isMine
         ? primary.withValues(alpha: 0.74)
         : subtleText.withValues(alpha: 0.92);
     final normalizedParticipantUserId = participantUserId?.trim() ?? '';
@@ -4993,9 +5022,14 @@ class _ChatBubble extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
           decoration: BoxDecoration(
             color: bubbleColor,
-            border: isHighlighted
-                ? Border.all(color: primary.withValues(alpha: 0.9), width: 1.4)
-                : null,
+            border: Border.all(
+              color: isHighlighted
+                  ? primary.withValues(alpha: 0.9)
+                  : isDeletedPlaceholder
+                  ? deletedAccent.withValues(alpha: 0.45)
+                  : Colors.transparent,
+              width: isHighlighted || isDeletedPlaceholder ? 1.4 : 0,
+            ),
             boxShadow: isHighlighted
                 ? [
                     BoxShadow(
@@ -5076,7 +5110,42 @@ class _ChatBubble extends StatelessWidget {
                 ),
                 if (message.trim().isNotEmpty) const SizedBox(height: 10),
               ],
-              if (message.trim().isNotEmpty)
+              if (isDeletedPlaceholder)
+                Row(
+                  mainAxisSize: MainAxisSize.max,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.remove_circle_outline,
+                      size: 18,
+                      color: deletedAccent,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        normalizedMessage,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: textColor,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          height: 1.2,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      time,
+                      style: TextStyle(
+                        color: deletedAccent.withValues(alpha: 0.88),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                )
+              else if (message.trim().isNotEmpty)
                 Text(
                   message,
                   style: TextStyle(
@@ -5086,55 +5155,57 @@ class _ChatBubble extends StatelessWidget {
                     height: 1.35,
                   ),
                 ),
-              if (message.trim().isNotEmpty) const SizedBox(height: 6),
-              ValueListenableBuilder<int>(
-                valueListenable: PresenceService.instance.changes,
-                builder: (context, value, child) {
-                  final delivery = _ChatDeliveryPresentation.fromState(
-                    deliveryState,
-                    primary,
-                    metaColor,
-                  );
+              if (!isDeletedPlaceholder) ...[
+                if (message.trim().isNotEmpty) const SizedBox(height: 6),
+                ValueListenableBuilder<int>(
+                  valueListenable: PresenceService.instance.changes,
+                  builder: (context, value, child) {
+                    final delivery = _ChatDeliveryPresentation.fromState(
+                      deliveryState,
+                      primary,
+                      metaColor,
+                    );
 
-                  return Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (isEdited) ...[
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (isEdited) ...[
+                          Text(
+                            'modifié',
+                            style: TextStyle(
+                              color: const Color.fromARGB(113, 192, 192, 192),
+                              fontSize: 11,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                        ],
                         Text(
-                          'modifié',
+                          time,
                           style: TextStyle(
                             color: const Color.fromARGB(113, 192, 192, 192),
-                            fontSize: 11,
-                            fontStyle: FontStyle.italic,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                        const SizedBox(width: 4),
-                      ],
-                      Text(
-                        time,
-                        style: TextStyle(
-                          color: const Color.fromARGB(113, 192, 192, 192),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      if (isMine && delivery != null) ...[
-                        const SizedBox(width: 4),
-                        Icon(delivery.icon, size: 15, color: delivery.color),
-                        const SizedBox(width: 4),
-                        Text(
-                          delivery.label,
-                          style: TextStyle(
-                            color: delivery.color,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
+                        if (isMine && delivery != null) ...[
+                          const SizedBox(width: 4),
+                          Icon(delivery.icon, size: 15, color: delivery.color),
+                          const SizedBox(width: 4),
+                          Text(
+                            delivery.label,
+                            style: TextStyle(
+                              color: delivery.color,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
-                        ),
+                        ],
                       ],
-                    ],
-                  );
-                },
-              ),
+                    );
+                  },
+                ),
+              ],
             ],
           ),
         ),
