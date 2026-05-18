@@ -588,32 +588,48 @@ export class ConversationsService {
       throw new NotFoundException('Message not found');
     }
 
-    if (message.senderUserId !== userId) {
-      throw new ForbiddenException('You can only delete your own messages.');
-    }
-
     if (scope === 'FOR_ME') {
       // Soft-delete: hidden only for the sender, recipient still sees it.
       await this.prisma.chatMessage.update({
         where: { id: messageId },
-        data: { deletedForSenderAt: new Date() },
+        data:
+          conversation.buyerUserId === userId
+            ? { deletedForBuyerAt: new Date() }
+            : { deletedForSellerAt: new Date() },
       });
     } else {
+      if (message.senderUserId !== userId) {
+        throw new ForbiddenException('You can only delete your own messages.');
+      }
+
       const mediaCleanupCandidate = this.buildMediaCleanupCandidate(message);
 
-      // Hard-delete: removed for everyone + update conversation timestamp.
+      // Replace the content for everyone instead of removing the row so the
+      // conversation keeps a stable "message deleted" placeholder.
       await this.prisma.$transaction(async (transaction) => {
-        await transaction.chatMessage.delete({ where: { id: messageId } });
+        if (message.media != null) {
+          await transaction.chatMessageMedia.delete({
+            where: { messageId },
+          });
+        }
 
-        const latestMessage = await transaction.chatMessage.findFirst({
-          where: { conversationId },
-          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        });
-
-        await transaction.chatConversation.update({
-          where: { id: conversationId },
+        await transaction.chatMessage.update({
+          where: { id: messageId },
           data: {
-            lastMessageAt: latestMessage?.createdAt ?? conversation.createdAt,
+            content: 'Message supprime',
+            kind: 'TEXT',
+            replyToMessageId: null,
+            replyToSenderUserId: null,
+            replyToSenderName: null,
+            replyToContent: null,
+            productId: null,
+            productTitle: null,
+            productSubtitle: null,
+            productPriceLabel: null,
+            productImageUrl: null,
+            deletedForSenderAt: null,
+            deletedForBuyerAt: null,
+            deletedForSellerAt: null,
           },
         });
       });
@@ -1495,14 +1511,11 @@ export class ConversationsService {
       (message) => message.conversationId === conversationId,
     );
     const beforeWhere = this.buildBeforeMessageWhere(cursor);
-    // Exclude messages soft-deleted by their sender (FOR_ME scope).
-    const deletedForMeFilter = requestingUserId
-      ? { NOT: { senderUserId: requestingUserId, deletedForSenderAt: { not: null } } }
-      : {};
+    const deletedForMeFilter = this.buildDeletedForMeFilter(requestingUserId);
     const records = await this.prisma.chatMessage.findMany({
       where: {
         conversationId,
-        ...deletedForMeFilter,
+        ...(deletedForMeFilter == null ? {} : deletedForMeFilter),
         ...(beforeWhere == null ? {} : beforeWhere),
       },
       include: conversationMessageInclude,
@@ -1546,6 +1559,7 @@ export class ConversationsService {
             },
           ],
         },
+        ...(this.buildDeletedForMeFilter(userId) ?? {}),
         ...(beforeWhere == null ? {} : beforeWhere),
       },
       include: conversationMessageInclude,
@@ -1709,6 +1723,27 @@ export class ConversationsService {
       },
       ...blockState,
     };
+  }
+
+  private buildDeletedForMeFilter(requestingUserId?: string) {
+    if (!requestingUserId) {
+      return null;
+    }
+
+    return {
+      NOT: {
+        OR: [
+          {
+            conversation: { buyerUserId: requestingUserId },
+            deletedForBuyerAt: { not: null },
+          },
+          {
+            conversation: { sellerUserId: requestingUserId },
+            deletedForSellerAt: { not: null },
+          },
+        ],
+      },
+    } satisfies Prisma.ChatMessageWhereInput;
   }
 
   private async buildCurrentProductSnapshotMap(

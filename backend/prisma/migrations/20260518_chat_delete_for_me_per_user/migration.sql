@@ -1,0 +1,3 @@
+ALTER TABLE "ChatMessage"
+  ADD COLUMN IF NOT EXISTS "deletedForBuyerAt" TIMESTAMP(3),
+  ADD COLUMN IF NOT EXISTS "deletedForSellerAt" TIMESTAMP(3);

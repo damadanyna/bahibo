@@ -93,7 +93,7 @@ class _ChatPageState extends State<ChatPage>
     with AppPageRefreshMixin<ChatPage>, RouteAware {
   static final Map<String, _ChatPageViewState> _viewStateCache =
       <String, _ChatPageViewState>{};
-  static const bool _autoSeenEnabled = false;
+  static const bool _autoSeenEnabled = true;
   static const Duration _typingStopDelay = Duration(milliseconds: 1200);
   static const int _conversationPageFetchLimit = 50;
   static const int _recentConversationMessageLimit = 50;
@@ -1400,10 +1400,20 @@ class _ChatPageState extends State<ChatPage>
   }
 
   bool _canDeleteDisplayMessage(_ChatDisplayMessage displayMessage) {
+    return _canDeleteDisplayMessageForScope(displayMessage, scope: 'FOR_ME');
+  }
+
+  bool _canDeleteDisplayMessageForScope(
+    _ChatDisplayMessage displayMessage, {
+    required String scope,
+  }) {
+    final normalizedScope = scope.trim().toUpperCase();
     return displayMessage.messages.any(
       (message) =>
           (message.id?.startsWith('pending-') ?? false) ||
-          (message.isMine && (message.id?.trim().isNotEmpty ?? false)),
+          ((message.id?.trim().isNotEmpty ?? false) &&
+              !(message.id!.startsWith('pending-')) &&
+              (normalizedScope == 'FOR_ME' || message.isMine)),
     );
   }
 
@@ -1415,7 +1425,7 @@ class _ChatPageState extends State<ChatPage>
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text(
-          'Seuls les messages que vous avez envoyes peuvent etre supprimes.',
+          'Le message peut etre supprime pour vous. Pour tout le monde, seuls vos messages sont autorises.',
         ),
       ),
     );
@@ -1655,9 +1665,23 @@ class _ChatPageState extends State<ChatPage>
       return;
     }
 
+    String conversationSelectionKey(Map<String, dynamic> conversation) {
+      final conversationId = _forwardConversationId(conversation);
+      if (conversationId != null && conversationId.isNotEmpty) {
+        return 'id:$conversationId';
+      }
+
+      final participantId = _forwardParticipantId(conversation);
+      if (participantId != null && participantId.isNotEmpty) {
+        return 'user:$participantId';
+      }
+
+      return conversation.hashCode.toString();
+    }
+
     final conversationsFuture = _loadForwardConversations();
-    final selectedConversation =
-        await showModalBottomSheet<Map<String, dynamic>>(
+    final selectedConversations =
+        await showModalBottomSheet<List<Map<String, dynamic>>>(
           context: context,
           useRootNavigator: true,
           isScrollControlled: true,
@@ -1712,70 +1736,114 @@ class _ChatPageState extends State<ChatPage>
                       );
                     }
 
-                    return Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 40,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: Colors.grey.withValues(alpha: 0.35),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'Partager avec',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w800,
+                    final selectedKeys = <String>{};
+
+                    return StatefulBuilder(
+                      builder: (context, setModalState) => Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: Colors.grey.withValues(alpha: 0.35),
+                              borderRadius: BorderRadius.circular(999),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        Flexible(
-                          child: ListView.separated(
-                            shrinkWrap: true,
-                            itemCount: conversations.length,
-                            separatorBuilder: (_, _) =>
-                                const Divider(height: 1),
-                            itemBuilder: (context, index) {
-                              final conversation = conversations[index];
-                              final currentConversationId = _conversationId
-                                  ?.trim();
-                              return ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                leading: AppCircleNetworkAvatar(
-                                  radius: 22,
-                                  imageUrl: _forwardConversationAvatar(
-                                    conversation,
-                                  ),
-                                  userId: _forwardParticipantId(conversation),
-                                ),
-                                title: Text(
-                                  _forwardConversationName(conversation),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                subtitle: Text(
-                                  _forwardConversationId(conversation) ==
-                                          currentConversationId
-                                      ? 'Discussion actuelle'
-                                      : 'Touchez pour partager ce message',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                onTap: () =>
-                                    Navigator.of(ctx).pop(conversation),
-                              );
-                            },
+                          const SizedBox(height: 14),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Partager avec',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 12),
+                          Flexible(
+                            child: ListView.separated(
+                              shrinkWrap: true,
+                              itemCount: conversations.length,
+                              separatorBuilder: (_, _) =>
+                                  const Divider(height: 1),
+                              itemBuilder: (context, index) {
+                                final conversation = conversations[index];
+                                final currentConversationId = _conversationId
+                                    ?.trim();
+                                final selectionKey = conversationSelectionKey(
+                                  conversation,
+                                );
+                                final isSelected = selectedKeys.contains(
+                                  selectionKey,
+                                );
+                                return CheckboxListTile(
+                                  value: isSelected,
+                                  contentPadding: EdgeInsets.zero,
+                                  controlAffinity:
+                                      ListTileControlAffinity.trailing,
+                                  secondary: AppCircleNetworkAvatar(
+                                    radius: 22,
+                                    imageUrl: _forwardConversationAvatar(
+                                      conversation,
+                                    ),
+                                    userId: _forwardParticipantId(conversation),
+                                  ),
+                                  title: Text(
+                                    _forwardConversationName(conversation),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    _forwardConversationId(conversation) ==
+                                            currentConversationId
+                                        ? 'Discussion actuelle'
+                                        : 'Cochez pour partager ce message',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  onChanged: (_) {
+                                    setModalState(() {
+                                      if (!selectedKeys.add(selectionKey)) {
+                                        selectedKeys.remove(selectionKey);
+                                      }
+                                    });
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton(
+                              onPressed: selectedKeys.isEmpty
+                                  ? null
+                                  : () {
+                                      final selected = conversations
+                                          .where(
+                                            (conversation) =>
+                                                selectedKeys.contains(
+                                                  conversationSelectionKey(
+                                                    conversation,
+                                                  ),
+                                                ),
+                                          )
+                                          .toList(growable: false);
+                                      Navigator.of(ctx).pop(selected);
+                                    },
+                              child: Text(
+                                selectedKeys.length <= 1
+                                    ? 'Partager vers 1 discussion'
+                                    : 'Partager vers ${selectedKeys.length} discussions',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     );
                   },
                 ),
@@ -1784,12 +1852,16 @@ class _ChatPageState extends State<ChatPage>
           },
         );
 
-    if (selectedConversation == null || !mounted) {
+    if (selectedConversations == null ||
+        selectedConversations.isEmpty ||
+        !mounted) {
       return;
     }
 
     try {
-      await _forwardMessageToConversation(selectedConversation, payload);
+      for (final conversation in selectedConversations) {
+        await _forwardMessageToConversation(conversation, payload);
+      }
     } on AppApiException catch (error) {
       if (!mounted) {
         return;
@@ -1809,7 +1881,9 @@ class _ChatPageState extends State<ChatPage>
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Message partage avec ${_forwardConversationName(selectedConversation)}.',
+          selectedConversations.length == 1
+              ? 'Message partage avec ${_forwardConversationName(selectedConversations.first)}.'
+              : 'Message partage avec ${selectedConversations.length} discussions.',
         ),
       ),
     );
@@ -1829,13 +1903,15 @@ class _ChatPageState extends State<ChatPage>
     });
   }
 
-  Future<String?> _askDeleteScope() {
+  Future<String?> _askDeleteScope({required bool allowDeleteForEveryone}) {
     return showDialog<String>(
       context: context,
       useRootNavigator: true,
       builder: (ctx) => AlertDialog(
         title: const Text('Supprimer le message'),
-        content: const Text('Choisissez une option de suppression:'),
+        content: const Text(
+          'Choisissez une option de suppression. Seuls vos messages peuvent etre supprimes pour tout le monde.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
@@ -1845,13 +1921,14 @@ class _ChatPageState extends State<ChatPage>
             onPressed: () => Navigator.of(ctx).pop('FOR_ME'),
             child: const Text('Pour moi'),
           ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop('FOR_EVERYONE'),
-            style: TextButton.styleFrom(
-              foregroundColor: Theme.of(ctx).colorScheme.error,
+          if (allowDeleteForEveryone)
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop('FOR_EVERYONE'),
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(ctx).colorScheme.error,
+              ),
+              child: const Text('Pour tout le monde'),
             ),
-            child: const Text('Pour tout le monde'),
-          ),
         ],
       ),
     );
@@ -1935,9 +2012,11 @@ class _ChatPageState extends State<ChatPage>
 
   _DeleteMessageBatch _buildDeleteMessageBatch(
     Iterable<_ChatDisplayMessage> displayMessages,
+    String scope,
   ) {
     final pendingIds = <String>{};
     final persistedIds = <String>{};
+    final allowAnyPersistedMessage = scope.trim().toUpperCase() == 'FOR_ME';
 
     void addGroupedPersistedMessages(String groupId) {
       final normalizedGroupId = groupId.trim();
@@ -1949,9 +2028,9 @@ class _ChatPageState extends State<ChatPage>
         _messages
             .where(
               (message) =>
-                  message.isMine &&
                   (message.id?.trim().isNotEmpty ?? false) &&
                   !(message.id!.startsWith('pending-')) &&
+                  (allowAnyPersistedMessage || message.isMine) &&
                   (message.media?.mediaGroupId?.trim() ?? '') ==
                       normalizedGroupId,
             )
@@ -1970,9 +2049,9 @@ class _ChatPageState extends State<ChatPage>
         displayMessage.messages
             .where(
               (message) =>
-                  message.isMine &&
                   (message.id?.trim().isNotEmpty ?? false) &&
-                  !(message.id!.startsWith('pending-')),
+                  !(message.id!.startsWith('pending-')) &&
+                  (allowAnyPersistedMessage || message.isMine),
             )
             .map((message) => message.id!.trim()),
       );
@@ -2046,30 +2125,51 @@ class _ChatPageState extends State<ChatPage>
   Future<void> _deleteSelectedMessages(
     List<_ChatDisplayMessage> selectedDisplayMessages,
   ) async {
-    final deletableMessages = selectedDisplayMessages
+    final deletableForMeMessages = selectedDisplayMessages
         .where(_canDeleteDisplayMessage)
         .toList(growable: false);
-    if (deletableMessages.isEmpty) {
+    if (deletableForMeMessages.isEmpty) {
       if (!mounted) {
         return;
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            'Suppression impossible: seuls les messages que vous avez envoyes peuvent etre supprimes.',
-          ),
+          content: Text('Suppression impossible pour cette selection.'),
         ),
       );
       return;
     }
 
-    final scope = await _askDeleteScope();
+    final scope = await _askDeleteScope(
+      allowDeleteForEveryone: selectedDisplayMessages.every(
+        (displayMessage) => _canDeleteDisplayMessageForScope(
+          displayMessage,
+          scope: 'FOR_EVERYONE',
+        ),
+      ),
+    );
     if (scope == null || !mounted) return;
+
+    final deletableMessages = selectedDisplayMessages
+        .where(
+          (displayMessage) =>
+              _canDeleteDisplayMessageForScope(displayMessage, scope: scope),
+        )
+        .toList(growable: false);
+    if (deletableMessages.isEmpty) {
+      final errorText = scope == 'FOR_EVERYONE'
+          ? 'Suppression impossible: pour tout le monde, seuls les messages que vous avez envoyes sont autorises.'
+          : 'Suppression impossible pour cette selection.';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(errorText)));
+      return;
+    }
 
     final skippedCount =
         selectedDisplayMessages.length - deletableMessages.length;
-    final deleteBatch = _buildDeleteMessageBatch(deletableMessages);
+    final deleteBatch = _buildDeleteMessageBatch(deletableMessages, scope);
     final totalSteps = math.max(1, deleteBatch.totalOperations);
     final progressNotifier = ValueNotifier<_DeleteMessagesProgress>(
       _DeleteMessagesProgress(
@@ -2138,13 +2238,12 @@ class _ChatPageState extends State<ChatPage>
 
     setState(() => _selectedDisplayMessageKeys.clear());
     if (skippedCount > 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '$skippedCount message(s) ont ete ignores. Seuls vos propres messages peuvent etre supprimes.',
-          ),
-        ),
-      );
+      final skippedText = scope == 'FOR_EVERYONE'
+          ? '$skippedCount message(s) ont ete ignores. Pour tout le monde, seuls vos propres messages peuvent etre supprimes.'
+          : '$skippedCount message(s) ont ete ignores.';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(skippedText)));
     }
   }
 
@@ -3748,7 +3847,6 @@ class _ChatPageState extends State<ChatPage>
     );
     final canShareSelection =
         singleSelectedDisplayMessage != null &&
-        _usesSelectionToolbarStatus(singleSelectedDisplayMessage) &&
         _canCopyDisplayMessage(singleSelectedDisplayMessage);
     final timelineItems = _timelineItemsForDisplayMessages(
       displayMessages,
@@ -4504,9 +4602,16 @@ class _ChatDisplayMessage {
           normalized == '…';
     }
 
+    bool hasVisibleStructuredContent(_ChatMessage message) {
+      return message.media != null || message.product != null;
+    }
+
     if (messages.length == 1) {
       final singleMessage = anchorMessage.message.trim();
-      return isPlaceholderText(singleMessage) ? '' : anchorMessage.message;
+      return isPlaceholderText(singleMessage) &&
+              hasVisibleStructuredContent(anchorMessage)
+          ? ''
+          : anchorMessage.message;
     }
 
     final normalizedMessages = messages
@@ -4518,7 +4623,7 @@ class _ChatDisplayMessage {
     }
 
     final message = normalizedMessages.first;
-    if (isPlaceholderText(message)) {
+    if (isPlaceholderText(message) && mediaItems.isNotEmpty) {
       return '';
     }
 

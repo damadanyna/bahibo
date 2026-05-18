@@ -48,6 +48,7 @@ class ChatSessionController extends ChangeNotifier {
   static const Duration _pendingTextRetryBaseDelay = Duration(seconds: 2);
   static const Duration _pendingTextRetryMaxDelay = Duration(seconds: 30);
   static const Duration _stalePendingTextSendingTimeout = Duration(seconds: 20);
+  static const String _deletedMessagePlaceholder = 'Message supprime';
 
   final ChatSessionTarget target;
   final ConversationsApiService _conversationsApiService;
@@ -627,12 +628,39 @@ class ChatSessionController extends ChangeNotifier {
           }
         }
 
-        ignoreNextNonPendingLocalStoreChange();
-        await _localConversationStore.deleteMessage(
-          conversationId: conversationId,
-          messageId: messageId,
-        );
-        _removeMessageIdsFromState(<String>{messageId});
+        if (scope.trim().toUpperCase() == 'FOR_EVERYONE') {
+          final nextMessages = _markMessageIdsDeletedForEveryone(
+            _state.messages,
+            <String>{messageId},
+          );
+          _replaceMessagesInState(nextMessages);
+
+          Map<String, dynamic>? updatedMessage;
+          for (final message in nextMessages) {
+            final currentMessageId = message['id']?.toString().trim() ?? '';
+            if (currentMessageId == messageId) {
+              updatedMessage = message;
+              break;
+            }
+          }
+
+          if (updatedMessage != null) {
+            ignoreNextNonPendingLocalStoreChange();
+            await _localConversationStore.upsertMessage(
+              conversationId: conversationId,
+              message: updatedMessage,
+              fallbackProductId: target.productId,
+              fallbackUserId: target.userId,
+            );
+          }
+        } else {
+          ignoreNextNonPendingLocalStoreChange();
+          await _localConversationStore.deleteMessage(
+            conversationId: conversationId,
+            messageId: messageId,
+          );
+          _removeMessageIdsFromState(<String>{messageId});
+        }
         completedSteps += 1;
         reportProgress(
           'Suppression distante $completedSteps/${totalSteps == 0 ? 1 : totalSteps}',
@@ -868,33 +896,41 @@ class ChatSessionController extends ChangeNotifier {
         }
 
         final mediaGroupId = event['mediaGroupId']?.toString().trim() ?? '';
-        final messageIdsToRemove = mediaGroupId.isNotEmpty
+        final messageIdsToMarkDeleted = mediaGroupId.isNotEmpty
             ? _messageIdsForMediaGroup(_state.messages, mediaGroupId)
             : <String>{messageId};
         if (kDebugMode) {
           debugPrint(
             '[ChatRealtime] message:deleted conversation=${event['conversationId']} '
             'messageId=$messageId mediaGroupId=${mediaGroupId.isEmpty ? '-' : mediaGroupId} '
-            'removedCount=${messageIdsToRemove.length}',
+            'removedCount=${messageIdsToMarkDeleted.length}',
           );
         }
 
-        _removeMessageIdsFromState(messageIdsToRemove);
+        final nextMessages = _markMessageIdsDeletedForEveryone(
+          _state.messages,
+          messageIdsToMarkDeleted,
+        );
+        _replaceMessagesInState(nextMessages);
         final conversationId = _state.conversationId?.trim() ?? '';
         if (conversationId.isEmpty) {
           return true;
         }
 
-        ignoreNextNonPendingLocalStoreChange();
-        if (mediaGroupId.isNotEmpty) {
-          await _localConversationStore.deleteMessagesByMediaGroup(
+        for (final deletedMessage in nextMessages) {
+          final currentMessageId =
+              deletedMessage['id']?.toString().trim() ?? '';
+          if (currentMessageId.isEmpty ||
+              !messageIdsToMarkDeleted.contains(currentMessageId)) {
+            continue;
+          }
+
+          ignoreNextNonPendingLocalStoreChange();
+          await _localConversationStore.upsertMessage(
             conversationId: conversationId,
-            mediaGroupId: mediaGroupId,
-          );
-        } else {
-          await _localConversationStore.deleteMessage(
-            conversationId: conversationId,
-            messageId: messageId,
+            message: deletedMessage,
+            fallbackProductId: target.productId,
+            fallbackUserId: target.userId,
           );
         }
         _scheduleRealtimeDeleteReconciliation();
@@ -1571,6 +1607,45 @@ class ChatSessionController extends ChangeNotifier {
         clearLoadError: true,
       ),
     );
+  }
+
+  void _replaceMessagesInState(List<Map<String, dynamic>> nextMessages) {
+    final currentConversation = _state.conversation;
+    final nextConversation = currentConversation == null
+        ? null
+        : (Map<String, dynamic>.from(currentConversation)
+            ..['messages'] = nextMessages);
+
+    _updateState(
+      _state.copyWith(
+        conversation: nextConversation,
+        messages: nextMessages,
+        showEntrySkeleton: false,
+        clearLoadError: true,
+      ),
+    );
+  }
+
+  List<Map<String, dynamic>> _markMessageIdsDeletedForEveryone(
+    List<Map<String, dynamic>> source,
+    Set<String> messageIds,
+  ) {
+    return source
+        .map((message) {
+          final messageId = message['id']?.toString().trim() ?? '';
+          if (messageId.isEmpty || !messageIds.contains(messageId)) {
+            return Map<String, dynamic>.from(message);
+          }
+
+          final nextMessage = Map<String, dynamic>.from(message);
+          nextMessage['content'] = _deletedMessagePlaceholder;
+          nextMessage['kind'] = 'TEXT';
+          nextMessage['reply'] = null;
+          nextMessage['media'] = null;
+          nextMessage['product'] = null;
+          return nextMessage;
+        })
+        .toList(growable: false);
   }
 
   Set<String> _messageIdsForMediaGroup(

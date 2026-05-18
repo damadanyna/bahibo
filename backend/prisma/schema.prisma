@@ -400,6 +400,8 @@ model ChatMessage {
   createdAt           DateTime         @default(now())
   readAt              DateTime?
   deletedForSenderAt  DateTime?
+  deletedForBuyerAt   DateTime?
+  deletedForSellerAt  DateTime?
   editedAt            DateTime?
   conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender         User             @relation("MessageSender", fields: [senderUserId], references: [id], onDelete: Cascade)
