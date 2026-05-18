@@ -18,12 +18,14 @@ import { PrismaService } from '../../prisma/prisma.service';
 type ConversationRealtimePayload = {
   type:
     | 'message:new'
+    | 'message:deleted'
     | 'conversation:delivered'
     | 'conversation:read'
     | 'conversation:blocked';
   conversationId: string;
   actorUserId: string;
   deliveredAt?: string | null;
+  mediaGroupId?: string | null;
   messageId?: string | null;
   readAt?: string | null;
   message?: {

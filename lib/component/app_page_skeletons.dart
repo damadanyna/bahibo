@@ -304,9 +304,12 @@ class SellerProfileSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
+    return Padding(
       padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
-      children: [
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(24),
           child: const SkeletonBox(
@@ -340,7 +343,8 @@ class SellerProfileSkeleton extends StatelessWidget {
         const ProductCardSkeleton(),
         const SizedBox(height: 10),
         const ProductCardSkeleton(),
-      ],
+        ],
+      ),
     );
   }
 }

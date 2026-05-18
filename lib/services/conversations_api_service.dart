@@ -530,12 +530,75 @@ class ConversationsApiService {
   Future<Map<String, dynamic>> deleteMessage({
     required String conversationId,
     required String messageId,
+    String scope = 'FOR_EVERYONE',
   }) async {
     final data = await _client.delete(
-      '/conversations/$conversationId/messages/$messageId',
+      '/conversations/$conversationId/messages/$messageId?scope=$scope',
       authenticated: true,
     );
-    return Map<String, dynamic>.from(data as Map);
+    final normalized = Map<String, dynamic>.from(data as Map);
+    await _localConversationStore.saveConversationSnapshot(
+      normalized,
+      fallbackId: conversationId,
+    );
+    return normalized;
+  }
+
+  Future<Map<String, dynamic>> editMessage({
+    required String conversationId,
+    required String messageId,
+    required String content,
+  }) async {
+    try {
+      final data = await _client.patch(
+        '/conversations/$conversationId/messages/$messageId',
+        body: {'content': content},
+        authenticated: true,
+      );
+      final normalized = Map<String, dynamic>.from(data as Map);
+      await _localConversationStore.saveConversationSnapshot(
+        normalized,
+        fallbackId: conversationId,
+      );
+      return normalized;
+    } on AppApiException catch (error) {
+      final message = error.message.trim().toLowerCase();
+      final shouldFallbackToPost =
+          error.statusCode == 404 &&
+          (message.contains('cannot patch') ||
+              message.contains('cannot patch /'));
+      if (!shouldFallbackToPost) {
+        rethrow;
+      }
+
+      try {
+        final data = await _client.post(
+          '/conversations/$conversationId/messages/$messageId/edit',
+          body: {'content': content},
+          authenticated: true,
+        );
+        final normalized = Map<String, dynamic>.from(data as Map);
+        await _localConversationStore.saveConversationSnapshot(
+          normalized,
+          fallbackId: conversationId,
+        );
+        return normalized;
+      } on AppApiException catch (postError) {
+        final postMessage = postError.message.trim().toLowerCase();
+        final isEditUnsupported =
+            postError.statusCode == 404 &&
+            (postMessage.contains('cannot post') ||
+                postMessage.contains('cannot post /'));
+        if (!isEditUnsupported) {
+          rethrow;
+        }
+
+        throw AppApiException(
+          'La modification de message n\'est pas disponible sur ce serveur.',
+          statusCode: 501,
+        );
+      }
+    }
   }
 
   Future<Map<String, dynamic>> markConversationRead({

@@ -2,6 +2,32 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
 
+type DeleteCloudinaryAssetInput = {
+  mediaType: 'image' | 'document';
+  publicId?: string | null;
+  storageKey?: string | null;
+  publicUrl?: string | null;
+};
+
+type ListCloudinaryAssetsInput = {
+  mediaType: 'image' | 'document';
+  maxResults?: number;
+  nextCursor?: string | null;
+};
+
+type CloudinaryListedAsset = {
+  publicId: string;
+  secureUrl: string | null;
+  createdAt: string | null;
+  bytes: number | null;
+  resourceType: string | null;
+};
+
+type CloudinaryListedAssetsPage = {
+  assets: CloudinaryListedAsset[];
+  nextCursor: string | null;
+};
+
 type UploadImageVariant =
   | 'avatar'
   | 'cover'
@@ -220,6 +246,62 @@ export class CloudinaryService {
     };
   }
 
+  async deleteAsset(input: DeleteCloudinaryAssetInput) {
+    if (!this.isConfigured()) {
+      throw new BadRequestException('Cloudinary is not configured');
+    }
+
+    const publicId = this.resolvePublicId(
+      input.publicId,
+      input.storageKey,
+      input.publicUrl,
+    );
+    if (!publicId) {
+      return { result: 'skipped' as const, publicId: null };
+    }
+
+    const result = await cloudinary.uploader.destroy(publicId, {
+      resource_type: input.mediaType === 'document' ? 'raw' : 'image',
+      invalidate: true,
+    });
+
+    return {
+      result: result.result,
+      publicId,
+    };
+  }
+
+  async listChatAssets(input: ListCloudinaryAssetsInput) {
+    if (!this.isConfigured()) {
+      throw new BadRequestException('Cloudinary is not configured');
+    }
+
+    const resourceType = input.mediaType === 'document' ? 'raw' : 'image';
+    const prefix =
+      input.mediaType === 'document' ? 'BANAY/chat-documents' : 'BANAY/chat-images';
+    const response = await cloudinary.api.resources({
+      type: 'upload',
+      resource_type: resourceType,
+      prefix,
+      max_results: Math.min(Math.max(input.maxResults ?? 100, 1), 500),
+      next_cursor: input.nextCursor?.trim() || undefined,
+    });
+
+    const resources = Array.isArray(response.resources) ? response.resources : [];
+    return {
+      assets: resources.map((resource: any) => ({
+        publicId: typeof resource.public_id === 'string' ? resource.public_id : '',
+        secureUrl: typeof resource.secure_url === 'string' ? resource.secure_url : null,
+        createdAt: typeof resource.created_at === 'string' ? resource.created_at : null,
+        bytes: typeof resource.bytes === 'number' ? resource.bytes : null,
+        resourceType:
+          typeof resource.resource_type === 'string' ? resource.resource_type : null,
+      })) satisfies CloudinaryListedAsset[],
+      nextCursor:
+        typeof response.next_cursor === 'string' ? response.next_cursor : null,
+    } satisfies CloudinaryListedAssetsPage;
+  }
+
   private resolveFolder(variant: UploadImageVariant) {
     if (variant === 'cover') {
       return 'BANAY/profile-covers';
@@ -310,6 +392,51 @@ export class CloudinaryService {
       secure: true,
       transformation,
     });
+  }
+
+  private resolvePublicId(
+    publicId?: string | null,
+    storageKey?: string | null,
+    publicUrl?: string | null,
+  ) {
+    const normalizedPublicId = publicId?.trim() ?? '';
+    if (normalizedPublicId.length > 0) {
+      return normalizedPublicId;
+    }
+
+    const normalizedStorageKey = storageKey?.trim() ?? '';
+    if (normalizedStorageKey.length > 0) {
+      return normalizedStorageKey;
+    }
+
+    const normalizedPublicUrl = publicUrl?.trim() ?? '';
+    if (normalizedPublicUrl.length === 0) {
+      return null;
+    }
+
+    return this.extractPublicIdFromUrl(normalizedPublicUrl);
+  }
+
+  private extractPublicIdFromUrl(publicUrl: string) {
+    if (!publicUrl.includes('res.cloudinary.com')) {
+      return null;
+    }
+
+    const uploadMarker = '/upload/';
+    const uploadIndex = publicUrl.indexOf(uploadMarker);
+    if (uploadIndex < 0) {
+      return null;
+    }
+
+    const suffix = publicUrl.substring(uploadIndex + uploadMarker.length);
+    const suffixWithoutVersion = suffix.replace(/^(?:[^/]+\/)+?(?=v\d+\/|[^/]+$)/, '');
+    const versionPrefixMatch = suffixWithoutVersion.match(/^v\d+\/(.+)$/);
+    const assetPath = versionPrefixMatch?.[1] ?? suffixWithoutVersion;
+    const lastDotIndex = assetPath.lastIndexOf('.');
+
+    return lastDotIndex > assetPath.lastIndexOf('/')
+      ? assetPath.substring(0, lastDotIndex)
+      : assetPath;
   }
 
   private buildTransformation(variant: UploadImageVariant) {

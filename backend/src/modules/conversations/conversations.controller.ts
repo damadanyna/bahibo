@@ -1,9 +1,12 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -23,12 +26,67 @@ import { ConversationsService } from './conversations.service';
 export class ConversationsController {
   constructor(private readonly conversationsService: ConversationsService) {}
 
+  private ensureAdminAccess(role: string) {
+    if (role !== 'ADMIN') {
+      throw new ForbiddenException('Admin access required');
+    }
+  }
+
+  private async editMessageResponse(
+    userId: string,
+    conversationId: string,
+    messageId: string,
+    body: { content?: string },
+  ) {
+    const content = body?.content?.trim() ?? '';
+    if (!content) {
+      throw new BadRequestException('content is required');
+    }
+
+    return {
+      success: true,
+      message: 'Message updated successfully',
+      data: await this.conversationsService.editMessage(
+        userId,
+        conversationId,
+        messageId,
+        content,
+      ),
+    };
+  }
+
   @Get()
   async findAll(@Req() req: { user: { userId: string } }) {
     return {
       success: true,
       message: 'Conversations fetched successfully',
       data: await this.conversationsService.listConversations(req.user.userId),
+    };
+  }
+
+  @Get('admin/media-assets/orphans')
+  async auditOrphanedMediaAssets(
+    @Req() req: { user: { userId: string; role: string } },
+    @Query('olderThanDays') olderThanDays?: string,
+    @Query('maxAssets') maxAssets?: string,
+    @Query('deleteOrphans') deleteOrphans?: string,
+    @Query('nextCursor') nextCursor?: string,
+  ) {
+    this.ensureAdminAccess(req.user.role);
+
+    return {
+      success: true,
+      message:
+        deleteOrphans === 'true'
+          ? 'Orphaned Cloudinary chat assets cleaned successfully'
+          : 'Orphaned Cloudinary chat assets audited successfully',
+      data: await this.conversationsService.auditOrphanedChatMediaAssets({
+        actorUserId: req.user.userId,
+        olderThanDays: Number(olderThanDays ?? '7'),
+        maxAssets: Number(maxAssets ?? '100'),
+        deleteOrphans: deleteOrphans === 'true',
+        nextCursor: nextCursor?.trim() || null,
+      }),
     };
   }
 
@@ -115,7 +173,10 @@ export class ConversationsController {
     @Req() req: { user: { userId: string } },
     @Param('conversationId') conversationId: string,
     @Param('messageId') messageId: string,
+    @Query('scope') scope?: string,
   ) {
+    const deleteScope =
+      scope === 'FOR_ME' ? 'FOR_ME' : 'FOR_EVERYONE';
     return {
       success: true,
       message: 'Message deleted successfully',
@@ -123,8 +184,39 @@ export class ConversationsController {
         req.user.userId,
         conversationId,
         messageId,
+        deleteScope,
       ),
     };
+  }
+
+  @Patch(':conversationId/messages/:messageId')
+  async editMessage(
+    @Req() req: { user: { userId: string } },
+    @Param('conversationId') conversationId: string,
+    @Param('messageId') messageId: string,
+    @Body() body: { content?: string },
+  ) {
+    return this.editMessageResponse(
+      req.user.userId,
+      conversationId,
+      messageId,
+      body,
+    );
+  }
+
+  @Post(':conversationId/messages/:messageId/edit')
+  async editMessageFallback(
+    @Req() req: { user: { userId: string } },
+    @Param('conversationId') conversationId: string,
+    @Param('messageId') messageId: string,
+    @Body() body: { content?: string },
+  ) {
+    return this.editMessageResponse(
+      req.user.userId,
+      conversationId,
+      messageId,
+      body,
+    );
   }
 
   @Post('product/:productId/messages')

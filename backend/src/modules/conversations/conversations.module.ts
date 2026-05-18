@@ -6,6 +6,7 @@ import { CloudinaryService } from '../auth/cloudinary.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { PushNotificationsModule } from '../push-notifications/push-notifications.module';
 import { ConversationsController } from './conversations.controller';
+import { ConversationsMediaAuditScheduler } from './conversations-media-audit.scheduler';
 import { ConversationsRealtimeGateway } from './realtime/conversations-realtime.gateway';
 import { ConversationsService } from './conversations.service';
 
@@ -23,7 +24,12 @@ import { ConversationsService } from './conversations.service';
     }),
   ],
   controllers: [ConversationsController],
-  providers: [ConversationsService, ConversationsRealtimeGateway, CloudinaryService],
+  providers: [
+    ConversationsService,
+    ConversationsRealtimeGateway,
+    ConversationsMediaAuditScheduler,
+    CloudinaryService,
+  ],
   exports: [ConversationsService, ConversationsRealtimeGateway],
 })
 export class ConversationsModule {}

@@ -6,6 +6,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "clean": "node -e \"const fs=require('fs'); if (fs.existsSync('dist')) fs.rmSync('dist', { recursive: true, force: true });\"",
+    "audit:chat-media": "ts-node --project tsconfig.json -r tsconfig-paths/register scripts/audit-chat-media.ts",
     "build": "nest build",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
@@ -26,6 +27,7 @@
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/platform-socket.io": "^11.0.1",
+    "@nestjs/schedule": "^5.0.1",
     "@nestjs/websockets": "^11.0.1",
     "@prisma/client": "^6.5.0",
     "bcryptjs": "^2.4.3",
@@ -37,8 +39,8 @@
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
-    ,"socket.io": "^4.8.1"
+    "rxjs": "^7.8.1",
+    "socket.io": "^4.8.1"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.1",

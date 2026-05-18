@@ -4,6 +4,7 @@ import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/conversations_api_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 
 enum ChatPhotoUploadState {
   queued,
@@ -175,13 +176,15 @@ class ChatPhotoUploadService extends ChangeNotifier {
     _ensureConnectivityMonitoring();
     await _syncConnectivityState();
 
+    final uploadBytes = await _compressPhoto(fileBytes, fileName: fileName);
+
     final taskId = 'photo-upload-${DateTime.now().microsecondsSinceEpoch}';
     _tasks.add(
       ChatPhotoUploadTask(
         id: taskId,
         target: target,
         fileName: fileName,
-        previewBytes: fileBytes,
+        previewBytes: uploadBytes,
         width: width,
         height: height,
         mediaGroupId: mediaGroupId,
@@ -514,6 +517,26 @@ class ChatPhotoUploadService extends ChangeNotifier {
         message.contains('connexion') ||
         message.contains('reseau') ||
         !_hasInternetConnection;
+  }
+
+  Future<Uint8List> _compressPhoto(
+    Uint8List bytes, {
+    required String fileName,
+  }) async {
+    try {
+      final ext = fileName.toLowerCase().split('.').last;
+      final format =
+          ext == 'png' ? CompressFormat.png : CompressFormat.jpeg;
+      return await FlutterImageCompress.compressWithList(
+        bytes,
+        minWidth: 1280,
+        minHeight: 1280,
+        quality: 85,
+        format: format,
+      );
+    } catch (_) {
+      return bytes;
+    }
   }
 
   String _guessMimeTypeFromFileName(String fileName) {

@@ -93,7 +93,7 @@ class LocalConversationStore {
       database,
       finder: Finder(
         filter: Filter.equals('accountKey', accountKey),
-        sortOrders: [SortOrder('createdAtMs')],
+        sortOrders: [SortOrder('createdAtMs'), SortOrder('id')],
       ),
     );
 
@@ -254,6 +254,56 @@ class LocalConversationStore {
           ),
         )
         .delete(database);
+
+    final aliases = await _knownConversationAliases(
+      database,
+      accountKey: accountKey,
+      conversationId: normalizedConversationId,
+    );
+    _emitChange(conversationId: normalizedConversationId, cacheKeys: aliases);
+  }
+
+  Future<void> deleteMessagesByMediaGroup({
+    required String conversationId,
+    required String mediaGroupId,
+  }) async {
+    final normalizedConversationId = conversationId.trim();
+    final normalizedMediaGroupId = mediaGroupId.trim();
+    if (normalizedConversationId.isEmpty || normalizedMediaGroupId.isEmpty) {
+      return;
+    }
+
+    final database = await _openDatabase();
+    final accountKey = await _currentAccountKey();
+    final records = await _messageStore.find(
+      database,
+      finder: Finder(
+        filter: Filter.and([
+          Filter.equals('accountKey', accountKey),
+          Filter.equals('conversationId', normalizedConversationId),
+        ]),
+      ),
+    );
+
+    for (final record in records) {
+      final payload = record.value['payload'] as String?;
+      if (payload == null || payload.isEmpty) {
+        continue;
+      }
+
+      final message = Map<String, dynamic>.from(
+        jsonDecode(payload) as Map<String, dynamic>,
+      );
+      final media = message['media'];
+      final currentGroupId = media is Map
+          ? (media['mediaGroupId']?.toString().trim() ?? '')
+          : '';
+      if (currentGroupId != normalizedMediaGroupId) {
+        continue;
+      }
+
+      await _messageStore.record(record.key).delete(database);
+    }
 
     final aliases = await _knownConversationAliases(
       database,

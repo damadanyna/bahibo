@@ -300,7 +300,7 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
-    await this.prisma.refreshToken.delete({ where: { id: storedToken.id } });
+    await this.prisma.refreshToken.deleteMany({ where: { id: storedToken.id } });
 
     return this.issueTokens(user.id);
   }
@@ -313,7 +313,7 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token not found');
     }
 
-    await this.prisma.refreshToken.delete({ where: { id: storedToken.id } });
+    await this.prisma.refreshToken.deleteMany({ where: { id: storedToken.id } });
 
     return {
       success: true,

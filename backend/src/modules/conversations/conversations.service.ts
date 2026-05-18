@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -162,6 +163,18 @@ type ConversationMessagesPage = {
   oldestLoadedMessageId: string | null;
 };
 
+type ChatMediaCleanupCandidate = {
+  mediaType: 'image' | 'document';
+  storageProvider: string;
+  storageKey: string | null;
+  publicUrl: string;
+};
+
+type ChatMediaAuditCursorState = {
+  mediaType: 'image' | 'document';
+  cloudinaryCursor: string | null;
+};
+
 type MessageReplyFields = {
   replyToMessageId?: string | null;
   replyToSenderUserId?: string | null;
@@ -188,6 +201,8 @@ const allowedDocumentAttachmentExtensions = new Set([
 
 @Injectable()
 export class ConversationsService {
+  private readonly logger = new Logger(ConversationsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly pushNotificationsService: PushNotificationsService,
@@ -554,16 +569,19 @@ export class ConversationsService {
     };
   }
 
-  async deleteMessage(userId: string, conversationId: string, messageId: string) {
+  async deleteMessage(
+    userId: string,
+    conversationId: string,
+    messageId: string,
+    scope: 'FOR_ME' | 'FOR_EVERYONE' = 'FOR_EVERYONE',
+  ) {
     const conversation = await this.findAccessibleConversation(
       userId,
       conversationId,
     );
     const message = await this.prisma.chatMessage.findFirst({
-      where: {
-        id: messageId,
-        conversationId,
-      },
+      where: { id: messageId, conversationId },
+      include: { media: true },
     });
 
     if (!message) {
@@ -574,28 +592,388 @@ export class ConversationsService {
       throw new ForbiddenException('You can only delete your own messages.');
     }
 
-    await this.prisma.$transaction(async (transaction) => {
-      await transaction.chatMessage.delete({
-        where: {
-          id: messageId,
-        },
+    if (scope === 'FOR_ME') {
+      // Soft-delete: hidden only for the sender, recipient still sees it.
+      await this.prisma.chatMessage.update({
+        where: { id: messageId },
+        data: { deletedForSenderAt: new Date() },
+      });
+    } else {
+      const mediaCleanupCandidate = this.buildMediaCleanupCandidate(message);
+
+      // Hard-delete: removed for everyone + update conversation timestamp.
+      await this.prisma.$transaction(async (transaction) => {
+        await transaction.chatMessage.delete({ where: { id: messageId } });
+
+        const latestMessage = await transaction.chatMessage.findFirst({
+          where: { conversationId },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        });
+
+        await transaction.chatConversation.update({
+          where: { id: conversationId },
+          data: {
+            lastMessageAt: latestMessage?.createdAt ?? conversation.createdAt,
+          },
+        });
       });
 
-      const latestMessage = await transaction.chatMessage.findFirst({
-        where: {
-          conversationId,
+      this.conversationsRealtimeGateway.emitConversationEvent(
+        [conversation.buyerUserId, conversation.sellerUserId],
+        {
+          type: 'message:deleted',
+          conversationId: conversation.id,
+          actorUserId: userId,
+          mediaGroupId: message.media?.mediaGroupId ?? null,
+          messageId,
         },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      );
+
+      await this.tryDeleteMessageMediaAsset(mediaCleanupCandidate);
+    }
+
+    return this.getConversation(userId, conversationId, {
+      limit: DEFAULT_MESSAGES_PAGE_SIZE,
+    });
+  }
+
+  async auditOrphanedChatMediaAssets(options?: {
+    deleteOrphans?: boolean;
+    olderThanDays?: number;
+    maxAssets?: number;
+    actorUserId?: string;
+    nextCursor?: string | null;
+  }) {
+    const olderThanDays = Math.max(1, Math.trunc(options?.olderThanDays ?? 7));
+    const maxAssets = Math.min(Math.max(options?.maxAssets ?? 100, 1), 500);
+    const deleteOrphans = options?.deleteOrphans === true;
+    const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
+
+    const cursorState = this.decodeChatMediaAuditCursor(options?.nextCursor);
+    const pageMediaType = cursorState?.mediaType ?? 'image';
+    const assetPage = await this.cloudinaryService.listChatAssets({
+      mediaType: pageMediaType,
+      maxResults: maxAssets,
+      nextCursor: cursorState?.cloudinaryCursor ?? null,
+    });
+
+    const eligibleAssets = assetPage.assets.filter((asset) => {
+      if (!asset.publicId || !asset.createdAt) {
+        return false;
+      }
+
+      const createdAt = new Date(asset.createdAt);
+      return !Number.isNaN(createdAt.getTime()) && createdAt <= cutoff;
+    });
+
+    const referencedAssets = await this.findReferencedCloudinaryChatAssets(
+      eligibleAssets,
+    );
+    const orphanedAssets = eligibleAssets.filter(
+      (asset) => !referencedAssets.has(asset.publicId) && !(asset.secureUrl && referencedAssets.has(asset.secureUrl)),
+    );
+
+    const deleted: string[] = [];
+    const failed: Array<{ publicId: string; reason: string }> = [];
+
+    if (deleteOrphans) {
+      for (const asset of orphanedAssets) {
+        const mediaType = asset.resourceType === 'raw' ? 'document' : 'image';
+
+        try {
+          const result = await this.cloudinaryService.deleteAsset({
+            mediaType,
+            publicId: asset.publicId,
+          });
+
+          if (result.result === 'ok' || result.result === 'not found') {
+            deleted.push(asset.publicId);
+            this.logger.log(
+              `Chat media audit deleted orphaned Cloudinary asset publicId=${asset.publicId} actorUserId=${options?.actorUserId ?? 'unknown'}`,
+            );
+            continue;
+          }
+
+          failed.push({
+            publicId: asset.publicId,
+            reason: `unexpected result: ${result.result}`,
+          });
+          this.logger.warn(
+            `Chat media audit received unexpected Cloudinary deletion result publicId=${asset.publicId} result=${result.result}`,
+          );
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          failed.push({ publicId: asset.publicId, reason });
+          this.logger.warn(
+            `Chat media audit failed to delete orphaned Cloudinary asset publicId=${asset.publicId} reason=${reason}`,
+          );
+        }
+      }
+    }
+
+    const summary = {
+      pageMediaType,
+      olderThanDays,
+      deleteOrphans,
+      maxAssets,
+      scannedAssets: eligibleAssets.length,
+      referencedAssets: eligibleAssets.length - orphanedAssets.length,
+      orphanedAssets: orphanedAssets.length,
+      deletedAssets: deleted.length,
+      failedAssets: failed.length,
+    };
+
+    const nextCursor = this.buildChatMediaAuditNextCursor({
+      currentMediaType: pageMediaType,
+      cloudinaryNextCursor: assetPage.nextCursor,
+    });
+
+    this.logger.log(
+      `Chat media audit summary actorUserId=${options?.actorUserId ?? 'unknown'} ${JSON.stringify(summary)}`,
+    );
+
+    return {
+      summary,
+      nextCursor,
+      orphanedAssets: orphanedAssets.map((asset) => ({
+        publicId: asset.publicId,
+        createdAt: asset.createdAt,
+        secureUrl: asset.secureUrl,
+        bytes: asset.bytes,
+        resourceType: asset.resourceType,
+      })),
+      deleted,
+      failed,
+    };
+  }
+
+  private buildMediaCleanupCandidate(
+    message:
+      | {
+          media: {
+            mediaType: string;
+            storageProvider: string;
+            storageKey: string | null;
+            publicUrl: string;
+          } | null;
+        }
+      | null,
+  ) {
+    const media = message?.media;
+    if (!media) {
+      return null;
+    }
+
+    const mediaType = media.mediaType.trim().toLowerCase();
+    if (mediaType !== 'image' && mediaType !== 'document') {
+      return null;
+    }
+
+    const storageProvider = media.storageProvider.trim().toLowerCase();
+    if (storageProvider !== 'cloudinary') {
+      return null;
+    }
+
+    return {
+      mediaType: mediaType as 'image' | 'document',
+      storageProvider,
+      storageKey: media.storageKey?.trim() || null,
+      publicUrl: media.publicUrl.trim(),
+    };
+  }
+
+  private async tryDeleteMessageMediaAsset(media: ChatMediaCleanupCandidate | null) {
+    if (!media) {
+      return;
+    }
+
+    const hasRemainingReferences = await this.hasRemainingMediaReferences(media);
+    if (hasRemainingReferences) {
+      this.logger.log(
+        `Skipped Cloudinary deletion for chat media because a DB reference still exists storageKey=${media.storageKey ?? 'none'} publicUrl=${media.publicUrl}`,
+      );
+      return;
+    }
+
+    try {
+      const result = await this.cloudinaryService.deleteAsset({
+        mediaType: media.mediaType,
+        storageKey: media.storageKey,
+        publicUrl: media.publicUrl,
       });
 
-      await transaction.chatConversation.update({
-        where: {
-          id: conversationId,
-        },
-        data: {
-          lastMessageAt: latestMessage?.createdAt ?? conversation.createdAt,
-        },
+      this.logger.log(
+        `Cloudinary deletion completed for chat media result=${result.result} publicId=${result.publicId ?? 'unknown'}`,
+      );
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Failed to delete Cloudinary asset after message deletion: ${reason}`,
+      );
+    }
+  }
+
+  private async hasRemainingMediaReferences(media: ChatMediaCleanupCandidate) {
+    const orFilters: Prisma.ChatMessageMediaWhereInput[] = [];
+
+    if (media.storageKey) {
+      orFilters.push({
+        storageProvider: media.storageProvider,
+        storageKey: media.storageKey,
       });
+    }
+
+    if (media.publicUrl) {
+      orFilters.push({
+        storageProvider: media.storageProvider,
+        publicUrl: media.publicUrl,
+      });
+    }
+
+    if (orFilters.length === 0) {
+      return false;
+    }
+
+    const remainingReferences = await this.prisma.chatMessageMedia.count({
+      where: {
+        OR: orFilters,
+      },
+    });
+
+    return remainingReferences > 0;
+  }
+
+  private async findReferencedCloudinaryChatAssets(
+    assets: Array<{ publicId: string; secureUrl: string | null }>,
+  ) {
+    const publicIds = Array.from(
+      new Set(assets.map((asset) => asset.publicId).filter((value) => value.length > 0)),
+    );
+    const secureUrls = Array.from(
+      new Set(
+        assets
+          .map((asset) => asset.secureUrl)
+          .filter((value): value is string => Boolean(value && value.length > 0)),
+      ),
+    );
+
+    if (publicIds.length === 0 && secureUrls.length === 0) {
+      return new Set<string>();
+    }
+
+    const references = await this.prisma.chatMessageMedia.findMany({
+      where: {
+        storageProvider: 'cloudinary',
+        OR: [
+          ...(publicIds.length > 0 ? [{ storageKey: { in: publicIds } }] : []),
+          ...(secureUrls.length > 0 ? [{ publicUrl: { in: secureUrls } }] : []),
+        ],
+      },
+      select: {
+        storageKey: true,
+        publicUrl: true,
+      },
+    });
+
+    const referenced = new Set<string>();
+    for (const reference of references) {
+      if (reference.storageKey) {
+        referenced.add(reference.storageKey);
+      }
+
+      if (reference.publicUrl) {
+        referenced.add(reference.publicUrl);
+      }
+    }
+
+    return referenced;
+  }
+
+  private decodeChatMediaAuditCursor(nextCursor?: string | null) {
+    const normalized = nextCursor?.trim() ?? '';
+    if (!normalized) {
+      return null;
+    }
+
+    try {
+      const decoded = Buffer.from(normalized, 'base64url').toString('utf8');
+      const parsed = JSON.parse(decoded) as Partial<ChatMediaAuditCursorState>;
+
+      if (parsed.mediaType !== 'image' && parsed.mediaType !== 'document') {
+        throw new Error('Invalid mediaType');
+      }
+
+      return {
+        mediaType: parsed.mediaType,
+        cloudinaryCursor:
+          typeof parsed.cloudinaryCursor === 'string' && parsed.cloudinaryCursor.length > 0
+            ? parsed.cloudinaryCursor
+            : null,
+      } satisfies ChatMediaAuditCursorState;
+    } catch {
+      throw new BadRequestException('Invalid nextCursor');
+    }
+  }
+
+  private buildChatMediaAuditNextCursor(input: {
+    currentMediaType: 'image' | 'document';
+    cloudinaryNextCursor: string | null;
+  }) {
+    if (input.cloudinaryNextCursor) {
+      return Buffer.from(
+        JSON.stringify({
+          mediaType: input.currentMediaType,
+          cloudinaryCursor: input.cloudinaryNextCursor,
+        } satisfies ChatMediaAuditCursorState),
+        'utf8',
+      ).toString('base64url');
+    }
+
+    if (input.currentMediaType === 'image') {
+      return Buffer.from(
+        JSON.stringify({
+          mediaType: 'document',
+          cloudinaryCursor: null,
+        } satisfies ChatMediaAuditCursorState),
+        'utf8',
+      ).toString('base64url');
+    }
+
+    return null;
+  }
+
+  async editMessage(
+    userId: string,
+    conversationId: string,
+    messageId: string,
+    content: string,
+  ) {
+    await this.findAccessibleConversation(userId, conversationId);
+
+    const message = await this.prisma.chatMessage.findFirst({
+      where: { id: messageId, conversationId },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    if (message.senderUserId !== userId) {
+      throw new ForbiddenException('You can only edit your own messages.');
+    }
+
+    if (message.kind !== 'TEXT') {
+      throw new BadRequestException('Only text messages can be edited.');
+    }
+
+    const trimmed = content.trim();
+    if (!trimmed) {
+      throw new BadRequestException('Message content cannot be empty.');
+    }
+
+    await this.prisma.chatMessage.update({
+      where: { id: messageId },
+      data: { content: trimmed, editedAt: new Date() },
     });
 
     return this.getConversation(userId, conversationId, {
@@ -1109,6 +1487,7 @@ export class ConversationsService {
   private async loadConversationMessagesPage(
     conversationId: string,
     pageOptions?: ConversationMessagesPageOptions,
+    requestingUserId?: string,
   ): Promise<ConversationMessagesPage> {
     const take = this.normalizeMessagesPageLimit(pageOptions?.limit);
     const cursor = await this.resolveBeforeMessageCursor(
@@ -1116,9 +1495,14 @@ export class ConversationsService {
       (message) => message.conversationId === conversationId,
     );
     const beforeWhere = this.buildBeforeMessageWhere(cursor);
+    // Exclude messages soft-deleted by their sender (FOR_ME scope).
+    const deletedForMeFilter = requestingUserId
+      ? { NOT: { senderUserId: requestingUserId, deletedForSenderAt: { not: null } } }
+      : {};
     const records = await this.prisma.chatMessage.findMany({
       where: {
         conversationId,
+        ...deletedForMeFilter,
         ...(beforeWhere == null ? {} : beforeWhere),
       },
       include: conversationMessageInclude,
@@ -1195,6 +1579,7 @@ export class ConversationsService {
     const page = await this.loadConversationMessagesPage(
       conversation.id,
       pageOptions,
+      userId,
     );
     const currentProductSnapshots = await this.buildCurrentProductSnapshotMap(
       page.messages,

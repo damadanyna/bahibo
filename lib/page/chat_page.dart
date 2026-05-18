@@ -13,6 +13,11 @@ import 'package:banay/formatter/price_formatter.dart';
 import 'package:banay/page/private_image_viewer.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/catalog_api_service.dart';
+import 'package:banay/services/chat/chat_session_controller.dart';
+import 'package:banay/services/chat/chat_session_state.dart';
+import 'package:banay/services/chat/chat_session_target.dart';
+import 'package:banay/services/chat/chat_viewport_controller.dart';
+import 'package:banay/services/chat_document_upload_service.dart';
 import 'package:banay/services/chat_realtime_service.dart';
 import 'package:banay/services/chat_photo_upload_service.dart';
 import 'package:banay/services/cloudinary_image_url.dart';
@@ -25,13 +30,14 @@ import 'package:banay/services/session_storage.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 typedef ChatProductPageBuilder =
     Widget Function(Map<String, dynamic> product, {bool openedFromChat});
 
 enum _ChatHeaderMenuAction { viewProfile, report }
+
+enum _ChatSelectionMenuAction { copy, edit }
 
 const String _photoAttachmentIdPrefix = 'attachment:photo:';
 const String _documentAttachmentIdPrefix = 'attachment:document:';
@@ -87,17 +93,14 @@ class _ChatPageState extends State<ChatPage>
     with AppPageRefreshMixin<ChatPage>, RouteAware {
   static final Map<String, _ChatPageViewState> _viewStateCache =
       <String, _ChatPageViewState>{};
-  static const Duration _conversationPollInterval = Duration(seconds: 15);
+  static const bool _autoSeenEnabled = false;
   static const Duration _typingStopDelay = Duration(milliseconds: 1200);
   static const int _conversationPageFetchLimit = 50;
   static const int _recentConversationMessageLimit = 50;
   static const double _olderMessagesTriggerOffset = 96;
-  static const double _scrollToLatestThreshold = 220;
   final ConversationsApiService _conversationsApiService =
       ConversationsApiService();
   final CatalogApiService _catalogApiService = CatalogApiService();
-  final LocalConversationStore _localConversationStore =
-      LocalConversationStore.instance;
   final SessionStorage _sessionStorage = SessionStorage();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -108,19 +111,21 @@ class _ChatPageState extends State<ChatPage>
   final Set<String> _deliveredMessageIds = <String>{};
   bool _isMarkingConversationRead = false;
   List<ChatPhotoUploadTask> _photoUploadTasks = const <ChatPhotoUploadTask>[];
-  final List<_DocumentUploadTask> _documentUploadTasks =
-      <_DocumentUploadTask>[];
+  List<ChatDocumentUploadTask> _documentUploadTasks =
+      const <ChatDocumentUploadTask>[];
   UiChatAttachment? _pendingDocumentAttachment;
   final Set<String> _appliedCompletedUploadIds = <String>{};
   final Set<String> _selectedDisplayMessageKeys = <String>{};
   final Map<String, GlobalKey> _messageKeys = {};
-  StreamSubscription<Map<String, dynamic>>? _realtimeEventsSubscription;
-  StreamSubscription<LocalConversationStoreChange>?
-  _localConversationChangesSubscription;
-  Timer? _conversationPollTimer;
+  final Map<String, String> _confirmedMessageVisualKeyAliases =
+      <String, String>{};
+  final Map<String, _ConfirmedMessageDisplayOverride>
+  _confirmedMessageDisplayOverrides =
+      <String, _ConfirmedMessageDisplayOverride>{};
+  late final ChatSessionController _chatSessionController;
+  late final ChatViewportController _chatViewportController;
   Timer? _messageHighlightTimer;
   Timer? _typingStopTimer;
-  static const int _scrollRetryCount = 4;
   bool _showEntrySkeleton = true;
   bool _isSendingTextMessage = false;
   bool _isParticipantTyping = false;
@@ -129,54 +134,69 @@ class _ChatPageState extends State<ChatPage>
   bool _initialProductContextSent = false;
   bool _conversationBlocked = false;
   bool _isLoadingOlderMessages = false;
-  bool _isDrainingPendingTextMessages = false;
-  bool _isRealtimeConnected = false;
   bool _restoredConversationView = false;
   bool _hasOlderMessages = false;
-  bool _showScrollToLatestButton = false;
-  int _ignoredNextNonPendingLocalStoreChanges = 0;
   double? _pendingRestoredScrollOffset;
   String? _conversationId;
   String? _loadError;
   Map<String, dynamic>? _conversation;
   _ChatMessage? _replyingToMessage;
+  _ChatMessage? _editingMessage;
   String? _highlightedMessageId;
   bool _highlightVisible = false;
   ModalRoute<dynamic>? _route;
+  String? _cachedDisplayMessagesSignature;
+  List<_ChatDisplayMessage> _cachedDisplayMessages =
+      const <_ChatDisplayMessage>[];
+  String? _cachedTimelineItemsSignature;
+  List<_ChatTimelineItem> _cachedTimelineItems = const <_ChatTimelineItem>[];
 
   @override
   void initState() {
     super.initState();
     initializePageRefresh();
     _conversationId = widget.conversationId;
-    _restoreConversationViewState();
-    final initialCachedConversation = _restoredConversationView
+    _chatSessionController = ChatSessionController(
+      target: ChatSessionTarget(
+        conversationId: widget.conversationId,
+        productId: widget.conversationProductId,
+        userId: widget.conversationUserId,
+      ),
+    )..addListener(_handleChatSessionControllerChanged);
+    _chatViewportController = ChatViewportController(
+      scrollController: _scrollController,
+    )..addListener(_handleChatViewportControllerChanged);
+    if (!_usesLiveConversation) {
+      _restoreConversationViewState();
+    }
+    final initialCachedConversation = _usesLiveConversation
+        ? null
+        : _restoredConversationView
         ? null
         : _peekCachedConversationData();
     if (initialCachedConversation != null) {
       _applyConversation(initialCachedConversation);
       _showEntrySkeleton = false;
+      _chatViewportController.scheduleScrollToBottom();
     }
     _scrollController.addListener(_handleScroll);
     ChatPhotoUploadService.instance.addListener(_handlePhotoUploadsChanged);
+    ChatDocumentUploadService.instance.addListener(
+      _handleDocumentUploadsChanged,
+    );
     _syncPhotoUploadTasks();
+    _syncDocumentUploadTasks();
 
     if (_usesLiveConversation) {
-      _bindLocalConversationUpdates();
-      unawaited(
-        _hydrateConversationFromLocalStore(
-          mergeRecentMessages: _restoredConversationView,
-          limit: _recentConversationMessageLimit,
-        ),
-      );
-      unawaited(_syncPendingTextMessagesFromStore());
-      _bindRealtimeUpdates();
-      _startConversationPolling();
-      _loadConversation(
-        showEntrySkeleton:
-            !_restoredConversationView && initialCachedConversation == null,
-      );
-      unawaited(_drainPendingTextMessages());
+      if (_restoredConversationView) {
+        unawaited(
+          _chatSessionController.hydrateFromStore(
+            mergeRecentMessages: true,
+            limit: _recentConversationMessageLimit,
+          ),
+        );
+      }
+      unawaited(_chatSessionController.bootstrap());
       _scheduleRestoreScrollOffset();
       return;
     }
@@ -195,12 +215,18 @@ class _ChatPageState extends State<ChatPage>
       PushNotificationService.setVisibleConversation(null);
     }
     PushNotificationService.routeObserver.unsubscribe(this);
-    _realtimeEventsSubscription?.cancel();
-    _localConversationChangesSubscription?.cancel();
-    _conversationPollTimer?.cancel();
     _messageHighlightTimer?.cancel();
     _typingStopTimer?.cancel();
+    _chatSessionController.removeListener(_handleChatSessionControllerChanged);
+    _chatViewportController.removeListener(
+      _handleChatViewportControllerChanged,
+    );
+    _chatSessionController.dispose();
+    _chatViewportController.dispose();
     ChatPhotoUploadService.instance.removeListener(_handlePhotoUploadsChanged);
+    ChatDocumentUploadService.instance.removeListener(
+      _handleDocumentUploadsChanged,
+    );
     _scrollController.removeListener(_handleScroll);
     _emitTyping(false);
     disposePageRefresh();
@@ -212,7 +238,7 @@ class _ChatPageState extends State<ChatPage>
   @override
   Future<void> onPageReload() async {
     if (_usesLiveConversation) {
-      await _loadConversation();
+      await _chatSessionController.loadConversation();
       return;
     }
 
@@ -243,6 +269,116 @@ class _ChatPageState extends State<ChatPage>
     PushNotificationService.setVisibleConversation(_conversationId);
   }
 
+  void _handleChatSessionControllerChanged() {
+    final nextState = _chatSessionController.state;
+    final wasShowingEntrySkeleton = _showEntrySkeleton;
+    final wasPinnedToBottom =
+        _chatViewportController.shouldKeepViewportPinnedToBottom;
+    final previousMessageCount = _messages.length;
+    final previousPendingTextCount = _pendingTextMessages.length;
+    final previousLastMessageId = previousMessageCount == 0
+        ? null
+        : _messages.last.id?.trim();
+    if (!mounted) {
+      _applyChatSessionState(nextState);
+      return;
+    }
+
+    setState(() {
+      _applyChatSessionState(nextState);
+    });
+
+    final nextLastMessageId = _messages.isEmpty
+        ? null
+        : _messages.last.id?.trim();
+    final firstResolvedLoad =
+        wasShowingEntrySkeleton && !nextState.showEntrySkeleton;
+    final appendedOrReplacedAtTail =
+        _messages.length != previousMessageCount ||
+        _pendingTextMessages.length != previousPendingTextCount ||
+        nextLastMessageId != previousLastMessageId;
+
+    if (firstResolvedLoad && !_restoredConversationView) {
+      _chatViewportController.scheduleScrollToBottom();
+    } else if (wasPinnedToBottom && appendedOrReplacedAtTail) {
+      _chatViewportController.scheduleBottomAnchor(
+        shouldStayPinnedToBottom: true,
+      );
+    }
+
+    if (appendedOrReplacedAtTail || firstResolvedLoad) {
+      unawaited(_markConversationReadIfVisible());
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+
+        unawaited(_markConversationReadIfVisible());
+      });
+    }
+
+    if (!_initialMessageHandled &&
+        !nextState.showEntrySkeleton &&
+        ((_conversationId?.trim().isNotEmpty ?? false) ||
+            (widget.conversationUserId?.trim().isNotEmpty ?? false) ||
+            (widget.conversationProductId?.trim().isNotEmpty ?? false))) {
+      _initialMessageHandled = true;
+      final initialMessage = widget.initialMessage?.trim() ?? '';
+      if (initialMessage.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) {
+            return;
+          }
+          unawaited(_sendMessage(initialMessage));
+        });
+      }
+    }
+  }
+
+  void _handleChatViewportControllerChanged() {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {});
+  }
+
+  void _applyChatSessionState(ChatSessionState state) {
+    _conversationId = state.conversationId ?? _conversationId;
+    if (_route?.isCurrent ?? false) {
+      _syncVisibleConversationRegistration();
+    }
+
+    final conversation = state.conversation;
+    if (conversation != null) {
+      final nextConversation = Map<String, dynamic>.from(conversation);
+      final pagination = Map<String, dynamic>.from(
+        (nextConversation['pagination'] as Map?) ?? const <String, dynamic>{},
+      );
+      pagination['hasOlderMessages'] = state.hasOlderMessages;
+      nextConversation['pagination'] = pagination;
+      nextConversation['messages'] = state.messages;
+      _conversation = nextConversation;
+      _messages
+        ..clear()
+        ..addAll(_parseConversationMessages(state.messages));
+      _syncPhotoUploadTasks();
+    }
+
+    _pendingTextMessages
+      ..clear()
+      ..addAll(
+        state.pendingTextMessages
+            .map(_pendingTextMessageToChatMessage)
+            .toList(growable: false),
+      );
+    _showEntrySkeleton = state.showEntrySkeleton;
+    _isParticipantTyping = state.isParticipantTyping;
+    _hasOlderMessages = state.hasOlderMessages;
+    _conversationBlocked = state.conversationBlocked;
+    _loadError = state.loadError;
+  }
+
   bool _hasUnreadIncomingMessages() {
     return _messages.any(
       (message) => !message.isMine && message.createdAt != null,
@@ -251,7 +387,8 @@ class _ChatPageState extends State<ChatPage>
 
   Future<void> _markConversationReadIfVisible() async {
     final conversationId = _conversationId?.trim() ?? '';
-    if (!_usesLiveConversation ||
+    if (!_autoSeenEnabled ||
+        !_usesLiveConversation ||
         conversationId.isEmpty ||
         !(_route?.isCurrent ?? false) ||
         _isMarkingConversationRead ||
@@ -269,50 +406,6 @@ class _ChatPageState extends State<ChatPage>
     } finally {
       _isMarkingConversationRead = false;
     }
-  }
-
-  void _markMessagesDelivered(Iterable<String> messageIds) {
-    final normalizedMessageIds = messageIds
-        .map((messageId) => messageId.trim())
-        .where((messageId) => messageId.isNotEmpty)
-        .toSet();
-    if (normalizedMessageIds.isEmpty) {
-      return;
-    }
-
-    _deliveredMessageIds.addAll(normalizedMessageIds);
-    for (var index = 0; index < _messages.length; index += 1) {
-      final message = _messages[index];
-      final messageId = message.id?.trim() ?? '';
-      if (!normalizedMessageIds.contains(messageId) ||
-          message.deliveryState == _ChatMessageDeliveryState.seen ||
-          message.deliveryState == _ChatMessageDeliveryState.delivered) {
-        continue;
-      }
-
-      _messages[index] = _copyMessageWithDeliveryState(
-        message,
-        _ChatMessageDeliveryState.delivered,
-      );
-    }
-  }
-
-  _ChatMessage _copyMessageWithDeliveryState(
-    _ChatMessage message,
-    _ChatMessageDeliveryState? deliveryState,
-  ) {
-    return _ChatMessage(
-      id: message.id,
-      message: message.message,
-      kind: message.kind,
-      createdAt: message.createdAt,
-      time: message.time,
-      isMine: message.isMine,
-      deliveryState: deliveryState,
-      reply: message.reply,
-      media: message.media,
-      product: message.product,
-    );
   }
 
   String? _conversationViewStateKey() {
@@ -402,6 +495,7 @@ class _ChatPageState extends State<ChatPage>
               _ChatMessageKind.text => 'TEXT',
             },
             'createdAt': message.createdAt,
+            if (message.editedAt != null) 'editedAt': message.editedAt,
             'readAt': message.deliveryState == _ChatMessageDeliveryState.seen
                 ? (message.createdAt ?? DateTime.now().toIso8601String())
                 : null,
@@ -443,28 +537,7 @@ class _ChatPageState extends State<ChatPage>
         .toList(growable: false);
   }
 
-  bool _shouldPreserveVisibleWindowFor(Map<String, dynamic> data) {
-    if (_messages.isEmpty) {
-      return false;
-    }
-
-    final incomingConversationId = data['id']?.toString().trim() ?? '';
-    final currentConversationId = _conversationId?.trim() ?? '';
-    return incomingConversationId.isEmpty ||
-        currentConversationId.isEmpty ||
-        incomingConversationId == currentConversationId;
-  }
-
-  void _applyLoadedConversation(Map<String, dynamic> data) {
-    if (_shouldPreserveVisibleWindowFor(data)) {
-      _applyConversation(data, mergeRecentMessages: true, clearPending: false);
-      return;
-    }
-
-    _applyConversation(data);
-  }
-
-  void _scheduleRestoreScrollOffset({int remaining = _scrollRetryCount}) {
+  void _scheduleRestoreScrollOffset({int remaining = 4}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final targetOffset = _pendingRestoredScrollOffset;
       if (!mounted || !_scrollController.hasClients || targetOffset == null) {
@@ -492,6 +565,25 @@ class _ChatPageState extends State<ChatPage>
     _syncPhotoUploadTasks();
   }
 
+  void _handleDocumentUploadsChanged() {
+    _syncDocumentUploadTasks();
+  }
+
+  void _applyCompletedUploadConversationSnapshot(
+    String uploadId,
+    Map<String, dynamic>? completedConversationData,
+  ) {
+    if (completedConversationData == null ||
+        !_appliedCompletedUploadIds.add(uploadId)) {
+      return;
+    }
+
+    _applyConversation(
+      Map<String, dynamic>.from(completedConversationData),
+      mergeRecentMessages: true,
+    );
+  }
+
   void _syncPhotoUploadTasks() {
     final matchingTasks = ChatPhotoUploadService.instance.tasksForTarget(
       conversationId: _conversationId,
@@ -500,15 +592,9 @@ class _ChatPageState extends State<ChatPage>
     );
 
     for (final task in matchingTasks) {
-      final completedConversationData = task.completedConversationData;
-      if (completedConversationData == null ||
-          !_appliedCompletedUploadIds.add(task.id)) {
-        continue;
-      }
-
-      _applyConversation(
-        Map<String, dynamic>.from(completedConversationData),
-        mergeRecentMessages: true,
+      _applyCompletedUploadConversationSnapshot(
+        task.id,
+        task.completedConversationData,
       );
     }
 
@@ -518,6 +604,34 @@ class _ChatPageState extends State<ChatPage>
 
     setState(() {
       _photoUploadTasks = matchingTasks
+          .where((task) => task.isVisibleInChat)
+          .toList(growable: false);
+    });
+  }
+
+  void _syncDocumentUploadTasks() {
+    final matchingTasks = ChatDocumentUploadService.instance.tasksForTarget(
+      conversationId: _conversationId,
+      productId: widget.conversationProductId,
+      targetUserId: widget.conversationUserId,
+    );
+
+    for (final task in matchingTasks) {
+      _applyCompletedUploadConversationSnapshot(
+        task.id,
+        task.completedConversationData,
+      );
+    }
+
+    if (!mounted) {
+      _documentUploadTasks = matchingTasks
+          .where((task) => task.isVisibleInChat)
+          .toList(growable: false);
+      return;
+    }
+
+    setState(() {
+      _documentUploadTasks = matchingTasks
           .where((task) => task.isVisibleInChat)
           .toList(growable: false);
     });
@@ -674,320 +788,6 @@ class _ChatPageState extends State<ChatPage>
     return widget.productPriceLabel;
   }
 
-  void _startConversationPolling() {
-    _conversationPollTimer?.cancel();
-    _conversationPollTimer = Timer.periodic(
-      _conversationPollInterval,
-      (_) => _refreshConversationSilently(),
-    );
-  }
-
-  void _stopConversationPolling() {
-    _conversationPollTimer?.cancel();
-    _conversationPollTimer = null;
-  }
-
-  void _setRealtimeConnectionState(bool isConnected) {
-    if (_isRealtimeConnected == isConnected) {
-      return;
-    }
-
-    _isRealtimeConnected = isConnected;
-    if (isConnected) {
-      _stopConversationPolling();
-      unawaited(_refreshConversationSilently(updateFromLocalStore: true));
-      return;
-    }
-
-    _startConversationPolling();
-  }
-
-  void _bindLocalConversationUpdates() {
-    _localConversationChangesSubscription?.cancel();
-    _localConversationChangesSubscription = _localConversationStore.changes
-        .listen((change) {
-          if (!_matchesLocalConversationChange(change)) {
-            return;
-          }
-
-          if (!change.includesPendingTextMessages &&
-              _ignoredNextNonPendingLocalStoreChanges > 0) {
-            _ignoredNextNonPendingLocalStoreChanges -= 1;
-            return;
-          }
-
-          unawaited(
-            _hydrateConversationFromLocalStore(
-              mergeRecentMessages: true,
-              limit: _recentConversationMessageLimit,
-            ),
-          );
-          unawaited(_syncPendingTextMessagesFromStore());
-          if (change.includesPendingTextMessages) {
-            unawaited(_drainPendingTextMessages());
-          }
-        });
-  }
-
-  void _bindRealtimeUpdates() {
-    ChatRealtimeService.instance.ensureConnected();
-    _realtimeEventsSubscription?.cancel();
-    _realtimeEventsSubscription = ChatRealtimeService.instance.events.listen((
-      event,
-    ) async {
-      final eventType = event['type']?.toString();
-      if (eventType == ChatRealtimeService.connectedEventType) {
-        _setRealtimeConnectionState(true);
-        return;
-      }
-      if (eventType == ChatRealtimeService.disconnectedEventType) {
-        _setRealtimeConnectionState(false);
-        return;
-      }
-
-      if (event['type'] == 'profile:public-updated') {
-        final updatedUserId = event['userId']?.toString();
-        if (updatedUserId != null && updatedUserId == _participantUserId) {
-          _applyParticipantProfileUpdate(event);
-        }
-        return;
-      }
-
-      final eventConversationId = event['conversationId']?.toString();
-      final currentConversationId = _conversationId;
-      if (eventConversationId == null || currentConversationId == null) {
-        return;
-      }
-
-      if (eventConversationId != currentConversationId) {
-        return;
-      }
-
-      if (event['type'] == 'typing:update') {
-        final actorUserId = event['actorUserId']?.toString();
-        if (actorUserId != null && actorUserId == _participantUserId) {
-          final isTyping = event['isTyping'] == true;
-          if (mounted) {
-            setState(() => _isParticipantTyping = isTyping);
-          } else {
-            _isParticipantTyping = isTyping;
-          }
-        }
-        return;
-      }
-
-      if (await _applyIncrementalRealtimeConversationEvent(event)) {
-        return;
-      }
-
-      unawaited(_refreshConversationSilently(updateFromLocalStore: true));
-    });
-  }
-
-  Future<bool> _applyIncrementalRealtimeConversationEvent(
-    Map<String, dynamic> event,
-  ) async {
-    final eventType = event['type']?.toString();
-    final currentConversationId = _conversationId?.trim() ?? '';
-    if (currentConversationId.isEmpty) {
-      return false;
-    }
-
-    switch (eventType) {
-      case 'message:new':
-        final rawMessage = event['message'];
-        if (rawMessage is! Map) {
-          return false;
-        }
-
-        final message = Map<String, dynamic>.from(rawMessage);
-        final actorUserId =
-            event['actorUserId']?.toString().trim() ??
-            (message['sender'] as Map?)?['id']?.toString().trim() ??
-            '';
-        final participantUserId = _participantUserId?.trim() ?? '';
-        if (participantUserId.isNotEmpty && actorUserId.isNotEmpty) {
-          message['isMine'] = actorUserId != participantUserId;
-        }
-
-        final nextMessages = _parseConversationMessages([message]);
-        final shouldStayPinnedToBottom = !_showScrollToLatestButton;
-        if (nextMessages.isNotEmpty) {
-          if (mounted) {
-            setState(() {
-              _mergeMessagesInPlace(nextMessages);
-              _loadError = null;
-              _showEntrySkeleton = false;
-            });
-          } else {
-            _mergeMessagesInPlace(nextMessages);
-            _loadError = null;
-            _showEntrySkeleton = false;
-          }
-          if (shouldStayPinnedToBottom) {
-            WidgetsBinding.instance.addPostFrameCallback(
-              (_) => _animateToBottom(),
-            );
-          }
-        }
-
-        _ignoredNextNonPendingLocalStoreChanges += 1;
-        await _localConversationStore.upsertMessage(
-          conversationId: currentConversationId,
-          message: message,
-          fallbackProductId: widget.conversationProductId,
-          fallbackUserId: participantUserId.isNotEmpty
-              ? participantUserId
-              : widget.conversationUserId,
-        );
-        if (message['isMine'] != true && (_route?.isCurrent ?? false)) {
-          unawaited(_markConversationReadIfVisible());
-        }
-        return true;
-      case 'conversation:read':
-        final actorUserId = event['actorUserId']?.toString().trim() ?? '';
-        final participantUserId = _participantUserId?.trim() ?? '';
-        if (actorUserId.isEmpty || participantUserId.isEmpty) {
-          return false;
-        }
-        if (actorUserId != participantUserId) {
-          return true;
-        }
-
-        final readAt =
-            event['readAt']?.toString().trim() ??
-            DateTime.now().toIso8601String();
-        if (mounted) {
-          setState(() {
-            _markOutgoingMessagesSeen();
-          });
-        } else {
-          _markOutgoingMessagesSeen();
-        }
-        _ignoredNextNonPendingLocalStoreChanges += 1;
-        await _localConversationStore.markOutgoingMessagesRead(
-          conversationId: currentConversationId,
-          readAt: readAt,
-        );
-        return true;
-      case 'conversation:delivered':
-        final actorUserId = event['actorUserId']?.toString().trim() ?? '';
-        final participantUserId = _participantUserId?.trim() ?? '';
-        if (actorUserId.isEmpty || participantUserId.isEmpty) {
-          return false;
-        }
-        if (actorUserId != participantUserId) {
-          return true;
-        }
-
-        final messageId = event['messageId']?.toString().trim() ?? '';
-        if (messageId.isEmpty) {
-          return false;
-        }
-
-        final deliveredAt =
-            event['deliveredAt']?.toString().trim() ??
-            DateTime.now().toIso8601String();
-        if (mounted) {
-          setState(() {
-            _markMessagesDelivered([messageId]);
-          });
-        } else {
-          _markMessagesDelivered([messageId]);
-        }
-        _ignoredNextNonPendingLocalStoreChanges += 1;
-        await _localConversationStore.markMessageDelivered(
-          conversationId: currentConversationId,
-          messageId: messageId,
-          deliveredAt: deliveredAt,
-        );
-        return true;
-      default:
-        return false;
-    }
-  }
-
-  bool _matchesLocalConversationChange(LocalConversationStoreChange change) {
-    final currentConversationId = _conversationId?.trim() ?? '';
-    if (currentConversationId.isNotEmpty &&
-        change.conversationId == currentConversationId) {
-      return true;
-    }
-
-    final expectedCacheKeys = <String>{};
-    final conversationId = widget.conversationId?.trim() ?? '';
-    if (conversationId.isNotEmpty) {
-      expectedCacheKeys.add('id:$conversationId');
-    }
-    final productId = widget.conversationProductId?.trim() ?? '';
-    if (productId.isNotEmpty) {
-      expectedCacheKeys.add('product:$productId');
-    }
-    final userId = widget.conversationUserId?.trim() ?? '';
-    if (userId.isNotEmpty) {
-      expectedCacheKeys.add('user:$userId');
-    }
-
-    return change.cacheKeys.any(expectedCacheKeys.contains);
-  }
-
-  void _applyParticipantProfileUpdate(Map<String, dynamic> event) {
-    final conversation = _conversation;
-    final profile = event['profile'];
-    if (!mounted || conversation == null || profile is! Map) {
-      return;
-    }
-
-    final participant = conversation['participant'];
-    if (participant is! Map) {
-      return;
-    }
-
-    final rawSellerProfile = profile['sellerProfile'];
-    final sellerProfile = rawSellerProfile is Map
-        ? Map<String, dynamic>.from(rawSellerProfile)
-        : const <String, dynamic>{};
-    final displayName = profile['displayName']?.toString().trim() ?? '';
-    final studioName = sellerProfile['studioName']?.toString().trim() ?? '';
-    final resolvedName = studioName.isNotEmpty ? studioName : displayName;
-    final avatarUrl = profile['avatarUrl']?.toString().trim() ?? '';
-    final coverImageUrl = profile['coverImageUrl']?.toString().trim() ?? '';
-    final role = profile['role']?.toString().trim();
-
-    final nextConversation = Map<String, dynamic>.from(conversation);
-    final nextParticipant = Map<String, dynamic>.from(participant);
-    var hasChanged = false;
-
-    if (resolvedName.isNotEmpty &&
-        nextParticipant['displayName'] != resolvedName) {
-      nextParticipant['displayName'] = resolvedName;
-      nextParticipant['name'] = resolvedName;
-      hasChanged = true;
-    }
-    if (avatarUrl.isNotEmpty && nextParticipant['avatarUrl'] != avatarUrl) {
-      nextParticipant['avatarUrl'] = avatarUrl;
-      hasChanged = true;
-    }
-    if (coverImageUrl.isNotEmpty &&
-        nextParticipant['coverImageUrl'] != coverImageUrl) {
-      nextParticipant['coverImageUrl'] = coverImageUrl;
-      hasChanged = true;
-    }
-    if (role != null && role.isNotEmpty && nextParticipant['role'] != role) {
-      nextParticipant['role'] = role;
-      hasChanged = true;
-    }
-
-    if (!hasChanged) {
-      return;
-    }
-
-    nextConversation['participant'] = nextParticipant;
-    setState(() {
-      _conversation = nextConversation;
-    });
-  }
-
   void _handleComposerChanged(String text) {
     if (_conversationId == null || _participantUserId == null) {
       return;
@@ -1028,150 +828,6 @@ class _ChatPageState extends State<ChatPage>
     );
   }
 
-  Future<Map<String, dynamic>> _fetchConversationData() {
-    return _fetchConversationDisplayWindow(
-      targetDisplayCount: _recentConversationMessageLimit,
-    );
-  }
-
-  Future<Map<String, dynamic>> _fetchConversationDataPage({
-    required int limit,
-    String? beforeMessageId,
-  }) {
-    if (widget.conversationUserId?.isNotEmpty ?? false) {
-      return _conversationsApiService.fetchConversationForUser(
-        widget.conversationUserId!,
-        limit: limit,
-        beforeMessageId: beforeMessageId,
-      );
-    }
-    if (_conversationId != null) {
-      return _conversationsApiService.fetchConversationById(
-        _conversationId!,
-        limit: limit,
-        beforeMessageId: beforeMessageId,
-      );
-    }
-    if (widget.conversationProductId?.isNotEmpty ?? false) {
-      return _conversationsApiService.fetchConversationForProduct(
-        widget.conversationProductId!,
-        limit: limit,
-        beforeMessageId: beforeMessageId,
-      );
-    }
-    return _conversationsApiService.fetchConversationById(
-      _conversationId!,
-      limit: limit,
-      beforeMessageId: beforeMessageId,
-    );
-  }
-
-  Future<Map<String, dynamic>> _fetchConversationDisplayWindow({
-    int? targetDisplayCount,
-    String? beforeMessageId,
-  }) async {
-    final aggregatedRawMessages = <Map<String, dynamic>>[];
-    Map<String, dynamic>? baseData;
-    String? cursor = beforeMessageId;
-    var hasOlderMessages = true;
-    String? oldestLoadedMessageId;
-
-    while (hasOlderMessages) {
-      final pageData = await _fetchConversationDataPage(
-        limit: _conversationPageFetchLimit,
-        beforeMessageId: cursor,
-      );
-      baseData ??= Map<String, dynamic>.from(pageData);
-
-      final rawMessages = ((pageData['messages'] as List?) ?? const [])
-          .whereType<Map>()
-          .map((message) => Map<String, dynamic>.from(message))
-          .toList(growable: false);
-      if (beforeMessageId == null) {
-        aggregatedRawMessages.addAll(rawMessages);
-      } else {
-        aggregatedRawMessages.insertAll(0, rawMessages);
-      }
-
-      final pagination = Map<String, dynamic>.from(
-        (pageData['pagination'] as Map?) ?? const <String, dynamic>{},
-      );
-      hasOlderMessages = pagination['hasOlderMessages'] == true;
-      oldestLoadedMessageId = pagination['oldestLoadedMessageId']?.toString();
-      cursor = oldestLoadedMessageId;
-
-      if (!hasOlderMessages ||
-          rawMessages.isEmpty ||
-          oldestLoadedMessageId == null ||
-          oldestLoadedMessageId.isEmpty) {
-        break;
-      }
-
-      if (targetDisplayCount != null &&
-          aggregatedRawMessages.length >= targetDisplayCount) {
-        break;
-      }
-    }
-
-    final result = Map<String, dynamic>.from(
-      baseData ?? const <String, dynamic>{},
-    );
-    result['messages'] = aggregatedRawMessages;
-    result['pagination'] = <String, dynamic>{
-      'limit': _conversationPageFetchLimit,
-      'hasOlderMessages': hasOlderMessages,
-      'oldestLoadedMessageId': oldestLoadedMessageId,
-    };
-    return result;
-  }
-
-  Future<Map<String, dynamic>?> _fetchCachedConversationData() {
-    if (widget.conversationUserId?.isNotEmpty ?? false) {
-      return _conversationsApiService.getCachedConversationForUser(
-        widget.conversationUserId!,
-      );
-    }
-    if (_conversationId != null) {
-      return _conversationsApiService.getCachedConversationById(
-        _conversationId!,
-      );
-    }
-    if (widget.conversationProductId?.isNotEmpty ?? false) {
-      return _conversationsApiService.getCachedConversationForProduct(
-        widget.conversationProductId!,
-      );
-    }
-    return Future.value(null);
-  }
-
-  Future<Map<String, dynamic>?> _fetchStoredConversationData({
-    int? limit,
-    String? beforeMessageId,
-  }) {
-    if (widget.conversationUserId?.isNotEmpty ?? false) {
-      return _conversationsApiService.getStoredConversationForUser(
-        widget.conversationUserId!,
-        limit: limit,
-        beforeMessageId: beforeMessageId,
-      );
-    }
-    if (_conversationId != null) {
-      return _conversationsApiService.getStoredConversationById(
-        _conversationId!,
-        limit: limit,
-        beforeMessageId: beforeMessageId,
-      );
-    }
-    if (widget.conversationProductId?.isNotEmpty ?? false) {
-      return _conversationsApiService.getStoredConversationForProduct(
-        widget.conversationProductId!,
-        limit: limit,
-        beforeMessageId: beforeMessageId,
-      );
-    }
-    return Future.value(null);
-  }
-
   Map<String, dynamic>? _peekCachedConversationData() {
     if (widget.conversationUserId?.isNotEmpty ?? false) {
       return _conversationsApiService.peekCachedConversationForUser(
@@ -1191,54 +847,13 @@ class _ChatPageState extends State<ChatPage>
     return null;
   }
 
-  Future<void> _refreshConversationSilently({
-    bool updateFromLocalStore = false,
-  }) async {
-    if (!mounted || !_usesLiveConversation || _isSendingTextMessage) {
-      return;
-    }
-
-    try {
-      final previousLastMessageId = _messages.isEmpty
-          ? null
-          : _messages.last.id;
-      final previousMessageCount = _messages.length;
-      await _fetchConversationData();
-      if (updateFromLocalStore) {
-        await _hydrateConversationFromLocalStore(
-          mergeRecentMessages: true,
-          limit: _recentConversationMessageLimit,
-        );
-      }
-      if (!mounted) return;
-      final hasNewMessage =
-          _messages.length != previousMessageCount ||
-          (_messages.isNotEmpty && _messages.last.id != previousLastMessageId);
-      if (hasNewMessage) {
-        setState(() {
-          _loadError = null;
-          _showEntrySkeleton = false;
-        });
-        WidgetsBinding.instance.addPostFrameCallback((_) => _animateToBottom());
-      } else {
-        setState(() {
-          _loadError = null;
-          _showEntrySkeleton = false;
-        });
-      }
-    } on AppApiException catch (error) {
-      if (!mounted) return;
-      _applyConversationError(error);
-    }
-  }
-
   Future<void> _hydrateConversationFromLocalStore({
     bool mergeRecentMessages = false,
     bool prependOlderMessages = false,
     int? limit,
     String? beforeMessageId,
   }) async {
-    final data = await _fetchStoredConversationData(
+    final data = await _chatSessionController.fetchStoredConversationWindow(
       limit: limit,
       beforeMessageId: beforeMessageId,
     );
@@ -1255,97 +870,6 @@ class _ChatPageState extends State<ChatPage>
       );
       _showEntrySkeleton = false;
       _loadError = null;
-    });
-  }
-
-  Future<void> _loadConversation({bool showEntrySkeleton = true}) async {
-    if (mounted && showEntrySkeleton) {
-      setState(() {
-        _showEntrySkeleton = true;
-        _loadError = null;
-      });
-    } else if (mounted) {
-      setState(() {
-        _loadError = null;
-      });
-    }
-
-    try {
-      final cachedData = await _fetchCachedConversationData();
-      if (cachedData != null && mounted) {
-        _applyLoadedConversation(cachedData);
-        setState(() {
-          _showEntrySkeleton = false;
-          _loadError = null;
-        });
-      }
-
-      final data = await _fetchConversationData();
-      _applyLoadedConversation(data);
-      unawaited(_markConversationReadIfVisible());
-
-      if (!_initialMessageHandled) {
-        _initialMessageHandled = true;
-        final initialMessage = widget.initialMessage?.trim() ?? '';
-        if (initialMessage.isNotEmpty) {
-          await _sendMessage(initialMessage);
-          return;
-        }
-      }
-
-      if (!mounted) return;
-      setState(() => _showEntrySkeleton = false);
-      if (_pendingRestoredScrollOffset != null) {
-        _scheduleRestoreScrollOffset();
-      } else {
-        _scheduleScrollToBottom();
-      }
-      unawaited(_syncPendingTextMessagesFromStore());
-      unawaited(_drainPendingTextMessages());
-    } on AppApiException catch (error) {
-      if (!mounted) return;
-      await _hydrateConversationFromLocalStore(
-        mergeRecentMessages: true,
-        limit: _recentConversationMessageLimit,
-      );
-      if (!mounted) return;
-      if (_messages.isNotEmpty || _pendingTextMessages.isNotEmpty) {
-        setState(() {
-          _showEntrySkeleton = false;
-          _loadError = null;
-        });
-        return;
-      }
-      _applyConversationError(error, showEntrySkeleton: false);
-    }
-  }
-
-  Future<void> _syncPendingTextMessagesFromStore() async {
-    if (!_usesLiveConversation) {
-      return;
-    }
-
-    final pendingTextMessages = await _localConversationStore
-        .getPendingTextMessages(
-          conversationId: _conversationId,
-          productId: widget.conversationProductId,
-          targetUserId: widget.conversationUserId,
-        );
-    final nextPendingMessages = pendingTextMessages
-        .map(_pendingTextMessageToChatMessage)
-        .toList(growable: false);
-
-    if (!mounted) {
-      _pendingTextMessages
-        ..clear()
-        ..addAll(nextPendingMessages);
-      return;
-    }
-
-    setState(() {
-      _pendingTextMessages
-        ..clear()
-        ..addAll(nextPendingMessages);
     });
   }
 
@@ -1388,14 +912,6 @@ class _ChatPageState extends State<ChatPage>
     }
   }
 
-  bool _shouldKeepPendingTextMessage(AppApiException error) {
-    final statusCode = error.statusCode;
-    return statusCode == null ||
-        statusCode >= 500 ||
-        statusCode == 408 ||
-        statusCode == 429;
-  }
-
   Future<bool> _sendPendingTextMessageById(
     String pendingMessageId, {
     bool showFailureSnackBar = true,
@@ -1404,151 +920,43 @@ class _ChatPageState extends State<ChatPage>
       return true;
     }
 
-    final pendingMessage = await _localConversationStore.getPendingTextMessage(
-      pendingMessageId,
-    );
-    if (pendingMessage == null) {
-      _pendingTextMessageIdsInFlight.remove(pendingMessageId);
-      return false;
-    }
-
-    if (pendingMessage.status == LocalPendingTextMessageStatus.sending) {
-      await _syncPendingTextMessagesFromStore();
-      _pendingTextMessageIdsInFlight.remove(pendingMessageId);
-      return true;
-    }
-
-    await _localConversationStore.markPendingTextMessageSending(
-      pendingMessageId,
-    );
-
     try {
-      final data =
-          pendingMessage.productSnapshot != null &&
-              (pendingMessage.targetUserId?.isNotEmpty ?? false)
-          ? await _conversationsApiService.sendUserMessage(
-              targetUserId: pendingMessage.targetUserId!,
-              content: pendingMessage.content,
-              reply: pendingMessage.replyPayload,
-              productSnapshot: pendingMessage.productSnapshot,
-            )
-          : (pendingMessage.productId?.isNotEmpty ?? false) &&
-                (pendingMessage.targetUserId?.isNotEmpty ?? false) == false
-          ? await _conversationsApiService.sendProductMessage(
-              productId: pendingMessage.productId!,
-              content: pendingMessage.content,
-              reply: pendingMessage.replyPayload,
-            )
-          : (pendingMessage.targetUserId?.isNotEmpty ?? false)
-          ? await _conversationsApiService.sendUserMessage(
-              targetUserId: pendingMessage.targetUserId!,
-              content: pendingMessage.content,
-              reply: pendingMessage.replyPayload,
-            )
-          : (pendingMessage.conversationId?.isNotEmpty ?? false)
-          ? await _conversationsApiService.sendMessage(
-              conversationId: pendingMessage.conversationId!,
-              content: pendingMessage.content,
-              reply: pendingMessage.replyPayload,
-            )
-          : throw AppApiException('Conversation introuvable pour ce message');
-
-      await _localConversationStore.removePendingTextMessage(pendingMessageId);
-      _applyConversation(data);
-      await _syncPendingTextMessagesFromStore();
+      final shouldStayPinnedToBottom =
+          _chatViewportController.shouldKeepViewportPinnedToBottom;
+      final result = await _chatSessionController.sendPendingTextMessageById(
+        pendingMessageId,
+      );
       if (!mounted) {
-        return true;
+        return result.succeeded;
       }
 
-      setState(() {
-        _showEntrySkeleton = false;
-        _loadError = null;
-      });
-      WidgetsBinding.instance.addPostFrameCallback((_) => _animateToBottom());
-      return true;
-    } on AppApiException catch (error) {
-      if (_isBlockedError(error)) {
-        await _localConversationStore.removePendingTextMessage(
-          pendingMessageId,
-        );
-      } else if (_shouldKeepPendingTextMessage(error)) {
-        await _localConversationStore.markPendingTextMessageQueued(
-          pendingMessageId,
-          errorMessage: error.message,
-        );
-      } else {
-        await _localConversationStore.markPendingTextMessageFailed(
-          pendingMessageId,
-          errorMessage: error.message,
-        );
-      }
-
-      await _syncPendingTextMessagesFromStore();
-      if (!mounted) {
+      if (!result.succeeded) {
+        if (showFailureSnackBar &&
+            (result.errorMessage?.trim().isNotEmpty ?? false)) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(result.errorMessage!)));
+        }
         return false;
       }
 
-      if (_isBlockedError(error)) {
-        setState(() {
-          _conversationBlocked = true;
-          _loadError = error.message;
-        });
-      }
-      if (showFailureSnackBar) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(error.message)));
-      }
-      return false;
+      _chatViewportController.scheduleBottomAnchor(
+        shouldStayPinnedToBottom: shouldStayPinnedToBottom,
+      );
+      return true;
     } finally {
       _pendingTextMessageIdsInFlight.remove(pendingMessageId);
-    }
-  }
-
-  Future<void> _drainPendingTextMessages() async {
-    if (_isDrainingPendingTextMessages || !_usesLiveConversation) {
-      return;
-    }
-
-    _isDrainingPendingTextMessages = true;
-    try {
-      final pendingMessages = await _localConversationStore
-          .getPendingTextMessages(
-            conversationId: _conversationId,
-            productId: widget.conversationProductId,
-            targetUserId: widget.conversationUserId,
-          );
-      for (final pendingMessage in pendingMessages) {
-        if (!mounted) {
-          return;
-        }
-        if (pendingMessage.status == LocalPendingTextMessageStatus.sending) {
-          continue;
-        }
-        await _sendPendingTextMessageById(
-          pendingMessage.id,
-          showFailureSnackBar: false,
-        );
-      }
-    } finally {
-      _isDrainingPendingTextMessages = false;
     }
   }
 
   void _handleScroll() {
+    _chatViewportController.handleScroll();
+
     if (!_scrollController.hasClients) {
       return;
     }
 
     final offset = _scrollController.offset;
-    final shouldShowScrollToLatest =
-        offset <
-        _scrollController.position.maxScrollExtent - _scrollToLatestThreshold;
-    if (shouldShowScrollToLatest != _showScrollToLatestButton && mounted) {
-      setState(() {
-        _showScrollToLatestButton = shouldShowScrollToLatest;
-      });
-    }
 
     if (!_usesLiveConversation ||
         _isLoadingOlderMessages ||
@@ -1556,7 +964,8 @@ class _ChatPageState extends State<ChatPage>
       return;
     }
 
-    if (offset <= _olderMessagesTriggerOffset) {
+    final maxScrollExtent = _scrollController.position.maxScrollExtent;
+    if (offset >= maxScrollExtent - _olderMessagesTriggerOffset) {
       unawaited(_loadOlderMessages());
     }
   }
@@ -1570,19 +979,12 @@ class _ChatPageState extends State<ChatPage>
       return;
     }
 
-    final previousOffset = _scrollController.hasClients
-        ? _scrollController.offset
-        : 0.0;
-    final previousMaxScrollExtent = _scrollController.hasClients
-        ? _scrollController.position.maxScrollExtent
-        : 0.0;
-
     if (mounted) {
       setState(() => _isLoadingOlderMessages = true);
     }
 
     try {
-      final data = await _fetchConversationDisplayWindow(
+      final data = await _chatSessionController.fetchConversationDisplayWindow(
         targetDisplayCount: _conversationPageFetchLimit,
         beforeMessageId: oldestLoadedMessageId,
       );
@@ -1602,19 +1004,7 @@ class _ChatPageState extends State<ChatPage>
           clearPending: false,
         );
       });
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_scrollController.hasClients) {
-          return;
-        }
-        final delta =
-            _scrollController.position.maxScrollExtent -
-            previousMaxScrollExtent;
-        final targetOffset = (previousOffset + delta).clamp(
-          0.0,
-          _scrollController.position.maxScrollExtent,
-        );
-        _scrollController.jumpTo(targetOffset);
-      });
+      unawaited(_prefetchBatchFromRaw(data['messages']));
     } on AppApiException catch (error) {
       if (!mounted) {
         return;
@@ -1636,15 +1026,11 @@ class _ChatPageState extends State<ChatPage>
     bool prependOlderMessages = false,
     bool clearPending = true,
   }) {
-    final previousConversationId = _conversationId;
     _conversationId = data['id']?.toString() ?? _conversationId;
     if (_route?.isCurrent ?? false) {
       _syncVisibleConversationRegistration();
     }
     _conversation = Map<String, dynamic>.from(data);
-    if (_conversationId != null && _conversationId != previousConversationId) {
-      _bindRealtimeUpdates();
-    }
     final rawMessages = (data['messages'] as List?) ?? const [];
     final nextMessages = _parseConversationMessages(rawMessages);
     if (mergeRecentMessages || prependOlderMessages) {
@@ -1715,6 +1101,7 @@ class _ChatPageState extends State<ChatPage>
             message: (message['content'] as String?) ?? '',
             kind: _ChatMessageKind.fromApi(message['kind']),
             createdAt: createdAt,
+            editedAt: message['editedAt'] as String?,
             time: _formatMessageTime(createdAt),
             isMine: message['isMine'] == true,
             deliveryState: _resolveDeliveryState(
@@ -1748,30 +1135,17 @@ class _ChatPageState extends State<ChatPage>
       ..addAll(merged);
   }
 
-  void _markOutgoingMessagesSeen() {
-    for (var index = 0; index < _messages.length; index += 1) {
-      final message = _messages[index];
-      if (!message.isMine ||
-          message.deliveryState == _ChatMessageDeliveryState.seen) {
-        continue;
-      }
-
-      if ((message.id?.trim().isNotEmpty ?? false)) {
-        _deliveredMessageIds.remove(message.id!.trim());
-      }
-      _messages[index] = _copyMessageWithDeliveryState(
-        message,
-        _ChatMessageDeliveryState.seen,
-      );
-    }
-  }
-
   List<_ChatMessage> _messagesForDisplay() {
-    final confirmedMessages = List<_ChatMessage>.from(_messages);
+    final confirmedMessages = _messages
+        .map(_applyConfirmedMessageDisplayOverride)
+        .toList(growable: false);
     final unmatchedConfirmedIndexes = <int>{
       for (var index = 0; index < confirmedMessages.length; index += 1) index,
     };
     final visiblePendingTextMessages = <_ChatMessage>[];
+    final nextConfirmedVisualKeyAliases = <String, String>{};
+    final nextConfirmedDisplayOverrides =
+        <String, _ConfirmedMessageDisplayOverride>{};
 
     for (final pendingMessage in _pendingTextMessages) {
       final matchingConfirmedIndex = _findMatchingConfirmedMessageIndex(
@@ -1781,17 +1155,82 @@ class _ChatPageState extends State<ChatPage>
       );
       if (matchingConfirmedIndex != null) {
         unmatchedConfirmedIndexes.remove(matchingConfirmedIndex);
+        final confirmedMessage = confirmedMessages[matchingConfirmedIndex];
+        final confirmedMessageId = confirmedMessage.id?.trim() ?? '';
+        final pendingMessageId = pendingMessage.id?.trim() ?? '';
+        if (confirmedMessageId.isNotEmpty && pendingMessageId.isNotEmpty) {
+          nextConfirmedVisualKeyAliases[confirmedMessageId] = pendingMessageId;
+          final displayOverride = _ConfirmedMessageDisplayOverride(
+            createdAt: pendingMessage.createdAt,
+            time: pendingMessage.time,
+          );
+          nextConfirmedDisplayOverrides[confirmedMessageId] = displayOverride;
+          confirmedMessages[matchingConfirmedIndex] =
+              _applyDisplayOverrideToMessage(confirmedMessage, displayOverride);
+        }
         continue;
       }
 
       visiblePendingTextMessages.add(pendingMessage);
     }
 
+    final activeConfirmedMessageIds = confirmedMessages
+        .map((message) => message.id?.trim() ?? '')
+        .where((messageId) => messageId.isNotEmpty)
+        .toSet();
+    _confirmedMessageVisualKeyAliases
+      ..removeWhere(
+        (confirmedMessageId, visualKey) =>
+            !activeConfirmedMessageIds.contains(confirmedMessageId),
+      )
+      ..addAll(nextConfirmedVisualKeyAliases);
+    _confirmedMessageDisplayOverrides
+      ..removeWhere(
+        (confirmedMessageId, displayOverride) =>
+            !activeConfirmedMessageIds.contains(confirmedMessageId),
+      )
+      ..addAll(nextConfirmedDisplayOverrides);
+
     return <_ChatMessage>[
       ...confirmedMessages,
       ...visiblePendingTextMessages,
       ..._pendingMessages,
     ]..sort(_compareChatMessages);
+  }
+
+  _ChatMessage _applyConfirmedMessageDisplayOverride(_ChatMessage message) {
+    final messageId = message.id?.trim() ?? '';
+    if (messageId.isEmpty) {
+      return message;
+    }
+
+    final displayOverride = _confirmedMessageDisplayOverrides[messageId];
+    if (displayOverride == null) {
+      return message;
+    }
+
+    return _applyDisplayOverrideToMessage(message, displayOverride);
+  }
+
+  _ChatMessage _applyDisplayOverrideToMessage(
+    _ChatMessage message,
+    _ConfirmedMessageDisplayOverride displayOverride,
+  ) {
+    return _ChatMessage(
+      id: message.id,
+      message: message.message,
+      kind: message.kind,
+      createdAt: displayOverride.createdAt ?? message.createdAt,
+      editedAt: message.editedAt,
+      time: displayOverride.time.isNotEmpty
+          ? displayOverride.time
+          : message.time,
+      isMine: message.isMine,
+      deliveryState: message.deliveryState,
+      reply: message.reply,
+      media: message.media,
+      product: message.product,
+    );
   }
 
   int? _findMatchingConfirmedMessageIndex(
@@ -1982,6 +1421,470 @@ class _ChatPageState extends State<ChatPage>
     );
   }
 
+  bool _canEditDisplayMessage(_ChatDisplayMessage displayMessage) {
+    if (displayMessage.messages.length != 1) return false;
+    final msg = displayMessage.anchorMessage;
+    return msg.isMine &&
+        msg.kind == _ChatMessageKind.text &&
+        (msg.id?.trim().isNotEmpty ?? false);
+  }
+
+  bool _canCopyDisplayMessage(_ChatDisplayMessage displayMessage) {
+    return _messageTransferPayload(displayMessage).trim().isNotEmpty;
+  }
+
+  bool _usesSelectionToolbarStatus(_ChatDisplayMessage displayMessage) {
+    final state = displayMessage.anchorMessage.deliveryState;
+    return state == _ChatMessageDeliveryState.sent ||
+        state == _ChatMessageDeliveryState.delivered ||
+        state == _ChatMessageDeliveryState.seen;
+  }
+
+  bool _canEditSelectedDisplayMessage(_ChatDisplayMessage displayMessage) {
+    final state = displayMessage.anchorMessage.deliveryState;
+    return _canEditDisplayMessage(displayMessage) &&
+        (state == _ChatMessageDeliveryState.sent ||
+            state == _ChatMessageDeliveryState.delivered);
+  }
+
+  List<_ChatSelectionMenuAction> _selectionMenuActionsFor(
+    List<_ChatDisplayMessage> selectedDisplayMessages,
+  ) {
+    if (selectedDisplayMessages.length != 1) {
+      return const <_ChatSelectionMenuAction>[];
+    }
+
+    final displayMessage = selectedDisplayMessages.single;
+    if (!_usesSelectionToolbarStatus(displayMessage)) {
+      return const <_ChatSelectionMenuAction>[];
+    }
+
+    return <_ChatSelectionMenuAction>[
+      if (_canCopyDisplayMessage(displayMessage)) _ChatSelectionMenuAction.copy,
+      if (_canEditSelectedDisplayMessage(displayMessage))
+        _ChatSelectionMenuAction.edit,
+    ];
+  }
+
+  Future<void> _copyDisplayMessage(_ChatDisplayMessage displayMessage) async {
+    final payload = _messageTransferPayload(displayMessage).trim();
+    if (payload.isEmpty) {
+      return;
+    }
+
+    await Clipboard.setData(ClipboardData(text: payload));
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Message copie.')));
+  }
+
+  void _handleSelectionMenuAction(
+    _ChatSelectionMenuAction action,
+    List<_ChatDisplayMessage> selectedDisplayMessages,
+  ) {
+    if (selectedDisplayMessages.length != 1) {
+      return;
+    }
+
+    final displayMessage = selectedDisplayMessages.single;
+    switch (action) {
+      case _ChatSelectionMenuAction.copy:
+        unawaited(_copyDisplayMessage(displayMessage));
+        break;
+      case _ChatSelectionMenuAction.edit:
+        _startEditingMessage(displayMessage.anchorMessage);
+        _clearSelectedMessages();
+        break;
+    }
+  }
+
+  String? _forwardConversationId(Map<String, dynamic> conversation) {
+    final value = conversation['id'];
+    if (value == null) {
+      return null;
+    }
+
+    final normalized = value.toString().trim();
+    return normalized.isEmpty ? null : normalized;
+  }
+
+  String? _forwardParticipantId(Map<String, dynamic> conversation) {
+    final participant = conversation['participant'];
+    if (participant is! Map) {
+      return null;
+    }
+
+    final value = participant['id'];
+    if (value == null) {
+      return null;
+    }
+
+    final normalized = value.toString().trim();
+    return normalized.isEmpty ? null : normalized;
+  }
+
+  String _forwardConversationName(Map<String, dynamic> conversation) {
+    final participant = conversation['participant'];
+    if (participant is Map) {
+      final value = participant['displayName'];
+      if (value is String && value.trim().isNotEmpty) {
+        return value.trim();
+      }
+    }
+
+    return 'Conversation';
+  }
+
+  String _forwardConversationAvatar(Map<String, dynamic> conversation) {
+    final participant = conversation['participant'];
+    if (participant is Map) {
+      final value = participant['avatarUrl'];
+      if (value is String && value.trim().isNotEmpty) {
+        return value.trim();
+      }
+    }
+
+    return 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600';
+  }
+
+  DateTime? _forwardConversationLastMessageDate(
+    Map<String, dynamic> conversation,
+  ) {
+    final value = conversation['lastMessageAt'];
+    if (value is! String || value.trim().isEmpty) {
+      return null;
+    }
+
+    return DateTime.tryParse(value)?.toLocal();
+  }
+
+  List<Map<String, dynamic>> _groupForwardConversations(
+    List<Map<String, dynamic>> conversations,
+  ) {
+    final grouped = <String, Map<String, dynamic>>{};
+
+    for (final conversation in conversations) {
+      final participantId = _forwardParticipantId(conversation);
+      final conversationId = _forwardConversationId(conversation);
+      final groupKey = participantId ?? conversationId;
+
+      if (groupKey == null) {
+        continue;
+      }
+
+      final existing = grouped[groupKey];
+      if (existing == null) {
+        grouped[groupKey] = Map<String, dynamic>.from(conversation);
+        continue;
+      }
+
+      final existingDate = _forwardConversationLastMessageDate(existing);
+      final currentDate = _forwardConversationLastMessageDate(conversation);
+      final useCurrentConversation =
+          existingDate == null ||
+          (currentDate != null && currentDate.isAfter(existingDate));
+
+      grouped[groupKey] = Map<String, dynamic>.from(
+        useCurrentConversation ? conversation : existing,
+      );
+    }
+
+    final groupedList = grouped.values.toList(growable: false);
+    groupedList.sort((first, second) {
+      final firstDate = _forwardConversationLastMessageDate(first);
+      final secondDate = _forwardConversationLastMessageDate(second);
+      if (firstDate == null && secondDate == null) {
+        return 0;
+      }
+      if (firstDate == null) {
+        return 1;
+      }
+      if (secondDate == null) {
+        return -1;
+      }
+      return secondDate.compareTo(firstDate);
+    });
+    return groupedList;
+  }
+
+  Future<List<Map<String, dynamic>>> _loadForwardConversations() async {
+    final cachedConversations = await _conversationsApiService
+        .getCachedConversations();
+    if (cachedConversations != null && cachedConversations.isNotEmpty) {
+      return _groupForwardConversations(cachedConversations);
+    }
+
+    final conversations = await _conversationsApiService.fetchConversations();
+    return _groupForwardConversations(conversations);
+  }
+
+  Future<void> _forwardMessageToConversation(
+    Map<String, dynamic> conversation,
+    String payload,
+  ) async {
+    final conversationId = _forwardConversationId(conversation);
+    if (conversationId != null) {
+      await _conversationsApiService.sendMessage(
+        conversationId: conversationId,
+        content: payload,
+      );
+      return;
+    }
+
+    final participantId = _forwardParticipantId(conversation);
+    if (participantId != null) {
+      await _conversationsApiService.sendUserMessage(
+        targetUserId: participantId,
+        content: payload,
+      );
+      return;
+    }
+
+    throw AppApiException('Conversation introuvable pour ce partage.');
+  }
+
+  Future<void> _showForwardMessagePicker(
+    _ChatDisplayMessage displayMessage,
+  ) async {
+    final payload = _messageTransferPayload(displayMessage).trim();
+    if (payload.isEmpty) {
+      return;
+    }
+
+    final conversationsFuture = _loadForwardConversations();
+    final selectedConversation =
+        await showModalBottomSheet<Map<String, dynamic>>(
+          context: context,
+          useRootNavigator: true,
+          isScrollControlled: true,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          builder: (ctx) {
+            final theme = Theme.of(ctx);
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                child: FutureBuilder<List<Map<String, dynamic>>>(
+                  future: conversationsFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState != ConnectionState.done) {
+                      return const SizedBox(
+                        height: 280,
+                        child: Center(child: CircularProgressIndicator()),
+                      );
+                    }
+
+                    if (snapshot.hasError) {
+                      return SizedBox(
+                        height: 280,
+                        child: Center(
+                          child: Text(
+                            'Impossible de charger la liste des discussions.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: theme.colorScheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+
+                    final conversations =
+                        snapshot.data ?? const <Map<String, dynamic>>[];
+                    if (conversations.isEmpty) {
+                      return SizedBox(
+                        height: 280,
+                        child: Center(
+                          child: Text(
+                            'Aucune discussion disponible.',
+                            style: TextStyle(
+                              color: theme.colorScheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.withValues(alpha: 0.35),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Partager avec',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Flexible(
+                          child: ListView.separated(
+                            shrinkWrap: true,
+                            itemCount: conversations.length,
+                            separatorBuilder: (_, _) =>
+                                const Divider(height: 1),
+                            itemBuilder: (context, index) {
+                              final conversation = conversations[index];
+                              final currentConversationId = _conversationId
+                                  ?.trim();
+                              return ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                leading: AppCircleNetworkAvatar(
+                                  radius: 22,
+                                  imageUrl: _forwardConversationAvatar(
+                                    conversation,
+                                  ),
+                                  userId: _forwardParticipantId(conversation),
+                                ),
+                                title: Text(
+                                  _forwardConversationName(conversation),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  _forwardConversationId(conversation) ==
+                                          currentConversationId
+                                      ? 'Discussion actuelle'
+                                      : 'Touchez pour partager ce message',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                onTap: () =>
+                                    Navigator.of(ctx).pop(conversation),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            );
+          },
+        );
+
+    if (selectedConversation == null || !mounted) {
+      return;
+    }
+
+    try {
+      await _forwardMessageToConversation(selectedConversation, payload);
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() => _selectedDisplayMessageKeys.clear());
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Message partage avec ${_forwardConversationName(selectedConversation)}.',
+        ),
+      ),
+    );
+  }
+
+  void _startEditingMessage(_ChatMessage message) {
+    setState(() {
+      _editingMessage = message;
+      _messageController.text = message.message;
+    });
+  }
+
+  void _cancelEditingMessage() {
+    setState(() {
+      _editingMessage = null;
+      _messageController.clear();
+    });
+  }
+
+  Future<String?> _askDeleteScope() {
+    return showDialog<String>(
+      context: context,
+      useRootNavigator: true,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer le message'),
+        content: const Text('Choisissez une option de suppression:'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('FOR_ME'),
+            child: const Text('Pour moi'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('FOR_EVERYONE'),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(ctx).colorScheme.error,
+            ),
+            child: const Text('Pour tout le monde'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _submitMessageEdit(String content) async {
+    final message = _editingMessage;
+    if (message == null) return;
+    final conversationId = _conversationId?.trim() ?? '';
+    final messageId = message.id?.trim() ?? '';
+    if (content.isEmpty || conversationId.isEmpty || messageId.isEmpty) return;
+
+    final result = await _chatSessionController.submitMessageEdit(
+      conversationId: conversationId,
+      messageId: messageId,
+      content: content,
+    );
+    if (!mounted) return;
+    if (!result.succeeded) {
+      if (result.errorMessage?.trim().isNotEmpty ?? false) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(result.errorMessage!)));
+      }
+      return;
+    }
+
+    setState(() {
+      _editingMessage = null;
+      _messageController.clear();
+    });
+  }
+
   void _enterSelectionMode(_ChatDisplayMessage displayMessage) {
     final selectionKey = _displayMessageSelectionKey(displayMessage);
     if (_selectedDisplayMessageKeys.contains(selectionKey)) {
@@ -2036,7 +1939,28 @@ class _ChatPageState extends State<ChatPage>
     final pendingIds = <String>{};
     final persistedIds = <String>{};
 
+    void addGroupedPersistedMessages(String groupId) {
+      final normalizedGroupId = groupId.trim();
+      if (normalizedGroupId.isEmpty) {
+        return;
+      }
+
+      persistedIds.addAll(
+        _messages
+            .where(
+              (message) =>
+                  message.isMine &&
+                  (message.id?.trim().isNotEmpty ?? false) &&
+                  !(message.id!.startsWith('pending-')) &&
+                  (message.media?.mediaGroupId?.trim() ?? '') ==
+                      normalizedGroupId,
+            )
+            .map((message) => message.id!.trim()),
+      );
+    }
+
     for (final displayMessage in displayMessages) {
+      final groupId = displayMessage.groupId?.trim() ?? '';
       pendingIds.addAll(
         displayMessage.messages
             .where((message) => (message.id?.startsWith('pending-') ?? false))
@@ -2052,6 +1976,7 @@ class _ChatPageState extends State<ChatPage>
             )
             .map((message) => message.id!.trim()),
       );
+      addGroupedPersistedMessages(groupId);
     }
 
     return _DeleteMessageBatch(
@@ -2073,95 +1998,39 @@ class _ChatPageState extends State<ChatPage>
     );
   }
 
-  Future<void> _shareDisplayMessage(_ChatDisplayMessage displayMessage) async {
-    final payload = _messageTransferPayload(displayMessage).trim();
-    if (payload.isEmpty) {
-      return;
-    }
-
-    await Share.share(payload);
-  }
-
   Future<void> _deleteDisplayMessages(
     _DeleteMessageBatch batch,
-    ValueNotifier<_DeleteMessagesProgress>? progressNotifier,
-  ) async {
-    final pendingIds = batch.pendingIds;
-    final persistedIds = batch.persistedIds;
-    final totalSteps = math.max(1, batch.totalOperations);
-    var completedSteps = 0;
-
-    void reportProgress(String statusText) {
-      final notifier = progressNotifier;
-      if (notifier == null) {
-        return;
-      }
-
-      _setDeleteProgress(
-        notifier,
-        completedSteps: completedSteps,
-        totalSteps: totalSteps,
-        statusText: statusText,
-      );
-    }
-
-    reportProgress(
-      totalSteps == 1
-          ? 'Preparation de la suppression...'
-          : 'Preparation de la suppression des messages...',
-    );
-
-    if (pendingIds.isNotEmpty) {
-      for (final pendingId in pendingIds) {
-        await _localConversationStore.removePendingTextMessage(pendingId);
-        completedSteps += 1;
-        reportProgress('Suppression locale $completedSteps/$totalSteps');
-      }
-      setState(() {
-        _pendingMessages.removeWhere(
-          (message) => pendingIds.contains(message.id),
-        );
-      });
-      await _syncPendingTextMessagesFromStore();
-    }
-
-    final conversationId = _conversationId?.trim() ?? '';
-    if (persistedIds.isEmpty || conversationId.isEmpty) {
-      return;
-    }
-
-    for (final messageId in persistedIds) {
-      reportProgress('Suppression distante ${completedSteps + 1}/$totalSteps');
-      try {
-        await _conversationsApiService.deleteMessage(
-          conversationId: conversationId,
-          messageId: messageId,
-        );
-      } on AppApiException catch (error) {
-        final message = error.message.trim().toLowerCase();
-        final isMissingMessage =
-            error.statusCode == 404 ||
-            message.contains('message not found') ||
-            message.contains('message introuvable');
-        if (!isMissingMessage) {
-          rethrow;
+    ValueNotifier<_DeleteMessagesProgress>? progressNotifier, {
+    String scope = 'FOR_EVERYONE',
+  }) async {
+    final result = await _chatSessionController.deleteMessages(
+      pendingIds: batch.pendingIds,
+      persistedIds: batch.persistedIds,
+      scope: scope,
+      onProgress: (completedSteps, totalSteps, statusText) {
+        final notifier = progressNotifier;
+        if (notifier == null) {
+          return;
         }
-      }
 
-      await _localConversationStore.deleteMessage(
-        conversationId: conversationId,
-        messageId: messageId,
+        _setDeleteProgress(
+          notifier,
+          completedSteps: completedSteps,
+          totalSteps: totalSteps,
+          statusText: statusText,
+        );
+      },
+    );
+    if (!result.succeeded) {
+      throw AppApiException(
+        result.errorMessage ?? 'Suppression impossible.',
+        statusCode: result.isBlocked ? 403 : null,
       );
-      completedSteps += 1;
-      reportProgress('Suppression distante $completedSteps/$totalSteps');
     }
 
-    reportProgress('Synchronisation de la conversation...');
-    await _hydrateConversationFromLocalStore();
     if (!mounted) {
       return;
     }
-    WidgetsBinding.instance.addPostFrameCallback((_) => _animateToBottom());
   }
 
   Future<void> _shareSelectedMessages(
@@ -2171,12 +2040,7 @@ class _ChatPageState extends State<ChatPage>
       return;
     }
 
-    await _shareDisplayMessage(selectedDisplayMessages.single);
-    if (!mounted) {
-      return;
-    }
-
-    setState(() => _selectedDisplayMessageKeys.clear());
+    await _showForwardMessagePicker(selectedDisplayMessages.single);
   }
 
   Future<void> _deleteSelectedMessages(
@@ -2199,6 +2063,9 @@ class _ChatPageState extends State<ChatPage>
       );
       return;
     }
+
+    final scope = await _askDeleteScope();
+    if (scope == null || !mounted) return;
 
     final skippedCount =
         selectedDisplayMessages.length - deletableMessages.length;
@@ -2232,7 +2099,7 @@ class _ChatPageState extends State<ChatPage>
     await Future<void>.delayed(const Duration(milliseconds: 20));
 
     try {
-      await _deleteDisplayMessages(deleteBatch, progressNotifier);
+      await _deleteDisplayMessages(deleteBatch, progressNotifier, scope: scope);
     } on AppApiException catch (error) {
       if (rootNavigator.mounted && rootNavigator.canPop()) {
         rootNavigator.pop();
@@ -2334,23 +2201,38 @@ class _ChatPageState extends State<ChatPage>
     }
   }
 
+  Future<void> _prefetchBatchFromRaw(dynamic rawMessages) async {
+    if (rawMessages is! List) return;
+    int count = 0;
+    for (final raw in rawMessages) {
+      if (count >= 5) break;
+      if (raw is! Map) continue;
+      final media = raw['media'];
+      if (media is! Map) continue;
+      if ((media['mediaType'] as String?) != 'image') continue;
+      final url = _thumbnailUrlFromRaw(media);
+      if (url.isEmpty) continue;
+      await ChatMediaCacheService.instance.prefetch(url);
+      count++;
+    }
+  }
+
+  String _thumbnailUrlFromRaw(Map<dynamic, dynamic> media) {
+    final thumbUrl = media['thumbnailUrl']?.toString().trim() ?? '';
+    if (thumbUrl.isNotEmpty) return thumbUrl;
+    final previewUrl = media['previewUrl']?.toString().trim() ?? '';
+    if (previewUrl.isNotEmpty) {
+      return CloudinaryImageUrl.forChatThumbnail(previewUrl);
+    }
+    final publicUrl = media['publicUrl']?.toString().trim() ?? '';
+    return publicUrl.isNotEmpty
+        ? CloudinaryImageUrl.forChatThumbnail(publicUrl)
+        : '';
+  }
+
   bool _isBlockedError(AppApiException error) {
     final message = error.message.toLowerCase();
     return error.statusCode == 403 && message.contains('bloqu');
-  }
-
-  void _applyConversationError(
-    AppApiException error, {
-    bool? showEntrySkeleton,
-  }) {
-    setState(() {
-      if (showEntrySkeleton != null) {
-        _showEntrySkeleton = showEntrySkeleton;
-      }
-      _conversationBlocked = _isBlockedError(error);
-      _loadError = error.message;
-      _pendingMessages.clear();
-    });
   }
 
   _ChatMessageDeliveryState? _resolveDeliveryState({
@@ -2393,6 +2275,10 @@ class _ChatPageState extends State<ChatPage>
 
   Future<void> _sendMessage(String text) async {
     final content = text.trim();
+    if (_editingMessage != null) {
+      await _submitMessageEdit(content);
+      return;
+    }
     final pendingDocumentAttachment = _pendingDocumentAttachment;
     if ((content.isEmpty && pendingDocumentAttachment == null) ||
         !_usesLiveConversation ||
@@ -2402,9 +2288,7 @@ class _ChatPageState extends State<ChatPage>
     }
 
     if (mounted) {
-      setState(() {
-        _isSendingTextMessage = true;
-      });
+      _isSendingTextMessage = true;
     } else {
       _isSendingTextMessage = true;
     }
@@ -2437,6 +2321,8 @@ class _ChatPageState extends State<ChatPage>
         }
       }
 
+      _isSendingTextMessage = false;
+
       unawaited(
         _sendDocumentAttachment(
           pendingDocumentAttachment,
@@ -2449,6 +2335,8 @@ class _ChatPageState extends State<ChatPage>
     }
 
     final previousReplyingToMessage = _replyingToMessage;
+    final shouldStayPinnedToBottom =
+        _chatViewportController.shouldKeepViewportPinnedToBottom;
 
     final shouldAttachInitialProductContext =
         widget.embedProductContextInInitialMessage &&
@@ -2456,11 +2344,8 @@ class _ChatPageState extends State<ChatPage>
         _productTitleValue.isNotEmpty;
 
     final replyPayload = await _replyPayload(previousReplyingToMessage);
-    final pendingMessage = await _localConversationStore
+    final pendingMessage = await _chatSessionController
         .enqueuePendingTextMessage(
-          conversationId: _conversationId,
-          productId: widget.conversationProductId,
-          targetUserId: widget.conversationUserId,
           content: content,
           replyPayload: replyPayload,
           productSnapshot:
@@ -2482,33 +2367,49 @@ class _ChatPageState extends State<ChatPage>
       _replyingToMessage = null;
     });
     _messageController.clear();
-    await _syncPendingTextMessagesFromStore();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _animateToBottom());
+    _chatViewportController.scheduleBottomAnchor(
+      shouldStayPinnedToBottom: shouldStayPinnedToBottom,
+    );
+    _initialProductContextSent = true;
+    _showEntrySkeleton = false;
+    _isSendingTextMessage = false;
+    unawaited(
+      _sendPendingTextMessageInBackground(
+        pendingMessage.id,
+        shouldStayPinnedToBottom: shouldStayPinnedToBottom,
+        previousReplyingToMessage: previousReplyingToMessage,
+      ),
+    );
+  }
+
+  Future<void> _sendPendingTextMessageInBackground(
+    String pendingMessageId, {
+    required bool shouldStayPinnedToBottom,
+    required _ChatMessage? previousReplyingToMessage,
+  }) async {
     try {
-      final sent = await _sendPendingTextMessageById(pendingMessage.id);
-      if (!sent) {
+      final sent = await _sendPendingTextMessageById(pendingMessageId);
+      if (!sent || !mounted) {
         return;
       }
-      if (!mounted) return;
-      _initialProductContextSent = true;
-      setState(() {
-        _showEntrySkeleton = false;
-      });
-      WidgetsBinding.instance.addPostFrameCallback((_) => _animateToBottom());
+
+      _chatViewportController.scheduleBottomAnchor(
+        shouldStayPinnedToBottom: shouldStayPinnedToBottom,
+      );
     } on AppApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
+
       if (_isBlockedError(error)) {
         setState(() {
           _conversationBlocked = true;
           _loadError = error.message;
         });
-      }
-      setState(() {
-        _replyingToMessage = previousReplyingToMessage;
-      });
-    } finally {
-      if (mounted) {
-        setState(() => _isSendingTextMessage = false);
+      } else {
+        setState(() {
+          _replyingToMessage = previousReplyingToMessage;
+        });
       }
     }
   }
@@ -2534,8 +2435,16 @@ class _ChatPageState extends State<ChatPage>
   }
 
   String _messageReplyKey(_ChatMessage message) {
-    return message.id ??
-        '${message.time}-${message.isMine ? 'mine' : 'their'}-${message.message.hashCode}';
+    final messageId = message.id?.trim() ?? '';
+    if (messageId.isNotEmpty) {
+      final aliasedVisualKey = _confirmedMessageVisualKeyAliases[messageId];
+      if (aliasedVisualKey?.isNotEmpty ?? false) {
+        return aliasedVisualKey!;
+      }
+      return messageId;
+    }
+
+    return '${message.time}-${message.isMine ? 'mine' : 'their'}-${message.message.hashCode}';
   }
 
   String _displayMessageReplyKey(_ChatDisplayMessage displayMessage) {
@@ -2603,10 +2512,6 @@ class _ChatPageState extends State<ChatPage>
     return null;
   }
 
-  Key _displayMessageItemKey(_ChatDisplayMessage displayMessage, int index) {
-    return ValueKey('${_displayMessageReplyKey(displayMessage)}#$index');
-  }
-
   List<_ChatDisplayMessage> _buildDisplayMessages(List<_ChatMessage> messages) {
     final displayMessages = <_ChatDisplayMessage>[];
     var index = 0;
@@ -2638,6 +2543,321 @@ class _ChatPageState extends State<ChatPage>
     }
 
     return displayMessages;
+  }
+
+  List<_ChatDisplayMessage> _displayMessagesForTimeline(
+    List<_ChatMessage> messages,
+  ) {
+    final signature = _chatMessagesSignature(messages);
+    if (_cachedDisplayMessagesSignature == signature) {
+      return _cachedDisplayMessages;
+    }
+
+    final displayMessages = _buildDisplayMessages(messages);
+    _cachedDisplayMessagesSignature = signature;
+    _cachedDisplayMessages = displayMessages;
+    _cachedTimelineItemsSignature = null;
+    return displayMessages;
+  }
+
+  List<_ChatTimelineItem> _buildTimelineItems(
+    List<_ChatDisplayMessage> displayMessages,
+  ) {
+    final timelineItems = <_ChatTimelineItem>[];
+
+    if (_isLoadingOlderMessages) {
+      timelineItems.add(const _ChatTimelineItem.loadingOlder());
+    }
+
+    if (_loadError != null) {
+      timelineItems.add(
+        _ChatTimelineItem.info(text: _loadError!, isError: true),
+      );
+    } else if (displayMessages.isEmpty) {
+      timelineItems.add(
+        const _ChatTimelineItem.info(
+          text: 'Aucun message pour le moment.',
+          isError: false,
+        ),
+      );
+    } else {
+      for (var index = 0; index < displayMessages.length; index += 1) {
+        final displayMessage = displayMessages[index];
+        final currentDate = _displayMessageDate(displayMessage);
+        final previousDate = index == 0
+            ? null
+            : _displayMessageDate(displayMessages[index - 1]);
+        final shouldShowDateDivider =
+            currentDate != null &&
+            (previousDate == null ||
+                !_isSameCalendarDay(currentDate, previousDate));
+
+        if (shouldShowDateDivider) {
+          timelineItems.add(_ChatTimelineItem.dateDivider(date: currentDate));
+        }
+
+        timelineItems.add(
+          _ChatTimelineItem.message(
+            displayMessage: displayMessage,
+            displayIndex: index,
+            messageKeySuffix: _displayMessageReplyKey(displayMessage),
+          ),
+        );
+      }
+    }
+
+    if (_photoUploadTasks.isNotEmpty) {
+      timelineItems.add(const _ChatTimelineItem.photoUploads());
+    }
+    if (_documentUploadTasks.isNotEmpty) {
+      timelineItems.add(const _ChatTimelineItem.documentUploads());
+    }
+    if (_isParticipantTyping) {
+      timelineItems.add(const _ChatTimelineItem.typingIndicator());
+    }
+
+    return timelineItems;
+  }
+
+  List<_ChatTimelineItem> _timelineItemsForDisplayMessages(
+    List<_ChatDisplayMessage> displayMessages,
+  ) {
+    final signature = _timelineItemsSignature(displayMessages);
+    if (_cachedTimelineItemsSignature == signature) {
+      return _cachedTimelineItems;
+    }
+
+    final timelineItems = _buildTimelineItems(displayMessages);
+    _cachedTimelineItemsSignature = signature;
+    _cachedTimelineItems = timelineItems;
+    return timelineItems;
+  }
+
+  String _chatMessagesSignature(List<_ChatMessage> messages) {
+    return messages
+        .map(
+          (message) => [
+            message.id ?? '',
+            message.createdAt ?? '',
+            message.editedAt ?? '',
+            message.kind.name,
+            message.message,
+            message.isMine ? '1' : '0',
+            message.deliveryState?.name ?? '',
+            message.reply?.messageId ?? '',
+            message.reply?.senderLabel ?? '',
+            message.reply?.content ?? '',
+            message.media?.mediaGroupId ?? '',
+            message.media?.publicUrl ?? '',
+            message.media?.thumbnailUrl ?? '',
+            message.product?.id ?? '',
+          ].join('|'),
+        )
+        .join('||');
+  }
+
+  String _timelineItemsSignature(List<_ChatDisplayMessage> displayMessages) {
+    return [
+      _chatDisplayMessagesSignature(displayMessages),
+      _isLoadingOlderMessages ? 'loading:1' : 'loading:0',
+      'error:${_loadError ?? ''}',
+      _photoUploadTasks.isNotEmpty ? 'photoUploads:1' : 'photoUploads:0',
+      _documentUploadTasks.isNotEmpty
+          ? 'documentUploads:1'
+          : 'documentUploads:0',
+      _isParticipantTyping ? 'typing:1' : 'typing:0',
+    ].join('@@');
+  }
+
+  String _chatDisplayMessagesSignature(
+    List<_ChatDisplayMessage> displayMessages,
+  ) {
+    return displayMessages
+        .map(
+          (displayMessage) => displayMessage.messages
+              .map((message) => message.id ?? message.createdAt ?? '')
+              .join(','),
+        )
+        .join('||');
+  }
+
+  Widget _buildTimelineItem(
+    _ChatTimelineItem item, {
+    required ThemeData theme,
+    required Color primary,
+    required Color subtleText,
+    required Color incomingBubbleColor,
+    required Color outgoingBubbleColor,
+    required Color dateDividerCardColor,
+    required String avatarUrl,
+    required bool isSelectionMode,
+  }) {
+    switch (item.type) {
+      case _ChatTimelineItemType.loadingOlder:
+        return Column(
+          children: [
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(primary),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Chargement des messages...',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: subtleText,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
+        );
+      case _ChatTimelineItemType.info:
+        return _ChatInfoCard(
+          text: item.infoText!,
+          color: item.isError ? theme.colorScheme.error : subtleText,
+          cardColor: incomingBubbleColor,
+        );
+      case _ChatTimelineItemType.dateDivider:
+        return Column(
+          children: [
+            _ChatDateDivider(
+              label: _formatDateDivider(item.date!),
+              cardColor: dateDividerCardColor,
+              subtleText: subtleText,
+            ),
+            const SizedBox(height: 16),
+          ],
+        );
+      case _ChatTimelineItemType.message:
+        final displayMessage = item.displayMessage!;
+        final chat = displayMessage.anchorMessage;
+        final visualKey = _displayMessageReplyKey(displayMessage);
+        final isSelected = _selectedDisplayMessageKeys.contains(
+          _displayMessageSelectionKey(displayMessage),
+        );
+
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          color: isSelected ? const Color(0x40D32F2F) : Colors.transparent,
+          child: KeyedSubtree(
+            key: _currentDisplayMessageTargetKey(displayMessage),
+            child: _SwipeReplyWrapper(
+              isMine: chat.isMine,
+              primary: primary,
+              swipeEnabled: !isSelectionMode,
+              onTap: isSelectionMode
+                  ? () => _toggleDisplayMessageSelection(displayMessage)
+                  : null,
+              onReply: () => _setReplyingToMessage(chat),
+              onHoldAction: isSelectionMode
+                  ? null
+                  : () => _enterSelectionMode(displayMessage),
+              child: _ChatBubble(
+                message: displayMessage.messageText,
+                kind: chat.kind,
+                time: chat.time,
+                isMine: chat.isMine,
+                isEdited: chat.editedAt != null,
+                deliveryState: chat.deliveryState,
+                reply: chat.reply,
+                isHighlighted:
+                    _highlightedMessageId == visualKey && _highlightVisible,
+                onReplyTap: isSelectionMode || chat.reply?.messageId == null
+                    ? null
+                    : () => _focusRepliedMessage(chat.reply!.messageId),
+                mediaItems: displayMessage.mediaItems,
+                onMediaTapAtIndex:
+                    isSelectionMode || displayMessage.mediaItems.isEmpty
+                    ? null
+                    : (mediaIndex) => _openChatMediaGroup(
+                        displayMessage.mediaItems,
+                        initialIndex: mediaIndex,
+                      ),
+                product: chat.product,
+                onProductTap:
+                    isSelectionMode ||
+                        displayMessage.mediaItems.isNotEmpty ||
+                        !widget.showInlineProductSnapshots ||
+                        chat.product == null
+                    ? null
+                    : _isAttachmentSnapshot(chat.product!)
+                    ? () => _openAttachmentSnapshot(chat.product!)
+                    : () => _openMessageProductCard(chat.product!),
+                avatarUrl: avatarUrl,
+                participantUserId: _participantUserId,
+                participantIsOnline: _participantIsOnlineValue,
+                primary: primary,
+                incomingBubbleColor: incomingBubbleColor,
+                outgoingBubbleColor: outgoingBubbleColor,
+                subtleText: subtleText,
+              ),
+            ),
+          ),
+        );
+      case _ChatTimelineItemType.photoUploads:
+        return Column(
+          children: [
+            const SizedBox(height: 8),
+            _AttachmentUploadProgressGrid(
+              tasks: _photoUploadTasks,
+              primary: primary,
+              cardColor: incomingBubbleColor,
+              subtleText: subtleText,
+            ),
+            const SizedBox(height: 8),
+          ],
+        );
+      case _ChatTimelineItemType.documentUploads:
+        return Column(
+          children: [
+            const SizedBox(height: 8),
+            _DocumentUploadProgressList(
+              tasks: _documentUploadTasks,
+              primary: primary,
+              cardColor: incomingBubbleColor,
+              subtleText: subtleText,
+            ),
+            const SizedBox(height: 8),
+          ],
+        );
+      case _ChatTimelineItemType.typing:
+        return Column(
+          children: [
+            const SizedBox(height: 6),
+            _TypingIndicatorBubble(
+              cardColor: incomingBubbleColor,
+              subtleText: subtleText,
+            ),
+          ],
+        );
+    }
+  }
+
+  int? _findTimelineItemIndexByKey(
+    Key key,
+    List<_ChatTimelineItem> timelineItems,
+  ) {
+    for (var index = 0; index < timelineItems.length; index += 1) {
+      if (timelineItems[index].key == key) {
+        return index;
+      }
+    }
+
+    return null;
   }
 
   Future<void> _focusRepliedMessage(String? messageId) async {
@@ -2758,33 +2978,6 @@ class _ChatPageState extends State<ChatPage>
     });
   }
 
-  void _upsertDocumentUploadTask(_DocumentUploadTask nextTask) {
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      final existingIndex = _documentUploadTasks.indexWhere(
-        (task) => task.id == nextTask.id,
-      );
-      if (existingIndex >= 0) {
-        _documentUploadTasks[existingIndex] = nextTask;
-      } else {
-        _documentUploadTasks.add(nextTask);
-      }
-    });
-  }
-
-  void _removeDocumentUploadTask(String taskId) {
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      _documentUploadTasks.removeWhere((task) => task.id == taskId);
-    });
-  }
-
   Future<void> _sendPhotoAttachment(UiChatAttachment attachment) async {
     final bytes = attachment.bytes;
     if (bytes == null || bytes.isEmpty) {
@@ -2809,12 +3002,7 @@ class _ChatPageState extends State<ChatPage>
       });
     }
 
-    await ChatPhotoUploadService.instance.enqueuePhotoUpload(
-      target: ChatPhotoUploadTarget(
-        conversationId: _conversationId,
-        productId: widget.conversationProductId,
-        targetUserId: widget.conversationUserId,
-      ),
+    await _chatSessionController.enqueuePhotoUpload(
       fileBytes: bytes,
       fileName: attachment.label,
       width: attachment.width,
@@ -2824,7 +3012,9 @@ class _ChatPageState extends State<ChatPage>
     );
 
     _syncPhotoUploadTasks();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _animateToBottom());
+    _chatViewportController.scheduleBottomAnchor(
+      shouldStayPinnedToBottom: true,
+    );
   }
 
   Future<void> _sendDocumentAttachment(
@@ -2848,125 +3038,21 @@ class _ChatPageState extends State<ChatPage>
     }
 
     final trimmedMessageContent = messageContent?.trim() ?? '';
-    final composerHadText = trimmedMessageContent.isNotEmpty;
-
-    final taskId = 'document-upload-${DateTime.now().microsecondsSinceEpoch}';
-    _upsertDocumentUploadTask(
-      _DocumentUploadTask(
-        id: taskId,
-        fileName: attachment.label,
-        fileSizeBytes: attachment.sizeBytes ?? bytes.length,
-        progress: 0,
-        statusText: 'Preparation du document...',
-      ),
+    _chatViewportController.scheduleBottomAnchor(
+      shouldStayPinnedToBottom: true,
     );
-    WidgetsBinding.instance.addPostFrameCallback((_) => _animateToBottom());
 
     try {
-      final upload = await _conversationsApiService.uploadDocumentAttachment(
+      await _chatSessionController.enqueueDocumentUpload(
         fileBytes: bytes,
         fileName: attachment.label,
-        onProgress: (progress) {
-          final normalizedProgress = progress.clamp(0, 1).toDouble();
-          final isUploadStreamComplete = normalizedProgress >= 1;
-          _upsertDocumentUploadTask(
-            _DocumentUploadTask(
-              id: taskId,
-              fileName: attachment.label,
-              fileSizeBytes: attachment.sizeBytes ?? bytes.length,
-              progress: isUploadStreamComplete
-                  ? 0.94
-                  : (normalizedProgress * 0.94),
-              statusText: isUploadStreamComplete
-                  ? 'Traitement du document sur le serveur...'
-                  : 'Upload du document en cours...',
-            ),
-          );
-        },
-      );
-      _upsertDocumentUploadTask(
-        _DocumentUploadTask(
-          id: taskId,
-          fileName: attachment.label,
-          fileSizeBytes: attachment.sizeBytes ?? bytes.length,
-          progress: 0.98,
-          statusText: 'Finalisation du document...',
-        ),
-      );
-      final attachmentUrl = upload['attachmentUrl']?.toString().trim() ?? '';
-      if (attachmentUrl.isEmpty) {
-        throw AppApiException('Document invalide apres upload');
-      }
-
-      final messageSent = await _sendMediaAttachmentMessage(
-        kind: _ChatMessageKind.document,
-        content: composerHadText ? trimmedMessageContent : 'Document envoye',
+        fileSizeBytes: attachment.sizeBytes ?? bytes.length,
+        mediaGroupId: attachment.mediaGroupId,
         replyPayload: replyPayload,
-        pendingReply: pendingReply,
-        mediaPayload: {
-          'kind': 'DOCUMENT',
-          'mediaType': 'document',
-          'publicUrl': attachmentUrl,
-          'fileName': attachment.label,
-          'mimeType': _guessMimeTypeFromFileName(attachment.label, false),
-          'fileSizeBytes': bytes.length,
-          'mediaGroupId': attachment.mediaGroupId,
-          'storageProvider': 'cloudinary',
-          'storageKey': upload['publicId']?.toString(),
-        },
-        pendingMedia: _ChatMessageMedia(
-          mediaType: 'document',
-          publicUrl: attachmentUrl,
-          fileName: attachment.label,
-          mimeType: _guessMimeTypeFromFileName(attachment.label, false),
-          fileSizeBytes: bytes.length,
-          mediaGroupId: attachment.mediaGroupId,
-          storageProvider: 'cloudinary',
-          storageKey: upload['publicId']?.toString(),
-        ),
+        messageContent: trimmedMessageContent,
       );
-
-      if (!messageSent) {
-        _upsertDocumentUploadTask(
-          _DocumentUploadTask(
-            id: taskId,
-            fileName: attachment.label,
-            fileSizeBytes: attachment.sizeBytes ?? bytes.length,
-            progress: 1,
-            statusText: 'Echec lors de l\'injection dans la conversation.',
-            hasFailed: true,
-          ),
-        );
-        return;
-      }
-
-      _upsertDocumentUploadTask(
-        _DocumentUploadTask(
-          id: taskId,
-          fileName: attachment.label,
-          fileSizeBytes: attachment.sizeBytes ?? bytes.length,
-          progress: 1,
-          statusText: 'Document importe avec succes.',
-        ),
-      );
-
-      if (mounted) {
-        setState(() {});
-      }
-      Future<void>.delayed(const Duration(milliseconds: 1200), () {
-        _removeDocumentUploadTask(taskId);
-      });
+      _syncDocumentUploadTasks();
     } on AppApiException catch (error) {
-      _upsertDocumentUploadTask(
-        _DocumentUploadTask(
-          id: taskId,
-          fileName: attachment.label,
-          fileSizeBytes: attachment.sizeBytes ?? bytes.length,
-          progress: 1,
-          statusText: error.message,
-          hasFailed: true,
-        ),
-      );
       if (!mounted) {
         return;
       }
@@ -2975,16 +3061,6 @@ class _ChatPageState extends State<ChatPage>
         context,
       ).showSnackBar(SnackBar(content: Text(error.message)));
     } catch (error) {
-      _upsertDocumentUploadTask(
-        _DocumentUploadTask(
-          id: taskId,
-          fileName: attachment.label,
-          fileSizeBytes: attachment.sizeBytes ?? bytes.length,
-          progress: 1,
-          statusText: 'Upload impossible: $error',
-          hasFailed: true,
-        ),
-      );
       if (!mounted) {
         return;
       }
@@ -3015,158 +3091,6 @@ class _ChatPageState extends State<ChatPage>
 
     final megaBytes = bytes / (1024 * 1024);
     return '${megaBytes.toStringAsFixed(megaBytes >= 10 ? 0 : 1)} MB';
-  }
-
-  String _guessMimeTypeFromFileName(String fileName, bool isImage) {
-    final extension = _fileExtensionLabel(fileName).toLowerCase();
-    if (isImage) {
-      switch (extension) {
-        case 'jpg':
-        case 'jpeg':
-          return 'image/jpeg';
-        case 'png':
-          return 'image/png';
-        case 'webp':
-          return 'image/webp';
-        case 'heic':
-          return 'image/heic';
-        case 'heif':
-          return 'image/heif';
-      }
-      return 'image/jpeg';
-    }
-
-    switch (extension) {
-      case 'pdf':
-        return 'application/pdf';
-      case 'doc':
-        return 'application/msword';
-      case 'docx':
-        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-      case 'txt':
-        return 'text/plain';
-      default:
-        return 'application/octet-stream';
-    }
-  }
-
-  Future<bool> _sendMediaAttachmentMessage({
-    required _ChatMessageKind kind,
-    required String content,
-    required Map<String, dynamic> mediaPayload,
-    required _ChatMessageMedia pendingMedia,
-    Map<String, dynamic>? replyPayload,
-    _ChatMessageReply? pendingReply,
-  }) async {
-    final trimmedContent = content.trim();
-    if (trimmedContent.isEmpty ||
-        !_usesLiveConversation ||
-        _conversationBlocked) {
-      return false;
-    }
-
-    final pendingMessage = _ChatMessage(
-      id: 'pending-${DateTime.now().microsecondsSinceEpoch}',
-      message: trimmedContent,
-      kind: kind,
-      createdAt: DateTime.now().toIso8601String(),
-      time: _formatMessageTime(DateTime.now().toIso8601String()),
-      isMine: true,
-      deliveryState: _ChatMessageDeliveryState.sending,
-      reply: pendingReply,
-      media: pendingMedia,
-    );
-
-    _typingStopTimer?.cancel();
-    _emitTyping(false);
-    setState(() {
-      _pendingMessages.add(pendingMessage);
-    });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _animateToBottom());
-
-    try {
-      final effectiveReplyPayload = replyPayload;
-      final data =
-          (widget.conversationProductId?.isNotEmpty ?? false) &&
-              (widget.conversationUserId?.isNotEmpty ?? false) == false
-          ? await _conversationsApiService.sendProductMediaMessage(
-              productId: widget.conversationProductId!,
-              mediaPayload: {'content': trimmedContent, ...mediaPayload},
-              reply: effectiveReplyPayload,
-            )
-          : (widget.conversationUserId?.isNotEmpty ?? false)
-          ? await _conversationsApiService.sendUserMediaMessage(
-              targetUserId: widget.conversationUserId!,
-              mediaPayload: {'content': trimmedContent, ...mediaPayload},
-              reply: effectiveReplyPayload,
-            )
-          : _conversationId != null
-          ? await _conversationsApiService.sendMediaMessage(
-              conversationId: _conversationId!,
-              mediaPayload: {'content': trimmedContent, ...mediaPayload},
-              reply: effectiveReplyPayload,
-            )
-          : await _conversationsApiService.sendMediaMessage(
-              conversationId: _conversationId!,
-              mediaPayload: {'content': trimmedContent, ...mediaPayload},
-              reply: effectiveReplyPayload,
-            );
-
-      _applyConversation(data);
-      if (!mounted) {
-        return false;
-      }
-
-      setState(() {
-        _showEntrySkeleton = false;
-      });
-      WidgetsBinding.instance.addPostFrameCallback((_) => _animateToBottom());
-      return true;
-    } on AppApiException catch (error) {
-      if (!mounted) {
-        return false;
-      }
-
-      if (_isBlockedError(error)) {
-        setState(() {
-          _conversationBlocked = true;
-          _loadError = error.message;
-        });
-      }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
-      setState(() {
-        _pendingMessages.removeWhere(
-          (message) => message.id == pendingMessage.id,
-        );
-      });
-      return false;
-    }
-  }
-
-  void _scheduleScrollToBottom({int remaining = _scrollRetryCount}) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollController.hasClients) return;
-      _jumpToBottom();
-      if (remaining > 0) {
-        _scheduleScrollToBottom(remaining: remaining - 1);
-      }
-    });
-  }
-
-  void _jumpToBottom() {
-    if (!_scrollController.hasClients) return;
-    _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
-  }
-
-  void _animateToBottom() {
-    if (!_scrollController.hasClients) return;
-    _scrollController.animateTo(
-      _scrollController.position.maxScrollExtent + 120,
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOutCubic,
-    );
   }
 
   void _openProductCard() {
@@ -3802,12 +3726,9 @@ class _ChatPageState extends State<ChatPage>
     final subtleText = appColors.mutedText;
     final sellerName = _sellerNameValue;
     final avatarUrl = _avatarUrlValue;
-    final displayMessages = _buildDisplayMessages(_messagesForDisplay());
+    final displayMessages = _displayMessagesForTimeline(_messagesForDisplay());
     final selectedDisplayMessages = _selectedDisplayMessages(displayMessages);
     final selectedCount = selectedDisplayMessages.length;
-    final selectedDeletableCount = selectedDisplayMessages
-        .where(_canDeleteDisplayMessage)
-        .length;
     final isSelectionMode = _isSelectionMode;
     final nextMessageKeys = <String, GlobalKey>{};
 
@@ -3819,403 +3740,305 @@ class _ChatPageState extends State<ChatPage>
       ..clear()
       ..addAll(nextMessageKeys);
 
-    return Scaffold(
-      backgroundColor: background,
-      body: _showEntrySkeleton
-          ? const SafeArea(child: SellerChatSkeleton())
-          : SafeArea(
-              child: Stack(
-                children: [
-                  Positioned.fill(child: const _ChatPatternBackground()),
-                  Column(
-                    children: [
-                      _ChatHeader(
-                        primary: primary,
-                        headerColor: headerColor,
-                        subtleText: subtleText,
-                        sellerName: sellerName,
-                        statusText: _participantStatusValue,
-                        avatarUrl: avatarUrl,
-                        userId: _participantUserId,
-                        isOnline: _participantIsOnlineValue,
-                        onBackPressed: () {
-                          final onCloseRequested = widget.onCloseRequested;
-                          if (isSelectionMode) {
-                            _clearSelectedMessages();
-                            return;
-                          }
+    final singleSelectedDisplayMessage = selectedCount == 1
+        ? selectedDisplayMessages.single
+        : null;
+    final selectionMenuActions = _selectionMenuActionsFor(
+      selectedDisplayMessages,
+    );
+    final canShareSelection =
+        singleSelectedDisplayMessage != null &&
+        _usesSelectionToolbarStatus(singleSelectedDisplayMessage) &&
+        _canCopyDisplayMessage(singleSelectedDisplayMessage);
+    final timelineItems = _timelineItemsForDisplayMessages(
+      displayMessages,
+    ).reversed.toList(growable: false);
 
-                          if (onCloseRequested != null) {
-                            onCloseRequested();
-                            return;
-                          }
+    return WillPopScope(
+      onWillPop: () async {
+        if (isSelectionMode) {
+          _clearSelectedMessages();
+          return false;
+        }
+        return true;
+      },
+      child: Scaffold(
+        backgroundColor: background,
+        body: _showEntrySkeleton
+            ? const SafeArea(child: SellerChatSkeleton())
+            : SafeArea(
+                child: Stack(
+                  children: [
+                    Positioned.fill(child: const _ChatPatternBackground()),
+                    Column(
+                      children: [
+                        _ChatHeader(
+                          primary: primary,
+                          headerColor: headerColor,
+                          subtleText: subtleText,
+                          sellerName: sellerName,
+                          statusText: _participantStatusValue,
+                          avatarUrl: avatarUrl,
+                          userId: _participantUserId,
+                          isOnline: _participantIsOnlineValue,
+                          onBackPressed: () {
+                            final onCloseRequested = widget.onCloseRequested;
+                            if (isSelectionMode) {
+                              _clearSelectedMessages();
+                              return;
+                            }
 
-                          Navigator.of(context).pop();
-                        },
-                        onViewProfile: _openParticipantProfile,
-                        onReport: _showReportParticipantDialog,
-                        selectionMode: isSelectionMode,
-                        selectionCount: selectedCount,
-                        onClearSelection: _clearSelectedMessages,
-                        onShareSelection: selectedCount == 1
-                            ? () => _shareSelectedMessages(
-                                selectedDisplayMessages,
-                              )
-                            : null,
-                        onDeleteSelection: selectedDeletableCount > 0
-                            ? () => _deleteSelectedMessages(
-                                selectedDisplayMessages,
-                              )
-                            : null,
-                      ),
-                      if (widget.showProductContextCard &&
-                          _productTitleValue.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(10, 10, 10, 0),
-                          child: _ProductContextCard(
-                            primary: primary,
-                            subtleText: subtleText,
-                            onTap: _openProductCard,
-                            productTitle: _productTitleValue,
-                            productSubtitle: _productSubtitleValue,
-                            productPriceLabel: _productPriceLabelValue,
-                            productImageUrl: _productImageUrlValue,
+                            if (onCloseRequested != null) {
+                              onCloseRequested();
+                              return;
+                            }
+
+                            Navigator.of(context).pop();
+                          },
+                          onViewProfile: _openParticipantProfile,
+                          onReport: _showReportParticipantDialog,
+                          selectionMode: isSelectionMode,
+                          selectionCount: selectedCount,
+                          onClearSelection: _clearSelectedMessages,
+                          onShareSelection: canShareSelection
+                              ? () => _shareSelectedMessages(
+                                  selectedDisplayMessages,
+                                )
+                              : null,
+                          onDeleteSelection: selectedCount > 0
+                              ? () => _deleteSelectedMessages(
+                                  selectedDisplayMessages,
+                                )
+                              : null,
+                          selectionMenuActions: selectionMenuActions,
+                          onSelectionMenuAction: selectionMenuActions.isEmpty
+                              ? null
+                              : (action) => _handleSelectionMenuAction(
+                                  action,
+                                  selectedDisplayMessages,
+                                ),
+                        ),
+                        if (widget.showProductContextCard &&
+                            _productTitleValue.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(10, 10, 10, 0),
+                            child: _ProductContextCard(
+                              primary: primary,
+                              subtleText: subtleText,
+                              onTap: _openProductCard,
+                              productTitle: _productTitleValue,
+                              productSubtitle: _productSubtitleValue,
+                              productPriceLabel: _productPriceLabelValue,
+                              productImageUrl: _productImageUrlValue,
+                            ),
+                          ),
+                        Expanded(
+                          child: RefreshIndicator(
+                            onRefresh: refreshPageWithDialog,
+                            child: ListView.custom(
+                              controller: _scrollController,
+                              reverse: true,
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              padding: const EdgeInsets.fromLTRB(
+                                10,
+                                12,
+                                10,
+                                18,
+                              ),
+                              childrenDelegate: SliverChildBuilderDelegate(
+                                (context, index) {
+                                  final item = timelineItems[index];
+                                  return KeyedSubtree(
+                                    key: item.key,
+                                    child: _buildTimelineItem(
+                                      item,
+                                      theme: theme,
+                                      primary: primary,
+                                      subtleText: subtleText,
+                                      incomingBubbleColor: incomingBubbleColor,
+                                      outgoingBubbleColor: outgoingBubbleColor,
+                                      dateDividerCardColor:
+                                          appColors.panelBackground,
+                                      avatarUrl: avatarUrl,
+                                      isSelectionMode: isSelectionMode,
+                                    ),
+                                  );
+                                },
+                                childCount: timelineItems.length,
+                                findChildIndexCallback: (key) =>
+                                    _findTimelineItemIndexByKey(
+                                      key,
+                                      timelineItems,
+                                    ),
+                              ),
+                            ),
                           ),
                         ),
-                      Expanded(
-                        child: RefreshIndicator(
-                          onRefresh: refreshPageWithDialog,
-                          child: SingleChildScrollView(
-                            controller: _scrollController,
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            padding: const EdgeInsets.fromLTRB(10, 12, 10, 18),
-                            child: Column(
-                              children: [
-                                if (_loadError != null)
-                                  _ChatInfoCard(
-                                    text: _loadError!,
-                                    color: theme.colorScheme.error,
-                                    cardColor: incomingBubbleColor,
-                                  )
-                                else if (displayMessages.isEmpty)
-                                  _ChatInfoCard(
-                                    text: 'Aucun message pour le moment.',
-                                    color: subtleText,
-                                    cardColor: incomingBubbleColor,
-                                  )
-                                else
-                                  ...displayMessages.asMap().entries.map((
-                                    entry,
-                                  ) {
-                                    final index = entry.key;
-                                    final displayMessage = entry.value;
-                                    final chat = displayMessage.anchorMessage;
-                                    final visualKey = _displayMessageReplyKey(
-                                      displayMessage,
-                                    );
-                                    final currentDate = _displayMessageDate(
-                                      displayMessage,
-                                    );
-                                    final previousDate = index == 0
-                                        ? null
-                                        : _displayMessageDate(
-                                            displayMessages[index - 1],
-                                          );
-                                    final shouldShowDateDivider =
-                                        currentDate != null &&
-                                        (previousDate == null ||
-                                            !_isSameCalendarDay(
-                                              currentDate,
-                                              previousDate,
-                                            ));
-                                    final isSelected =
-                                        _selectedDisplayMessageKeys.contains(
-                                          _displayMessageSelectionKey(
-                                            displayMessage,
-                                          ),
-                                        );
-
-                                    return Column(
-                                      key: _displayMessageItemKey(
-                                        displayMessage,
-                                        index,
-                                      ),
+                        Container(
+                          padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (_editingMessage != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: Container(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      12,
+                                      8,
+                                      8,
+                                      8,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: primary.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Row(
                                       children: [
-                                        if (shouldShowDateDivider) ...[
-                                          _ChatDateDivider(
-                                            label: _formatDateDivider(
-                                              currentDate,
-                                            ),
-                                            cardColor:
-                                                appColors.panelBackground,
-                                            subtleText: subtleText,
-                                          ),
-                                          const SizedBox(height: 16),
-                                        ],
-                                        AnimatedContainer(
-                                          duration: const Duration(
-                                            milliseconds: 160,
-                                          ),
-                                          width: double.infinity,
-                                          margin: const EdgeInsets.only(
-                                            bottom: 6,
-                                          ),
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 10,
-                                            vertical: 4,
-                                          ),
-                                          color: isSelected
-                                              ? const Color(0x40D32F2F)
-                                              : Colors.transparent,
-                                          child: KeyedSubtree(
-                                            key:
-                                                _currentDisplayMessageTargetKey(
-                                                  displayMessage,
+                                        Icon(
+                                          Icons.edit_outlined,
+                                          size: 16,
+                                          color: primary,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'Modifier le message',
+                                                style: TextStyle(
+                                                  color: primary,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w700,
                                                 ),
-                                            child: _SwipeReplyWrapper(
-                                              isMine: chat.isMine,
-                                              primary: primary,
-                                              swipeEnabled: !isSelectionMode,
-                                              onTap: isSelectionMode
-                                                  ? () =>
-                                                        _toggleDisplayMessageSelection(
-                                                          displayMessage,
-                                                        )
-                                                  : null,
-                                              onReply: () =>
-                                                  _setReplyingToMessage(chat),
-                                              onHoldAction: isSelectionMode
-                                                  ? null
-                                                  : () => _enterSelectionMode(
-                                                      displayMessage,
-                                                    ),
-                                              child: _ChatBubble(
-                                                message:
-                                                    displayMessage.messageText,
-                                                kind: chat.kind,
-                                                time: chat.time,
-                                                isMine: chat.isMine,
-                                                deliveryState:
-                                                    chat.deliveryState,
-                                                reply: chat.reply,
-                                                isHighlighted:
-                                                    _highlightedMessageId ==
-                                                        visualKey &&
-                                                    _highlightVisible,
-                                                onReplyTap:
-                                                    isSelectionMode ||
-                                                        chat.reply?.messageId ==
-                                                            null
-                                                    ? null
-                                                    : () =>
-                                                          _focusRepliedMessage(
-                                                            chat
-                                                                .reply!
-                                                                .messageId,
-                                                          ),
-                                                mediaItems:
-                                                    displayMessage.mediaItems,
-                                                onMediaTapAtIndex:
-                                                    isSelectionMode ||
-                                                        displayMessage
-                                                            .mediaItems
-                                                            .isEmpty
-                                                    ? null
-                                                    : (mediaIndex) =>
-                                                          _openChatMediaGroup(
-                                                            displayMessage
-                                                                .mediaItems,
-                                                            initialIndex:
-                                                                mediaIndex,
-                                                          ),
-                                                product: chat.product,
-                                                onProductTap:
-                                                    isSelectionMode ||
-                                                        displayMessage
-                                                            .mediaItems
-                                                            .isNotEmpty ||
-                                                        !widget
-                                                            .showInlineProductSnapshots ||
-                                                        chat.product == null
-                                                    ? null
-                                                    : _isAttachmentSnapshot(
-                                                        chat.product!,
-                                                      )
-                                                    ? () =>
-                                                          _openAttachmentSnapshot(
-                                                            chat.product!,
-                                                          )
-                                                    : () =>
-                                                          _openMessageProductCard(
-                                                            chat.product!,
-                                                          ),
-                                                avatarUrl: avatarUrl,
-                                                participantUserId:
-                                                    _participantUserId,
-                                                participantIsOnline:
-                                                    _participantIsOnlineValue,
-                                                primary: primary,
-                                                incomingBubbleColor:
-                                                    incomingBubbleColor,
-                                                outgoingBubbleColor:
-                                                    outgoingBubbleColor,
-                                                subtleText: subtleText,
                                               ),
-                                            ),
+                                              Text(
+                                                _editingMessage!.message,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  color: subtleText,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
+                                        IconButton(
+                                          onPressed: _cancelEditingMessage,
+                                          icon: const Icon(
+                                            Icons.close,
+                                            size: 18,
+                                          ),
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(),
+                                          color: subtleText,
+                                        ),
                                       ],
-                                    );
-                                  }),
-                                if (_isLoadingOlderMessages) ...[
-                                  const SizedBox(height: 6),
-                                  SizedBox(
-                                    width: 22,
-                                    height: 22,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2.4,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        primary,
-                                      ),
                                     ),
                                   ),
-                                  const SizedBox(height: 10),
-                                ],
-                                if (_photoUploadTasks.isNotEmpty) ...[
-                                  const SizedBox(height: 8),
-                                  _AttachmentUploadProgressGrid(
-                                    tasks: _photoUploadTasks,
+                                ),
+                              if (_replyingToMessage != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: _ReplyComposerCard(
                                     primary: primary,
-                                    cardColor: incomingBubbleColor,
-                                    subtleText: subtleText,
+                                    appColors: appColors,
+                                    authorLabel: _replyAuthorLabel(
+                                      _replyingToMessage!,
+                                    ),
+                                    message: _replyingToMessage!.message,
+                                    onClose: _clearReplyingToMessage,
                                   ),
-                                  const SizedBox(height: 8),
-                                ],
-                                if (_documentUploadTasks.isNotEmpty) ...[
-                                  const SizedBox(height: 8),
-                                  _DocumentUploadProgressList(
-                                    tasks: _documentUploadTasks,
+                                ),
+                              if (_pendingDocumentAttachment != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: _PendingDocumentComposerCard(
                                     primary: primary,
-                                    cardColor: incomingBubbleColor,
-                                    subtleText: subtleText,
+                                    appColors: appColors,
+                                    fileTypeLabel: _fileExtensionLabel(
+                                      _pendingDocumentAttachment!.label,
+                                    ),
+                                    fileName: _pendingDocumentAttachment!.label,
+                                    fileSizeLabel: _formatAttachmentSize(
+                                      _pendingDocumentAttachment!.sizeBytes ??
+                                          _pendingDocumentAttachment!
+                                              .bytes
+                                              ?.length ??
+                                          0,
+                                    ),
+                                    onClose: _clearPendingDocumentAttachment,
                                   ),
-                                  const SizedBox(height: 8),
-                                ],
-                                if (_isParticipantTyping) ...[
-                                  const SizedBox(height: 6),
-                                  _TypingIndicatorBubble(
-                                    cardColor: incomingBubbleColor,
-                                    subtleText: subtleText,
-                                  ),
-                                ],
-                              ],
-                            ),
+                                ),
+                              if (_conversationBlocked)
+                                _ChatInfoCard(
+                                  text:
+                                      'Cette discussion est bloquee. Vous pouvez lire l\'historique, mais vous ne pouvez plus envoyer de nouveaux messages.',
+                                  color: theme.colorScheme.error,
+                                  cardColor: incomingBubbleColor,
+                                )
+                              else
+                                UiChatMessageInput(
+                                  controller: _messageController,
+                                  onAttachmentSelected: _handleAttachment,
+                                  onTextChanged: _handleComposerChanged,
+                                  onSend: _sendMessage,
+                                  primary: primary,
+                                  panelColor: panelColor,
+                                  borderColor: appColors.inputBorder,
+                                  canSendWithoutText:
+                                      _pendingDocumentAttachment != null,
+                                  allowMultipleDocumentSelection: false,
+                                  hintText: 'Message',
+                                ),
+                            ],
                           ),
                         ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (_replyingToMessage != null)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: _ReplyComposerCard(
-                                  primary: primary,
-                                  appColors: appColors,
-                                  authorLabel: _replyAuthorLabel(
-                                    _replyingToMessage!,
-                                  ),
-                                  message: _replyingToMessage!.message,
-                                  onClose: _clearReplyingToMessage,
-                                ),
-                              ),
-                            if (_pendingDocumentAttachment != null)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: _PendingDocumentComposerCard(
-                                  primary: primary,
-                                  appColors: appColors,
-                                  fileTypeLabel: _fileExtensionLabel(
-                                    _pendingDocumentAttachment!.label,
-                                  ),
-                                  fileName: _pendingDocumentAttachment!.label,
-                                  fileSizeLabel: _formatAttachmentSize(
-                                    _pendingDocumentAttachment!.sizeBytes ??
-                                        _pendingDocumentAttachment!
-                                            .bytes
-                                            ?.length ??
-                                        0,
-                                  ),
-                                  onClose: _clearPendingDocumentAttachment,
-                                ),
-                              ),
-                            if (_conversationBlocked)
-                              _ChatInfoCard(
-                                text:
-                                    'Cette discussion est bloquee. Vous pouvez lire l\'historique, mais vous ne pouvez plus envoyer de nouveaux messages.',
-                                color: theme.colorScheme.error,
-                                cardColor: incomingBubbleColor,
-                              )
-                            else
-                              UiChatMessageInput(
-                                controller: _messageController,
-                                onAttachmentSelected: _handleAttachment,
-                                onTextChanged: _handleComposerChanged,
-                                onSend: _sendMessage,
-                                primary: primary,
-                                panelColor: panelColor,
-                                borderColor: appColors.inputBorder,
-                                canSendWithoutText:
-                                    _pendingDocumentAttachment != null,
-                                allowMultipleDocumentSelection: false,
-                                hintText: 'Message',
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (_showScrollToLatestButton)
-                    Positioned(
-                      right: 18,
-                      bottom: 92,
-                      child: SafeArea(
-                        minimum: const EdgeInsets.only(bottom: 12),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: _animateToBottom,
-                            borderRadius: BorderRadius.circular(22),
-                            child: Ink(
-                              width: 44,
-                              height: 44,
-                              decoration: BoxDecoration(
-                                color: primary,
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: primary.withValues(alpha: 0.28),
-                                    blurRadius: 14,
-                                    offset: const Offset(0, 8),
-                                  ),
-                                ],
-                              ),
-                              child: const Icon(
-                                Icons.keyboard_arrow_down_rounded,
-                                color: Colors.white,
-                                size: 28,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
+                      ],
                     ),
-                  if (isOffline) const AppOfflineBanner(bottomOffset: 78),
-                ],
+                    if (_chatViewportController.showScrollToLatestButton)
+                      Positioned(
+                        right: 18,
+                        bottom: 92,
+                        child: SafeArea(
+                          minimum: const EdgeInsets.only(bottom: 12),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: _chatViewportController.animateToBottom,
+                              borderRadius: BorderRadius.circular(22),
+                              child: Ink(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: primary,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: primary.withValues(alpha: 0.28),
+                                      blurRadius: 14,
+                                      offset: const Offset(0, 8),
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.keyboard_arrow_down_rounded,
+                                  color: Colors.white,
+                                  size: 28,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (isOffline) const AppOfflineBanner(bottomOffset: 78),
+                  ],
+                ),
               ),
-            ),
+      ),
     );
   }
 }
@@ -4237,6 +4060,8 @@ class _ChatHeader extends StatefulWidget {
   final VoidCallback? onClearSelection;
   final VoidCallback? onShareSelection;
   final VoidCallback? onDeleteSelection;
+  final List<_ChatSelectionMenuAction> selectionMenuActions;
+  final ValueChanged<_ChatSelectionMenuAction>? onSelectionMenuAction;
 
   const _ChatHeader({
     required this.primary,
@@ -4255,6 +4080,8 @@ class _ChatHeader extends StatefulWidget {
     this.onClearSelection,
     this.onShareSelection,
     this.onDeleteSelection,
+    this.selectionMenuActions = const <_ChatSelectionMenuAction>[],
+    this.onSelectionMenuAction,
   });
 
   @override
@@ -4371,6 +4198,30 @@ class _ChatHeaderState extends State<_ChatHeader> {
                       Icons.delete_outline_rounded,
                       color: Colors.white,
                     ),
+                  ),
+                if (widget.selectionMenuActions.isNotEmpty &&
+                    widget.onSelectionMenuAction != null)
+                  PopupMenuButton<_ChatSelectionMenuAction>(
+                    tooltip: 'Plus d\'options',
+                    color: widget.headerColor,
+                    onSelected: widget.onSelectionMenuAction,
+                    itemBuilder: (context) => widget.selectionMenuActions
+                        .map(
+                          (action) => PopupMenuItem<_ChatSelectionMenuAction>(
+                            value: action,
+                            child: Text(
+                              switch (action) {
+                                _ChatSelectionMenuAction.copy => 'Copier',
+                                _ChatSelectionMenuAction.edit => 'Modifier',
+                              },
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.onSurface,
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(growable: false),
+                    icon: const Icon(Icons.more_vert, color: Colors.white),
                   ),
               ],
             ),
@@ -4593,6 +4444,7 @@ class _ChatMessage {
   final String message;
   final _ChatMessageKind kind;
   final String? createdAt;
+  final String? editedAt;
   final String time;
   final bool isMine;
   final _ChatMessageDeliveryState? deliveryState;
@@ -4605,12 +4457,23 @@ class _ChatMessage {
     required this.message,
     this.kind = _ChatMessageKind.text,
     this.createdAt,
+    this.editedAt,
     required this.time,
     required this.isMine,
     this.deliveryState,
     this.reply,
     this.media,
     this.product,
+  });
+}
+
+class _ConfirmedMessageDisplayOverride {
+  final String? createdAt;
+  final String time;
+
+  const _ConfirmedMessageDisplayOverride({
+    required this.createdAt,
+    required this.time,
   });
 }
 
@@ -4660,6 +4523,95 @@ class _ChatDisplayMessage {
     }
 
     return message;
+  }
+}
+
+enum _ChatTimelineItemType {
+  loadingOlder,
+  info,
+  dateDivider,
+  message,
+  photoUploads,
+  documentUploads,
+  typing,
+}
+
+class _ChatTimelineItem {
+  final _ChatTimelineItemType type;
+  final _ChatDisplayMessage? displayMessage;
+  final int? displayIndex;
+  final String? messageKeySuffix;
+  final String? infoText;
+  final bool isError;
+  final DateTime? date;
+
+  const _ChatTimelineItem._({
+    required this.type,
+    this.displayMessage,
+    this.displayIndex,
+    this.messageKeySuffix,
+    this.infoText,
+    this.isError = false,
+    this.date,
+  });
+
+  const _ChatTimelineItem.loadingOlder()
+    : this._(type: _ChatTimelineItemType.loadingOlder);
+
+  const _ChatTimelineItem.info({required String text, required bool isError})
+    : this._(
+        type: _ChatTimelineItemType.info,
+        infoText: text,
+        isError: isError,
+      );
+
+  const _ChatTimelineItem.dateDivider({required DateTime date})
+    : this._(type: _ChatTimelineItemType.dateDivider, date: date);
+
+  const _ChatTimelineItem.message({
+    required _ChatDisplayMessage displayMessage,
+    required int displayIndex,
+    required String messageKeySuffix,
+  }) : this._(
+         type: _ChatTimelineItemType.message,
+         displayMessage: displayMessage,
+         displayIndex: displayIndex,
+         messageKeySuffix: messageKeySuffix,
+       );
+
+  const _ChatTimelineItem.photoUploads()
+    : this._(type: _ChatTimelineItemType.photoUploads);
+
+  const _ChatTimelineItem.documentUploads()
+    : this._(type: _ChatTimelineItemType.documentUploads);
+
+  const _ChatTimelineItem.typingIndicator()
+    : this._(type: _ChatTimelineItemType.typing);
+
+  Key get key {
+    switch (type) {
+      case _ChatTimelineItemType.loadingOlder:
+        return const ValueKey('timeline-loading-older');
+      case _ChatTimelineItemType.info:
+        return ValueKey('timeline-info:${isError ? 'error' : 'empty'}');
+      case _ChatTimelineItemType.dateDivider:
+        final normalizedDate = date!;
+        return ValueKey(
+          'timeline-date:${normalizedDate.year}-${normalizedDate.month}-${normalizedDate.day}',
+        );
+      case _ChatTimelineItemType.message:
+        final anchorMessage = displayMessage!.anchorMessage;
+        final suffix = messageKeySuffix?.trim().isNotEmpty == true
+            ? messageKeySuffix!.trim()
+            : '${anchorMessage.createdAt ?? ''}#${displayIndex ?? 0}';
+        return ValueKey('timeline-message:$suffix');
+      case _ChatTimelineItemType.photoUploads:
+        return const ValueKey('timeline-photo-uploads');
+      case _ChatTimelineItemType.documentUploads:
+        return const ValueKey('timeline-document-uploads');
+      case _ChatTimelineItemType.typing:
+        return const ValueKey('timeline-typing');
+    }
   }
 }
 
@@ -4869,31 +4821,12 @@ class _DeleteMessagesProgress {
   int get percent => (progress * 100).round().clamp(0, 100);
 }
 
-class _DocumentUploadTask {
-  final String id;
-  final String fileName;
-  final int fileSizeBytes;
-  final double progress;
-  final String statusText;
-  final bool hasFailed;
-
-  const _DocumentUploadTask({
-    required this.id,
-    required this.fileName,
-    required this.fileSizeBytes,
-    required this.progress,
-    required this.statusText,
-    this.hasFailed = false,
-  });
-
-  int get percent => (progress * 100).round().clamp(0, 100);
-}
-
 class _ChatBubble extends StatelessWidget {
   final String message;
   final _ChatMessageKind kind;
   final String time;
   final bool isMine;
+  final bool isEdited;
   final _ChatMessageDeliveryState? deliveryState;
   final _ChatMessageReply? reply;
   final bool isHighlighted;
@@ -4915,6 +4848,7 @@ class _ChatBubble extends StatelessWidget {
     this.kind = _ChatMessageKind.text,
     required this.time,
     required this.isMine,
+    this.isEdited = false,
     this.deliveryState,
     this.reply,
     this.isHighlighted = false,
@@ -5060,6 +4994,17 @@ class _ChatBubble extends StatelessWidget {
                   return Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      if (isEdited) ...[
+                        Text(
+                          'modifié',
+                          style: TextStyle(
+                            color: const Color.fromARGB(113, 192, 192, 192),
+                            fontSize: 11,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
                       Text(
                         time,
                         style: TextStyle(
@@ -5145,7 +5090,7 @@ class _AttachmentUploadProgressGrid extends StatelessWidget {
 }
 
 class _DocumentUploadProgressList extends StatelessWidget {
-  final List<_DocumentUploadTask> tasks;
+  final List<ChatDocumentUploadTask> tasks;
   final Color primary;
   final Color cardColor;
   final Color subtleText;
@@ -5294,7 +5239,7 @@ class _DeleteMessagesProgressDialog extends StatelessWidget {
 }
 
 class _DocumentUploadProgressCard extends StatelessWidget {
-  final _DocumentUploadTask task;
+  final ChatDocumentUploadTask task;
   final Color primary;
   final Color cardColor;
   final Color subtleText;

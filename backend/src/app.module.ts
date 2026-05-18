@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 
 import { HealthModule } from './modules/health/health.module';
 import { CategoriesModule } from './modules/categories/categories.module';
@@ -20,6 +21,7 @@ import { ShipmentsModule } from './modules/shipments/shipments.module';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    ScheduleModule.forRoot(),
     HealthModule,
     PrismaModule,
     AuthModule,
