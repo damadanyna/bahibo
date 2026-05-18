@@ -4988,6 +4988,7 @@ class _ChatBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appColors = Theme.of(context).appColors;
     final normalizedMessage = message.trim();
     final isDeletedPlaceholder =
         normalizedMessage.toLowerCase() == 'message supprime';
@@ -5000,6 +5001,29 @@ class _ChatBubble extends StatelessWidget {
         : isMine
         ? outgoingBubbleColor
         : incomingBubbleColor;
+    final bubbleBorderRadius = BorderRadius.only(
+      topLeft: const Radius.circular(12),
+      topRight: const Radius.circular(12),
+      bottomLeft: Radius.circular(isMine ? 12 : 4),
+      bottomRight: Radius.circular(isMine ? 4 : 12),
+    );
+    final outgoingBubbleAccent = const Color.fromARGB(255, 132, 27, 27);
+    final outgoingBubbleLight = const Color.fromARGB(180, 28, 152, 0);
+    final outgoingBubbleBorder = const Color.fromARGB(90, 22, 43, 12);
+    final bubbleGradient = !isDeletedPlaceholder && isMine
+        ? LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              outgoingBubbleLight,
+              outgoingBubbleAccent.withValues(alpha: 0.60),
+              const Color.fromARGB(255, 67, 67, 67).withValues(alpha: 0.9),
+              // appColors.backgroundBase.withValues(alpha: 0.0),
+              // outgoingBubbleLight.withValues(alpha: 0.40),
+            ],
+            stops: const [0.0, 0.58, 1.0],
+          )
+        : null;
     final textColor = isDeletedPlaceholder
         ? deletedAccent
         : Colors.white.withValues(alpha: 0.96);
@@ -5022,13 +5046,20 @@ class _ChatBubble extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
           decoration: BoxDecoration(
             color: bubbleColor,
+            gradient: bubbleGradient,
             border: Border.all(
               color: isHighlighted
-                  ? primary.withValues(alpha: 0.9)
+                  ? Colors.white.withValues(alpha: 0.92)
                   : isDeletedPlaceholder
                   ? deletedAccent.withValues(alpha: 0.45)
-                  : Colors.transparent,
-              width: isHighlighted || isDeletedPlaceholder ? 1.4 : 0,
+                  : isMine
+                  ? outgoingBubbleBorder
+                  : const Color.fromARGB(0, 111, 111, 111),
+              width: isHighlighted || isDeletedPlaceholder
+                  ? 1.4
+                  : isMine
+                  ? 1.1
+                  : 0,
             ),
             boxShadow: isHighlighted
                 ? [
@@ -5039,12 +5070,7 @@ class _ChatBubble extends StatelessWidget {
                     ),
                   ]
                 : null,
-            borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(12),
-              topRight: const Radius.circular(12),
-              bottomLeft: Radius.circular(isMine ? 12 : 4),
-              bottomRight: Radius.circular(isMine ? 4 : 12),
-            ),
+            borderRadius: bubbleBorderRadius,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
