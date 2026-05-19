@@ -2,6 +2,10 @@ class CloudinaryImageUrl {
   static const String _uploadMarker = '/upload/';
   static const String _viewerTransformation =
       'f_auto,q_auto:best,c_limit,w_2400';
+  static const String _productCardMainTransformation =
+      'f_auto,q_auto:eco,c_limit,w_720,h_720';
+  static const String _productCardThumbnailTransformation =
+      'f_auto,q_auto:eco,c_fill,g_auto,w_220,h_220';
   static const String _chatThumbnailTransformation =
       'c_fill,g_auto,h_560,w_560,f_auto,q_auto:eco';
   static const String _chatMessageTransformation =
@@ -9,6 +13,14 @@ class CloudinaryImageUrl {
 
   static String forViewer(String imageUrl) {
     return _applyTransformation(imageUrl, _viewerTransformation);
+  }
+
+  static String forProductCardMain(String imageUrl) {
+    return _applyTransformation(imageUrl, _productCardMainTransformation);
+  }
+
+  static String forProductCardThumbnail(String imageUrl) {
+    return _applyTransformation(imageUrl, _productCardThumbnailTransformation);
   }
 
   static String forChatMessage(String imageUrl) {

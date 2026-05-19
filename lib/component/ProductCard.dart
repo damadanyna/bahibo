@@ -1,10 +1,15 @@
 import 'dart:io';
 
 import 'package:banay/component/app_network_image.dart';
+import 'package:banay/component/app_share_sheet.dart';
+import 'package:banay/component/profile_models.dart';
+import 'package:banay/component/seller_profile_page.dart';
 import 'package:banay/component/ui/seller_certified_badge.dart';
 import 'package:banay/formatter/price_formatter.dart';
 import 'package:banay/page/productDetail.dart';
+import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/catalog_api_service.dart';
+import 'package:banay/services/cloudinary_image_url.dart';
 import 'package:banay/services/product_realtime_sync_service.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
@@ -313,7 +318,9 @@ class _ProductCardState extends State<ProductCard> {
 
   bool _isLiked = false;
   bool _isLikeBusy = false;
+  bool _isShareBusy = false;
   int? _likeCountOverride;
+  int? _shareCountOverride;
 
   @override
   void initState() {
@@ -329,7 +336,9 @@ class _ProductCardState extends State<ProductCard> {
     if (oldId != newId) {
       _isLiked = false;
       _isLikeBusy = false;
+      _isShareBusy = false;
       _likeCountOverride = null;
+      _shareCountOverride = null;
       _loadLikeState();
     }
   }
@@ -415,6 +424,42 @@ class _ProductCardState extends State<ProductCard> {
     );
   }
 
+  Future<void> _shareProduct(Map<String, dynamic> resolvedProduct) async {
+    final productId = widget.resolveProductId(resolvedProduct);
+    if (productId.isEmpty || _isShareBusy) {
+      showAppShareSheet(context);
+      return;
+    }
+
+    setState(() => _isShareBusy = true);
+    try {
+      final updatedProduct = await _catalogApiService.shareProduct(productId);
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _shareCountOverride = widget.resolveMetricCount(updatedProduct, [
+          'sharesCount',
+          'shareCount',
+        ]);
+      });
+      showAppShareSheet(context);
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) {
+        setState(() => _isShareBusy = false);
+      }
+    }
+  }
+
   int _effectiveLikesCount(Map<String, dynamic> resolvedProduct) {
     return _likeCountOverride ??
         widget.resolveMetricCount(resolvedProduct, ['likesCount', 'likeCount']);
@@ -425,6 +470,14 @@ class _ProductCardState extends State<ProductCard> {
       'commentsCount',
       'commentCount',
     ]);
+  }
+
+  int _effectiveSharesCount(Map<String, dynamic> resolvedProduct) {
+    return _shareCountOverride ??
+        widget.resolveMetricCount(resolvedProduct, [
+          'sharesCount',
+          'shareCount',
+        ]);
   }
 
   void _openProduct(
@@ -444,6 +497,58 @@ class _ProductCardState extends State<ProductCard> {
     );
   }
 
+  Future<void> _openSellerProfile(Map<String, dynamic> resolvedProduct) async {
+    final seller = widget.resolveSeller(resolvedProduct);
+    final sellerProfileId = seller['id']?.toString().trim() ?? '';
+    final sellerUserId = widget.resolveSellerUserId(resolvedProduct);
+    final sellerName = widget.resolveSellerName(resolvedProduct);
+    final sellerAvatarUrl = widget.resolveSellerAvatarUrl(resolvedProduct);
+    final sellerSubtitle = widget.resolveCategoryLabel(resolvedProduct);
+
+    if (sellerProfileId.isEmpty) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => SellerProfilePage(
+            profile: buildProfileFromUser(
+              userId: sellerUserId.isEmpty ? null : sellerUserId,
+              name: sellerName,
+              avatarUrl: sellerAvatarUrl,
+              subtitle: sellerSubtitle,
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    try {
+      final sellerProfile = await _catalogApiService.fetchSellerProfile(
+        sellerProfileId,
+      );
+      if (!mounted) {
+        return;
+      }
+
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => SellerProfilePage(
+            profile: buildSellerProfileFromApi(sellerProfile),
+          ),
+        ),
+      );
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     ProductRealtimeSyncService.instance.ensureInitialized();
@@ -455,8 +560,7 @@ class _ProductCardState extends State<ProductCard> {
             .mergeIntoProduct(widget.product);
         final theme = Theme.of(context);
         final appColors = theme.appColors;
-        final borderColor = appColors.borderColor;
-        final surfaceColor = Colors.transparent;
+        const surfaceColor = Color(0xFF101112);
         final priceColor = Colors.white;
         final screenHeight = MediaQuery.sizeOf(context).height;
         final screenWidth = MediaQuery.sizeOf(context).width;
@@ -467,7 +571,7 @@ class _ProductCardState extends State<ProductCard> {
         final descriptionFontSize = screenWidth < 360 ? 10.5 : 11.0;
         final publicationFontSize = screenWidth < 360 ? 10.5 : 11.0;
         final metricFontSize = screenWidth < 360 ? 11.0 : 12.0;
-        final cardHeight = screenHeight * 0.7;
+        final galleryHeight = screenHeight * 0.55;
         final price = (resolvedProduct['price'] as num?)?.toDouble() ?? 0.0;
         final currency = resolveProductCurrency(resolvedProduct);
         final categoryLabel = widget.resolveCategoryLabel(resolvedProduct);
@@ -501,11 +605,6 @@ class _ProductCardState extends State<ProductCard> {
             margin: const EdgeInsets.symmetric(vertical: 6),
             decoration: BoxDecoration(
               color: surfaceColor,
-              border: Border.all(
-                color: (isAvailable ? borderColor : unavailableAccent)
-                    .withValues(alpha: isAvailable ? 0.32 : 0.72),
-                width: isAvailable ? 1 : 1.4,
-              ),
               boxShadow: [
                 BoxShadow(
                   color: theme.colorScheme.shadow.withValues(alpha: 0.08),
@@ -514,247 +613,255 @@ class _ProductCardState extends State<ProductCard> {
                 ),
               ],
             ),
-            child: ClipRRect(
-              child: Stack(
-                children: [
-                  _buildImageHero(
-                    resolvedProduct,
-                    badgeLabel: badgeLabel,
-                    isAvailable: isAvailable,
-                    isSellerCertified: isSellerCertified,
-                    likesCount: likesCount,
-                    commentsCount: commentsCount,
-                    imageCount: imageCount,
-                    isMarketplace: isMarketplace,
-                    metricFontSize: metricFontSize,
-                    height: cardHeight,
-                  ),
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    child: Container(
-                      color: Colors.black.withValues(alpha: 0.75),
-                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                formatPriceAmount(price),
-                                style: theme.textTheme.titleLarge?.copyWith(
-                                  color: priceColor,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: -0.4,
-                                  height: 1,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  color: Colors.black.withValues(alpha: 0.82),
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () => _openSellerProfile(resolvedProduct),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 2),
+                            child: Row(
+                              children: [
+                                _buildSellerAvatar(
+                                  sellerAvatarUrl,
+                                  sellerUserId: sellerUserId,
                                 ),
-                              ),
-                              const SizedBox(width: 6),
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 2),
-                                child: Text(
-                                  currency,
-                                  style: theme.textTheme.titleSmall?.copyWith(
-                                    color: priceColor,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                              const Spacer(),
-                              Container(
-                                margin: const EdgeInsets.only(bottom: 2),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(999),
-                                  border: Border.all(
-                                    color:
-                                        (isAvailable
-                                                ? accentGreen
-                                                : unavailableAccent)
-                                            .withValues(alpha: 0.7),
-                                  ),
-                                  color: isAvailable
-                                      ? Colors.transparent
-                                      : unavailableAccent.withValues(
-                                          alpha: 0.14,
-                                        ),
-                                ),
-                                child: Text(
-                                  categoryLabel.toUpperCase(),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.labelSmall?.copyWith(
-                                    color: isAvailable
-                                        ? accentGreen
-                                        : unavailableAccent,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 0.4,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (!isAvailable) ...[
-                            const SizedBox(height: 10),
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: unavailableAccent.withValues(
-                                  alpha: 0.18,
-                                ),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: unavailableAccent.withValues(
-                                    alpha: 0.46,
-                                  ),
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  const Icon(
-                                    Icons.visibility_off_rounded,
-                                    size: 18,
-                                    color: Colors.white,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      'Produit actuellement indisponible',
-                                      style: theme.textTheme.labelLarge
-                                          ?.copyWith(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                          const SizedBox(height: 8),
-                          Text(
-                            primaryLine,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: mutedColor,
-                              fontSize: descriptionFontSize,
-                              fontWeight: FontWeight.w500,
-                              height: 1.2,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              _buildSellerAvatar(
-                                sellerAvatarUrl,
-                                sellerUserId: sellerUserId,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      sellerName,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: theme.textTheme.titleSmall
-                                          ?.copyWith(
-                                            color: accentGreen,
-                                            fontWeight: FontWeight.w900,
-                                            height: 1.1,
-                                          ),
-                                    ),
-                                    if (publicationTimeLabel.isNotEmpty) ...[
-                                      const SizedBox(height: 4),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
                                       Text(
-                                        publicationTimeLabel,
+                                        sellerName,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
-                                        style: theme.textTheme.bodySmall
+                                        style: theme.textTheme.titleSmall
                                             ?.copyWith(
-                                              color: mutedColor,
-                                              fontSize: publicationFontSize,
-                                              fontWeight: FontWeight.w600,
+                                              color: accentGreen,
+                                              fontWeight: FontWeight.w900,
                                               height: 1.1,
                                             ),
                                       ),
+                                      if (publicationTimeLabel.isNotEmpty) ...[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          publicationTimeLabel,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                                color: mutedColor,
+                                                fontSize: publicationFontSize,
+                                                fontWeight: FontWeight.w600,
+                                                height: 1.1,
+                                              ),
+                                        ),
+                                      ],
                                     ],
-                                  ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            formatPriceAmount(price),
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              color: priceColor,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.4,
+                              height: 1,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 2),
+                            child: Text(
+                              currency,
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                color: priceColor,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          const Spacer(),
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 2),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color:
+                                    (isAvailable
+                                            ? accentGreen
+                                            : unavailableAccent)
+                                        .withValues(alpha: 0.7),
+                              ),
+                              color: isAvailable
+                                  ? Colors.transparent
+                                  : unavailableAccent.withValues(alpha: 0.14),
+                            ),
+                            child: Text(
+                              categoryLabel.toUpperCase(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: isAvailable
+                                    ? accentGreen
+                                    : unavailableAccent,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (!isAvailable) ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: unavailableAccent.withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: unavailableAccent.withValues(alpha: 0.46),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.visibility_off_rounded,
+                                size: 18,
+                                color: Colors.white,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Produit actuellement indisponible',
+                                  style: theme.textTheme.labelLarge?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                  ),
                                 ),
                               ),
                             ],
                           ),
-                          if (locationLine.isNotEmpty) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              locationLine,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: mutedColor,
-                                fontWeight: FontWeight.w600,
-                                height: 1.15,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    right: imageCount > 1 ? 62 : 12,
-                    bottom: 12,
-                    child: Row(
-                      children: [
-                        _buildActionMetric(
-                          icon: _isLiked
-                              ? Icons.favorite_rounded
-                              : Icons.favorite_border_rounded,
-                          label: widget.formatMetricCount(likesCount),
-                          iconColor: _isLiked ? favoriteColor : Colors.white,
-                          labelColor: Colors.white,
-                          fontSize: metricFontSize,
-                          onTap: _isLikeBusy
-                              ? null
-                              : () => _toggleLike(resolvedProduct),
                         ),
-                        const SizedBox(width: 8),
-                        _buildActionMetric(
-                          icon: Icons.mode_comment_rounded,
-                          label: widget.formatMetricCount(commentsCount),
+                      ],
+                      const SizedBox(height: 8),
+                      Text(
+                        primaryLine,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: mutedColor,
+                          fontSize: descriptionFontSize,
+                          fontWeight: FontWeight.w500,
+                          height: 1.2,
+                        ),
+                      ),
+                      if (locationLine.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          locationLine,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: mutedColor,
+                            fontWeight: FontWeight.w600,
+                            height: 1.15,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                _buildImageHero(
+                  resolvedProduct,
+                  badgeLabel: badgeLabel,
+                  isAvailable: isAvailable,
+                  isSellerCertified: isSellerCertified,
+                  imageCount: imageCount,
+                  isMarketplace: isMarketplace,
+                  height: galleryHeight,
+                ),
+                Container(
+                  color: Colors.black.withValues(alpha: 0.82),
+                  padding: const EdgeInsets.fromLTRB(0, 12, 0, 14),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: _buildActionMetric(
+                            icon: _isLiked
+                                ? Icons.favorite_rounded
+                                : Icons.favorite_border_rounded,
+                            label: widget.formatMetricCount(likesCount),
+                            iconColor: _isLiked ? favoriteColor : Colors.white,
+                            labelColor: Colors.white,
+                            fontSize: metricFontSize,
+                            onTap: _isLikeBusy
+                                ? null
+                                : () => _toggleLike(resolvedProduct),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: _buildActionMetric(
+                            icon: Icons.mode_comment_rounded,
+                            label: widget.formatMetricCount(commentsCount),
+                            iconColor: Colors.white,
+                            labelColor: Colors.white,
+                            fontSize: metricFontSize,
+                            onTap: () => _openComments(resolvedProduct),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: _buildActionMetric(
+                          icon: Icons.share_outlined,
+                          label: widget.formatMetricCount(
+                            _effectiveSharesCount(resolvedProduct),
+                          ),
                           iconColor: Colors.white,
                           labelColor: Colors.white,
                           fontSize: metricFontSize,
-                          onTap: () => _openComments(resolvedProduct),
+                          onTap: () => _shareProduct(resolvedProduct),
                         ),
-                      ],
-                    ),
-                  ),
-                  if (imageCount > 1)
-                    Positioned(
-                      right: 12,
-                      bottom: 12,
-                      child: _buildStaticMetric(
-                        icon: Icons.collections_rounded,
-                        label: '$imageCount',
                       ),
-                    ),
-                ],
-              ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         );
@@ -767,143 +874,234 @@ class _ProductCardState extends State<ProductCard> {
     required String badgeLabel,
     required bool isAvailable,
     required bool isSellerCertified,
-    required int likesCount,
-    required int commentsCount,
     required int imageCount,
     required bool isMarketplace,
-    required double metricFontSize,
     required double height,
   }) {
     final theme = Theme.of(context);
     final appColors = theme.appColors;
     final isFeaturedBadge = badgeLabel.trim().toLowerCase() == 'a la une';
     final images = widget.resolveProductImages(resolvedProduct);
+    final previewImages = images.skip(1).take(3).toList(growable: false);
     final badgeColor = isFeaturedBadge
         ? Colors.red
         : isMarketplace
         ? const Color(0xFF8F42FF)
         : theme.colorScheme.primary;
+    final showGalleryStrip = previewImages.isNotEmpty;
+    final mainImageHeight = showGalleryStrip ? height - 104 : height;
 
     return SizedBox(
       height: height,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (images.isEmpty)
-            _missingImageItem(onTap: () => _openProduct(resolvedProduct))
-          else
-            _imageItem(
-              images.first,
-              onTap: () => _openProduct(resolvedProduct),
-            ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  !isAvailable
-                      ? Colors.black.withValues(alpha: 0.22)
-                      : Colors.transparent,
-                  !isAvailable
-                      ? const Color(0xFFD84343).withValues(alpha: 0.12)
-                      : Colors.transparent,
-                  appColors.scrimSoft.withValues(alpha: 0.18),
-                ],
-              ),
-            ),
-          ),
-          if (!isAvailable)
-            Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 22,
-                  vertical: 16,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFD84343).withValues(alpha: 0.76),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.18),
-                  ),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final mainImageWidth = constraints.maxWidth.isFinite
+              ? constraints.maxWidth
+              : MediaQuery.sizeOf(context).width;
+
+          return Column(
+            children: [
+              SizedBox(
+                height: mainImageHeight,
+                width: double.infinity,
+                child: Stack(
+                  fit: StackFit.expand,
                   children: [
-                    const Icon(
-                      Icons.visibility_off_rounded,
-                      color: Colors.white,
-                      size: 34,
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      'Produit indisponible',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w900,
+                    if (images.isEmpty)
+                      _missingImageItem(
+                        onTap: () => _openProduct(resolvedProduct),
+                      )
+                    else
+                      _imageItem(
+                        images.first,
+                        onTap: () => _openProduct(resolvedProduct),
+                        width: mainImageWidth,
+                        height: mainImageHeight,
+                        preferThumbnail: false,
+                      ),
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            !isAvailable
+                                ? Colors.black.withValues(alpha: 0.22)
+                                : Colors.transparent,
+                            !isAvailable
+                                ? const Color(
+                                    0xFFD84343,
+                                  ).withValues(alpha: 0.12)
+                                : Colors.transparent,
+                            appColors.scrimSoft.withValues(alpha: 0.18),
+                          ],
+                        ),
                       ),
                     ),
+                    if (!isAvailable)
+                      Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 22,
+                            vertical: 16,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(
+                              0xFFD84343,
+                            ).withValues(alpha: 0.76),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.18),
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.visibility_off_rounded,
+                                color: Colors.white,
+                                size: 34,
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                'Produit indisponible',
+                                textAlign: TextAlign.center,
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    Positioned(
+                      left: 12,
+                      top: 12,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 7,
+                        ),
+                        decoration: BoxDecoration(
+                          color: badgeColor,
+                          borderRadius: BorderRadius.circular(999),
+                          boxShadow: [
+                            BoxShadow(
+                              color: badgeColor.withValues(alpha: 0.22),
+                              blurRadius: 10,
+                              offset: const Offset(0, 5),
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          badgeLabel,
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (widget.topRightOverlay != null)
+                      Positioned(
+                        right: 12,
+                        top: 12,
+                        child: widget.topRightOverlay!,
+                      )
+                    else if (isSellerCertified)
+                      const Positioned(
+                        right: 12,
+                        top: 12,
+                        child: SellerCertifiedMiniBadge(),
+                      ),
                   ],
                 ),
               ),
-            ),
-          Positioned(
-            left: 12,
-            top: 12,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-              decoration: BoxDecoration(
-                color: badgeColor,
-                borderRadius: BorderRadius.circular(999),
-                boxShadow: [
-                  BoxShadow(
-                    color: badgeColor.withValues(alpha: 0.22),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: Text(
-                badgeLabel,
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ),
-          if (widget.topRightOverlay != null)
-            Positioned(right: 12, top: 12, child: widget.topRightOverlay!)
-          else if (isSellerCertified)
-            const Positioned(
-              right: 12,
-              top: 12,
-              child: SellerCertifiedMiniBadge(),
-            ),
-          Positioned(
-            left: 12,
-            bottom: 12,
-            child: Material(
-              color: Colors.black.withValues(alpha: 0.38),
-              shape: const CircleBorder(),
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: () {},
-                child: const SizedBox(
-                  width: 34,
-                  height: 34,
-                  child: Icon(
-                    Icons.more_horiz_rounded,
-                    size: 18,
-                    color: Colors.white,
+              if (showGalleryStrip) ...[
+                const SizedBox(height: 2),
+                SizedBox(
+                  height: 102,
+                  width: double.infinity,
+                  child: _buildSubImageStrip(
+                    images,
+                    resolvedProduct: resolvedProduct,
                   ),
                 ),
-              ),
-            ),
-          ),
-        ],
+              ],
+            ],
+          );
+        },
       ),
+    );
+  }
+
+  Widget _buildSubImageStrip(
+    List<String> images, {
+    required Map<String, dynamic> resolvedProduct,
+  }) {
+    final previewImages = images.skip(1).take(3).toList(growable: false);
+    final extraCount = images.length - 1 - previewImages.length;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final previewWidth = constraints.maxWidth.isFinite
+            ? (constraints.maxWidth - ((previewImages.length - 1) * 2)) /
+                  previewImages.length
+            : 120.0;
+        final previewHeight = constraints.maxHeight.isFinite
+            ? constraints.maxHeight
+            : 96.0;
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: List.generate(previewImages.length, (index) {
+            final imageIndex = index + 1;
+            final isLastVisible = index == previewImages.length - 1;
+            final showExtraCount = extraCount > 0 && isLastVisible;
+
+            return Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(left: index == 0 ? 0 : 2),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () =>
+                        _openProduct(resolvedProduct, imageIndex: imageIndex),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        _imageItem(
+                          previewImages[index],
+                          width: previewWidth,
+                          height: previewHeight,
+                          preferThumbnail: true,
+                        ),
+                        if (showExtraCount)
+                          DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.55),
+                            ),
+                            child: Center(
+                              child: Text(
+                                '+$extraCount',
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
+        );
+      },
     );
   }
 
@@ -917,14 +1115,17 @@ class _ProductCardState extends State<ProductCard> {
     double? fontSize,
   }) {
     final theme = Theme.of(context);
-    final effectiveBackgroundColor =
-        backgroundColor ?? Colors.black.withValues(alpha: 0.44);
     final borderRadius = BorderRadius.circular(999);
+    final buttonBackground =
+        backgroundColor ?? const Color.fromARGB(255, 38, 38, 38);
+    final buttonBorder = const Color.fromARGB(255, 68, 68, 68);
 
     return Container(
+      width: double.infinity,
       decoration: BoxDecoration(
-        color: effectiveBackgroundColor,
+        color: buttonBackground,
         borderRadius: borderRadius,
+        border: Border.all(color: buttonBorder.withValues(alpha: 0.82)),
       ),
       child: Material(
         color: Colors.transparent,
@@ -932,17 +1133,17 @@ class _ProductCardState extends State<ProductCard> {
           borderRadius: borderRadius,
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            padding: const EdgeInsets.symmetric(vertical: 10),
             child: Row(
-              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, size: 14, color: iconColor),
-                const SizedBox(width: 6),
+                Icon(icon, size: 18, color: iconColor),
+                const SizedBox(width: 8),
                 Text(
                   label,
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: labelColor,
-                    fontSize: fontSize,
+                    fontSize: (fontSize ?? 12) + 1,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -954,47 +1155,21 @@ class _ProductCardState extends State<ProductCard> {
     );
   }
 
-  Widget _buildStaticMetric({required IconData icon, required String label}) {
-    final theme = Theme.of(context);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.44),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: Colors.white),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildSellerAvatar(String avatarUrl, {required String sellerUserId}) {
     if (avatarUrl.isNotEmpty) {
       return AppCircleNetworkAvatar(
         imageUrl: avatarUrl,
-        radius: 18,
+        radius: 24,
         userId: sellerUserId.isEmpty ? null : sellerUserId,
         showPresenceBadge: false,
       );
     }
 
     return AppImagePlaceholder(
-      width: 36,
-      height: 36,
+      width: 48,
+      height: 48,
       shape: BoxShape.circle,
-      child: const Icon(Icons.person_rounded, size: 20, color: Colors.white),
+      child: const Icon(Icons.person_rounded, size: 24, color: Colors.white),
     );
   }
 
@@ -1018,12 +1193,36 @@ class _ProductCardState extends State<ProductCard> {
     );
   }
 
-  Widget _imageItem(String url, {VoidCallback? onTap}) {
+  String _optimizedProductCardImageUrl(
+    String url, {
+    required bool preferThumbnail,
+  }) {
+    final normalizedUrl = url.trim();
+    if (normalizedUrl.isEmpty) {
+      return normalizedUrl;
+    }
+
+    return preferThumbnail
+        ? CloudinaryImageUrl.forProductCardThumbnail(normalizedUrl)
+        : CloudinaryImageUrl.forProductCardMain(normalizedUrl);
+  }
+
+  Widget _imageItem(
+    String url, {
+    VoidCallback? onTap,
+    double? width,
+    double? height,
+    bool preferThumbnail = false,
+  }) {
     final theme = Theme.of(context);
     final fallbackIconColor =
         theme.iconTheme.color ?? theme.colorScheme.onSurfaceVariant;
     final isLocalFile =
         !(url.startsWith('http://') || url.startsWith('https://'));
+    final optimizedUrl = _optimizedProductCardImageUrl(
+      url,
+      preferThumbnail: preferThumbnail,
+    );
 
     return GestureDetector(
       onTap: onTap,
@@ -1031,16 +1230,18 @@ class _ProductCardState extends State<ProductCard> {
           ? Image.file(
               File(url),
               fit: BoxFit.cover,
-              width: double.infinity,
-              height: double.infinity,
+              width: width ?? double.infinity,
+              height: height ?? double.infinity,
+              cacheWidth: width?.round(),
+              cacheHeight: height?.round(),
               errorBuilder: (_, _, _) =>
                   Icon(Icons.image_not_supported, color: fallbackIconColor),
             )
           : AppNetworkImage(
-              imageUrl: url,
+              imageUrl: optimizedUrl,
               fit: BoxFit.cover,
-              width: double.infinity,
-              height: double.infinity,
+              width: width ?? double.infinity,
+              height: height ?? double.infinity,
               borderRadius: BorderRadius.zero,
               errorChild: Icon(
                 Icons.image_not_supported,

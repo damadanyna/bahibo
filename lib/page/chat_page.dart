@@ -444,7 +444,7 @@ class _ChatPageState extends State<ChatPage>
     }
 
     _restoredConversationView = true;
-    _pendingRestoredScrollOffset = cachedState.scrollOffset;
+    _pendingRestoredScrollOffset = 0.0;
     _applyConversation(
       Map<String, dynamic>.from(cachedState.payload),
       clearPending: false,
