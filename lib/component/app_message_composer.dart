@@ -55,7 +55,7 @@ class AppMessageComposer extends StatelessWidget {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: primary.withOpacity(0.12),
+                  color: primary.withValues(alpha: 0.12),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(Icons.add, color: primary, size: 20),
@@ -91,7 +91,7 @@ class AppMessageComposer extends StatelessWidget {
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [primary, primary.withOpacity(0.78)],
+                    colors: [primary, primary.withValues(alpha: 0.78)],
                   ),
                   shape: BoxShape.circle,
                 ),
@@ -108,4 +108,3 @@ class AppMessageComposer extends StatelessWidget {
     );
   }
 }
-

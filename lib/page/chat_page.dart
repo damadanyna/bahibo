@@ -17,6 +17,7 @@ import 'package:banay/services/chat/chat_session_controller.dart';
 import 'package:banay/services/chat/chat_session_state.dart';
 import 'package:banay/services/chat/chat_session_target.dart';
 import 'package:banay/services/chat/chat_viewport_controller.dart';
+import 'package:banay/services/chat_document_open_service.dart';
 import 'package:banay/services/chat_document_upload_service.dart';
 import 'package:banay/services/chat_realtime_service.dart';
 import 'package:banay/services/chat_photo_upload_service.dart';
@@ -3060,7 +3061,7 @@ class _ChatPageState extends State<ChatPage>
 
   Future<void> _handleAttachment(UiChatAttachment attachment) async {
     switch (attachment.type) {
-      case UiChatAttachmentType.quickText:
+      case UiChatAttachmentType.location:
         _handleComposerChanged(attachment.messageText);
         return;
       case UiChatAttachmentType.photo:
@@ -3453,26 +3454,7 @@ class _ChatPageState extends State<ChatPage>
         return;
       }
 
-      final uri = Uri.tryParse(attachmentUrl);
-      if (uri == null) {
-        if (!mounted) {
-          return;
-        }
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Lien du document invalide.')),
-        );
-        return;
-      }
-
-      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!opened && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Impossible d\'ouvrir ce document pour le moment.'),
-          ),
-        );
-      }
+      await _openChatDocument(attachmentUrl, fileName: product.subtitle);
     }
   }
 
@@ -3523,26 +3505,30 @@ class _ChatPageState extends State<ChatPage>
       return;
     }
 
-    final uri = Uri.tryParse(media.publicUrl.trim());
-    if (uri == null) {
-      if (!mounted) {
-        return;
-      }
+    await _openChatDocument(
+      media.publicUrl,
+      fileName: media.fileName,
+      mimeType: media.mimeType,
+    );
+  }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Lien du document invalide.')),
-      );
+  Future<void> _openChatDocument(
+    String documentUrl, {
+    String? fileName,
+    String? mimeType,
+  }) async {
+    final result = await ChatDocumentOpenService.instance.openRemoteDocument(
+      documentUrl,
+      fileName: fileName,
+      mimeType: mimeType,
+    );
+    if (!mounted || result.opened || result.errorMessage == null) {
       return;
     }
 
-    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!opened && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Impossible d\'ouvrir ce document pour le moment.'),
-        ),
-      );
-    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(result.errorMessage!)));
   }
 
   Future<void> _openChatMediaGroup(
@@ -3867,13 +3853,12 @@ class _ChatPageState extends State<ChatPage>
       displayMessages,
     ).reversed.toList(growable: false);
 
-    return WillPopScope(
-      onWillPop: () async {
-        if (isSelectionMode) {
+    return PopScope(
+      canPop: !isSelectionMode,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && isSelectionMode) {
           _clearSelectedMessages();
-          return false;
         }
-        return true;
       },
       child: Scaffold(
         backgroundColor: background,
@@ -4102,6 +4087,8 @@ class _ChatPageState extends State<ChatPage>
                                   primary: primary,
                                   panelColor: panelColor,
                                   borderColor: appColors.inputBorder,
+                                  enableDocument: false,
+                                  enableLocation: false,
                                   canSendWithoutText:
                                       _pendingDocumentAttachment != null,
                                   allowMultipleDocumentSelection: false,
@@ -4988,7 +4975,6 @@ class _ChatBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final appColors = Theme.of(context).appColors;
     final normalizedMessage = message.trim();
     final isDeletedPlaceholder =
         normalizedMessage.toLowerCase() == 'message supprime';

@@ -2,18 +2,18 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
-} from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+} from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 
-import { CloudinaryService } from '../auth/cloudinary.service';
-import { ConversationsRealtimeGateway } from '../conversations/realtime/conversations-realtime.gateway';
-import { NotificationsService } from '../notifications/notifications.service';
-import { PrismaService } from '../prisma/prisma.service';
-import { PushNotificationsService } from '../push-notifications/push-notifications.service';
-import { CreateProductCommentDto } from './dto/create-product-comment.dto';
-import { CreateProductDto } from './dto/create-product.dto';
-import { UpdateProductDto } from './dto/update-product.dto';
-import { ProductEntity } from './entities/product.entity';
+import { CloudinaryService } from "../auth/cloudinary.service";
+import { ConversationsRealtimeGateway } from "../conversations/realtime/conversations-realtime.gateway";
+import { NotificationsService } from "../notifications/notifications.service";
+import { PrismaService } from "../prisma/prisma.service";
+import { PushNotificationsService } from "../push-notifications/push-notifications.service";
+import { CreateProductCommentDto } from "./dto/create-product-comment.dto";
+import { CreateProductDto } from "./dto/create-product.dto";
+import { UpdateProductDto } from "./dto/update-product.dto";
+import { ProductEntity } from "./entities/product.entity";
 
 type ProductWithRelations = Prisma.ProductGetPayload<{
   include: {
@@ -27,7 +27,7 @@ type ProductWithRelations = Prisma.ProductGetPayload<{
     };
     productImages: {
       orderBy: {
-        sortOrder: 'asc';
+        sortOrder: "asc";
       };
     };
     sellerProfile: {
@@ -69,6 +69,20 @@ type SerializedProductComment = {
   replies: SerializedProductComment[];
 };
 
+type ProductLocationContext = {
+  normalizedLocationLabel: string;
+  locationLatitude: number | null;
+  locationLongitude: number | null;
+  locationTokens: string[];
+};
+
+type RankedProductCandidate = {
+  product: ProductWithRelations;
+  exactLocationMatch: boolean;
+  distanceInKm: number | null;
+  shuffleScore: number;
+};
+
 @Injectable()
 export class ProductsService {
   constructor(
@@ -78,6 +92,221 @@ export class ProductsService {
     private readonly notificationsService: NotificationsService,
     private readonly pushNotificationsService: PushNotificationsService,
   ) {}
+
+  private normalizeText(value: string | null | undefined) {
+    return value?.trim().toLowerCase() ?? "";
+  }
+
+  private joinNonEmpty(values: Array<string | null | undefined>) {
+    return values
+      .filter((value): value is string =>
+        Boolean(value && value.trim().length > 0),
+      )
+      .join(", ");
+  }
+
+  private extractLocationTokens(...values: Array<string | null | undefined>) {
+    return Array.from(
+      new Set(
+        values
+          .flatMap((value) =>
+            (value ?? "")
+              .split(",")
+              .map((part) => this.normalizeText(part))
+              .filter((part) => part.length >= 3),
+          )
+          .filter((part) => part.length >= 3),
+      ),
+    );
+  }
+
+  private toNullableNumber(value: unknown) {
+    if (typeof value !== "number" || Number.isNaN(value)) {
+      return null;
+    }
+
+    return value;
+  }
+
+  private computeDistanceInKm(
+    firstLatitude: number,
+    firstLongitude: number,
+    secondLatitude: number,
+    secondLongitude: number,
+  ) {
+    const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+    const earthRadiusKm = 6371;
+    const latitudeDelta = toRadians(secondLatitude - firstLatitude);
+    const longitudeDelta = toRadians(secondLongitude - firstLongitude);
+    const normalizedFirstLatitude = toRadians(firstLatitude);
+    const normalizedSecondLatitude = toRadians(secondLatitude);
+    const haversine =
+      Math.sin(latitudeDelta / 2) * Math.sin(latitudeDelta / 2) +
+      Math.cos(normalizedFirstLatitude) *
+        Math.cos(normalizedSecondLatitude) *
+        Math.sin(longitudeDelta / 2) *
+        Math.sin(longitudeDelta / 2);
+
+    return (
+      earthRadiusKm *
+      2 *
+      Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine))
+    );
+  }
+
+  private buildLocationContext(params: {
+    userLocationLabel?: string;
+    userLocationLatitude?: number;
+    userLocationLongitude?: number;
+  }) {
+    const normalizedLocationLabel = this.normalizeText(
+      params.userLocationLabel,
+    );
+    const locationLatitude = this.toNullableNumber(params.userLocationLatitude);
+    const locationLongitude = this.toNullableNumber(
+      params.userLocationLongitude,
+    );
+
+    if (
+      normalizedLocationLabel === "" &&
+      locationLatitude == null &&
+      locationLongitude == null
+    ) {
+      return null;
+    }
+
+    return {
+      normalizedLocationLabel,
+      locationLatitude,
+      locationLongitude,
+      locationTokens: this.extractLocationTokens(params.userLocationLabel),
+    } as ProductLocationContext;
+  }
+
+  private computeStableShuffleScore(productId: string) {
+    const daySeed = new Date().toISOString().slice(0, 10);
+    const input = `${daySeed}:${productId}`;
+    let hash = 0;
+    for (let index = 0; index < input.length; index += 1) {
+      hash = (hash * 31 + input.charCodeAt(index)) >>> 0;
+    }
+    return hash;
+  }
+
+  private isExactLocationMatch(
+    product: ProductWithRelations,
+    context: ProductLocationContext,
+  ) {
+    const normalizedSellerCity = this.normalizeText(product.sellerProfile.city);
+    const normalizedSellerLocationLabel = this.normalizeText(
+      this.joinNonEmpty([
+        product.sellerProfile.city,
+        product.sellerProfile.country,
+        product.sellerProfile.user.locationLabel,
+      ]),
+    );
+
+    if (
+      normalizedSellerCity !== "" &&
+      (context.locationTokens.includes(normalizedSellerCity) ||
+        context.normalizedLocationLabel.includes(normalizedSellerCity))
+    ) {
+      return true;
+    }
+
+    if (
+      context.normalizedLocationLabel !== "" &&
+      normalizedSellerLocationLabel !== "" &&
+      (normalizedSellerLocationLabel === context.normalizedLocationLabel ||
+        normalizedSellerLocationLabel.includes(
+          context.normalizedLocationLabel,
+        ) ||
+        context.normalizedLocationLabel.includes(normalizedSellerLocationLabel))
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
+  private rankProductsByLocation(
+    items: ProductWithRelations[],
+    context: ProductLocationContext,
+  ) {
+    const rankedCandidates = items.map((product) => {
+      const locationLatitude = this.toNullableNumber(
+        product.sellerProfile.user.locationLatitude,
+      );
+      const locationLongitude = this.toNullableNumber(
+        product.sellerProfile.user.locationLongitude,
+      );
+      const exactLocationMatch = this.isExactLocationMatch(product, context);
+      const distanceInKm =
+        context.locationLatitude != null &&
+        context.locationLongitude != null &&
+        locationLatitude != null &&
+        locationLongitude != null
+          ? this.computeDistanceInKm(
+              context.locationLatitude,
+              context.locationLongitude,
+              locationLatitude,
+              locationLongitude,
+            )
+          : null;
+
+      return {
+        product,
+        exactLocationMatch,
+        distanceInKm,
+        shuffleScore: this.computeStableShuffleScore(product.id),
+      } as RankedProductCandidate;
+    });
+
+    const hasExactMatches = rankedCandidates.some(
+      (candidate) => candidate.exactLocationMatch,
+    );
+
+    return rankedCandidates.sort((left, right) => {
+      const leftBucket = left.exactLocationMatch
+        ? 0
+        : !hasExactMatches && left.distanceInKm != null
+          ? 1
+          : hasExactMatches && left.distanceInKm != null
+            ? 2
+            : 3;
+      const rightBucket = right.exactLocationMatch
+        ? 0
+        : !hasExactMatches && right.distanceInKm != null
+          ? 1
+          : hasExactMatches && right.distanceInKm != null
+            ? 2
+            : 3;
+
+      if (leftBucket !== rightBucket) {
+        return leftBucket - rightBucket;
+      }
+
+      if (leftBucket === 1 || leftBucket === 2) {
+        const leftDistance = left.distanceInKm ?? Number.POSITIVE_INFINITY;
+        const rightDistance = right.distanceInKm ?? Number.POSITIVE_INFINITY;
+        if (leftDistance !== rightDistance) {
+          return leftDistance - rightDistance;
+        }
+      }
+
+      if (leftBucket === 0) {
+        return left.shuffleScore - right.shuffleScore;
+      }
+
+      const createdAtComparison =
+        right.product.createdAt.getTime() - left.product.createdAt.getTime();
+      if (createdAtComparison !== 0) {
+        return createdAtComparison;
+      }
+
+      return left.shuffleScore - right.shuffleScore;
+    });
+  }
 
   async create(
     currentUser: { userId: string; role: string },
@@ -92,7 +321,7 @@ export class ProductsService {
     });
 
     if (!sellerProfile) {
-      throw new BadRequestException('Seller profile not found for this user.');
+      throw new BadRequestException("Seller profile not found for this user.");
     }
 
     const category = await this.resolveCategory(dto);
@@ -108,7 +337,7 @@ export class ProductsService {
         description: dto.description.trim(),
         imageUrl: imageUrls[0],
         priceAmount: dto.priceAmount,
-        currencyCode: (dto.currencyCode?.trim().toUpperCase() ?? 'MGA'),
+        currencyCode: dto.currencyCode?.trim().toUpperCase() ?? "MGA",
         isAvailable: dto.isAvailable ?? true,
         categoryId: category.id,
         sellerProfileId: sellerProfile.id,
@@ -130,7 +359,7 @@ export class ProductsService {
         },
         productImages: {
           orderBy: {
-            sortOrder: 'asc',
+            sortOrder: "asc",
           },
         },
         sellerProfile: {
@@ -169,7 +398,7 @@ export class ProductsService {
     });
 
     if (!sellerProfile) {
-      throw new BadRequestException('Seller profile not found for this user.');
+      throw new BadRequestException("Seller profile not found for this user.");
     }
 
     const existingProduct = await this.prisma.product.findUnique({
@@ -185,7 +414,7 @@ export class ProductsService {
         },
         productImages: {
           orderBy: {
-            sortOrder: 'asc',
+            sortOrder: "asc",
           },
         },
         sellerProfile: {
@@ -197,11 +426,11 @@ export class ProductsService {
     });
 
     if (!existingProduct) {
-      throw new NotFoundException('Product not found');
+      throw new NotFoundException("Product not found");
     }
 
     if (existingProduct.sellerProfile.userId != currentUser.userId) {
-      throw new NotFoundException('Product not found');
+      throw new NotFoundException("Product not found");
     }
 
     const shouldResolveCategory =
@@ -223,15 +452,20 @@ export class ProductsService {
     );
 
     const hasPriceChanged =
-      dto.priceAmount != null && dto.priceAmount.toString() !== existingProduct.priceAmount.toString();
+      dto.priceAmount != null &&
+      dto.priceAmount.toString() !== existingProduct.priceAmount.toString();
     const hasAvailabilityChanged =
-      dto.isAvailable != null && dto.isAvailable !== existingProduct.isAvailable;
-    const existingImageUrls = existingProduct.productImages.length > 0
-      ? existingProduct.productImages.map((image) => image.imageUrl)
-      : [existingProduct.imageUrl];
+      dto.isAvailable != null &&
+      dto.isAvailable !== existingProduct.isAvailable;
+    const existingImageUrls =
+      existingProduct.productImages.length > 0
+        ? existingProduct.productImages.map((image) => image.imageUrl)
+        : [existingProduct.imageUrl];
     const hasImagesChanged =
       existingImageUrls.length !== imageUrls.length ||
-      existingImageUrls.some((imageUrl, index) => imageUrl !== imageUrls[index]);
+      existingImageUrls.some(
+        (imageUrl, index) => imageUrl !== imageUrls[index],
+      );
 
     const updatedProduct = await this.prisma.product.update({
       where: { id: productId },
@@ -264,7 +498,7 @@ export class ProductsService {
         },
         productImages: {
           orderBy: {
-            sortOrder: 'asc',
+            sortOrder: "asc",
           },
         },
         sellerProfile: {
@@ -279,7 +513,7 @@ export class ProductsService {
       this.emitProductUpdatedEvent({
         product: updatedProduct,
         actorUserId: currentUser.userId,
-        action: hasAvailabilityChanged ? 'availability_changed' : 'updated',
+        action: hasAvailabilityChanged ? "availability_changed" : "updated",
       });
     }
 
@@ -311,12 +545,12 @@ export class ProductsService {
     });
 
     if (!sellerProfile) {
-      throw new BadRequestException('Seller profile not found for this user.');
+      throw new BadRequestException("Seller profile not found for this user.");
     }
 
     const existingProduct = await this.findProductWithRelations(productId);
     if (existingProduct.sellerProfile.userId !== currentUser.userId) {
-      throw new NotFoundException('Product not found');
+      throw new NotFoundException("Product not found");
     }
 
     const linkedOrderItems = await this.prisma.orderItem.count({
@@ -324,7 +558,7 @@ export class ProductsService {
     });
     if (linkedOrderItems > 0) {
       throw new BadRequestException(
-        'Ce produit ne peut pas etre supprime car il est deja lie a une commande.',
+        "Ce produit ne peut pas etre supprime car il est deja lie a une commande.",
       );
     }
 
@@ -355,7 +589,7 @@ export class ProductsService {
         },
         productImages: {
           orderBy: {
-            sortOrder: 'asc',
+            sortOrder: "asc",
           },
         },
         sellerProfile: {
@@ -367,7 +601,7 @@ export class ProductsService {
     });
 
     if (!product) {
-      throw new NotFoundException('Product not found');
+      throw new NotFoundException("Product not found");
     }
 
     await this.prisma.productLike.upsert({
@@ -388,13 +622,15 @@ export class ProductsService {
     this.emitProductUpdatedEvent({
       product: updatedProduct,
       actorUserId: currentUserId,
-      action: 'liked',
+      action: "liked",
     });
-    await this.emitSellerProfileUpdatedByProfileId(updatedProduct.sellerProfile.id);
+    await this.emitSellerProfileUpdatedByProfileId(
+      updatedProduct.sellerProfile.id,
+    );
     if (product.sellerProfile.userId !== currentUserId) {
       await this.emitNotificationUpdatedEvent(
         product.sellerProfile.userId,
-        'product_like',
+        "product_like",
       );
     }
     return this.toEntity(updatedProduct);
@@ -414,9 +650,11 @@ export class ProductsService {
     this.emitProductUpdatedEvent({
       product: updatedProduct,
       actorUserId: currentUserId,
-      action: 'unliked',
+      action: "unliked",
     });
-    await this.emitSellerProfileUpdatedByProfileId(updatedProduct.sellerProfile.id);
+    await this.emitSellerProfileUpdatedByProfileId(
+      updatedProduct.sellerProfile.id,
+    );
     return this.toEntity(updatedProduct);
   }
 
@@ -432,12 +670,12 @@ export class ProductsService {
             mentionedUser: true,
           },
           orderBy: {
-            createdAt: 'asc',
+            createdAt: "asc",
           },
         },
       },
       orderBy: {
-        createdAt: 'asc',
+        createdAt: "asc",
       },
     });
 
@@ -475,7 +713,7 @@ export class ProductsService {
     let parentCommentId: string | undefined;
 
     if (!content) {
-      throw new BadRequestException('Comment content is required');
+      throw new BadRequestException("Comment content is required");
     }
 
     if (requestedParentCommentId) {
@@ -491,7 +729,7 @@ export class ProductsService {
       });
 
       if (!parentComment) {
-        throw new NotFoundException('Parent comment not found');
+        throw new NotFoundException("Parent comment not found");
       }
 
       parentCommentId =
@@ -544,7 +782,7 @@ export class ProductsService {
             mentionedUser: true,
           },
           orderBy: {
-            createdAt: 'asc',
+            createdAt: "asc",
           },
         },
       },
@@ -555,14 +793,14 @@ export class ProductsService {
     this.emitProductUpdatedEvent({
       product: updatedProduct,
       actorUserId: currentUserId,
-      action: 'commented',
+      action: "commented",
       comment: serializedComment,
     });
     await this.emitSellerProfileUpdatedByProfileId(product.sellerProfile.id);
     if (product.sellerProfile.userId !== currentUserId) {
       await this.emitNotificationUpdatedEvent(
         product.sellerProfile.userId,
-        'product_comment',
+        "product_comment",
       );
       await this.pushNotificationsService.sendSellerProductCommentNotification({
         recipientUserId: product.sellerProfile.userId,
@@ -628,8 +866,7 @@ export class ProductsService {
     }
 
     roots.sort(
-      (left, right) =>
-        Date.parse(right.createdAt) - Date.parse(left.createdAt),
+      (left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt),
     );
     for (const finalComment of roots) {
       finalComment.replies.sort(
@@ -652,7 +889,8 @@ export class ProductsService {
     }
 
     while (parentCommentId) {
-      const nextParentCommentId = commentParents.get(parentCommentId) ?? undefined;
+      const nextParentCommentId =
+        commentParents.get(parentCommentId) ?? undefined;
       if (!nextParentCommentId) {
         return parentCommentId;
       }
@@ -690,7 +928,7 @@ export class ProductsService {
   private resolveUserAvatarUrl(avatarUrl?: string | null) {
     return (
       avatarUrl ??
-      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600'
+      "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600"
     );
   }
 
@@ -713,7 +951,7 @@ export class ProductsService {
     for (const followerLink of followerLinks) {
       await this.emitNotificationUpdatedEvent(
         followerLink.followerUserId,
-        'followed_seller_activity',
+        "followed_seller_activity",
       );
     }
   }
@@ -732,7 +970,7 @@ export class ProductsService {
     this.emitProductUpdatedEvent({
       product: updatedProduct,
       actorUserId: currentUserId,
-      action: 'shared',
+      action: "shared",
     });
     await this.emitSellerProfileUpdatedByProfileId(product.sellerProfile.id);
     return this.toEntity(updatedProduct);
@@ -741,14 +979,14 @@ export class ProductsService {
   private async emitNotificationUpdatedEvent(
     userId: string,
     reason:
-      | 'product_like'
-      | 'product_comment'
-      | 'followed_seller_activity'
-      | 'seller_follow',
+      | "product_like"
+      | "product_comment"
+      | "followed_seller_activity"
+      | "seller_follow",
   ) {
     const unreadCount = await this.notificationsService.countUnread(userId);
     this.conversationsRealtimeGateway.emitNotificationEvent(userId, {
-      type: 'notifications:updated',
+      type: "notifications:updated",
       userId,
       reason,
       unreadCount,
@@ -759,20 +997,23 @@ export class ProductsService {
     product: ProductWithRelations;
     actorUserId: string;
     action:
-      | 'liked'
-      | 'unliked'
-      | 'commented'
-      | 'shared'
-      | 'updated'
-      | 'availability_changed';
+      | "liked"
+      | "unliked"
+      | "commented"
+      | "shared"
+      | "updated"
+      | "availability_changed";
     comment?: Record<string, unknown>;
   }) {
     this.conversationsRealtimeGateway.emitProductEvent({
-      type: 'product:updated',
+      type: "product:updated",
       productId: args.product.id,
       actorUserId: args.actorUserId,
       action: args.action,
-      product: this.toEntity(args.product) as unknown as Record<string, unknown>,
+      product: this.toEntity(args.product) as unknown as Record<
+        string,
+        unknown
+      >,
       comment: args.comment ?? null,
     });
   }
@@ -781,11 +1022,19 @@ export class ProductsService {
     limit: number;
     skip: number;
     categorySlug?: string;
+    userLocationLabel?: string;
+    userLocationLatitude?: number;
+    userLocationLongitude?: number;
   }) {
     const limit = Number.isFinite(params.limit)
       ? Math.min(Math.max(params.limit, 1), 30)
       : 10;
     const skip = Number.isFinite(params.skip) ? Math.max(params.skip, 0) : 0;
+    const locationContext = this.buildLocationContext(params);
+    const locationCandidateTake = Math.min(
+      Math.max(skip + limit * 4, limit * 2, 80),
+      240,
+    );
 
     const where = {
       isAvailable: true,
@@ -798,40 +1047,61 @@ export class ProductsService {
         : {}),
     };
 
-    const [items, total] = await Promise.all([
-      this.prisma.product.findMany({
-        where,
-        include: {
-          category: true,
-          _count: {
-            select: {
-              likes: true,
-              comments: true,
-              shares: true,
-            },
+    const productQuery = {
+      where,
+      include: {
+        category: true,
+        _count: {
+          select: {
+            likes: true,
+            comments: true,
+            shares: true,
           },
-          productImages: {
+        },
+        productImages: {
+          orderBy: {
+            sortOrder: "asc" as const,
+          },
+        },
+        sellerProfile: {
+          include: {
+            user: true,
+          },
+        },
+      },
+    };
+
+    const [items, total] = locationContext
+      ? await Promise.all([
+          this.prisma.product.findMany({
+            ...productQuery,
             orderBy: {
-              sortOrder: 'asc',
+              createdAt: "desc",
             },
-          },
-          sellerProfile: {
-            include: {
-              user: true,
+            take: locationCandidateTake,
+          }),
+          this.prisma.product.count({ where }),
+        ])
+      : await Promise.all([
+          this.prisma.product.findMany({
+            ...productQuery,
+            orderBy: {
+              createdAt: "desc",
             },
-          },
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-        take: limit,
-        skip,
-      }),
-      this.prisma.product.count({ where }),
-    ]);
+            take: limit,
+            skip,
+          }),
+          this.prisma.product.count({ where }),
+        ]);
+
+    const pagedItems = locationContext
+      ? this.rankProductsByLocation(items, locationContext)
+          .slice(skip, skip + limit)
+          .map((candidate) => candidate.product)
+      : items;
 
     return {
-      products: items.map((product) => this.toEntity(product)),
+      products: pagedItems.map((product) => this.toEntity(product)),
       total,
       limit,
       skip,
@@ -852,7 +1122,7 @@ export class ProductsService {
         },
         productImages: {
           orderBy: {
-            sortOrder: 'asc',
+            sortOrder: "asc",
           },
         },
         sellerProfile: {
@@ -864,7 +1134,7 @@ export class ProductsService {
     });
 
     if (!product) {
-      throw new NotFoundException('Product not found');
+      throw new NotFoundException("Product not found");
     }
 
     return this.toEntity(product);
@@ -882,7 +1152,7 @@ export class ProductsService {
       });
 
       if (!category) {
-        throw new NotFoundException('Category not found');
+        throw new NotFoundException("Category not found");
       }
 
       return category;
@@ -893,19 +1163,21 @@ export class ProductsService {
 
     if (!rawCategoryName && !rawCategorySlug) {
       throw new BadRequestException(
-        'categoryId, categorySlug or categoryName is required.',
+        "categoryId, categorySlug or categoryName is required.",
       );
     }
 
-    const normalizedSlug = this.toSlug(rawCategorySlug ?? rawCategoryName ?? '');
+    const normalizedSlug = this.toSlug(
+      rawCategorySlug ?? rawCategoryName ?? "",
+    );
     const category = await this.prisma.category.findFirst({
       where: {
         OR: [
           rawCategoryName != null && rawCategoryName.length > 0
-            ? { name: { equals: rawCategoryName, mode: 'insensitive' } }
+            ? { name: { equals: rawCategoryName, mode: "insensitive" } }
             : undefined,
           normalizedSlug.length > 0
-            ? { slug: { equals: normalizedSlug, mode: 'insensitive' } }
+            ? { slug: { equals: normalizedSlug, mode: "insensitive" } }
             : undefined,
         ].filter(Boolean) as Prisma.CategoryWhereInput[],
       },
@@ -919,12 +1191,15 @@ export class ProductsService {
       return this.prisma.category.create({
         data: {
           name: rawCategoryName,
-          slug: normalizedSlug.length > 0 ? normalizedSlug : this.toSlug(rawCategoryName),
+          slug:
+            normalizedSlug.length > 0
+              ? normalizedSlug
+              : this.toSlug(rawCategoryName),
         },
       });
     }
 
-    throw new NotFoundException('Category not found');
+    throw new NotFoundException("Category not found");
   }
 
   private async resolveProductImageUrls(
@@ -965,7 +1240,7 @@ export class ProductsService {
       return fallbackImageUrls;
     }
 
-    throw new BadRequestException('A product image is required.');
+    throw new BadRequestException("A product image is required.");
   }
 
   private buildOrderedImageUrls(
@@ -990,7 +1265,9 @@ export class ProductsService {
           const uploadIndex = Number(uploadedTokenMatch[1]);
           const uploadedImageUrl = uploadedImageUrls[uploadIndex];
           if (!uploadedImageUrl) {
-            throw new BadRequestException('Invalid uploaded image order payload.');
+            throw new BadRequestException(
+              "Invalid uploaded image order payload.",
+            );
           }
 
           return uploadedImageUrl;
@@ -1004,7 +1281,7 @@ export class ProductsService {
           return normalizedToken;
         }
 
-        throw new BadRequestException('Invalid retained image payload.');
+        throw new BadRequestException("Invalid retained image payload.");
       })
       .filter((imageUrl): imageUrl is string => imageUrl != null);
 
@@ -1020,12 +1297,14 @@ export class ProductsService {
     try {
       const parsedPayload = JSON.parse(normalizedPayload);
       if (!Array.isArray(parsedPayload)) {
-        throw new Error('Image order payload is not an array');
+        throw new Error("Image order payload is not an array");
       }
 
-      return parsedPayload.filter((token): token is string => typeof token === 'string');
+      return parsedPayload.filter(
+        (token): token is string => typeof token === "string",
+      );
     } catch {
-      throw new BadRequestException('Invalid image order payload.');
+      throw new BadRequestException("Invalid image order payload.");
     }
   }
 
@@ -1033,8 +1312,8 @@ export class ProductsService {
     return value
       .toLowerCase()
       .trim()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
   }
 
   private async findProductWithRelations(productId: string) {
@@ -1051,7 +1330,7 @@ export class ProductsService {
         },
         productImages: {
           orderBy: {
-            sortOrder: 'asc',
+            sortOrder: "asc",
           },
         },
         sellerProfile: {
@@ -1063,7 +1342,7 @@ export class ProductsService {
     });
 
     if (!product) {
-      throw new NotFoundException('Product not found');
+      throw new NotFoundException("Product not found");
     }
 
     return product;
@@ -1091,12 +1370,12 @@ export class ProductsService {
             },
             productImages: {
               orderBy: {
-                sortOrder: 'asc',
+                sortOrder: "asc",
               },
             },
           },
           orderBy: {
-            createdAt: 'desc',
+            createdAt: "desc",
           },
         },
       },
@@ -1123,7 +1402,7 @@ export class ProductsService {
     ]);
 
     this.conversationsRealtimeGateway.emitProfileEvent(sellerProfile.userId, {
-      type: 'profile:updated',
+      type: "profile:updated",
       userId: sellerProfile.userId,
       profile: {
         id: sellerProfile.user.id,
@@ -1167,9 +1446,10 @@ export class ProductsService {
   }
 
   private toEntity(product: ProductWithRelations): ProductEntity {
-    const imageUrls = product.productImages.length > 0
-      ? product.productImages.map((image) => image.imageUrl)
-      : [product.imageUrl];
+    const imageUrls =
+      product.productImages.length > 0
+        ? product.productImages.map((image) => image.imageUrl)
+        : [product.imageUrl];
 
     return {
       id: product.id,
@@ -1185,7 +1465,7 @@ export class ProductsService {
         name: product.sellerProfile.studioName,
         avatarUrl:
           product.sellerProfile.user.avatarUrl ??
-          'https://i.pravatar.cc/240?img=12',
+          "https://i.pravatar.cc/240?img=12",
         isSellerCertified: product.sellerProfile.user.isSellerCertified,
       },
       images: imageUrls,
@@ -1195,6 +1475,18 @@ export class ProductsService {
       commentsCount: product._count.comments,
       sharesCount: product._count.shares,
       createdAt: product.createdAt.toISOString(),
+      city: product.sellerProfile.city ?? undefined,
+      locationLabel: this.joinNonEmpty([
+        product.sellerProfile.city,
+        product.sellerProfile.country,
+        product.sellerProfile.user.locationLabel,
+      ]),
+      locationLatitude: this.toNullableNumber(
+        product.sellerProfile.user.locationLatitude,
+      ),
+      locationLongitude: this.toNullableNumber(
+        product.sellerProfile.user.locationLongitude,
+      ),
     };
   }
 }

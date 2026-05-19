@@ -81,6 +81,8 @@ class ImageViewerPage extends StatefulWidget {
   final List<ImageViewerEntry>? entries;
   final VoidCallback? onSellerTap;
   final VoidCallback? onSellerMessageTap;
+  final VoidCallback? onCommentTap;
+  final VoidCallback? onShareTap;
   final Future<void> Function(String imageUrl)? onDownloadImage;
 
   const ImageViewerPage({
@@ -93,6 +95,8 @@ class ImageViewerPage extends StatefulWidget {
     this.entries,
     this.onSellerTap,
     this.onSellerMessageTap,
+    this.onCommentTap,
+    this.onShareTap,
     this.onDownloadImage,
   });
 
@@ -107,7 +111,7 @@ class _ImageViewerPageState extends State<ImageViewerPage>
   final Map<int, int> _entryImageIndexes = <int, int>{};
   late int _currentEntryIndex;
   late int _currentIndex;
-  int _commentCount = 64;
+  int _commentCount = 0;
   bool _showEntrySkeleton = true;
   bool _showChrome = true;
   bool _isDescriptionExpanded = false;
@@ -135,7 +139,7 @@ class _ImageViewerPageState extends State<ImageViewerPage>
         _parseCompactCount(
           _entries[_currentEntryIndex].overlay?.commentsCount,
         ) ??
-        64;
+        0;
     _entryPageController = PageController(initialPage: _currentEntryIndex);
     _prefetchViewerNeighborhood(_currentEntryIndex, _currentIndex);
     Future.delayed(const Duration(milliseconds: 180), () {
@@ -211,32 +215,6 @@ class _ImageViewerPageState extends State<ImageViewerPage>
                 return _buildEntryPage(context, entryIndex);
               },
             ),
-          Positioned.fill(
-            child: AnimatedOpacity(
-              opacity: _showChrome ? 1 : 0,
-              duration: const Duration(milliseconds: 180),
-              child: IgnorePointer(
-                ignoring: !_showChrome,
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          appColors.scrimSoft,
-                          Colors.transparent,
-                          Colors.transparent,
-                          appColors.scrimStrong,
-                        ],
-                        stops: const [0, 0.18, 0.52, 1],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
           AnimatedOpacity(
             opacity: _showChrome ? 1 : 0,
             duration: const Duration(milliseconds: 180),
@@ -331,10 +309,12 @@ class _ImageViewerPageState extends State<ImageViewerPage>
                     onSellerTap: widget.onSellerTap,
                     onSellerMessageTap: widget.onSellerMessageTap,
                     onDescriptionTap: _toggleDescription,
-                    onCommentTap: _showCommentsSheet,
-                    onShareTap: _showShareSuggestions,
+                    onCommentTap: widget.onCommentTap ?? _showCommentsSheet,
+                    onShareTap: widget.onShareTap ?? _showShareSuggestions,
                     isDescriptionExpanded: _isDescriptionExpanded,
-                    commentCountLabel: _commentCount.toString(),
+                    commentCountLabel: _commentCount <= 0
+                        ? ''
+                        : _commentCount.toString(),
                     indexLabel: _buildCounterLabel(),
                   ),
                 ),
@@ -397,7 +377,7 @@ class _ImageViewerPageState extends State<ImageViewerPage>
       _currentEntryIndex = entryIndex;
       _currentIndex = nextImageIndex;
       _isDescriptionExpanded = false;
-      _commentCount = nextCommentCount ?? 64;
+      _commentCount = nextCommentCount ?? 0;
     });
 
     _prefetchViewerNeighborhood(entryIndex, nextImageIndex);
@@ -529,7 +509,32 @@ class _ImageViewerPageState extends State<ImageViewerPage>
   }
 
   void _showShareSuggestions() {
-    showAppShareSheet(context);
+    final activeEntry = _entries[_currentEntryIndex];
+    final imageIndex = _safeImageIndex(_currentEntryIndex);
+    final imageUrl = activeEntry.imageUrls.isEmpty
+        ? ''
+        : activeEntry.imageUrls[imageIndex].trim();
+    final overlay = activeEntry.overlay;
+    final parts = <String>['Je te partage cette image.'];
+    final title = overlay?.title?.trim() ?? '';
+    final description = overlay?.description?.trim() ?? '';
+
+    if (title.isNotEmpty) {
+      parts.add(title);
+    }
+    if (description.isNotEmpty) {
+      parts.add(description);
+    }
+    if (imageUrl.isNotEmpty) {
+      parts.add(imageUrl);
+    }
+
+    showAppShareSheet(
+      context,
+      messageContent: parts.join('\n'),
+      selectionHint: 'Cochez pour partager cette image',
+      successLabel: 'Image',
+    );
   }
 }
 
@@ -734,11 +739,9 @@ class _ImageViewerOverlay extends StatelessWidget {
     final showMessageAction = !overlay.isUserProfileImage;
     final showLikeAction = !overlay.isUserProfileImage;
     final showCommentAction = !overlay.isUserProfileImage;
-    final actionLikes = likesCount?.isNotEmpty == true ? likesCount! : '6 374';
+    final actionLikes = likesCount?.isNotEmpty == true ? likesCount! : '';
     final actionComments = commentCountLabel;
-    final actionShares = sharesCount?.isNotEmpty == true
-        ? sharesCount!
-        : 'Partager';
+    final actionShares = sharesCount?.isNotEmpty == true ? sharesCount! : '';
 
     return Row(
       mainAxisAlignment: showInfoCard

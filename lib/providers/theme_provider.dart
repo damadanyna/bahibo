@@ -220,7 +220,6 @@ class ThemeProvider extends ChangeNotifier {
       scaffoldBackgroundColor: appColors.backgroundBase,
       cardColor: appColors.panelBackground_,
       canvasColor: appColors.backgroundBase,
-      dialogBackgroundColor: appColors.panelBackground,
       extensions: <ThemeExtension<dynamic>>[appColors],
     );
 
@@ -250,6 +249,7 @@ class ThemeProvider extends ChangeNotifier {
         ),
         behavior: SnackBarBehavior.floating,
       ),
+      dialogTheme: DialogThemeData(backgroundColor: appColors.panelBackground),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: appColors.inputFill,

@@ -161,32 +161,6 @@ class _PrivateImageViewerPageState extends State<PrivateImageViewerPage>
                 );
               },
             ),
-          Positioned.fill(
-            child: AnimatedOpacity(
-              opacity: _showChrome ? 1 : 0,
-              duration: const Duration(milliseconds: 180),
-              child: IgnorePointer(
-                ignoring: !_showChrome,
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          appColors.scrimSoft,
-                          Colors.transparent,
-                          Colors.transparent,
-                          appColors.scrimStrong,
-                        ],
-                        stops: const [0, 0.18, 0.52, 1],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
           AnimatedOpacity(
             opacity: _showChrome ? 1 : 0,
             duration: const Duration(milliseconds: 180),

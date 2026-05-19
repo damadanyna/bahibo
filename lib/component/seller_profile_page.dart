@@ -327,57 +327,11 @@ class _SellerProfilePageState extends State<SellerProfilePage>
           Positioned(
             top: MediaQuery.of(context).padding.top + 16,
             left: 24,
-            child: AppBackButton(onTap: () => _showExitDialog(context)),
+            child: AppBackButton(onTap: () => Navigator.of(context).pop()),
           ),
           if (isOffline) const AppOfflineBanner(),
         ],
       ),
-    );
-  }
-
-  Future<void> _showExitDialog(BuildContext context) async {
-    final theme = Theme.of(context);
-    final appColors = theme.appColors;
-
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          backgroundColor: theme.cardColor,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-          ),
-          title: Text(
-            'Quitter ce profil ?',
-            style: TextStyle(
-              color: theme.colorScheme.onSurface,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          content: Text(
-            'Vous allez revenir a la page precedente.',
-            style: TextStyle(color: appColors.mutedText, height: 1.4),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Annuler'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-                Navigator.of(context).pop();
-              },
-              style: ElevatedButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Text('Quitter'),
-            ),
-          ],
-        );
-      },
     );
   }
 
@@ -671,8 +625,8 @@ class _SellerProfilePageState extends State<SellerProfilePage>
         final isOnline = livePresence == true;
         final presenceLabel = _presenceStatusLabel(isOnline);
         final outlineColor = theme.brightness == Brightness.dark
-            ? Colors.white.withOpacity(0.08)
-            : Colors.black.withOpacity(0.06);
+            ? Colors.white.withValues(alpha: 0.08)
+            : Colors.black.withValues(alpha: 0.06);
         final locationLabel = profile.headline.trim().isNotEmpty
             ? profile.headline.trim()
             : 'Localisation indisponible';
@@ -727,8 +681,8 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                                     end: Alignment.bottomCenter,
                                     colors: [
                                       Colors.transparent,
-                                      Colors.black.withOpacity(0.08),
-                                      Colors.black.withOpacity(0.34),
+                                      Colors.black.withValues(alpha: 0.08),
+                                      Colors.black.withValues(alpha: 0.34),
                                     ],
                                     stops: const [0, 0.72, 1],
                                   ),
@@ -768,15 +722,15 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                             child: Container(
                               padding: const EdgeInsets.all(4),
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.18),
+                                color: Colors.white.withValues(alpha: 0.18),
                                 shape: BoxShape.circle,
                                 border: Border.all(
-                                  color: Colors.white.withOpacity(0.78),
+                                  color: Colors.white.withValues(alpha: 0.78),
                                   width: 2,
                                 ),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withOpacity(0.24),
+                                    color: Colors.black.withValues(alpha: 0.24),
                                     blurRadius: 18,
                                     offset: const Offset(0, 8),
                                   ),
@@ -874,7 +828,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                           border: Border.all(color: outlineColor),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.06),
+                              color: Colors.black.withValues(alpha: 0.06),
                               blurRadius: 16,
                               offset: const Offset(0, 8),
                             ),
@@ -1010,10 +964,10 @@ class _SellerProfilePageState extends State<SellerProfilePage>
     final isDark = theme.brightness == Brightness.dark;
     final tileColor = isDark
         ? appColors.heroSurface
-        : theme.colorScheme.surface.withOpacity(0.72);
+        : theme.colorScheme.surface.withValues(alpha: 0.72);
     final iconBoxColor = isDark
         ? appColors.heroBorder
-        : theme.colorScheme.surfaceContainerHighest.withOpacity(0.9);
+        : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.9);
     final iconColor = isDark
         ? appColors.heroForeground
         : theme.colorScheme.onSurfaceVariant;
@@ -1312,8 +1266,8 @@ class _SellerProfilePageState extends State<SellerProfilePage>
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: theme.brightness == Brightness.dark
-                ? Colors.white.withOpacity(0.05)
-                : Colors.black.withOpacity(0.05),
+                ? Colors.white.withValues(alpha: 0.05)
+                : Colors.black.withValues(alpha: 0.05),
           ),
         ),
         child: Column(
@@ -1323,7 +1277,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
               width: 38,
               height: 38,
               decoration: BoxDecoration(
-                color: accent.withOpacity(0.12),
+                color: accent.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(icon, color: accent),

@@ -62,7 +62,6 @@ class PushNotificationService {
   static bool _initialized = false;
   static bool _isNavigatingFromNotification = false;
   static Map<String, String>? _pendingNotificationData;
-  static String? _visibleConversationId;
 
   static bool get isSupportedPlatform {
     if (kIsWeb) {
@@ -210,36 +209,15 @@ class PushNotificationService {
 
   static void setVisibleConversation(String? conversationId) {
     final normalized = conversationId?.trim();
-    _visibleConversationId = normalized == null || normalized.isEmpty
-        ? null
-        : normalized;
+    if (normalized == null || normalized.isEmpty) {
+      return;
+    }
   }
 
   static bool _shouldShowForegroundNotification(RemoteMessage message) {
-    final visibleConversationId = _visibleConversationId;
-    if (visibleConversationId == null) {
-      return true;
-    }
-
-    final notificationType = message.data['type']
-        ?.toString()
-        .trim()
-        .toLowerCase();
-    final messageConversationId = message.data['conversationId']
-        ?.toString()
-        .trim();
-    final isConversationNotification =
-        messageConversationId != null &&
-        messageConversationId.isNotEmpty &&
-        (notificationType == null ||
-            notificationType.isEmpty ||
-            notificationType == 'chat_message');
-
-    if (!isConversationNotification) {
-      return true;
-    }
-
-    return messageConversationId != visibleConversationId;
+    final notificationType =
+        message.data['type']?.toString().trim().toLowerCase() ?? '';
+    return notificationType != 'user_feedback';
   }
 
   static void _handleOpenedAppMessage(RemoteMessage message) {

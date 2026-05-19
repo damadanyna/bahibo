@@ -22,4 +22,8 @@ export interface ProductEntity {
   commentsCount: number;
   sharesCount: number;
   createdAt: string;
+  city?: string;
+  locationLabel?: string;
+  locationLatitude?: number | null;
+  locationLongitude?: number | null;
 }

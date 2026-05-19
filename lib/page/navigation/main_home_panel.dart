@@ -51,6 +51,9 @@ class _MainHomePanelState extends State<MainHomePanel>
   bool _isSeller = false;
   bool _isLoadingFollowedPeople = true;
   String _currentDisplayName = 'Boutique BANAY';
+  String _viewerLocationLabel = '';
+  double? _viewerLocationLatitude;
+  double? _viewerLocationLongitude;
 
   bool _isProductAvailable(Map<String, dynamic> product) {
     final value = product['isAvailable'];
@@ -61,12 +64,18 @@ class _MainHomePanelState extends State<MainHomePanel>
   void initState() {
     super.initState();
     initializePageRefresh();
-    _loadCurrentUserRole();
-    fetchFollowedPeople();
-    fetchProducts();
-    fetchNotifications();
+    unawaited(_bootstrapHomePanel());
     _bindRealtimeNotifications();
     _scrollController.addListener(_onScroll);
+  }
+
+  Future<void> _bootstrapHomePanel() async {
+    await _loadCurrentUserRole();
+    await Future.wait([
+      fetchFollowedPeople(),
+      fetchProducts(),
+      fetchNotifications(),
+    ]);
   }
 
   @override
@@ -258,11 +267,17 @@ class _MainHomePanelState extends State<MainHomePanel>
       final role =
           (user['role'] as String?)?.trim().toUpperCase() ?? 'CUSTOMER';
       final displayName = (user['displayName'] as String?)?.trim();
+      final locationLabel = (user['locationLabel'] as String?)?.trim() ?? '';
+      final locationLatitude = (user['locationLatitude'] as num?)?.toDouble();
+      final locationLongitude = (user['locationLongitude'] as num?)?.toDouble();
       setState(() {
         _isSeller = role == 'SELLER';
         _currentDisplayName = displayName != null && displayName.isNotEmpty
             ? displayName
             : _currentDisplayName;
+        _viewerLocationLabel = locationLabel;
+        _viewerLocationLatitude = locationLatitude;
+        _viewerLocationLongitude = locationLongitude;
       });
     } catch (_) {}
   }
@@ -275,6 +290,9 @@ class _MainHomePanelState extends State<MainHomePanel>
       final data = await _catalogApiService.fetchProducts(
         limit: limit,
         skip: skip,
+        userLocationLabel: _viewerLocationLabel,
+        userLocationLatitude: _viewerLocationLatitude,
+        userLocationLongitude: _viewerLocationLongitude,
       );
       final List<Map<String, dynamic>> newProducts =
           ((data['products'] as List?) ?? const [])
@@ -543,6 +561,10 @@ class _MainHomePanelState extends State<MainHomePanel>
         );
       }
 
+      if (!mounted) {
+        return;
+      }
+
       await Navigator.of(context).push<bool>(
         MaterialPageRoute(
           builder: (_) => LivePreviewPage(
@@ -663,7 +685,7 @@ class _MainHomePanelState extends State<MainHomePanel>
                   controller: titleController,
                   primary: accentColor,
                   panelColor: panelColor,
-                  borderColor: accentColor.withOpacity(0.12),
+                  borderColor: accentColor.withValues(alpha: 0.12),
                   hintText: 'Titre du live',
                   leadingIcon: Icon(
                     Icons.mic_external_on_outlined,
@@ -675,7 +697,7 @@ class _MainHomePanelState extends State<MainHomePanel>
                   controller: categoryController,
                   primary: accentColor,
                   panelColor: panelColor,
-                  borderColor: accentColor.withOpacity(0.12),
+                  borderColor: accentColor.withValues(alpha: 0.12),
                   hintText: 'Theme ou categorie',
                   leadingIcon: Icon(Icons.sell_outlined, color: accentColor),
                 ),

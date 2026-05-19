@@ -321,15 +321,14 @@ class _UserListPageState extends State<UserListPage>
       try {
         shouldRemove = await onTrailingTap();
       } finally {
-        if (!mounted) {
-          return;
+        if (mounted) {
+          setState(() {
+            _pendingTrailingActions.remove(trailingActionKey);
+            if (shouldRemove) {
+              _users.remove(user);
+            }
+          });
         }
-        setState(() {
-          _pendingTrailingActions.remove(trailingActionKey);
-          if (shouldRemove) {
-            _users.remove(user);
-          }
-        });
       }
     }
 
@@ -483,4 +482,3 @@ class _UserListPageState extends State<UserListPage>
     );
   }
 }
-

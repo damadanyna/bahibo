@@ -141,7 +141,7 @@ class _AttachmentActionTile extends StatelessWidget {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: primary.withOpacity(0.12),
+                  color: primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(icon, color: primary),
@@ -177,4 +177,3 @@ class _AttachmentActionTile extends StatelessWidget {
     );
   }
 }
-

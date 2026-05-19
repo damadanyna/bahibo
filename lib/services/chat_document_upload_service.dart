@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/conversations_api_service.dart';

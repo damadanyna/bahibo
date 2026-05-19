@@ -11,16 +11,16 @@ import {
   UploadedFiles,
   UseGuards,
   UseInterceptors,
-} from '@nestjs/common';
-import { FileFieldsInterceptor } from '@nestjs/platform-express';
+} from "@nestjs/common";
+import { FileFieldsInterceptor } from "@nestjs/platform-express";
 
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CreateProductCommentDto } from './dto/create-product-comment.dto';
-import { CreateProductDto } from './dto/create-product.dto';
-import { UpdateProductDto } from './dto/update-product.dto';
-import { ProductsService } from './products.service';
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { CreateProductCommentDto } from "./dto/create-product-comment.dto";
+import { CreateProductDto } from "./dto/create-product.dto";
+import { UpdateProductDto } from "./dto/update-product.dto";
+import { ProductsService } from "./products.service";
 
-@Controller('products')
+@Controller("products")
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
@@ -28,18 +28,15 @@ export class ProductsController {
     image?: Express.Multer.File[];
     images?: Express.Multer.File[];
   }) {
-    return [
-      ...(uploadedFiles?.image ?? []),
-      ...(uploadedFiles?.images ?? []),
-    ];
+    return [...(uploadedFiles?.image ?? []), ...(uploadedFiles?.images ?? [])];
   }
 
   @UseGuards(JwtAuthGuard)
   @Post()
   @UseInterceptors(
     FileFieldsInterceptor([
-      { name: 'image', maxCount: 1 },
-      { name: 'images', maxCount: 10 },
+      { name: "image", maxCount: 1 },
+      { name: "images", maxCount: 10 },
     ]),
   )
   async create(
@@ -53,7 +50,7 @@ export class ProductsController {
   ) {
     return {
       success: true,
-      message: 'Product created successfully',
+      message: "Product created successfully",
       data: await this.productsService.create(
         req.user,
         dto,
@@ -63,16 +60,16 @@ export class ProductsController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Patch(':id')
+  @Patch(":id")
   @UseInterceptors(
     FileFieldsInterceptor([
-      { name: 'image', maxCount: 1 },
-      { name: 'images', maxCount: 10 },
+      { name: "image", maxCount: 1 },
+      { name: "images", maxCount: 10 },
     ]),
   )
   async update(
     @Req() req: { user: { userId: string; role: string } },
-    @Param('id') id: string,
+    @Param("id") id: string,
     @Body() dto: UpdateProductDto,
     @UploadedFiles()
     uploadedFiles?: {
@@ -82,7 +79,7 @@ export class ProductsController {
   ) {
     return {
       success: true,
-      message: 'Product updated successfully',
+      message: "Product updated successfully",
       data: await this.productsService.update(
         req.user,
         id,
@@ -93,117 +90,129 @@ export class ProductsController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Delete(':id')
+  @Delete(":id")
   async remove(
     @Req() req: { user: { userId: string; role: string } },
-    @Param('id') id: string,
+    @Param("id") id: string,
   ) {
     return {
       success: true,
-      message: 'Product deleted successfully',
+      message: "Product deleted successfully",
       data: await this.productsService.remove(req.user, id),
     };
   }
 
   @Get()
   async findAll(
-    @Query('limit') limit?: string,
-    @Query('skip') skip?: string,
-    @Query('categorySlug') categorySlug?: string,
+    @Query("limit") limit?: string,
+    @Query("skip") skip?: string,
+    @Query("categorySlug") categorySlug?: string,
+    @Query("userLocationLabel") userLocationLabel?: string,
+    @Query("userLocationLatitude") userLocationLatitude?: string,
+    @Query("userLocationLongitude") userLocationLongitude?: string,
   ) {
     return {
       success: true,
-      message: 'Products fetched successfully',
+      message: "Products fetched successfully",
       data: await this.productsService.findAll({
-        limit: Number(limit ?? '10'),
-        skip: Number(skip ?? '0'),
+        limit: Number(limit ?? "10"),
+        skip: Number(skip ?? "0"),
         categorySlug,
+        userLocationLabel,
+        userLocationLatitude:
+          userLocationLatitude != null
+            ? Number(userLocationLatitude)
+            : undefined,
+        userLocationLongitude:
+          userLocationLongitude != null
+            ? Number(userLocationLongitude)
+            : undefined,
       }),
     };
   }
 
-  @Get(':id')
-  async findOne(@Param('id') id: string) {
+  @Get(":id")
+  async findOne(@Param("id") id: string) {
     return {
       success: true,
-      message: 'Product fetched successfully',
+      message: "Product fetched successfully",
       data: await this.productsService.findOne(id),
     };
   }
 
-  @Get(':id/comments')
+  @Get(":id/comments")
   async findComments(
-    @Param('id') id: string,
+    @Param("id") id: string,
   ): Promise<{ success: true; message: string; data: unknown }> {
     return {
       success: true,
-      message: 'Product comments fetched successfully',
+      message: "Product comments fetched successfully",
       data: await this.productsService.findComments(id),
     };
   }
 
   @UseGuards(JwtAuthGuard)
-  @Get(':id/liked')
+  @Get(":id/liked")
   async hasLikedProduct(
     @Req() req: { user: { userId: string } },
-    @Param('id') id: string,
+    @Param("id") id: string,
   ) {
     return {
       success: true,
-      message: 'Product like status fetched successfully',
+      message: "Product like status fetched successfully",
       data: await this.productsService.hasLikedProduct(req.user.userId, id),
     };
   }
 
   @UseGuards(JwtAuthGuard)
-  @Post(':id/like')
+  @Post(":id/like")
   async likeProduct(
     @Req() req: { user: { userId: string } },
-    @Param('id') id: string,
+    @Param("id") id: string,
   ) {
     return {
       success: true,
-      message: 'Product liked successfully',
+      message: "Product liked successfully",
       data: await this.productsService.likeProduct(req.user.userId, id),
     };
   }
 
   @UseGuards(JwtAuthGuard)
-  @Post(':id/unlike')
+  @Post(":id/unlike")
   async unlikeProduct(
     @Req() req: { user: { userId: string } },
-    @Param('id') id: string,
+    @Param("id") id: string,
   ) {
     return {
       success: true,
-      message: 'Product unliked successfully',
+      message: "Product unliked successfully",
       data: await this.productsService.unlikeProduct(req.user.userId, id),
     };
   }
 
   @UseGuards(JwtAuthGuard)
-  @Post(':id/comments')
+  @Post(":id/comments")
   async addComment(
     @Req() req: { user: { userId: string } },
-    @Param('id') id: string,
+    @Param("id") id: string,
     @Body() dto: CreateProductCommentDto,
   ): Promise<{ success: true; message: string; data: unknown }> {
     return {
       success: true,
-      message: 'Product comment added successfully',
+      message: "Product comment added successfully",
       data: await this.productsService.addComment(req.user.userId, id, dto),
     };
   }
 
   @UseGuards(JwtAuthGuard)
-  @Post(':id/share')
+  @Post(":id/share")
   async shareProduct(
     @Req() req: { user: { userId: string } },
-    @Param('id') id: string,
+    @Param("id") id: string,
   ) {
     return {
       success: true,
-      message: 'Product share recorded successfully',
+      message: "Product share recorded successfully",
       data: await this.productsService.shareProduct(req.user.userId, id),
     };
   }

@@ -43,6 +43,10 @@ class AppApiClient {
     );
   }
 
+  Future<http.Response> getRawUri(Uri uri, {bool authenticated = false}) {
+    return _requestRawWithRetry(uri, authenticated: authenticated);
+  }
+
   Future<dynamic> post(
     String path, {
     Map<String, dynamic>? body,
@@ -101,6 +105,31 @@ class AppApiClient {
           AppLogger.warning(
             _tag,
             'Retry $attempt/$_maxRetries for $method $path after ${backoff.inMilliseconds}ms',
+          );
+          await Future<void>.delayed(backoff);
+          continue;
+        }
+        rethrow;
+      }
+    }
+  }
+
+  Future<http.Response> _requestRawWithRetry(
+    Uri uri, {
+    bool authenticated = false,
+  }) async {
+    int attempt = 0;
+    while (true) {
+      try {
+        return await _requestRaw(uri, authenticated: authenticated);
+      } on AppApiException catch (e) {
+        final isNetworkError = e.statusCode == null;
+        if (isNetworkError && attempt < _maxRetries) {
+          attempt++;
+          final backoff = Duration(milliseconds: 400 * attempt);
+          AppLogger.warning(
+            _tag,
+            'Retry $attempt/$_maxRetries for raw GET $uri after ${backoff.inMilliseconds}ms',
           );
           await Future<void>.delayed(backoff);
           continue;
@@ -200,6 +229,53 @@ class AppApiClient {
     }
 
     return decoded['data'];
+  }
+
+  Future<http.Response> _requestRaw(
+    Uri uri, {
+    bool authenticated = false,
+    bool retryOnUnauthorized = true,
+  }) async {
+    final headers = <String, String>{'Accept': '*/*'};
+
+    if (authenticated) {
+      final token = await _sessionStorage.getAccessToken();
+      if (token == null || token.isEmpty) {
+        throw AppApiException('Session utilisateur introuvable');
+      }
+      headers['Authorization'] = 'Bearer $token';
+    }
+
+    AppLogger.debug(_tag, 'RAW GET $uri');
+
+    late final http.Response response;
+    try {
+      response = await http.get(uri, headers: headers).timeout(_requestTimeout);
+    } on SocketException catch (e) {
+      AppLogger.warning(_tag, 'Network unreachable for raw GET $uri', e);
+      throw AppApiException('Impossible de joindre le serveur BANAY');
+    } on HttpException catch (e) {
+      AppLogger.warning(_tag, 'HTTP error for raw GET $uri', e);
+      throw AppApiException('Impossible de joindre le serveur BANAY');
+    } catch (e) {
+      AppLogger.warning(_tag, 'Request failed for raw GET $uri', e);
+      throw AppApiException('Impossible de joindre le serveur BANAY');
+    }
+
+    AppLogger.debug(_tag, '${response.statusCode} RAW GET $uri');
+
+    if (response.statusCode == 401 && authenticated && retryOnUnauthorized) {
+      final refreshed = await _refreshSession();
+      if (refreshed) {
+        return _requestRaw(
+          uri,
+          authenticated: authenticated,
+          retryOnUnauthorized: false,
+        );
+      }
+    }
+
+    return response;
   }
 
   Future<bool> _refreshSession() async {

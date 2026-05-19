@@ -85,23 +85,34 @@ class ProductCard extends StatefulWidget {
 
   String resolveSellerName(Map<String, dynamic> resolvedProduct) {
     final seller = resolveSeller(resolvedProduct);
-    final rawName = seller['name'];
-    if (rawName is String && rawName.trim().isNotEmpty) {
-      return rawName.trim();
+    final candidates = <Object?>[
+      seller['name'],
+      seller['displayName'],
+      seller['studioName'],
+      seller['shopName'],
+      seller['username'],
+      seller['user']?['displayName'],
+      resolvedProduct['sellerName'],
+      resolvedProduct['vendorName'],
+      resolvedProduct['displayName'],
+    ];
+
+    for (final candidate in candidates) {
+      final value = candidate?.toString().trim() ?? '';
+      if (value.isNotEmpty) {
+        return value;
+      }
     }
 
-    final fallbackName = resolvedProduct['sellerName'];
-    if (fallbackName is String && fallbackName.trim().isNotEmpty) {
-      return fallbackName.trim();
-    }
-
-    return 'Vendeur Bahibo';
+    return 'Vendeur';
   }
 
   String resolveSellerAvatarUrl(Map<String, dynamic> resolvedProduct) {
     final seller = resolveSeller(resolvedProduct);
     final candidates = <Object?>[
       seller['avatarUrl'],
+      seller['profileImageUrl'],
+      seller['user']?['avatarUrl'],
       resolvedProduct['sellerAvatarUrl'],
       resolvedProduct['avatarUrl'],
     ];
@@ -426,25 +437,41 @@ class _ProductCardState extends State<ProductCard> {
 
   Future<void> _shareProduct(Map<String, dynamic> resolvedProduct) async {
     final productId = widget.resolveProductId(resolvedProduct);
-    if (productId.isEmpty || _isShareBusy) {
-      showAppShareSheet(context);
+    final shareContent = _buildShareMessage(resolvedProduct);
+    final productSnapshot = _buildShareProductSnapshot(resolvedProduct);
+    if (_isShareBusy) {
+      return;
+    }
+
+    final sharedCount = await showAppShareSheet(
+      context,
+      messageContent: shareContent,
+      productSnapshot: productSnapshot,
+      selectionHint: 'Cochez pour partager ce produit',
+      successLabel: 'Produit',
+    );
+
+    if (productId.isEmpty || sharedCount <= 0) {
       return;
     }
 
     setState(() => _isShareBusy = true);
     try {
-      final updatedProduct = await _catalogApiService.shareProduct(productId);
-      if (!mounted) {
+      Map<String, dynamic>? updatedProduct;
+      for (var index = 0; index < sharedCount; index++) {
+        updatedProduct = await _catalogApiService.shareProduct(productId);
+      }
+
+      if (!mounted || updatedProduct == null) {
         return;
       }
 
       setState(() {
-        _shareCountOverride = widget.resolveMetricCount(updatedProduct, [
+        _shareCountOverride = widget.resolveMetricCount(updatedProduct!, [
           'sharesCount',
           'shareCount',
         ]);
       });
-      showAppShareSheet(context);
     } on AppApiException catch (error) {
       if (!mounted) {
         return;
@@ -478,6 +505,50 @@ class _ProductCardState extends State<ProductCard> {
           'sharesCount',
           'shareCount',
         ]);
+  }
+
+  String _buildShareMessage(Map<String, dynamic> resolvedProduct) {
+    final title = widget.resolvePrimaryLine(
+      resolvedProduct,
+      widget.resolveCategoryLabel(resolvedProduct),
+      widget.resolveAvailability(resolvedProduct),
+    );
+    final price = (resolvedProduct['price'] as num?)?.toDouble();
+    final priceLabel = price == null ? '' : formatPriceAmount(price);
+
+    final parts = <String>['Je te partage ce produit.'];
+    if (title.trim().isNotEmpty) {
+      parts.add(title.trim());
+    }
+    if (priceLabel.trim().isNotEmpty) {
+      parts.add(priceLabel.trim());
+    }
+
+    return parts.join('\n');
+  }
+
+  Map<String, dynamic> _buildShareProductSnapshot(
+    Map<String, dynamic> resolvedProduct,
+  ) {
+    final images = widget.resolveProductImages(resolvedProduct);
+    final price = (resolvedProduct['price'] as num?)?.toDouble();
+
+    return {
+      'productId': widget.resolveProductId(resolvedProduct),
+      'productTitle': widget.resolvePrimaryLine(
+        resolvedProduct,
+        widget.resolveCategoryLabel(resolvedProduct),
+        widget.resolveAvailability(resolvedProduct),
+      ),
+      'productSubtitle': widget.resolvePriceMeta(
+        widget.resolveCategoryLabel(resolvedProduct),
+        _effectiveLikesCount(resolvedProduct),
+        _effectiveCommentsCount(resolvedProduct),
+        widget.resolveAvailability(resolvedProduct),
+      ),
+      'productPriceLabel': price == null ? '' : formatPriceAmount(price),
+      'productImageUrl': images.isNotEmpty ? images.first : '',
+    };
   }
 
   void _openProduct(
@@ -1156,20 +1227,11 @@ class _ProductCardState extends State<ProductCard> {
   }
 
   Widget _buildSellerAvatar(String avatarUrl, {required String sellerUserId}) {
-    if (avatarUrl.isNotEmpty) {
-      return AppCircleNetworkAvatar(
-        imageUrl: avatarUrl,
-        radius: 24,
-        userId: sellerUserId.isEmpty ? null : sellerUserId,
-        showPresenceBadge: false,
-      );
-    }
-
-    return AppImagePlaceholder(
-      width: 48,
-      height: 48,
-      shape: BoxShape.circle,
-      child: const Icon(Icons.person_rounded, size: 24, color: Colors.white),
+    return AppCircleNetworkAvatar(
+      imageUrl: avatarUrl,
+      radius: 24,
+      userId: sellerUserId.isEmpty ? null : sellerUserId,
+      showPresenceBadge: false,
     );
   }
 

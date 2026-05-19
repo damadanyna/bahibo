@@ -30,6 +30,8 @@ class ProductDetailPage extends StatefulWidget {
 
 class _ProductDetailPageState extends State<ProductDetailPage>
     with AppPageRefreshMixin<ProductDetailPage> {
+  static const String _defaultAvailabilityMessage =
+      'Cet article est toujours disponible ?';
   static const String _sellerName = 'John Doe';
   static const String _sellerBadge = 'En ligne';
   static const String _sellerImageUrl =
@@ -40,10 +42,12 @@ class _ProductDetailPageState extends State<ProductDetailPage>
   late Map<String, dynamic> _productData;
   final TextEditingController _availabilityController = TextEditingController();
   int _likeCount = 0;
-  int _commentCount = 64;
+  int _commentCount = 0;
+  int _shareCount = 0;
   bool _showEntrySkeleton = true;
   bool _isLiked = false;
   bool _isLikeSubmitting = false;
+  bool _isShareSubmitting = false;
   final List<AppCommentItem> _comments = defaultAppComments();
 
   Map<String, dynamic> get product => _productData;
@@ -55,6 +59,8 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     _pageController = PageController();
     _productData = Map<String, dynamic>.from(widget.product);
     _likeCount = _resolveLikeCount(_productData);
+    _commentCount = _resolveCount(_productData, 'commentsCount');
+    _shareCount = _resolveCount(_productData, 'sharesCount');
     Future.delayed(const Duration(milliseconds: 260), () {
       if (!mounted) return;
       setState(() => _showEntrySkeleton = false);
@@ -145,17 +151,29 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     return '$category • $status';
   }
 
-  ChatPage _buildSellerChatPage() {
+  int _resolveCount(Map<String, dynamic> source, String key) {
+    final value = source[key];
+    if (value is num) {
+      return value.toInt();
+    }
+    if (value is String) {
+      return int.tryParse(value.trim()) ?? 0;
+    }
+    return 0;
+  }
+
+  ChatPage _buildSellerChatPage({String? initialMessage}) {
     final images =
         (product['images'] as List?)?.whereType<String>().toList() ??
         const <String>[];
+    final shouldShowProductContextCard = initialMessage != null;
 
     return ChatPage(
       conversationProductId: product['id']?.toString(),
       conversationUserId: _sellerUserIdValue.isNotEmpty
           ? _sellerUserIdValue
           : null,
-      showProductContextCard: false,
+      showProductContextCard: shouldShowProductContextCard,
       sellerName: _resolveStringField([
         'sellerName',
         'vendorName',
@@ -181,6 +199,8 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       productImageUrl: images.isNotEmpty
           ? images.first
           : _resolveStringField(['thumbnail', 'imageUrl'], _sellerImageUrl),
+      initialMessage: initialMessage,
+      embedProductContextInInitialMessage: initialMessage != null,
     );
   }
 
@@ -207,7 +227,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     });
   }
 
-  Future<void> _openSellerChat() async {
+  Future<void> _openSellerChat({String? initialMessage}) async {
     try {
       await _ensureSellerUserIdLoaded();
     } on AppApiException catch (error) {
@@ -234,7 +254,13 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       return;
     }
 
-    final route = MaterialPageRoute(builder: (_) => _buildSellerChatPage());
+    final route = MaterialPageRoute(
+      builder: (_) => _buildSellerChatPage(initialMessage: initialMessage),
+    );
+
+    if (!mounted) {
+      return;
+    }
 
     if (widget.openedFromChat) {
       Navigator.pushReplacement(context, route);
@@ -253,6 +279,10 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       return likesCount.toInt();
     }
     return 0;
+  }
+
+  String _formatActionCount(int value) {
+    return value <= 0 ? '' : value.toString();
   }
 
   Future<void> _toggleLike() async {
@@ -376,7 +406,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                     ),
                                     _socialActionCard(
                                       icon: Icons.reply_rounded,
-                                      label: 'Partager',
+                                      label: _shareCount.toString(),
                                       iconColor: actionIconColor,
                                       onTap: _showShareSuggestions,
                                     ),
@@ -403,7 +433,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                       ),
                                       decoration: BoxDecoration(
                                         color: theme.colorScheme.primary
-                                            .withOpacity(0.12),
+                                            .withValues(alpha: 0.12),
                                         borderRadius: BorderRadius.circular(20),
                                       ),
                                       child: Text(
@@ -434,7 +464,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                           CrossAxisAlignment.end,
                                       children: [
                                         Text(
-                                          '$priceFormatted',
+                                          priceFormatted,
                                           style: TextStyle(
                                             fontSize: 28,
                                             fontWeight: FontWeight.bold,
@@ -715,8 +745,10 @@ class _ProductDetailPageState extends State<ProductDetailPage>
             );
           },
           onSellerMessageTap: () {
-            _openSellerChat();
+            _openSellerChat(initialMessage: _defaultAvailabilityMessage);
           },
+          onCommentTap: _showCommentsSheet,
+          onShareTap: _showShareSuggestions,
           overlay: ImageViewerOverlayData(
             title: product['title'] as String? ?? 'Produit',
             description:
@@ -726,14 +758,95 @@ class _ProductDetailPageState extends State<ProductDetailPage>
             sellerUserId: _sellerUserIdValue,
             sellerAvatarUrl: _sellerImageUrl,
             sellerBadge: _sellerBadge,
+            likesCount: _formatActionCount(_likeCount),
+            commentsCount: _formatActionCount(_commentCount),
+            sharesCount: _formatActionCount(_shareCount),
           ),
         ),
       ),
     );
   }
 
-  void _showShareSuggestions() {
-    showAppShareSheet(context);
+  Future<void> _showShareSuggestions() async {
+    if (_isShareSubmitting) {
+      return;
+    }
+
+    final productId = product['id']?.toString().trim() ?? '';
+    final sharedCount = await showAppShareSheet(
+      context,
+      messageContent: _buildShareMessage(),
+      productSnapshot: _buildShareProductSnapshot(),
+      selectionHint: 'Cochez pour partager ce produit',
+      successLabel: 'Produit',
+    );
+
+    if (productId.isEmpty || sharedCount <= 0) {
+      return;
+    }
+
+    setState(() => _isShareSubmitting = true);
+    try {
+      Map<String, dynamic>? updatedProduct;
+      for (var index = 0; index < sharedCount; index++) {
+        updatedProduct = await _catalogApiService.shareProduct(productId);
+      }
+
+      if (!mounted || updatedProduct == null) {
+        return;
+      }
+
+      final confirmedUpdatedProduct = updatedProduct;
+      setState(() {
+        _productData = confirmedUpdatedProduct;
+        _likeCount = _resolveLikeCount(confirmedUpdatedProduct);
+        _commentCount = _resolveCount(confirmedUpdatedProduct, 'commentsCount');
+        _shareCount = _resolveCount(confirmedUpdatedProduct, 'sharesCount');
+      });
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) {
+        setState(() => _isShareSubmitting = false);
+      }
+    }
+  }
+
+  String _buildShareMessage() {
+    final parts = <String>['Je te partage ce produit.'];
+    final title = _resolveStringField(['title', 'name'], 'Produit');
+    final priceLabel = _buildProductPriceLabel();
+
+    if (title.trim().isNotEmpty) {
+      parts.add(title.trim());
+    }
+    if (priceLabel.trim().isNotEmpty) {
+      parts.add(priceLabel.trim());
+    }
+
+    return parts.join('\n');
+  }
+
+  Map<String, dynamic> _buildShareProductSnapshot() {
+    final images =
+        (product['images'] as List?)?.whereType<String>().toList() ??
+        const <String>[];
+
+    return {
+      'productId': product['id']?.toString().trim() ?? '',
+      'productTitle': _resolveStringField(['title', 'name'], 'Produit'),
+      'productSubtitle': _buildProductSubtitle(),
+      'productPriceLabel': _buildProductPriceLabel(),
+      'productImageUrl': images.isNotEmpty
+          ? images.first
+          : _resolveStringField(['thumbnail', 'imageUrl'], _sellerImageUrl),
+    };
   }
 
   void _showCommentsSheet() {
@@ -782,7 +895,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: theme.colorScheme.primary.withOpacity(0.12),
+              color: theme.colorScheme.primary.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(icon, color: theme.colorScheme.primary, size: 18),
@@ -856,4 +969,3 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     );
   }
 }
-

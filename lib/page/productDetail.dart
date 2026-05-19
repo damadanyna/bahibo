@@ -624,6 +624,10 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       builder: (_) => _buildSellerChatPage(initialMessage: initialMessage),
     );
 
+    if (!mounted) {
+      return;
+    }
+
     if (widget.openedFromChat) {
       Navigator.pushReplacement(context, route);
       return;
@@ -1026,7 +1030,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                       ),
                                       decoration: BoxDecoration(
                                         color: theme.colorScheme.primary
-                                            .withOpacity(0.12),
+                                            .withValues(alpha: 0.12),
                                         borderRadius: BorderRadius.circular(20),
                                       ),
                                       child: Text(
@@ -1057,7 +1061,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                           CrossAxisAlignment.end,
                                       children: [
                                         Text(
-                                          '$priceFormatted',
+                                          priceFormatted,
                                           style: TextStyle(
                                             fontSize: 28,
                                             fontWeight: FontWeight.bold,
@@ -1241,7 +1245,9 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                                           color: theme
                                                               .colorScheme
                                                               .primary
-                                                              .withOpacity(0.1),
+                                                              .withValues(
+                                                                alpha: 0.1,
+                                                              ),
                                                           borderRadius:
                                                               BorderRadius.circular(
                                                                 20,
@@ -1537,8 +1543,10 @@ class _ProductDetailPageState extends State<ProductDetailPage>
             );
           },
           onSellerMessageTap: () {
-            _openSellerChat();
+            _openSellerChat(initialMessage: _defaultAvailabilityMessage);
           },
+          onCommentTap: _showCommentsSheet,
+          onShareTap: _showShareSuggestions,
           overlay: ImageViewerOverlayData(
             title: product['title'] as String? ?? 'Produit',
             description:
@@ -1548,6 +1556,9 @@ class _ProductDetailPageState extends State<ProductDetailPage>
             sellerUserId: _sellerUserIdValue,
             sellerAvatarUrl: _sellerAvatarUrlValue,
             sellerBadge: _resolvedSellerBadge,
+            likesCount: _formatActionCount(_likeCount),
+            commentsCount: _formatActionCount(_commentCount),
+            sharesCount: _formatActionCount(_shareCount),
           ),
         ),
       ),
@@ -1556,24 +1567,41 @@ class _ProductDetailPageState extends State<ProductDetailPage>
 
   Future<void> _showShareSuggestions() async {
     final productId = product['id']?.toString().trim() ?? '';
-    if (productId.isEmpty || _isShareSubmitting) {
-      showAppShareSheet(context);
+    final shareContent = _buildShareMessage();
+    final productSnapshot = _buildShareProductSnapshot();
+    if (_isShareSubmitting) {
+      return;
+    }
+
+    final sharedCount = await showAppShareSheet(
+      context,
+      messageContent: shareContent,
+      productSnapshot: productSnapshot,
+      selectionHint: 'Cochez pour partager ce produit',
+      successLabel: 'Produit',
+    );
+
+    if (productId.isEmpty || sharedCount <= 0) {
       return;
     }
 
     setState(() => _isShareSubmitting = true);
     try {
-      final updatedProduct = await _catalogApiService.shareProduct(productId);
-      if (!mounted) {
+      Map<String, dynamic>? updatedProduct;
+      for (var index = 0; index < sharedCount; index++) {
+        updatedProduct = await _catalogApiService.shareProduct(productId);
+      }
+
+      if (!mounted || updatedProduct == null) {
         return;
       }
+      final confirmedUpdatedProduct = updatedProduct;
       setState(() {
-        _productData = updatedProduct;
-        _likeCount = _resolveLikeCount(updatedProduct);
-        _commentCount = _resolveCount(updatedProduct, 'commentsCount');
-        _shareCount = _resolveCount(updatedProduct, 'sharesCount');
+        _productData = confirmedUpdatedProduct;
+        _likeCount = _resolveLikeCount(confirmedUpdatedProduct);
+        _commentCount = _resolveCount(confirmedUpdatedProduct, 'commentsCount');
+        _shareCount = _resolveCount(confirmedUpdatedProduct, 'sharesCount');
       });
-      showAppShareSheet(context);
     } on AppApiException catch (error) {
       if (!mounted) {
         return;
@@ -1586,6 +1614,40 @@ class _ProductDetailPageState extends State<ProductDetailPage>
         setState(() => _isShareSubmitting = false);
       }
     }
+  }
+
+  String _buildShareMessage() {
+    final parts = <String>['Je te partage ce produit.'];
+    final title = _resolveStringField(['title', 'name'], 'Produit');
+    final priceLabel = _buildProductPriceLabel();
+
+    if (title.trim().isNotEmpty) {
+      parts.add(title.trim());
+    }
+    if (priceLabel.trim().isNotEmpty) {
+      parts.add(priceLabel.trim());
+    }
+
+    return parts.join('\n');
+  }
+
+  Map<String, dynamic> _buildShareProductSnapshot() {
+    final images =
+        (product['images'] as List?)?.whereType<String>().toList() ??
+        const <String>[];
+
+    return {
+      'productId': product['id']?.toString().trim() ?? '',
+      'productTitle': _resolveStringField(['title', 'name'], 'Produit'),
+      'productSubtitle': _buildProductSubtitle(),
+      'productPriceLabel': _buildProductPriceLabel(),
+      'productImageUrl': images.isNotEmpty
+          ? images.first
+          : _resolveStringField([
+              'thumbnail',
+              'imageUrl',
+            ], _defaultSellerAvatarUrl),
+    };
   }
 
   Future<void> _showCommentsSheet() async {
@@ -1649,7 +1711,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: theme.colorScheme.primary.withOpacity(0.12),
+              color: theme.colorScheme.primary.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(icon, color: theme.colorScheme.primary, size: 18),
@@ -1731,5 +1793,3 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     );
   }
 }
-
-

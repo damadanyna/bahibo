@@ -121,7 +121,7 @@ class _AppLikesSheetContent extends StatelessWidget {
               Text(
                 '$initialLikeCount personnes ont aimé ce produit',
                 style: TextStyle(
-                  color: theme.colorScheme.primary.withOpacity(0.72),
+                  color: theme.colorScheme.primary.withValues(alpha: 0.72),
                   fontSize: 12.5,
                   fontWeight: FontWeight.w500,
                 ),
@@ -155,7 +155,9 @@ class _AppLikesSheetContent extends StatelessWidget {
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   border: Border.all(
-                                    color: appColors.success.withOpacity(0.32),
+                                    color: appColors.success.withValues(
+                                      alpha: 0.32,
+                                    ),
                                     width: 1.5,
                                   ),
                                 ),
@@ -206,7 +208,7 @@ class _AppLikesSheetContent extends StatelessWidget {
                                       like.timeLabel,
                                       style: TextStyle(
                                         color: theme.colorScheme.primary
-                                            .withOpacity(0.52),
+                                            .withValues(alpha: 0.52),
                                         fontSize: 11,
                                         fontWeight: FontWeight.w600,
                                       ),
@@ -248,5 +250,3 @@ class _AppLikesSheetContent extends StatelessWidget {
     );
   }
 }
-
-

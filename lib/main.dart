@@ -1,14 +1,18 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:banay/auth/session_gate.dart';
+import 'package:banay/services/app_auth_service.dart';
 import 'package:banay/services/api_config.dart';
 import 'package:banay/services/chat_realtime_service.dart';
 import 'package:banay/services/location_permission_service.dart';
 import 'package:banay/providers/theme_provider.dart';
 import 'package:banay/services/push_notification_service.dart';
+import 'package:banay/services/session_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 
@@ -78,6 +82,122 @@ class _AppLifecycleBootstrap extends StatefulWidget {
 
 class _AppLifecycleBootstrapState extends State<_AppLifecycleBootstrap>
     with WidgetsBindingObserver {
+  final AppAuthService _authService = AppAuthService();
+  final SessionStorage _sessionStorage = SessionStorage();
+  bool _isSyncingCurrentLocation = false;
+
+  String _buildLocationLabel(Position position, List<Placemark> placemarks) {
+    final placemark = placemarks.isNotEmpty ? placemarks.first : null;
+    final parts =
+        [
+              placemark?.locality,
+              placemark?.subAdministrativeArea,
+              placemark?.administrativeArea,
+              placemark?.country,
+            ]
+            .whereType<String>()
+            .map((value) => value.trim())
+            .where((value) => value.isNotEmpty)
+            .toList();
+
+    if (parts.isEmpty) {
+      return '${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}';
+    }
+
+    return parts.take(2).join(', ');
+  }
+
+  bool _shouldUpdateStoredLocation({
+    required String currentLabel,
+    required double? currentLatitude,
+    required double? currentLongitude,
+    required String nextLabel,
+    required double nextLatitude,
+    required double nextLongitude,
+  }) {
+    final normalizedCurrentLabel = currentLabel.trim().toLowerCase();
+    final normalizedNextLabel = nextLabel.trim().toLowerCase();
+    if (normalizedCurrentLabel.isEmpty) {
+      return true;
+    }
+
+    if (currentLatitude == null || currentLongitude == null) {
+      return true;
+    }
+
+    final distanceMeters = Geolocator.distanceBetween(
+      currentLatitude,
+      currentLongitude,
+      nextLatitude,
+      nextLongitude,
+    );
+
+    return normalizedCurrentLabel != normalizedNextLabel ||
+        distanceMeters > 150;
+  }
+
+  Future<void> _syncCurrentUserLocationOnLaunch() async {
+    if (_isSyncingCurrentLocation || kIsWeb) {
+      return;
+    }
+
+    _isSyncingCurrentLocation = true;
+
+    try {
+      final hasValidSession = await _sessionStorage.hasValidSession();
+      if (!hasValidSession) {
+        return;
+      }
+
+      final permission =
+          await LocationPermissionService.checkPermissionStatus();
+      final servicesEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!servicesEnabled ||
+          permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.best,
+        ),
+      );
+      final placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+      final nextLabel = _buildLocationLabel(position, placemarks);
+      final currentUser = await _authService.fetchCurrentUser();
+
+      final currentLabel = (currentUser['locationLabel'] as String?) ?? '';
+      final currentLatitude = (currentUser['locationLatitude'] as num?)
+          ?.toDouble();
+      final currentLongitude = (currentUser['locationLongitude'] as num?)
+          ?.toDouble();
+
+      if (!_shouldUpdateStoredLocation(
+        currentLabel: currentLabel,
+        currentLatitude: currentLatitude,
+        currentLongitude: currentLongitude,
+        nextLabel: nextLabel,
+        nextLatitude: position.latitude,
+        nextLongitude: position.longitude,
+      )) {
+        return;
+      }
+
+      await _authService.updateCurrentLocation(
+        locationLabel: nextLabel,
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
+    } catch (_) {
+    } finally {
+      _isSyncingCurrentLocation = false;
+    }
+  }
+
   Future<void> _showLocationPermissionPreDialog() async {
     while (mounted) {
       final permission =
@@ -128,8 +248,13 @@ class _AppLifecycleBootstrapState extends State<_AppLifecycleBootstrap>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _showLocationPermissionPreDialog();
+      unawaited(_bootstrapLocationFlow());
     });
+  }
+
+  Future<void> _bootstrapLocationFlow() async {
+    await _showLocationPermissionPreDialog();
+    await _syncCurrentUserLocationOnLaunch();
   }
 
   @override
@@ -141,6 +266,9 @@ class _AppLifecycleBootstrapState extends State<_AppLifecycleBootstrap>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     ChatRealtimeService.instance.handleAppLifecycleStateChanged(state);
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_syncCurrentUserLocationOnLaunch());
+    }
   }
 
   @override

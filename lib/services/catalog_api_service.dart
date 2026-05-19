@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -6,6 +7,38 @@ import 'package:http/http.dart' as http;
 import 'app_api_client.dart';
 import 'api_config.dart';
 import 'session_storage.dart';
+
+class ProductUploadProgressInfo {
+  const ProductUploadProgressInfo({
+    required this.imageCount,
+    required this.currentImageIndex,
+    required this.currentImageBytesSent,
+    required this.currentImageTotalBytes,
+    required this.totalImageBytesSent,
+    required this.totalImageBytes,
+  });
+
+  final int imageCount;
+  final int currentImageIndex;
+  final int currentImageBytesSent;
+  final int currentImageTotalBytes;
+  final int totalImageBytesSent;
+  final int totalImageBytes;
+
+  double get overallProgress {
+    if (totalImageBytes <= 0) {
+      return 0;
+    }
+    return (totalImageBytesSent / totalImageBytes).clamp(0.0, 1.0);
+  }
+
+  double get currentImageProgress {
+    if (currentImageTotalBytes <= 0) {
+      return 0;
+    }
+    return (currentImageBytesSent / currentImageTotalBytes).clamp(0.0, 1.0);
+  }
+}
 
 class CatalogApiService {
   CatalogApiService({AppApiClient? client})
@@ -26,6 +59,9 @@ class CatalogApiService {
     required int limit,
     required int skip,
     String? categorySlug,
+    String? userLocationLabel,
+    double? userLocationLatitude,
+    double? userLocationLongitude,
   }) async {
     final data = await _client.get(
       '/products',
@@ -34,6 +70,12 @@ class CatalogApiService {
         'skip': '$skip',
         if (categorySlug != null && categorySlug.isNotEmpty)
           'categorySlug': categorySlug,
+        if (userLocationLabel != null && userLocationLabel.trim().isNotEmpty)
+          'userLocationLabel': userLocationLabel.trim(),
+        if (userLocationLatitude != null)
+          'userLocationLatitude': '$userLocationLatitude',
+        if (userLocationLongitude != null)
+          'userLocationLongitude': '$userLocationLongitude',
       },
     );
 
@@ -331,6 +373,7 @@ class CatalogApiService {
     required List<File> imageFiles,
     required List<String> imageOrder,
     String currencyCode = 'MGA',
+    void Function(ProductUploadProgressInfo progress)? onUploadProgress,
   }) async {
     final accessToken = await _sessionStorage.getAccessToken();
     if (accessToken == null || accessToken.isEmpty) {
@@ -347,21 +390,14 @@ class CatalogApiService {
       ..fields['categoryName'] = categoryName
       ..fields['imageOrderJson'] = jsonEncode(imageOrder);
 
-    for (final imageFile in imageFiles) {
-      request.files.add(
-        await http.MultipartFile.fromPath('images', imageFile.path),
-      );
-    }
+    request.files.addAll(
+      await _buildTrackedMultipartFiles(
+        imageFiles,
+        onUploadProgress: onUploadProgress,
+      ),
+    );
 
-    http.StreamedResponse streamedResponse;
-
-    try {
-      streamedResponse = await request.send();
-    } catch (_) {
-      throw AppApiException('Impossible de joindre le serveur BANAY');
-    }
-
-    final response = await http.Response.fromStream(streamedResponse);
+    final response = await _sendMultipartRequest(request);
     final decoded = response.body.isEmpty
         ? <String, dynamic>{}
         : jsonDecode(response.body) as Map<String, dynamic>;
@@ -386,6 +422,7 @@ class CatalogApiService {
     required List<String> imageOrder,
     bool? isAvailable,
     String currencyCode = 'MGA',
+    void Function(ProductUploadProgressInfo progress)? onUploadProgress,
   }) async {
     final accessToken = await _sessionStorage.getAccessToken();
     if (accessToken == null || accessToken.isEmpty) {
@@ -406,21 +443,14 @@ class CatalogApiService {
       request.fields['isAvailable'] = '$isAvailable';
     }
 
-    for (final imageFile in imageFiles) {
-      request.files.add(
-        await http.MultipartFile.fromPath('images', imageFile.path),
-      );
-    }
+    request.files.addAll(
+      await _buildTrackedMultipartFiles(
+        imageFiles,
+        onUploadProgress: onUploadProgress,
+      ),
+    );
 
-    http.StreamedResponse streamedResponse;
-
-    try {
-      streamedResponse = await request.send();
-    } catch (_) {
-      throw AppApiException('Impossible de joindre le serveur BANAY');
-    }
-
-    final response = await http.Response.fromStream(streamedResponse);
+    final response = await _sendMultipartRequest(request);
     final decoded = response.body.isEmpty
         ? <String, dynamic>{}
         : jsonDecode(response.body) as Map<String, dynamic>;
@@ -441,5 +471,76 @@ class CatalogApiService {
       authenticated: true,
     );
     return Map<String, dynamic>.from(data as Map? ?? const <String, dynamic>{});
+  }
+
+  Future<http.Response> _sendMultipartRequest(
+    http.MultipartRequest request,
+  ) async {
+    http.StreamedResponse streamedResponse;
+
+    try {
+      streamedResponse = await request.send();
+    } catch (_) {
+      throw AppApiException('Impossible de joindre le serveur BANAY');
+    }
+
+    return http.Response.fromStream(streamedResponse);
+  }
+
+  Future<List<http.MultipartFile>> _buildTrackedMultipartFiles(
+    List<File> imageFiles, {
+    void Function(ProductUploadProgressInfo progress)? onUploadProgress,
+  }) async {
+    if (imageFiles.isEmpty) {
+      return const <http.MultipartFile>[];
+    }
+
+    final totalBytesByImage = await Future.wait<int>(
+      imageFiles.map((imageFile) => imageFile.length()),
+    );
+    final sentBytesByImage = List<int>.filled(imageFiles.length, 0);
+    final totalImageBytes = totalBytesByImage.fold<int>(
+      0,
+      (sum, value) => sum + value,
+    );
+    var totalImageBytesSent = 0;
+
+    return Future.wait(
+      imageFiles.asMap().entries.map((entry) async {
+        final imageIndex = entry.key;
+        final imageFile = entry.value;
+        final imageTotalBytes = totalBytesByImage[imageIndex];
+        final fileName = imageFile.uri.pathSegments.isNotEmpty
+            ? imageFile.uri.pathSegments.last
+            : 'image-${imageIndex + 1}.jpg';
+
+        final stream = imageFile.openRead().transform(
+          StreamTransformer<List<int>, List<int>>.fromHandlers(
+            handleData: (chunk, sink) {
+              sentBytesByImage[imageIndex] += chunk.length;
+              totalImageBytesSent += chunk.length;
+              onUploadProgress?.call(
+                ProductUploadProgressInfo(
+                  imageCount: imageFiles.length,
+                  currentImageIndex: imageIndex + 1,
+                  currentImageBytesSent: sentBytesByImage[imageIndex],
+                  currentImageTotalBytes: imageTotalBytes,
+                  totalImageBytesSent: totalImageBytesSent,
+                  totalImageBytes: totalImageBytes,
+                ),
+              );
+              sink.add(chunk);
+            },
+          ),
+        );
+
+        return http.MultipartFile(
+          'images',
+          http.ByteStream(stream),
+          imageTotalBytes,
+          filename: fileName,
+        );
+      }),
+    );
   }
 }

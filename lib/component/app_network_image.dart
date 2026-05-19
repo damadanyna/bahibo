@@ -260,18 +260,22 @@ class AppCircleNetworkAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final diameter = radius * 2;
     final normalizedUserId = userId?.trim() ?? '';
+    final normalizedImageUrl = imageUrl.trim();
     final shouldShowBadge = showPresenceBadge && normalizedUserId.isNotEmpty;
 
     if (shouldShowBadge) {
       PresenceService.instance.watchUser(normalizedUserId);
     }
 
-    final avatar = AppNetworkImage(
-      imageUrl: imageUrl,
-      width: diameter,
-      height: diameter,
-      shape: BoxShape.circle,
-    );
+    final avatar = normalizedImageUrl.isEmpty
+        ? _DefaultCircleAvatar(radius: radius)
+        : AppNetworkImage(
+            imageUrl: normalizedImageUrl,
+            width: diameter,
+            height: diameter,
+            shape: BoxShape.circle,
+            errorChild: _DefaultCircleAvatarGlyph(radius: radius),
+          );
 
     if (!shouldShowBadge) {
       return avatar;
@@ -309,6 +313,47 @@ class AppCircleNetworkAvatar extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+class _DefaultCircleAvatar extends StatelessWidget {
+  const _DefaultCircleAvatar({required this.radius});
+
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final diameter = radius * 2;
+    return AppImagePlaceholder(
+      width: diameter,
+      height: diameter,
+      shape: BoxShape.circle,
+      child: _DefaultCircleAvatarGlyph(radius: radius),
+    );
+  }
+}
+
+class _DefaultCircleAvatarGlyph extends StatelessWidget {
+  const _DefaultCircleAvatarGlyph({required this.radius});
+
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final appColors = Theme.of(context).appColors;
+    final iconSize = radius <= 18
+        ? 18.0
+        : radius <= 24
+        ? 22.0
+        : 28.0;
+
+    return Center(
+      child: Icon(
+        Icons.person,
+        size: iconSize,
+        color: appColors.placeholderIcon,
+      ),
     );
   }
 }

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:banay/component/ProductCard.dart';
 import 'package:banay/component/app_network_image.dart';
@@ -24,6 +25,7 @@ import 'package:banay/page/productDetailSeller.dart' as seller_detail;
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/app_auth_service.dart';
 import 'package:banay/services/catalog_api_service.dart';
+import 'package:banay/services/product_upload_queue_service.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -53,105 +55,135 @@ class MainNavigationAccountPanel extends StatefulWidget {
 
 class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     with AppPageRefreshMixin<MainNavigationAccountPanel> {
-  bool _showEntrySkeleton = true;
-  final AppAuthService _authService = AppAuthService();
   final CatalogApiService _catalogApiService = CatalogApiService();
+  final AppAuthService _authService = AppAuthService();
   final ImagePicker _imagePicker = ImagePicker();
+  final ProductUploadQueueService _productUploadQueueService =
+      ProductUploadQueueService.instance;
   final TextEditingController _searchController = TextEditingController();
-  File? _avatarImageFile;
-  File? _coverImageFile;
-  List<Map<String, dynamic>> _sellerPublishedProducts = [];
-  final List<Map<String, dynamic>> _customStudioProducts = [];
-  final Map<String, Map<String, dynamic>> _productOverrides = {};
+
+  _AccountPanelTab _selectedTab = _AccountPanelTab.products;
+  List<Map<String, dynamic>> _sellerPublishedProducts =
+      <Map<String, dynamic>>[];
+  final List<Map<String, dynamic>> _customStudioProducts =
+      <Map<String, dynamic>>[];
+  final List<Map<String, dynamic>> _followedPeople = <Map<String, dynamic>>[];
+  final Map<String, Map<String, dynamic>> _productOverrides =
+      <String, Map<String, dynamic>>{};
   final Set<String> _productAvailabilityBusy = <String>{};
   final Set<String> _productDeletionBusy = <String>{};
-  final List<Map<String, dynamic>> _followedPeople = [];
   String _searchQuery = '';
   String _studioName = '';
-  String _studioAddress = 'Antananarivo, Madagascar';
+  String _studioAddress = '';
   String _studioDescription = '';
+  bool _showEntrySkeleton = true;
+  bool _isLoadingFollowedPeople = true;
+  bool _isSavingIdentity = false;
   bool _isSellerCertified = false;
   bool _isSubmittingSellerCertificationRequest = false;
-  bool _isSavingIdentity = false;
   bool _isUploadingAvatarImage = false;
   bool _isUploadingCoverImage = false;
-  bool _isLoadingFollowedPeople = true;
-  String _sellerVerificationRequestStatus = 'NONE';
-  _AccountPanelTab _selectedTab = _AccountPanelTab.products;
+  String? _sellerVerificationRequestStatus;
+  File? _avatarImageFile;
+  File? _coverImageFile;
 
-  UserProfileData get profile => widget.profile ?? defaultSellerProfileData();
+  UserProfileData get profile => widget.profile!;
 
-  Map<String, dynamic> _withCurrentSellerProfile(Map<String, dynamic> product) {
-    final enrichedProduct = Map<String, dynamic>.from(product);
-    enrichedProduct['sellerName'] = _resolvedStudioName;
-    enrichedProduct['sellerAvatarUrl'] = profile.avatarUrl;
-    enrichedProduct['avatarUrl'] = profile.avatarUrl;
-    enrichedProduct['sellerUserId'] = profile.userId;
-    enrichedProduct['seller'] = {
-      ...(enrichedProduct['seller'] is Map
-          ? Map<String, dynamic>.from(enrichedProduct['seller'] as Map)
-          : <String, dynamic>{}),
-      'name': _resolvedStudioName,
-      'avatarUrl': profile.avatarUrl,
-      'userId': profile.userId,
-      'id': profile.userId,
-    };
-    return enrichedProduct;
+  Map<String, dynamic> _attachCurrentSellerIdentity(
+    Map<String, dynamic> product,
+  ) {
+    final mergedProduct = Map<String, dynamic>.from(product);
+    final seller = Map<String, dynamic>.from(
+      (mergedProduct['seller'] as Map?) ?? const <String, dynamic>{},
+    );
+
+    seller['name'] = _resolvedStudioName;
+    seller['displayName'] = _resolvedStudioName;
+    seller['avatarUrl'] = profile.avatarUrl;
+    if ((profile.userId ?? '').trim().isNotEmpty) {
+      seller['userId'] = profile.userId!.trim();
+      seller['id'] = profile.userId!.trim();
+    }
+
+    mergedProduct['seller'] = seller;
+    mergedProduct['sellerName'] = _resolvedStudioName;
+    mergedProduct['sellerAvatarUrl'] = profile.avatarUrl;
+    if ((profile.userId ?? '').trim().isNotEmpty) {
+      mergedProduct['sellerUserId'] = profile.userId!.trim();
+    }
+
+    return mergedProduct;
   }
 
-  List<Map<String, dynamic>> get _catalogProducts => [
-    ..._sellerPublishedProducts.map((product) {
-      final baseProduct = Map<String, dynamic>.from(product);
-      final productId = (baseProduct['id'] ?? '').toString();
-      final override = _productOverrides[productId];
-      if (override == null) {
-        return _withCurrentSellerProfile(baseProduct);
-      }
+  List<Map<String, dynamic>> get _catalogProducts {
+    final mergedProducts = _sellerPublishedProducts
+        .map(_attachCurrentSellerIdentity)
+        .toList();
 
-      return _withCurrentSellerProfile(Map<String, dynamic>.from(override));
-    }),
-    ..._customStudioProducts.map(_withCurrentSellerProfile),
-  ];
+    for (final entry in _productOverrides.entries) {
+      final existingIndex = mergedProducts.indexWhere(
+        (product) => (product['id'] ?? '').toString() == entry.key,
+      );
+      if (existingIndex >= 0) {
+        mergedProducts[existingIndex] = _attachCurrentSellerIdentity(
+          entry.value,
+        );
+      } else {
+        mergedProducts.insert(0, _attachCurrentSellerIdentity(entry.value));
+      }
+    }
+
+    for (final product in _customStudioProducts.reversed) {
+      final productId = (product['id'] ?? '').toString();
+      final existingIndex = mergedProducts.indexWhere(
+        (item) => (item['id'] ?? '').toString() == productId,
+      );
+      if (existingIndex >= 0) {
+        mergedProducts[existingIndex] = _attachCurrentSellerIdentity(product);
+      } else {
+        mergedProducts.insert(0, _attachCurrentSellerIdentity(product));
+      }
+    }
+
+    return mergedProducts;
+  }
 
   List<Map<String, dynamic>> get _filteredProducts {
-    final query = _searchQuery.trim().toLowerCase();
-    if (query.isEmpty) {
+    final normalizedQuery = _searchQuery.trim().toLowerCase();
+    if (normalizedQuery.isEmpty) {
       return _catalogProducts;
     }
 
     return _catalogProducts.where((product) {
       final title = (product['title'] ?? '').toString().toLowerCase();
       final category = (product['category'] ?? '').toString().toLowerCase();
-      return title.contains(query) || category.contains(query);
+      final description = (product['description'] ?? '')
+          .toString()
+          .toLowerCase();
+
+      return title.contains(normalizedQuery) ||
+          category.contains(normalizedQuery) ||
+          description.contains(normalizedQuery);
     }).toList();
   }
 
-  int _metricCountValue(String value) {
-    final normalizedValue = value.trim().toLowerCase();
-    if (normalizedValue.isEmpty) {
-      return 0;
+  int _metricCountValue(Object? rawValue) {
+    if (rawValue is int) {
+      return rawValue;
+    }
+    if (rawValue is num) {
+      return rawValue.toInt();
     }
 
-    final multiplier = normalizedValue.endsWith('k')
-        ? 1000
-        : normalizedValue.endsWith('m')
-        ? 1000000
-        : 1;
-    final numericPart = normalizedValue.replaceAll(RegExp(r'[^0-9\.]'), '');
-    final parsedValue = double.tryParse(numericPart);
-    if (parsedValue == null) {
-      return 0;
-    }
-
-    return (parsedValue * multiplier).round();
+    return int.tryParse(rawValue?.toString() ?? '') ?? 0;
   }
 
   int _metricValueByLabel(String metricLabel) {
     return switch (metricLabel) {
       'Abonnes' => _metricCountValue(profile.followerCount),
       'Vues profil' => _metricCountValue(profile.visitorCount),
-      'Likes total' => _metricCountValue(profile.totalLikesCount),
       'Produits' => _metricCountValue(profile.productCount),
+      'Likes total' => _metricCountValue(profile.totalLikesCount),
       _ => 0,
     };
   }
@@ -509,6 +541,8 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     super.initState();
     initializePageRefresh();
     _seedSellerPublishedProducts();
+    _productUploadQueueService.addListener(_handleProductUploadQueueChanged);
+    unawaited(_initializeProductUploadQueue());
     _hydrateStudioFields();
     _syncSellerVerificationState();
     _loadSellerPublishedProducts();
@@ -714,6 +748,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
 
   @override
   void dispose() {
+    _productUploadQueueService.removeListener(_handleProductUploadQueueChanged);
     _searchController.removeListener(_handleSearchChanged);
     _searchController.dispose();
     disposePageRefresh();
@@ -732,7 +767,160 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     await _loadSellerPublishedProducts();
     await _loadFollowedPeople();
     if (!mounted) return;
-    setState(() => _showEntrySkeleton = false);
+    setState(() {
+      _syncPendingProductTasks();
+      _showEntrySkeleton = false;
+    });
+  }
+
+  Future<void> _initializeProductUploadQueue() async {
+    await _productUploadQueueService.initialize();
+    if (!mounted) {
+      return;
+    }
+    _handleProductUploadQueueChanged();
+  }
+
+  void _handleProductUploadQueueChanged() {
+    if (!mounted) {
+      return;
+    }
+
+    final completedTasks = _productUploadQueueService.completedTasks;
+    setState(() {
+      _syncPendingProductTasks();
+      for (final task in completedTasks) {
+        _removePendingProductsFromState(taskId: task.id);
+        final resultProduct = task.resultProduct;
+        if (resultProduct == null) {
+          continue;
+        }
+        _upsertProductInState({
+          ...resultProduct,
+          if (task.condition != null) 'condition': task.condition,
+          'status': task.previewProduct?['status'] ?? 'Disponible',
+          'isLocalFile': false,
+        });
+      }
+    });
+
+    for (final task in completedTasks) {
+      unawaited(_productUploadQueueService.acknowledgeTask(task.id));
+    }
+  }
+
+  void _syncPendingProductTasks() {
+    _removePendingProductsFromState();
+    for (final task in _productUploadQueueService.activeTasks) {
+      final previewProduct = task.previewProduct;
+      if (previewProduct == null || previewProduct.isEmpty) {
+        continue;
+      }
+
+      _upsertProductInState({
+        ...previewProduct,
+        'syncStatus': switch (task.state) {
+          ProductUploadTaskState.uploading => 'Synchronisation...',
+          ProductUploadTaskState.waitingForConnection => 'Pending',
+          ProductUploadTaskState.failed => 'Echec',
+          ProductUploadTaskState.queued => 'Pending',
+          ProductUploadTaskState.completed => 'Synchronise',
+        },
+        'pendingTaskId': task.id,
+        'pendingMessage': task.statusText,
+        'pendingProgress': task.progress,
+        'pendingCanResume': task.canResume,
+        'pendingIsUploading': task.state == ProductUploadTaskState.uploading,
+      });
+    }
+  }
+
+  void _removePendingProductsFromState({String? taskId}) {
+    bool shouldRemove(Map<String, dynamic> product) {
+      final pendingTaskId = product['pendingTaskId']?.toString().trim() ?? '';
+      if (pendingTaskId.isEmpty) {
+        return false;
+      }
+      if (taskId == null) {
+        return true;
+      }
+      return pendingTaskId == taskId;
+    }
+
+    _sellerPublishedProducts.removeWhere(shouldRemove);
+    _customStudioProducts.removeWhere(shouldRemove);
+    _productOverrides.removeWhere((_, product) => shouldRemove(product));
+  }
+
+  Map<String, dynamic> _buildPendingProductPreview({
+    required String tempId,
+    required String productName,
+    required String productCategory,
+    required String productDescription,
+    required double parsedPrice,
+    required String availability,
+    required String productCondition,
+    required List<File> localImageFiles,
+    required List<String> imageOrder,
+    Map<String, dynamic>? initialProduct,
+  }) {
+    final previewImages = imageOrder
+        .map((entry) {
+          if (!entry.startsWith('__upload__')) {
+            return entry;
+          }
+
+          final uploadIndex = int.tryParse(
+            entry.replaceFirst('__upload__', ''),
+          );
+          if (uploadIndex == null ||
+              uploadIndex < 0 ||
+              uploadIndex >= localImageFiles.length) {
+            return '';
+          }
+          return localImageFiles[uploadIndex].path;
+        })
+        .where((entry) => entry.trim().isNotEmpty)
+        .toList(growable: false);
+
+    final previewId =
+        (initialProduct?['id']?.toString().trim().isNotEmpty ?? false)
+        ? initialProduct!['id'].toString().trim()
+        : tempId;
+
+    return {
+      'id': previewId,
+      'title': productName,
+      'category': productCategory,
+      'description': productDescription,
+      'price': parsedPrice,
+      'currencyCode':
+          initialProduct?['currencyCode']?.toString().trim().isNotEmpty == true
+          ? initialProduct!['currencyCode'].toString().trim()
+          : 'MGA',
+      'images': previewImages,
+      'thumbnail': previewImages.isNotEmpty ? previewImages.first : '',
+      'status': availability,
+      'condition': productCondition,
+      'isAvailable': availability == 'Disponible',
+      'isLocalFile': true,
+    };
+  }
+
+  Future<void> _resumePendingProductUploads() async {
+    await _productUploadQueueService.resumeAllPending();
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          isOffline
+              ? 'Les produits restent en pending jusqu\'au retour de la connexion.'
+              : 'Reprise des produits en attente.',
+        ),
+      ),
+    );
   }
 
   Future<void> _submitSellerCertificationRequest() async {
@@ -1261,9 +1449,6 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
         : 'Rupture';
     String productCondition = 'Neuf';
     var isPublishingProduct = false;
-    var isUploadDialogVisible = false;
-    BuildContext? uploadDialogContext;
-    Completer<void>? uploadDialogClosedCompleter;
     final productImages = initialImageUrls
         .map(_SelectedProductImage.remote)
         .toList();
@@ -1298,82 +1483,6 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
         final theme = Theme.of(sheetContext);
         final accentColor = _accentColor(theme);
         final panelColor = _backgroundColor(theme);
-
-        void showUploadProgressDialog() {
-          if (isUploadDialogVisible || !sheetContext.mounted) {
-            return;
-          }
-
-          isUploadDialogVisible = true;
-          uploadDialogClosedCompleter = Completer<void>();
-          showDialog<void>(
-            context: context,
-            barrierDismissible: false,
-            useRootNavigator: true,
-            builder: (dialogContext) {
-              uploadDialogContext = dialogContext;
-              return PopScope(
-                canPop: false,
-                child: AlertDialog(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  contentPadding: const EdgeInsets.fromLTRB(24, 22, 24, 20),
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CircularProgressIndicator(color: accentColor),
-                      const SizedBox(height: 18),
-                      Text(
-                        isEditingProduct
-                            ? 'Mise a jour du produit en cours'
-                            : 'Upload du produit en cours',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        'Les images sont en cours d\'envoi. Veuillez patienter.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: theme.appColors.mutedText),
-                      ),
-                      const SizedBox(height: 16),
-                      LinearProgressIndicator(
-                        borderRadius: BorderRadius.circular(999),
-                        color: accentColor,
-                        minHeight: 7,
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ).whenComplete(() {
-            isUploadDialogVisible = false;
-            uploadDialogContext = null;
-            if (uploadDialogClosedCompleter?.isCompleted == false) {
-              uploadDialogClosedCompleter?.complete();
-            }
-            uploadDialogClosedCompleter = null;
-          });
-        }
-
-        Future<void> closeUploadProgressDialog() async {
-          if (!isUploadDialogVisible) {
-            return;
-          }
-
-          final dialogContext = uploadDialogContext;
-          final closedCompleter = uploadDialogClosedCompleter;
-          if (dialogContext == null || closedCompleter == null) {
-            return;
-          }
-
-          Navigator.of(dialogContext, rootNavigator: true).pop();
-          await closedCompleter.future;
-        }
 
         Future<void> pickCameraProductImage() async {
           final file = await _imagePicker.pickImage(
@@ -1625,16 +1734,16 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                           value: productCondition,
                           items: const [
                             DropdownMenuItem(
-                              value: 'Neuf',
-                              child: Text('Neuf'),
-                            ),
-                            DropdownMenuItem(
                               value: 'Occasion',
                               child: Text('Occasion'),
                             ),
                             DropdownMenuItem(
                               value: 'Reconditionne',
                               child: Text('Reconditionne'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Neuf',
+                              child: Text('Neuf'),
                             ),
                           ],
                           onChanged: (value) {
@@ -1915,15 +2024,12 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                                       return;
                                     }
 
-                                    String? successMessage;
                                     String? errorMessage;
-                                    var shouldCloseSheetAfterSuccess = false;
 
                                     try {
                                       setModalState(() {
                                         isPublishingProduct = true;
                                       });
-                                      showUploadProgressDialog();
 
                                       final localImageFiles = <File>[];
                                       final imageOrder = productImages.map((
@@ -1939,9 +2045,25 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                                         return image.url ?? '';
                                       }).toList();
 
-                                      final createdProduct = isEditingProduct
-                                          ? await _catalogApiService
-                                                .updateProduct(
+                                      final previewProduct =
+                                          _buildPendingProductPreview(
+                                            tempId:
+                                                'pending-${DateTime.now().microsecondsSinceEpoch}',
+                                            productName: productName,
+                                            productCategory: productCategory,
+                                            productDescription:
+                                                productDescription,
+                                            parsedPrice: parsedPrice.toDouble(),
+                                            availability: availability,
+                                            productCondition: productCondition,
+                                            localImageFiles: localImageFiles,
+                                            imageOrder: imageOrder,
+                                            initialProduct: initialProduct,
+                                          );
+
+                                      final taskId = isEditingProduct
+                                          ? await _productUploadQueueService
+                                                .enqueueUpdate(
                                                   productId:
                                                       (initialProduct['id'] ??
                                                               '')
@@ -1951,21 +2073,41 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                                                       productDescription,
                                                   priceAmount: parsedPrice,
                                                   categoryName: productCategory,
-                                                  imageFiles: localImageFiles,
+                                                  imageFilePaths:
+                                                      localImageFiles
+                                                          .map(
+                                                            (file) => file.path,
+                                                          )
+                                                          .toList(
+                                                            growable: false,
+                                                          ),
                                                   imageOrder: imageOrder,
                                                   isAvailable:
                                                       availability ==
                                                       'Disponible',
+                                                  condition: productCondition,
+                                                  previewProduct:
+                                                      previewProduct,
                                                 )
-                                          : await _catalogApiService
-                                                .createProduct(
+                                          : await _productUploadQueueService
+                                                .enqueueCreate(
                                                   title: productName,
                                                   description:
                                                       productDescription,
                                                   priceAmount: parsedPrice,
                                                   categoryName: productCategory,
-                                                  imageFiles: localImageFiles,
+                                                  imageFilePaths:
+                                                      localImageFiles
+                                                          .map(
+                                                            (file) => file.path,
+                                                          )
+                                                          .toList(
+                                                            growable: false,
+                                                          ),
                                                   imageOrder: imageOrder,
+                                                  condition: productCondition,
+                                                  previewProduct:
+                                                      previewProduct,
                                                 );
 
                                       if (!mounted || !sheetContext.mounted) {
@@ -1974,23 +2116,35 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
 
                                       setState(() {
                                         _upsertProductInState({
-                                          ...createdProduct,
-                                          'description': productDescription,
-                                          'status': availability,
-                                          'condition': productCondition,
-                                          'likesCount':
-                                              (initialProduct?['likesCount']
-                                                      as num?)
-                                                  ?.toInt() ??
-                                              0,
-                                          'isLocalFile': false,
+                                          ...previewProduct,
+                                          'pendingTaskId': taskId,
+                                          'pendingMessage': isOffline
+                                              ? 'Pending: en attente de connexion...'
+                                              : 'Synchronisation en arriere-plan...',
+                                          'pendingProgress': isOffline
+                                              ? 0.08
+                                              : 0.12,
+                                          'syncStatus': isOffline
+                                              ? 'Pending'
+                                              : 'Synchronisation...',
+                                          'pendingCanResume': false,
                                         });
                                       });
 
-                                      successMessage = isEditingProduct
-                                          ? '$productName mis a jour dans votre catalogue.'
-                                          : '$productName ajoute au catalogue.';
-                                      shouldCloseSheetAfterSuccess = true;
+                                      Navigator.of(sheetContext).pop();
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            isOffline
+                                                ? '$productName est passe en pending et reprendra avec la connexion.'
+                                                : isEditingProduct
+                                                ? '$productName est en cours de mise a jour en arriere-plan.'
+                                                : '$productName est en cours de publication en arriere-plan.',
+                                          ),
+                                        ),
+                                      );
                                     } on AppApiException catch (error) {
                                       if (!mounted || !sheetContext.mounted) {
                                         return;
@@ -1998,27 +2152,13 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
 
                                       errorMessage = error.message;
                                     } finally {
-                                      await closeUploadProgressDialog();
                                       if (sheetContext.mounted) {
                                         setModalState(() {
                                           isPublishingProduct = false;
                                         });
                                       }
 
-                                      if (shouldCloseSheetAfterSuccess &&
-                                          sheetContext.mounted) {
-                                        Navigator.of(sheetContext).pop();
-                                      }
-
-                                      if (mounted && successMessage != null) {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          SnackBar(
-                                            content: Text(successMessage),
-                                          ),
-                                        );
-                                      } else if (mounted &&
+                                      if (context.mounted &&
                                           errorMessage != null) {
                                         ScaffoldMessenger.of(
                                           context,
@@ -2047,6 +2187,8 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   Future<void> _openLivePreview(String title, String category) async {
     Map<String, dynamic>? liveInfo;
     var liveStarted = false;
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
 
     try {
       liveInfo = await _catalogApiService.startCurrentUserLive(
@@ -2065,7 +2207,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
         );
       }
 
-      await Navigator.of(context).push<bool>(
+      await navigator.push<bool>(
         MaterialPageRoute(
           builder: (_) => LivePreviewPage(
             title: liveInfo?['title']?.toString() ?? title,
@@ -2077,19 +2219,9 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
         ),
       );
     } on AppApiException catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
+      messenger.showSnackBar(SnackBar(content: Text(error.message)));
     } catch (_) {
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         const SnackBar(
           content: Text('Impossible de demarrer le live pour le moment.'),
         ),
@@ -2100,10 +2232,6 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
           await _catalogApiService.stopCurrentUserLive();
         } catch (_) {}
       }
-    }
-
-    if (!mounted) {
-      return;
     }
   }
 
@@ -2215,7 +2343,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                   controller: titleController,
                   primary: accentColor,
                   panelColor: panelColor,
-                  borderColor: accentColor.withOpacity(0.12),
+                  borderColor: accentColor.withValues(alpha: 0.12),
                   hintText: 'Titre du live',
                   leadingIcon: Icon(
                     Icons.mic_external_on_outlined,
@@ -2227,7 +2355,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                   controller: categoryController,
                   primary: accentColor,
                   panelColor: panelColor,
-                  borderColor: accentColor.withOpacity(0.12),
+                  borderColor: accentColor.withValues(alpha: 0.12),
                   hintText: 'Theme ou categorie',
                   leadingIcon: Icon(Icons.sell_outlined, color: accentColor),
                 ),
@@ -2578,6 +2706,8 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   Widget _buildSellerProductActions(Map<String, dynamic> product) {
     final theme = Theme.of(context);
     final productId = (product['id'] ?? '').toString().trim();
+    final pendingTaskId = product['pendingTaskId']?.toString().trim() ?? '';
+    final isPendingTask = pendingTaskId.isNotEmpty;
     final isAvailable = (product['isAvailable'] as bool?) ?? true;
     final isAvailabilityBusy =
         productId.isNotEmpty && _productAvailabilityBusy.contains(productId);
@@ -2588,10 +2718,19 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (isPendingTask) ...[
+          _buildSellerProductActionButton(
+            icon: Icons.play_arrow_rounded,
+            tooltip: 'Reprendre',
+            onTap: () => _productUploadQueueService.retryTask(pendingTaskId),
+            iconColor: theme.colorScheme.primary,
+          ),
+          const SizedBox(width: 8),
+        ],
         _buildSellerProductActionButton(
           icon: Icons.edit_outlined,
           tooltip: 'Modifier',
-          onTap: isAnyBusy
+          onTap: isAnyBusy || isPendingTask
               ? null
               : () => _showCreateProductSheet(initialProduct: product),
         ),
@@ -2599,7 +2738,9 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
         _buildSellerProductActionButton(
           icon: Icons.delete_outline_rounded,
           tooltip: 'Supprimer',
-          onTap: isDeleteBusy ? null : () => _confirmAndDeleteProduct(product),
+          onTap: isDeleteBusy || isPendingTask
+              ? null
+              : () => _confirmAndDeleteProduct(product),
           iconColor: Colors.red.shade300,
           busy: isDeleteBusy,
         ),
@@ -2609,7 +2750,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
               ? Icons.visibility_off_outlined
               : Icons.visibility_rounded,
           tooltip: isAvailable ? 'Non disponible' : 'Remettre disponible',
-          onTap: isAvailabilityBusy
+          onTap: isAvailabilityBusy || isPendingTask
               ? null
               : () => _confirmAndToggleProductAvailability(product),
           iconColor: isAvailable
@@ -3238,6 +3379,9 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     Color accentColor,
     int resultCount,
   ) {
+    final pendingTasks = _productUploadQueueService.activeTasks;
+    final hasPendingTasks = pendingTasks.isNotEmpty;
+
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: _surfaceDecoration(theme, radius: 24, tinted: true),
@@ -3245,6 +3389,38 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildSectionHeader(theme, 'Mes produits', '$resultCount resultats'),
+          if (hasPendingTasks) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: accentColor.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: accentColor.withValues(alpha: 0.16)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.cloud_upload_outlined, color: accentColor),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '${pendingTasks.length} produit${pendingTasks.length > 1 ? 's' : ''} en pending ou en synchronisation.',
+                      style: TextStyle(
+                        color: theme.textTheme.bodyMedium?.color,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: _resumePendingProductUploads,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Reprendre'),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 14),
           Row(
             children: [
@@ -3705,39 +3881,6 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     );
   }
 
-  Widget _buildLaunchLiveButton(
-    ThemeData theme,
-    Color accentColor,
-    Color supportAccentColor,
-  ) {
-    final isDark = theme.brightness == Brightness.dark;
-
-    return Container(
-      decoration: _surfaceDecoration(theme, radius: 22, tinted: true),
-      child: ElevatedButton.icon(
-        onPressed: _showLaunchLiveSheet,
-        icon: const Icon(Icons.live_tv_rounded, size: 20),
-        label: const Text(
-          'Lancer un live',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
-        style: ElevatedButton.styleFrom(
-          elevation: 0,
-          foregroundColor: theme.colorScheme.onPrimary,
-          backgroundColor: accentColor,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-          minimumSize: const Size(double.infinity, 58),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(22),
-            side: BorderSide(
-              color: supportAccentColor.withValues(alpha: isDark ? 0.4 : 0.22),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildCatalogSection(
     ThemeData theme,
     Color panelColor,
@@ -3764,17 +3907,23 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
             )
           else
             ...visibleProducts.map((product) {
+              final isPendingProduct =
+                  (product['pendingTaskId']?.toString().trim().isNotEmpty ??
+                  false);
               return Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Column(
                   children: [
-                    ProductCard(
-                      product: product,
-                      variant: ProductCardVariant.marketplace,
-                      detailPageBuilder: (product) =>
-                          seller_detail.ProductDetailPage(product: product),
-                      topRightOverlay: _buildSellerProductActions(product),
-                    ),
+                    if (isPendingProduct)
+                      _buildPendingProductCard(theme, mutedColor, product)
+                    else
+                      ProductCard(
+                        product: product,
+                        variant: ProductCardVariant.marketplace,
+                        detailPageBuilder: (product) =>
+                            seller_detail.ProductDetailPage(product: product),
+                        topRightOverlay: _buildSellerProductActions(product),
+                      ),
                   ],
                 ),
               );
@@ -3784,49 +3933,162 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     );
   }
 
-  Widget _buildAccountInfoSection(
+  Widget _buildPendingProductCard(
     ThemeData theme,
-    Color panelColor,
     Color mutedColor,
+    Map<String, dynamic> product,
   ) {
+    final pendingTaskId = product['pendingTaskId']?.toString().trim() ?? '';
+    final statusLabel = product['syncStatus']?.toString().trim() ?? 'Pending';
+    final statusMessage =
+        product['pendingMessage']?.toString().trim().isNotEmpty == true
+        ? product['pendingMessage'].toString().trim()
+        : 'Synchronisation en attente.';
+    final imageValue = (product['thumbnail'] ?? '').toString().trim();
+    final hasLocalImage =
+        imageValue.isNotEmpty && File(imageValue).existsSync();
+    final priceValue = (product['price'] as num?)?.toDouble() ?? 0;
+    final currencyCode =
+        (product['currencyCode']?.toString().trim().isNotEmpty ?? false)
+        ? product['currencyCode'].toString().trim()
+        : 'MGA';
+    final canResume = product['pendingCanResume'] == true;
+    final isBlocked = canResume;
+    final statusColor = isBlocked
+        ? theme.colorScheme.error
+        : theme.colorScheme.primary;
+    final waterTrackColor = isBlocked
+        ? theme.colorScheme.error.withValues(alpha: 0.12)
+        : theme.appColors.inputFill;
+    final progress = ((product['pendingProgress'] as num?)?.toDouble() ?? 0.08)
+        .clamp(0.0, 1.0);
+
     return Container(
-      padding: const EdgeInsets.all(18),
       decoration: _surfaceDecoration(theme),
-      child: Column(
+      padding: const EdgeInsets.all(14),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Informations personnelles',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: SizedBox(
+              width: 92,
+              height: 92,
+              child: hasLocalImage
+                  ? Image.file(File(imageValue), fit: BoxFit.cover)
+                  : imageValue.isNotEmpty
+                  ? AppNetworkImage(imageUrl: imageValue, fit: BoxFit.cover)
+                  : Container(
+                      color: theme.appColors.inputFill,
+                      child: Icon(
+                        Icons.inventory_2_outlined,
+                        color: theme.appColors.placeholderIcon,
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        (product['title'] ?? 'Produit').toString(),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: statusColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        statusLabel,
+                        style: TextStyle(
+                          color: statusColor,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '${product['category'] ?? 'Produit'} • ${priceValue.toStringAsFixed(0)} $currencyCode',
+                  style: TextStyle(
+                    color: statusColor,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-              ),
-              IconButton(
-                onPressed: _showIdentityEditor,
-                icon: const Icon(Icons.edit_outlined, size: 20),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          _buildInfoRow(
-            icon: Icons.storefront_outlined,
-            label: 'Nom',
-            value: _resolvedStudioName,
-            mutedColor: mutedColor,
-          ),
-          _buildInfoRow(
-            icon: _isSellerCertified
-                ? Icons.verified_rounded
-                : Icons.badge_outlined,
-            label: 'Statut',
-            value: _isSellerCertified
-                ? 'Boutique certifiee'
-                : profile.roleLabel,
-            mutedColor: mutedColor,
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _PendingWaterFillIndicator(
+                        progress: progress,
+                        color: statusColor,
+                        trackColor: waterTrackColor,
+                        animateWave: !canResume && progress < 1,
+                        showSecondaryWave: !canResume && progress < 1,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    SizedBox(
+                      width: 44,
+                      child: Text(
+                        '${(progress * 100).round()}%',
+                        textAlign: TextAlign.right,
+                        style: TextStyle(
+                          color: statusColor,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  statusMessage,
+                  style: TextStyle(color: mutedColor, height: 1.35),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    if (canResume)
+                      TextButton.icon(
+                        onPressed: pendingTaskId.isEmpty
+                            ? null
+                            : () => _productUploadQueueService.retryTask(
+                                pendingTaskId,
+                              ),
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Reprendre'),
+                      )
+                    else
+                      Text(
+                        'Le reste de l\'application reste utilisable.',
+                        style: TextStyle(
+                          color: mutedColor,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -4007,35 +4269,6 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     );
   }
 
-  Widget _buildHeroPill({required IconData icon, required String label}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: Theme.of(context).appColors.heroSurface,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Theme.of(context).appColors.heroBorder),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            size: 16,
-            color: Theme.of(context).appColors.heroForeground,
-          ),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: TextStyle(
-              color: Theme.of(context).appColors.heroForeground,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildSectionHeader(ThemeData theme, String title, [String? meta]) {
     final accentColor = _accentColor(theme);
 
@@ -4063,6 +4296,171 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
           ),
       ],
     );
+  }
+}
+
+class _PendingWaterFillIndicator extends StatefulWidget {
+  const _PendingWaterFillIndicator({
+    required this.progress,
+    required this.color,
+    required this.trackColor,
+    this.animateWave = true,
+    this.showSecondaryWave = true,
+  });
+
+  final double progress;
+  final Color color;
+  final Color trackColor;
+  final bool animateWave;
+  final bool showSecondaryWave;
+
+  @override
+  State<_PendingWaterFillIndicator> createState() =>
+      _PendingWaterFillIndicatorState();
+}
+
+class _PendingWaterFillIndicatorState extends State<_PendingWaterFillIndicator>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _waveController;
+
+  @override
+  void initState() {
+    super.initState();
+    _waveController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    );
+    if (widget.animateWave) {
+      _waveController.repeat();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _PendingWaterFillIndicator oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.animateWave && !_waveController.isAnimating) {
+      _waveController.repeat();
+    } else if (!widget.animateWave && _waveController.isAnimating) {
+      _waveController.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _waveController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final clampedProgress = widget.progress.clamp(0.0, 1.0);
+
+    return SizedBox(
+      height: 28,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(begin: 0, end: clampedProgress),
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeOutCubic,
+        builder: (context, animatedProgress, _) {
+          return AnimatedBuilder(
+            animation: _waveController,
+            builder: (context, child) {
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(color: widget.trackColor),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Align(
+                        alignment: Alignment.bottomCenter,
+                        child: FractionallySizedBox(
+                          heightFactor: animatedProgress,
+                          widthFactor: 1,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              CustomPaint(
+                                painter: _WaterFillPainter(
+                                  color: widget.color.withValues(alpha: 0.78),
+                                  phase: _waveController.value,
+                                  verticalFactor: 0.22,
+                                  amplitudeFactor: 0.12,
+                                ),
+                              ),
+                              if (widget.showSecondaryWave)
+                                CustomPaint(
+                                  painter: _WaterFillPainter(
+                                    color: widget.color.withValues(alpha: 0.44),
+                                    phase: (_waveController.value + 0.35) % 1,
+                                    verticalFactor: 0.3,
+                                    amplitudeFactor: 0.08,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _WaterFillPainter extends CustomPainter {
+  const _WaterFillPainter({
+    required this.color,
+    required this.phase,
+    required this.verticalFactor,
+    required this.amplitudeFactor,
+  });
+
+  final Color color;
+  final double phase;
+  final double verticalFactor;
+  final double amplitudeFactor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [color.withValues(alpha: 0.72), color.withValues(alpha: 0.92)],
+      ).createShader(Offset.zero & size);
+
+    final path = Path()..moveTo(0, size.height * (1 - verticalFactor));
+    final amplitude = math.min(size.height * amplitudeFactor, 4.0);
+    final baseY = size.height * (1 - verticalFactor);
+    final frequency = (2 * math.pi) / size.width;
+
+    for (double x = 0; x <= size.width; x += 1) {
+      final y =
+          baseY +
+          amplitude * math.sin((x * frequency * 2) + (phase * 2 * math.pi));
+      path.lineTo(x, y);
+    }
+
+    path
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _WaterFillPainter oldDelegate) {
+    return oldDelegate.color != color ||
+        oldDelegate.phase != phase ||
+        oldDelegate.verticalFactor != verticalFactor ||
+        oldDelegate.amplitudeFactor != amplitudeFactor;
   }
 }
 

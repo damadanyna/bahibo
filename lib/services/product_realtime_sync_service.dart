@@ -52,7 +52,6 @@ class ProductRealtimeSyncService {
   final Map<String, Map<String, dynamic>> _latestProductsById =
       <String, Map<String, dynamic>>{};
 
-  StreamSubscription<Map<String, dynamic>>? _eventsSubscription;
   bool _initialized = false;
 
   Stream<ProductRealtimeUpdate> get updates => _updatesController.stream;
@@ -64,9 +63,7 @@ class ProductRealtimeSyncService {
 
     _initialized = true;
     await ChatRealtimeService.instance.ensureConnected();
-    _eventsSubscription = ChatRealtimeService.instance.events.listen(
-      _handleRealtimeEvent,
-    );
+    ChatRealtimeService.instance.events.listen(_handleRealtimeEvent);
   }
 
   Map<String, dynamic> mergeIntoProduct(Map<String, dynamic> product) {
@@ -112,4 +109,3 @@ class ProductRealtimeSyncService {
     _updatesController.add(update);
   }
 }
-
