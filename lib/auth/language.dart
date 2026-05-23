@@ -11,20 +11,17 @@ class LanguagePage extends StatefulWidget {
 }
 
 class _LanguagePageState extends State<LanguagePage> {
-  String? _selectedLanguage = 'English';
+  String? _selectedLanguage = 'Malagasy';
 
   // Liste dynamique des langues
   final List<Map<String, String>> languages = [
-    {'name': 'English', 'native': "device's language", 'isSelect': 'true'},
+    {'name': 'Malagasy', 'native': 'Malagasy', 'isSelect': 'true'},
+    {'name': 'English', 'native': 'English', 'isSelect': 'false'},
     {'name': 'French', 'native': 'Français', 'isSelect': 'false'},
-    {'name': 'Malagasy', 'native': 'Malagasy', 'isSelect': 'false'},
+    {'name': 'Mandarin Chinese', 'native': '中文', 'isSelect': 'false'},
     {'name': 'Hindi', 'native': 'हिन्दी', 'isSelect': 'false'},
-    {'name': 'Marathi', 'native': 'मराठी', 'isSelect': 'false'},
-    {'name': 'Gujarati', 'native': 'ગુજરાતી', 'isSelect': 'false'},
-    {'name': 'Tamil', 'native': 'தமிழ்', 'isSelect': 'false'},
-    {'name': 'Bengali', 'native': 'বাংলা', 'isSelect': 'false'},
-    {'name': 'Telugu', 'native': 'తెలుగు', 'isSelect': 'false'},
-    // Ajoute d'autres langues ici
+    {'name': 'Spanish', 'native': 'Español', 'isSelect': 'false'},
+    {'name': 'Arabic', 'native': 'العربية', 'isSelect': 'false'},
   ];
 
   @override
@@ -44,14 +41,14 @@ class _LanguagePageState extends State<LanguagePage> {
             Container(
               alignment: Alignment.center,
               child: Text(
-                "Hello, welcome to BANAY",
+                "Akory, tonga soa ato @ BANAY",
                 style: TextStyle(fontSize: 25, fontWeight: FontWeight.w400),
               ),
             ),
             Container(
               alignment: Alignment.center,
               child: Text(
-                "Choose your language to get started",
+                "Safidio ny fiteninao hanombohana",
                 style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w400,
@@ -112,5 +109,3 @@ class _LanguagePageState extends State<LanguagePage> {
     );
   }
 }
-
-
