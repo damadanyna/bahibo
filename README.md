@@ -5,6 +5,7 @@ A new Flutter project.
 ## Project Docs
 
 - [Workflow progress](docs/workflow-progress.md)
+- [V1 release checklist](docs/play-store-release.md)
 - [Database schema](docs/banay-database-schema.mmd)
 
 ## Mobile API Auto Config

@@ -22,6 +22,7 @@ class PresenceService {
 
   Timer? _batchTimer;
   Timer? _refreshTimer;
+  StreamSubscription<Map<String, dynamic>>? _realtimeEventsSubscription;
   bool _isInitialized = false;
 
   ValueListenable<int> get changes => _version;
@@ -44,6 +45,12 @@ class PresenceService {
 
   void reset() {
     _batchTimer?.cancel();
+    _batchTimer = null;
+    _refreshTimer?.cancel();
+    _refreshTimer = null;
+    _realtimeEventsSubscription?.cancel();
+    _realtimeEventsSubscription = null;
+    _isInitialized = false;
     _pendingUserIds.clear();
     _watchedUserIds.clear();
     _presenceByUserId.clear();
@@ -89,7 +96,9 @@ class PresenceService {
     _refreshTimer ??= Timer.periodic(_presenceRefreshInterval, (_) {
       refreshWatchedUsers(force: true);
     });
-    ChatRealtimeService.instance.events.listen((event) {
+    _realtimeEventsSubscription = ChatRealtimeService.instance.events.listen((
+      event,
+    ) {
       final eventType = event['type']?.toString();
       if (eventType == ChatRealtimeService.connectedEventType) {
         refreshWatchedUsers(force: true);

@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:banay/auth/session_gate.dart';
 import 'package:banay/services/app_auth_service.dart';
 import 'package:banay/services/api_config.dart';
+import 'package:banay/services/banay_tls_override.dart';
 import 'package:banay/services/chat_realtime_service.dart';
 import 'package:banay/services/location_permission_service.dart';
 import 'package:banay/providers/theme_provider.dart';
@@ -21,7 +21,7 @@ enum _LocationPermissionDialogAction { later, continueRequest }
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await ApiConfig.initialize();
-  _configureDevelopmentTlsOverride();
+  configureBanayTlsOverride(ApiConfig.baseUrl);
   await PushNotificationService.initialize();
 
   // Désactiver la rotation et forcer le mode portrait
@@ -30,38 +30,6 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
   runApp(const MyApp());
-}
-
-void _configureDevelopmentTlsOverride() {
-  if (kReleaseMode) {
-    return;
-  }
-
-  final apiUri = Uri.tryParse(ApiConfig.baseUrl);
-  final host = apiUri?.host;
-  if (apiUri == null ||
-      apiUri.scheme != 'https' ||
-      host == null ||
-      host.isEmpty) {
-    return;
-  }
-
-  HttpOverrides.global = _BanayDevHttpOverrides(allowedHost: host);
-}
-
-class _BanayDevHttpOverrides extends HttpOverrides {
-  _BanayDevHttpOverrides({required this.allowedHost});
-
-  final String allowedHost;
-
-  @override
-  HttpClient createHttpClient(SecurityContext? context) {
-    final client = super.createHttpClient(context);
-    client.badCertificateCallback = (cert, host, port) {
-      return host == allowedHost;
-    };
-    return client;
-  }
 }
 
 class MyApp extends StatelessWidget {

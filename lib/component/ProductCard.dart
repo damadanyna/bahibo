@@ -1231,7 +1231,6 @@ class _ProductCardState extends State<ProductCard> {
       imageUrl: avatarUrl,
       radius: 24,
       userId: sellerUserId.isEmpty ? null : sellerUserId,
-      showPresenceBadge: false,
     );
   }
 

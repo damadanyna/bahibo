@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:banay/services/api_config.dart';
+import 'package:banay/services/banay_tls_override.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:banay/services/session_storage.dart';
 import 'package:flutter/widgets.dart';
@@ -82,6 +83,9 @@ class ChatRealtimeService {
             .disableMultiplex()
             .enableAutoConnect()
             .enableReconnection()
+            .setHttpClientAdapter(
+              createBanayPinnedHttpClientAdapter(ApiConfig.baseUrl),
+            )
             .setAuth({'token': accessToken})
             .setExtraHeaders({'Authorization': 'Bearer $accessToken'})
             .build(),

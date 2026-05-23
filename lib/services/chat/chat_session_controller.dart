@@ -941,11 +941,30 @@ class ChatSessionController extends ChangeNotifier {
           return false;
         }
 
+        final deliveredAt = event['deliveredAt']?.toString().trim() ?? '';
+        final effectiveDeliveredAt = deliveredAt.isNotEmpty
+            ? deliveredAt
+            : DateTime.now().toIso8601String();
+
         _updateState(
           _state.copyWith(
-            messages: _markMessageDelivered(_state.messages, messageId),
+            messages: _markMessageDelivered(
+              _state.messages,
+              messageId,
+              deliveredAt: effectiveDeliveredAt,
+            ),
           ),
         );
+
+        final conversationId = _state.conversationId?.trim() ?? '';
+        if (conversationId.isNotEmpty) {
+          ignoreNextNonPendingLocalStoreChange();
+          await _localConversationStore.markMessageDelivered(
+            conversationId: conversationId,
+            messageId: messageId,
+            deliveredAt: effectiveDeliveredAt,
+          );
+        }
         return true;
       default:
         return false;
@@ -1564,8 +1583,13 @@ class ChatSessionController extends ChangeNotifier {
 
   List<Map<String, dynamic>> _markMessageDelivered(
     List<Map<String, dynamic>> source,
-    String messageId,
-  ) {
+    String messageId, {
+    required String deliveredAt,
+  }) {
+    final effectiveDeliveredAt = deliveredAt.trim().isNotEmpty
+        ? deliveredAt.trim()
+        : DateTime.now().toIso8601String();
+
     return source
         .map((message) {
           final currentMessageId = message['id']?.toString().trim() ?? '';
@@ -1574,7 +1598,7 @@ class ChatSessionController extends ChangeNotifier {
           }
 
           final nextMessage = Map<String, dynamic>.from(message);
-          nextMessage['deliveredAt'] ??= DateTime.now().toIso8601String();
+          nextMessage['deliveredAt'] ??= effectiveDeliveredAt;
           return nextMessage;
         })
         .toList(growable: false);
