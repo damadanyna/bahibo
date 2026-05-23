@@ -1,0 +1,60 @@
+import 'package:banay/localization/banay_localization_common_keys.dart';
+
+const Map<String, Map<String, String>> banayCommonLocalizedValues = {
+  'mg': {
+    BanayCommonLocalizationKeys.continueAction: 'Hanohy',
+    BanayCommonLocalizationKeys.edit: 'Hanova',
+    BanayCommonLocalizationKeys.yes: 'Eny',
+    BanayCommonLocalizationKeys.later: 'Aoriana',
+    BanayCommonLocalizationKeys.openSettings: 'Sokafy ny reglages',
+    BanayCommonLocalizationKeys.allow: 'Avelao',
+  },
+  'en': {
+    BanayCommonLocalizationKeys.continueAction: 'Continue',
+    BanayCommonLocalizationKeys.edit: 'Edit',
+    BanayCommonLocalizationKeys.yes: 'Yes',
+    BanayCommonLocalizationKeys.later: 'Later',
+    BanayCommonLocalizationKeys.openSettings: 'Open settings',
+    BanayCommonLocalizationKeys.allow: 'Allow',
+  },
+  'fr': {
+    BanayCommonLocalizationKeys.continueAction: 'Continuer',
+    BanayCommonLocalizationKeys.edit: 'Modifier',
+    BanayCommonLocalizationKeys.yes: 'Oui',
+    BanayCommonLocalizationKeys.later: 'Plus tard',
+    BanayCommonLocalizationKeys.openSettings: 'Ouvrir reglages',
+    BanayCommonLocalizationKeys.allow: 'Autoriser',
+  },
+  'zh': {
+    BanayCommonLocalizationKeys.continueAction: '继续',
+    BanayCommonLocalizationKeys.edit: '修改',
+    BanayCommonLocalizationKeys.yes: '是',
+    BanayCommonLocalizationKeys.later: '稍后',
+    BanayCommonLocalizationKeys.openSettings: '打开设置',
+    BanayCommonLocalizationKeys.allow: '允许',
+  },
+  'hi': {
+    BanayCommonLocalizationKeys.continueAction: 'जारी रखें',
+    BanayCommonLocalizationKeys.edit: 'संपादित करें',
+    BanayCommonLocalizationKeys.yes: 'हाँ',
+    BanayCommonLocalizationKeys.later: 'बाद में',
+    BanayCommonLocalizationKeys.openSettings: 'सेटिंग खोलें',
+    BanayCommonLocalizationKeys.allow: 'अनुमति दें',
+  },
+  'es': {
+    BanayCommonLocalizationKeys.continueAction: 'Continuar',
+    BanayCommonLocalizationKeys.edit: 'Editar',
+    BanayCommonLocalizationKeys.yes: 'Si',
+    BanayCommonLocalizationKeys.later: 'Mas tarde',
+    BanayCommonLocalizationKeys.openSettings: 'Abrir ajustes',
+    BanayCommonLocalizationKeys.allow: 'Permitir',
+  },
+  'ar': {
+    BanayCommonLocalizationKeys.continueAction: 'متابعة',
+    BanayCommonLocalizationKeys.edit: 'تعديل',
+    BanayCommonLocalizationKeys.yes: 'نعم',
+    BanayCommonLocalizationKeys.later: 'لاحقا',
+    BanayCommonLocalizationKeys.openSettings: 'افتح الإعدادات',
+    BanayCommonLocalizationKeys.allow: 'السماح',
+  },
+};

@@ -1,0 +1,37 @@
+abstract final class BanayAuthLocalizationKeys {
+  static const languagePageTitle = 'language_page_title';
+  static const languagePageSubtitle = 'language_page_subtitle';
+  static const phonePageTitle = 'phone_page_title';
+  static const phonePageSubtitleLine1 = 'phone_page_subtitle_line1';
+  static const phonePageSubtitleLine2 = 'phone_page_subtitle_line2';
+  static const country = 'country';
+  static const chooseCountryTooltip = 'choose_country_tooltip';
+  static const phoneNumber = 'phone_number';
+  static const simDetectionInProgress = 'sim_detection_in_progress';
+  static const useSimNumber = 'use_sim_number';
+  static const detectedNumber = 'detected_number';
+  static const sendingOtp = 'sending_otp';
+  static const simNumberUnavailable = 'sim_number_unavailable';
+  static const simNumberDetected = 'sim_number_detected';
+  static const invalidPhoneNumber = 'invalid_phone_number';
+  static const confirmNumber = 'confirm_number';
+  static const otpSmsSent = 'otp_sms_sent';
+  static const verifyNumberTitle = 'verify_number_title';
+  static const enterCodeMessage = 'enter_code_message';
+  static const autodetectUnavailable = 'autodetect_unavailable';
+  static const devModeCurrentOtp = 'dev_mode_current_otp';
+  static const resendAvailableIn = 'resend_available_in';
+  static const requestNewOtpNow = 'request_new_otp_now';
+  static const verifying = 'verifying';
+  static const verifyOtp = 'verify_otp';
+  static const resending = 'resending';
+  static const resendCode = 'resend_code';
+  static const otpAutoDetectionTitle = 'otp_auto_detection_title';
+  static const otpVerifyingInProgress = 'otp_verifying_in_progress';
+  static const newOtpSent = 'new_otp_sent';
+  static const addValidName = 'add_valid_name';
+  static const almostThere = 'almost_there';
+  static const addNamePicture = 'add_name_picture';
+  static const yourName = 'your_name';
+  static const connecting = 'connecting';
+}

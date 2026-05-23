@@ -1,6 +1,7 @@
 import 'package:banay/auth/otp_verification.dart';
 import 'package:banay/component/ui/dinamic_icon_button.dart';
 import 'package:banay/component/ui/dinamic_icon_input.dart';
+import 'package:banay/localization/banay_localizations.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/app_auth_service.dart';
 import 'package:flutter/material.dart';
@@ -131,18 +132,23 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
 
     if (hint == null || hint.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Ce telephone ne fournit pas automatiquement le numero de la carte SIM. Vous pouvez saisir le numero manuellement.',
-          ),
+        SnackBar(
+          content: Text(context.tr(BanayLocalizationKeys.simNumberUnavailable)),
         ),
       );
       return;
     }
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Numero SIM detecte: $hint')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          context.tr(
+            BanayLocalizationKeys.simNumberDetected,
+            params: {'number': hint},
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -165,8 +171,8 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
 
     if (fullPhoneNumber.length < 10) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Selectionnez un pays et saisissez un numero valide.'),
+        SnackBar(
+          content: Text(context.tr(BanayLocalizationKeys.invalidPhoneNumber)),
         ),
       );
       return;
@@ -183,7 +189,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
         title: Column(
           children: [
             Text(
-              'Confirmer le numero',
+              context.tr(BanayLocalizationKeys.confirmNumber),
               style: TextStyle(color: appColors.heroForeground),
             ),
             const SizedBox(height: 8),
@@ -199,21 +205,21 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
           ],
         ),
         content: Text(
-          'Un code OTP sera envoye par SMS a ce numero.',
+          context.tr(BanayLocalizationKeys.otpSmsSent),
           style: TextStyle(color: appColors.mutedText),
           textAlign: TextAlign.center,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Modifier'),
+            child: Text(context.tr(BanayLocalizationKeys.edit)),
           ),
           TextButton(
             onPressed: () async {
               Navigator.of(dialogContext).pop();
               await _requestOtp(fullPhoneNumber);
             },
-            child: const Text('Yes'),
+            child: Text(context.tr(BanayLocalizationKeys.yes)),
           ),
         ],
       ),
@@ -282,7 +288,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
           Container(
             alignment: Alignment.center,
             child: Text(
-              'Welcome to BANAY',
+              context.tr(BanayLocalizationKeys.phonePageTitle),
               style: TextStyle(
                 fontSize: 25,
                 fontWeight: FontWeight.w400,
@@ -294,7 +300,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
           Container(
             alignment: Alignment.center,
             child: Text(
-              'BANAY need to verify your phone number',
+              context.tr(BanayLocalizationKeys.phonePageSubtitleLine1),
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w400,
@@ -305,7 +311,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
           Container(
             alignment: Alignment.center,
             child: Text(
-              'to connect in your account',
+              context.tr(BanayLocalizationKeys.phonePageSubtitleLine2),
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w400,
@@ -322,12 +328,14 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
                   primary: theme.colorScheme.primary,
                   panelColor: appColors.inputFill,
                   borderColor: appColors.inputBorder,
-                  hintText: 'Country',
+                  hintText: context.tr(BanayLocalizationKeys.country),
                   textInputAction: TextInputAction.next,
                   leadingIcon: Icon(Icons.public, color: appColors.mutedText),
                   trailingIcon: PopupMenuButton<String>(
                     initialValue: _selectedCountryName,
-                    tooltip: 'Choisir un pays',
+                    tooltip: context.tr(
+                      BanayLocalizationKeys.chooseCountryTooltip,
+                    ),
                     icon: Icon(
                       Icons.keyboard_arrow_down,
                       color: appColors.heroForeground,
@@ -381,7 +389,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
                         primary: theme.colorScheme.primary,
                         panelColor: appColors.inputFill,
                         borderColor: appColors.inputBorder,
-                        hintText: 'Phone Number',
+                        hintText: context.tr(BanayLocalizationKeys.phoneNumber),
                         keyboardType: TextInputType.phone,
                         inputFormatters: [
                           FilteringTextInputFormatter.digitsOnly,
@@ -415,8 +423,8 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
                     ),
                     label: Text(
                       _isCheckingSimNumber
-                          ? 'Detection...'
-                          : 'Utiliser mon numero SIM',
+                          ? context.tr('sim_detection_in_progress')
+                          : context.tr(BanayLocalizationKeys.useSimNumber),
                     ),
                   ),
                 ),
@@ -424,7 +432,10 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      'Numero detecte: $_simPhoneHint',
+                      context.tr(
+                        BanayLocalizationKeys.detectedNumber,
+                        params: {'number': _simPhoneHint!},
+                      ),
                       style: TextStyle(
                         fontSize: 12,
                         color: appColors.mutedText,
@@ -436,7 +447,9 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
                 SizedBox(
                   width: double.infinity,
                   child: DynamicIconButton(
-                    text: _isSubmitting ? 'Sending OTP...' : 'Continue',
+                    text: _isSubmitting
+                        ? context.tr(BanayLocalizationKeys.sendingOtp)
+                        : context.tr(BanayLocalizationKeys.continueAction),
                     icon: Icon(
                       _isSubmitting ? Icons.hourglass_top : Icons.arrow_forward,
                       size: 20,

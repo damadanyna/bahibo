@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:banay/auth/profileInformation.dart';
 import 'package:banay/component/main_navigation_shell.dart';
 import 'package:banay/component/ui/dinamic_icon_button.dart';
+import 'package:banay/localization/banay_localizations.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/app_auth_service.dart';
 import 'package:flutter/scheduler.dart';
@@ -277,9 +278,7 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
       }
 
       _showSnackBarSafely(
-        const SnackBar(
-          content: Text('Un nouveau code OTP a ete envoye.'),
-        ),
+        SnackBar(content: Text(context.tr(BanayLocalizationKeys.newOtpSent))),
       );
     } on AppApiException catch (error) {
       if (!mounted) {
@@ -322,14 +321,16 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
                     18 + viewInsets.bottom,
                   ),
                   child: ConstrainedBox(
-                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight,
+                    ),
                     child: IntrinsicHeight(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           const SizedBox(height: 12),
                           Text(
-                            'Verify your number',
+                            context.tr(BanayLocalizationKeys.verifyNumberTitle),
                             style: TextStyle(
                               fontSize: 28,
                               fontWeight: FontWeight.w700,
@@ -338,7 +339,10 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
                           ),
                           const SizedBox(height: 12),
                           Text(
-                            'Enter the 6-digit code sent to ${widget.phoneE164}. On compatible devices, the code will be detected automatically.',
+                            context.tr(
+                              BanayLocalizationKeys.enterCodeMessage,
+                              params: {'phone': widget.phoneE164},
+                            ),
                             style: TextStyle(
                               fontSize: 15,
                               height: 1.45,
@@ -349,7 +353,9 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
                               widget.appSignature!.isEmpty) ...[
                             const SizedBox(height: 12),
                             Text(
-                              'Auto-detection is unavailable on this device, but manual OTP entry still works.',
+                              context.tr(
+                                BanayLocalizationKeys.autodetectUnavailable,
+                              ),
                               style: TextStyle(
                                 fontSize: 13,
                                 color: appColors.mutedText,
@@ -363,10 +369,15 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
                               decoration: BoxDecoration(
                                 color: appColors.inputFill,
                                 borderRadius: BorderRadius.circular(18),
-                                border: Border.all(color: appColors.inputBorder),
+                                border: Border.all(
+                                  color: appColors.inputBorder,
+                                ),
                               ),
                               child: Text(
-                                'Mode dev: OTP actuel ${widget.debugCode}',
+                                context.tr(
+                                  BanayLocalizationKeys.devModeCurrentOtp,
+                                  params: {'code': widget.debugCode!},
+                                ),
                                 style: TextStyle(
                                   fontWeight: FontWeight.w700,
                                   color: appColors.heroForeground,
@@ -419,14 +430,23 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
                           const SizedBox(height: 18),
                           Text(
                             _remainingSeconds > 0
-                                ? 'Resend available in ${_remainingSeconds}s'
-                                : 'You can request a new OTP now.',
+                                ? context.tr(
+                                    BanayLocalizationKeys.resendAvailableIn,
+                                    params: {
+                                      'seconds': _remainingSeconds.toString(),
+                                    },
+                                  )
+                                : context.tr(
+                                    BanayLocalizationKeys.requestNewOtpNow,
+                                  ),
                             textAlign: TextAlign.center,
                             style: TextStyle(color: appColors.mutedText),
                           ),
                           const SizedBox(height: 18),
                           DynamicIconButton(
-                            text: _isVerifying ? 'Verifying...' : 'Verify OTP',
+                            text: _isVerifying
+                                ? context.tr(BanayLocalizationKeys.verifying)
+                                : context.tr(BanayLocalizationKeys.verifyOtp),
                             icon: Icon(
                               _isVerifying
                                   ? Icons.verified_user_outlined
@@ -443,7 +463,11 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
                                 ? _resendOtp
                                 : null,
                             child: Text(
-                              _isResending ? 'Resending...' : 'Resend code',
+                              _isResending
+                                  ? context.tr(BanayLocalizationKeys.resending)
+                                  : context.tr(
+                                      BanayLocalizationKeys.resendCode,
+                                    ),
                               style: TextStyle(
                                 fontWeight: FontWeight.w700,
                                 color: appColors.socialWhatsApp,
@@ -478,7 +502,9 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
                         ),
                         const SizedBox(height: 18),
                         Text(
-                          'Detection automatique de l\'OTP',
+                          context.tr(
+                            BanayLocalizationKeys.otpAutoDetectionTitle,
+                          ),
                           textAlign: TextAlign.center,
                           style: theme.textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w800,
@@ -486,7 +512,9 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
                         ),
                         const SizedBox(height: 10),
                         Text(
-                          'Verification du code en cours. Veuillez patienter.',
+                          context.tr(
+                            BanayLocalizationKeys.otpVerifyingInProgress,
+                          ),
                           textAlign: TextAlign.center,
                           style: TextStyle(color: appColors.mutedText),
                         ),
@@ -507,5 +535,3 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
     );
   }
 }
-
-

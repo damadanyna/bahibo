@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:banay/component/main_navigation_shell.dart';
 import 'package:banay/component/ui/dinamic_icon_button.dart';
 import 'package:banay/component/ui/dinamic_icon_input.dart';
+import 'package:banay/localization/banay_localizations.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/app_auth_service.dart';
 import 'package:flutter/material.dart';
@@ -57,7 +58,7 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
     if (displayName.length < 2) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ajoutez un nom valide pour continuer.')),
+        SnackBar(content: Text(context.tr(BanayLocalizationKeys.addValidName))),
       );
       return;
     }
@@ -127,7 +128,7 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
                       Container(
                         alignment: Alignment.center,
                         child: Text(
-                          "Almost there!",
+                          context.tr(BanayLocalizationKeys.almostThere),
                           style: TextStyle(
                             fontSize: 25,
                             fontWeight: FontWeight.w400,
@@ -138,7 +139,7 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
                       Container(
                         alignment: Alignment.center,
                         child: Text(
-                          "Add your name and a profile picture",
+                          context.tr(BanayLocalizationKeys.addNamePicture),
                           style: TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.w400,
@@ -205,7 +206,7 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
                         primary: theme.colorScheme.primary,
                         panelColor: appColors.inputFill,
                         borderColor: appColors.inputBorder,
-                        hintText: 'Your Name',
+                        hintText: context.tr(BanayLocalizationKeys.yourName),
                         leadingIcon: Icon(
                           Icons.person_outline,
                           color: appColors.mutedText,
@@ -220,7 +221,11 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
                       SizedBox(
                         width: double.infinity,
                         child: DynamicIconButton(
-                          text: _isSubmitting ? 'Connexion...' : 'Continue',
+                          text: _isSubmitting
+                              ? context.tr(BanayLocalizationKeys.connecting)
+                              : context.tr(
+                                  BanayLocalizationKeys.continueAction,
+                                ),
                           icon: _isSubmitting
                               ? const SizedBox(
                                   width: 20,
@@ -248,5 +253,3 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
     );
   }
 }
-
-

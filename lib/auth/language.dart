@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'phoneNumber.dart';
 
+import 'package:banay/localization/banay_localizations.dart';
+import 'package:banay/providers/app_language_provider.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
+import 'package:provider/provider.dart';
 
 class LanguagePage extends StatefulWidget {
   const LanguagePage({super.key});
@@ -11,7 +14,7 @@ class LanguagePage extends StatefulWidget {
 }
 
 class _LanguagePageState extends State<LanguagePage> {
-  String? _selectedLanguage = 'Malagasy';
+  String? _selectedLanguage;
 
   // Liste dynamique des langues
   final List<Map<String, String>> languages = [
@@ -23,6 +26,19 @@ class _LanguagePageState extends State<LanguagePage> {
     {'name': 'Spanish', 'native': 'Español', 'isSelect': 'false'},
     {'name': 'Arabic', 'native': 'العربية', 'isSelect': 'false'},
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    final selectedLanguageName = context
+        .read<AppLanguageProvider>()
+        .selectedLanguageName;
+    _selectedLanguage = selectedLanguageName;
+    for (final language in languages) {
+      language['isSelect'] = (language['name'] == selectedLanguageName)
+          .toString();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -41,14 +57,14 @@ class _LanguagePageState extends State<LanguagePage> {
             Container(
               alignment: Alignment.center,
               child: Text(
-                "Akory, tonga soa ato @ BANAY",
+                context.tr(BanayLocalizationKeys.languagePageTitle),
                 style: TextStyle(fontSize: 25, fontWeight: FontWeight.w400),
               ),
             ),
             Container(
               alignment: Alignment.center,
               child: Text(
-                "Safidio ny fiteninao hanombohana",
+                context.tr(BanayLocalizationKeys.languagePageSubtitle),
                 style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w400,
@@ -86,6 +102,11 @@ class _LanguagePageState extends State<LanguagePage> {
                           lang['isSelect'] = (lang['name'] == value).toString();
                         }
                       });
+                      if (value != null) {
+                        context
+                            .read<AppLanguageProvider>()
+                            .selectLanguageByName(value);
+                      }
                     },
                   );
                 },
@@ -98,6 +119,12 @@ class _LanguagePageState extends State<LanguagePage> {
       floatingActionButton: FloatingActionButton(
         elevation: 0,
         onPressed: () {
+          final selectedLanguage = _selectedLanguage;
+          if (selectedLanguage != null) {
+            context.read<AppLanguageProvider>().selectLanguageByName(
+              selectedLanguage,
+            );
+          }
           Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => const PhoneNumberPage()),

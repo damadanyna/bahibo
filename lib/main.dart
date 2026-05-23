@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:banay/auth/session_gate.dart';
+import 'package:banay/localization/banay_localizations.dart';
+import 'package:banay/providers/app_language_provider.dart';
 import 'package:banay/services/app_auth_service.dart';
 import 'package:banay/services/api_config.dart';
 import 'package:banay/services/banay_tls_override.dart';
@@ -20,6 +22,7 @@ enum _LocationPermissionDialogAction { later, continueRequest }
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  final appLanguageProvider = await AppLanguageProvider.bootstrap();
   await ApiConfig.initialize();
   configureBanayTlsOverride(ApiConfig.baseUrl);
   await PushNotificationService.initialize();
@@ -29,20 +32,24 @@ void main() async {
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
-  runApp(const MyApp());
+  runApp(MyApp(appLanguageProvider: appLanguageProvider));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, required this.appLanguageProvider});
+
+  final AppLanguageProvider appLanguageProvider;
 
   @override
   Widget build(BuildContext context) {
-    return const _AppLifecycleBootstrap();
+    return _AppLifecycleBootstrap(appLanguageProvider: appLanguageProvider);
   }
 }
 
 class _AppLifecycleBootstrap extends StatefulWidget {
-  const _AppLifecycleBootstrap();
+  const _AppLifecycleBootstrap({required this.appLanguageProvider});
+
+  final AppLanguageProvider appLanguageProvider;
 
   @override
   State<_AppLifecycleBootstrap> createState() => _AppLifecycleBootstrapState();
@@ -241,10 +248,15 @@ class _AppLifecycleBootstrapState extends State<_AppLifecycleBootstrap>
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (context) => ThemeProvider(),
-      child: Consumer<ThemeProvider>(
-        builder: (context, themeProvider, child) {
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (context) => ThemeProvider()),
+        ChangeNotifierProvider<AppLanguageProvider>.value(
+          value: widget.appLanguageProvider,
+        ),
+      ],
+      child: Consumer2<ThemeProvider, AppLanguageProvider>(
+        builder: (context, themeProvider, appLanguageProvider, child) {
           return MaterialApp(
             debugShowCheckedModeBanner: false,
             navigatorKey: PushNotificationService.navigatorKey,
@@ -253,6 +265,8 @@ class _AppLifecycleBootstrapState extends State<_AppLifecycleBootstrap>
             theme: ThemeProvider.lightTheme,
             darkTheme: ThemeProvider.darkTheme,
             themeMode: themeProvider.themeMode,
+            locale: appLanguageProvider.locale,
+            supportedLocales: BanayLocalizations.supportedLocales,
           );
         },
       ),
@@ -269,6 +283,16 @@ class _LocationPermissionDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
+    final blockedTitle = context.tr(
+      BanayLocalizationKeys.locationPermissionBlockedTitle,
+    );
+    final enableTitle = context.tr(BanayLocalizationKeys.enableLocationTitle);
+    final blockedBody = context.tr(
+      BanayLocalizationKeys.locationPermissionBlockedBody,
+    );
+    final enabledBody = context.tr(
+      BanayLocalizationKeys.locationPermissionBody,
+    );
     final surfaceTint = isDeniedForever
         ? colors.error.withValues(alpha: 0.18)
         : colors.primary.withValues(alpha: 0.18);
@@ -331,18 +355,14 @@ class _LocationPermissionDialog extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            isDeniedForever
-                                ? 'Autorisation bloquee'
-                                : 'Active la localisation',
+                            isDeniedForever ? blockedTitle : enableTitle,
                             style: theme.textTheme.titleLarge?.copyWith(
                               fontWeight: FontWeight.w900,
                             ),
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            isDeniedForever
-                                ? 'Ouvre les reglages pour autoriser BANAY a acceder a ta position.'
-                                : 'BANAY a besoin de ta position pour afficher ce qui est pertinent autour de toi.',
+                            isDeniedForever ? blockedBody : enabledBody,
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: colors.onSurface.withValues(alpha: 0.76),
                               height: 1.35,
@@ -357,22 +377,21 @@ class _LocationPermissionDialog extends StatelessWidget {
               const SizedBox(height: 18),
               _PermissionInfoRow(
                 icon: Icons.storefront_rounded,
-                label: 'Voir les profils, vendeurs et contenus proches de toi.',
+                label: context.tr(BanayLocalizationKeys.locationInfoNearby),
                 tint: colors.primary,
               ),
               const SizedBox(height: 10),
               _PermissionInfoRow(
                 icon: Icons.local_shipping_rounded,
-                label:
-                    'Mieux preparer la livraison et les options autour de ta zone.',
+                label: context.tr(BanayLocalizationKeys.locationInfoDelivery),
                 tint: colors.secondary,
               ),
               const SizedBox(height: 10),
               _PermissionInfoRow(
                 icon: Icons.shield_moon_rounded,
                 label: isDeniedForever
-                    ? 'Android a bloque la demande. Il faut maintenant passer par les reglages.'
-                    : 'Ta position reste utilisee pour ameliorer l\'experience dans BANAY.',
+                    ? context.tr(BanayLocalizationKeys.locationInfoBlocked)
+                    : context.tr(BanayLocalizationKeys.locationInfoUsage),
                 tint: isDeniedForever ? colors.error : colors.tertiary,
               ),
               const SizedBox(height: 20),
@@ -384,7 +403,7 @@ class _LocationPermissionDialog extends StatelessWidget {
                         context,
                       ).pop(_LocationPermissionDialogAction.later),
                       icon: const Icon(Icons.schedule_rounded),
-                      label: const Text('Plus tard'),
+                      label: Text(context.tr(BanayLocalizationKeys.later)),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -399,7 +418,9 @@ class _LocationPermissionDialog extends StatelessWidget {
                             : Icons.my_location_rounded,
                       ),
                       label: Text(
-                        isDeniedForever ? 'Ouvrir reglages' : 'Autoriser',
+                        isDeniedForever
+                            ? context.tr(BanayLocalizationKeys.openSettings)
+                            : context.tr(BanayLocalizationKeys.allow),
                       ),
                     ),
                   ),
