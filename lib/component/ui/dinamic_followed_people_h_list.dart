@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:banay/component/app_network_image.dart';
 import 'package:banay/component/app_page_skeletons.dart';
+import 'package:banay/localization/banay_localizations.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
@@ -10,15 +11,21 @@ typedef DynamicFollowedPersonTapCallback =
 typedef DynamicFollowedPersonLiveTapCallback =
     FutureOr<void> Function(Map<String, dynamic> person);
 
-String resolveFollowedPersonName(Map<String, dynamic> person) {
+String resolveFollowedPersonName(
+  Map<String, dynamic> person, {
+  required String fallbackName,
+}) {
   return person['displayName']?.toString().trim().isNotEmpty == true
       ? person['displayName'].toString().trim()
       : person['name']?.toString().trim().isNotEmpty == true
       ? person['name'].toString().trim()
-      : 'Membre BANAY';
+      : fallbackName;
 }
 
-String resolveFollowedPersonSubtitle(Map<String, dynamic> person) {
+String resolveFollowedPersonSubtitle(
+  Map<String, dynamic> person, {
+  required String fallbackSubtitle,
+}) {
   return person['subtitle']?.toString().trim().isNotEmpty == true
       ? person['subtitle'].toString().trim()
       : person['headline']?.toString().trim().isNotEmpty == true
@@ -27,15 +34,19 @@ String resolveFollowedPersonSubtitle(Map<String, dynamic> person) {
       ? person['locationLabel'].toString().trim()
       : person['sellerProfileDescription']?.toString().trim().isNotEmpty == true
       ? person['sellerProfileDescription'].toString().trim()
-      : 'Abonne';
+      : fallbackSubtitle;
 }
 
-String resolveFollowedPersonTrailingText(Map<String, dynamic> person) {
+String resolveFollowedPersonTrailingText(
+  Map<String, dynamic> person, {
+  required String sellerBadge,
+  required String profileBadge,
+}) {
   return person['trailingText']?.toString().trim().isNotEmpty == true
       ? person['trailingText'].toString().trim()
       : person['role']?.toString().trim().toUpperCase() == 'SELLER'
-      ? 'Boutique'
-      : 'Profil';
+      ? sellerBadge
+      : profileBadge;
 }
 
 String? resolveFollowedPersonUserId(Map<String, dynamic> person) {
@@ -58,17 +69,24 @@ String resolveFollowedPersonAvatarUrl(Map<String, dynamic> person) {
     return avatarUrl;
   }
 
-  return 'https://ui-avatars.com/api/?name=${Uri.encodeComponent(resolveFollowedPersonName(person))}&background=E5E7EB&color=111827';
+  return 'https://ui-avatars.com/api/?name=${Uri.encodeComponent(person['displayName']?.toString().trim().isNotEmpty == true
+      ? person['displayName'].toString().trim()
+      : person['name']?.toString().trim().isNotEmpty == true
+      ? person['name'].toString().trim()
+      : 'BANAY')}&background=E5E7EB&color=111827';
 }
 
 bool isFollowedPersonLive(Map<String, dynamic> person) {
   return person['isLive'] == true;
 }
 
-String resolveFollowedPersonLiveTitle(Map<String, dynamic> person) {
+String resolveFollowedPersonLiveTitle(
+  Map<String, dynamic> person, {
+  required String fallbackLiveTitle,
+}) {
   return person['liveTitle']?.toString().trim().isNotEmpty == true
       ? person['liveTitle'].toString().trim()
-      : 'En direct maintenant';
+      : fallbackLiveTitle;
 }
 
 class DinamicFollowedPeopleHList extends StatelessWidget {
@@ -95,6 +113,27 @@ class DinamicFollowedPeopleHList extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final appColors = theme.appColors;
+    final fallbackName = context.tr(
+      BanayLocalizationKeys.homeFollowedMemberFallback,
+    );
+    final fallbackSubtitle = context.tr(
+      BanayLocalizationKeys.homeFollowedSubtitleFallback,
+    );
+    final sellerBadge = context.tr(
+      BanayLocalizationKeys.homeFollowedSellerBadge,
+    );
+    final profileBadge = context.tr(
+      BanayLocalizationKeys.homeFollowedProfileBadge,
+    );
+    final fallbackLiveTitle = context.tr(
+      BanayLocalizationKeys.homeFollowedLiveNow,
+    );
+    final viewLiveLabel = context.tr(
+      BanayLocalizationKeys.homeFollowedViewLive,
+    );
+    final viewProfileLabel = context.tr(
+      BanayLocalizationKeys.homeFollowedViewProfile,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -124,15 +163,26 @@ class DinamicFollowedPeopleHList extends StatelessWidget {
                   itemCount: people.length,
                   itemBuilder: (context, index) {
                     final person = people[index];
-                    final name = resolveFollowedPersonName(person);
-                    final subtitle = resolveFollowedPersonSubtitle(person);
+                    final name = resolveFollowedPersonName(
+                      person,
+                      fallbackName: fallbackName,
+                    );
+                    final subtitle = resolveFollowedPersonSubtitle(
+                      person,
+                      fallbackSubtitle: fallbackSubtitle,
+                    );
                     final trailingText = resolveFollowedPersonTrailingText(
                       person,
+                      sellerBadge: sellerBadge,
+                      profileBadge: profileBadge,
                     );
                     final avatarUrl = resolveFollowedPersonAvatarUrl(person);
                     final userId = resolveFollowedPersonUserId(person);
                     final isLive = isFollowedPersonLive(person);
-                    final liveTitle = resolveFollowedPersonLiveTitle(person);
+                    final liveTitle = resolveFollowedPersonLiveTitle(
+                      person,
+                      fallbackLiveTitle: fallbackLiveTitle,
+                    );
 
                     return Material(
                       color: Colors.transparent,
@@ -230,8 +280,8 @@ class DinamicFollowedPeopleHList extends StatelessWidget {
                                       Icons.live_tv_rounded,
                                       size: 16,
                                     ),
-                                    label: const Text(
-                                      'Voir le live',
+                                    label: Text(
+                                      viewLiveLabel,
                                       style: TextStyle(
                                         fontSize: 12,
                                         fontWeight: FontWeight.w700,
@@ -249,7 +299,7 @@ class DinamicFollowedPeopleHList extends StatelessWidget {
                                     ),
                                     const SizedBox(width: 6),
                                     Text(
-                                      'Voir le profil',
+                                      viewProfileLabel,
                                       style: TextStyle(
                                         fontSize: 12,
                                         fontWeight: FontWeight.w600,
@@ -294,8 +344,8 @@ class FollowedPeopleHListSkeleton extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             itemCount: 4,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
-            itemBuilder: (_, __) {
+            separatorBuilder: (context, index) => const SizedBox(width: 12),
+            itemBuilder: (context, index) {
               return Container(
                 width: 172,
                 padding: const EdgeInsets.fromLTRB(14, 16, 14, 14),
@@ -401,5 +451,3 @@ class _FollowedPeopleEmptyState extends StatelessWidget {
     );
   }
 }
-
-

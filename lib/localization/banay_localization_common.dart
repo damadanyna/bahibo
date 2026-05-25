@@ -8,6 +8,12 @@ const Map<String, Map<String, String>> banayCommonLocalizedValues = {
     BanayCommonLocalizationKeys.later: 'Aoriana',
     BanayCommonLocalizationKeys.openSettings: 'Sokafy ny reglages',
     BanayCommonLocalizationKeys.allow: 'Avelao',
+    BanayCommonLocalizationKeys.navigationHome: 'Fandraisana',
+    BanayCommonLocalizationKeys.navigationSearch: 'Fikarohana',
+    BanayCommonLocalizationKeys.navigationMessages: 'Hafatra',
+    BanayCommonLocalizationKeys.navigationAccount: 'Kaonty',
+    BanayCommonLocalizationKeys.backAgainToExit:
+        'Miverena indray mandeha raha hivoaka',
   },
   'en': {
     BanayCommonLocalizationKeys.continueAction: 'Continue',
@@ -16,6 +22,11 @@ const Map<String, Map<String, String>> banayCommonLocalizedValues = {
     BanayCommonLocalizationKeys.later: 'Later',
     BanayCommonLocalizationKeys.openSettings: 'Open settings',
     BanayCommonLocalizationKeys.allow: 'Allow',
+    BanayCommonLocalizationKeys.navigationHome: 'Home',
+    BanayCommonLocalizationKeys.navigationSearch: 'Search',
+    BanayCommonLocalizationKeys.navigationMessages: 'Messages',
+    BanayCommonLocalizationKeys.navigationAccount: 'Account',
+    BanayCommonLocalizationKeys.backAgainToExit: 'Press back again to exit',
   },
   'fr': {
     BanayCommonLocalizationKeys.continueAction: 'Continuer',
@@ -24,6 +35,12 @@ const Map<String, Map<String, String>> banayCommonLocalizedValues = {
     BanayCommonLocalizationKeys.later: 'Plus tard',
     BanayCommonLocalizationKeys.openSettings: 'Ouvrir reglages',
     BanayCommonLocalizationKeys.allow: 'Autoriser',
+    BanayCommonLocalizationKeys.navigationHome: 'Accueil',
+    BanayCommonLocalizationKeys.navigationSearch: 'Recherche',
+    BanayCommonLocalizationKeys.navigationMessages: 'Messages',
+    BanayCommonLocalizationKeys.navigationAccount: 'Compte',
+    BanayCommonLocalizationKeys.backAgainToExit:
+        'Retourne une fois pour quitter',
   },
   'zh': {
     BanayCommonLocalizationKeys.continueAction: '继续',
@@ -32,6 +49,11 @@ const Map<String, Map<String, String>> banayCommonLocalizedValues = {
     BanayCommonLocalizationKeys.later: '稍后',
     BanayCommonLocalizationKeys.openSettings: '打开设置',
     BanayCommonLocalizationKeys.allow: '允许',
+    BanayCommonLocalizationKeys.navigationHome: '首页',
+    BanayCommonLocalizationKeys.navigationSearch: '搜索',
+    BanayCommonLocalizationKeys.navigationMessages: '消息',
+    BanayCommonLocalizationKeys.navigationAccount: '账户',
+    BanayCommonLocalizationKeys.backAgainToExit: '再按一次返回即可退出',
   },
   'hi': {
     BanayCommonLocalizationKeys.continueAction: 'जारी रखें',
@@ -40,6 +62,12 @@ const Map<String, Map<String, String>> banayCommonLocalizedValues = {
     BanayCommonLocalizationKeys.later: 'बाद में',
     BanayCommonLocalizationKeys.openSettings: 'सेटिंग खोलें',
     BanayCommonLocalizationKeys.allow: 'अनुमति दें',
+    BanayCommonLocalizationKeys.navigationHome: 'होम',
+    BanayCommonLocalizationKeys.navigationSearch: 'खोज',
+    BanayCommonLocalizationKeys.navigationMessages: 'संदेश',
+    BanayCommonLocalizationKeys.navigationAccount: 'खाता',
+    BanayCommonLocalizationKeys.backAgainToExit:
+        'बाहर निकलने के लिए फिर से बैक दबाएं',
   },
   'es': {
     BanayCommonLocalizationKeys.continueAction: 'Continuar',
@@ -48,6 +76,12 @@ const Map<String, Map<String, String>> banayCommonLocalizedValues = {
     BanayCommonLocalizationKeys.later: 'Mas tarde',
     BanayCommonLocalizationKeys.openSettings: 'Abrir ajustes',
     BanayCommonLocalizationKeys.allow: 'Permitir',
+    BanayCommonLocalizationKeys.navigationHome: 'Inicio',
+    BanayCommonLocalizationKeys.navigationSearch: 'Buscar',
+    BanayCommonLocalizationKeys.navigationMessages: 'Mensajes',
+    BanayCommonLocalizationKeys.navigationAccount: 'Cuenta',
+    BanayCommonLocalizationKeys.backAgainToExit:
+        'Pulsa atras otra vez para salir',
   },
   'ar': {
     BanayCommonLocalizationKeys.continueAction: 'متابعة',
@@ -56,5 +90,10 @@ const Map<String, Map<String, String>> banayCommonLocalizedValues = {
     BanayCommonLocalizationKeys.later: 'لاحقا',
     BanayCommonLocalizationKeys.openSettings: 'افتح الإعدادات',
     BanayCommonLocalizationKeys.allow: 'السماح',
+    BanayCommonLocalizationKeys.navigationHome: 'الرئيسية',
+    BanayCommonLocalizationKeys.navigationSearch: 'بحث',
+    BanayCommonLocalizationKeys.navigationMessages: 'الرسائل',
+    BanayCommonLocalizationKeys.navigationAccount: 'الحساب',
+    BanayCommonLocalizationKeys.backAgainToExit: 'اضغط رجوع مرة اخرى للخروج',
   },
 };

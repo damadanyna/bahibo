@@ -1,0 +1,21 @@
+abstract final class BanaySearchLocalizationKeys {
+  static const searchTitle = 'search_title';
+  static const searchHint = 'search_hint';
+  static const hideHistoryDialogTitle = 'search_hide_history_dialog_title';
+  static const hideHistoryDialogBody = 'search_hide_history_dialog_body';
+  static const cancel = 'search_cancel';
+  static const delete = 'search_delete';
+  static const noSuggestions = 'search_no_suggestions';
+  static const suggestionsTitle = 'search_suggestions_title';
+  static const searchAction = 'search_action';
+  static const historyTitle = 'search_history_title';
+  static const hideHistoryTooltip = 'search_hide_history_tooltip';
+  static const noResults = 'search_no_results';
+  static const resultsFromDatabase = 'search_results_from_database';
+  static const resultsForQuery = 'search_results_for_query';
+  static const resultsSummary = 'search_results_summary';
+  static const typeProduct = 'search_type_product';
+  static const typeUser = 'search_type_user';
+  static const typeCategory = 'search_type_category';
+  static const typeLocation = 'search_type_location';
+}

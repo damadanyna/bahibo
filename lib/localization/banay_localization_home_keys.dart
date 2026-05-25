@@ -1,0 +1,28 @@
+abstract final class BanayHomeLocalizationKeys {
+  static const defaultStoreName = 'home_default_store_name';
+  static const liveUnavailable = 'home_live_unavailable';
+  static const followedTitle = 'home_followed_title';
+  static const followedEmptyTitle = 'home_followed_empty_title';
+  static const followedEmptyMessage = 'home_followed_empty_message';
+  static const notificationsTooltip = 'home_notifications_tooltip';
+  static const livekitConfigIncomplete = 'home_livekit_config_incomplete';
+  static const cannotStartLive = 'home_cannot_start_live';
+  static const liveDefaultTitle = 'home_live_default_title';
+  static const liveDefaultCategory = 'home_live_default_category';
+  static const createLiveTitle = 'home_create_live_title';
+  static const createLiveSubtitle = 'home_create_live_subtitle';
+  static const liveTitleHint = 'home_live_title_hint';
+  static const liveCategoryHint = 'home_live_category_hint';
+  static const liveTitleRequired = 'home_live_title_required';
+  static const liveCategoryRequired = 'home_live_category_required';
+  static const launchLive = 'home_launch_live';
+  static const startLive = 'home_start_live';
+  static const noMoreProducts = 'home_no_more_products';
+  static const followedMemberFallback = 'home_followed_member_fallback';
+  static const followedSubtitleFallback = 'home_followed_subtitle_fallback';
+  static const followedSellerBadge = 'home_followed_seller_badge';
+  static const followedProfileBadge = 'home_followed_profile_badge';
+  static const followedLiveNow = 'home_followed_live_now';
+  static const followedViewLive = 'home_followed_view_live';
+  static const followedViewProfile = 'home_followed_view_profile';
+}

@@ -10,6 +10,7 @@ import 'package:banay/component/user_profile_page.dart';
 import 'package:banay/page/live/live_preview_page.dart';
 import 'package:banay/page/notifications_page.dart';
 import 'package:banay/page/live/live_watch_page.dart';
+import 'package:banay/localization/banay_localizations.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/app_auth_service.dart';
 import 'package:banay/services/catalog_api_service.dart';
@@ -50,7 +51,7 @@ class _MainHomePanelState extends State<MainHomePanel>
   bool hasMore = true;
   bool _isSeller = false;
   bool _isLoadingFollowedPeople = true;
-  String _currentDisplayName = 'Boutique BANAY';
+  String _currentDisplayName = 'BANAY Shop';
   String _viewerLocationLabel = '';
   double? _viewerLocationLatitude;
   double? _viewerLocationLongitude;
@@ -440,7 +441,9 @@ class _MainHomePanelState extends State<MainHomePanel>
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ce live n\'est plus disponible.')),
+        SnackBar(
+          content: Text(context.tr(BanayLocalizationKeys.homeLiveUnavailable)),
+        ),
       );
       return;
     }
@@ -452,7 +455,7 @@ class _MainHomePanelState extends State<MainHomePanel>
           sellerName:
               person['displayName']?.toString() ??
               person['name']?.toString() ??
-              'Boutique BANAY',
+              context.tr(BanayLocalizationKeys.homeDefaultStoreName),
           sellerAvatarUrl: person['avatarUrl']?.toString() ?? '',
         ),
       ),
@@ -472,10 +475,13 @@ class _MainHomePanelState extends State<MainHomePanel>
         else
           DinamicFollowedPeopleHList(
             people: followedPeople,
-            title: 'Vos abonnements',
-            emptyTitle: 'Aucun abonnement pour le moment',
-            emptyMessage:
-                'Abonnez-vous a des boutiques pour les retrouver ici.',
+            title: context.tr(BanayLocalizationKeys.homeFollowedTitle),
+            emptyTitle: context.tr(
+              BanayLocalizationKeys.homeFollowedEmptyTitle,
+            ),
+            emptyMessage: context.tr(
+              BanayLocalizationKeys.homeFollowedEmptyMessage,
+            ),
             onPersonTap: _openFollowedPerson,
             onLiveTap: _openFollowedPersonLive,
           ),
@@ -491,7 +497,7 @@ class _MainHomePanelState extends State<MainHomePanel>
         children: [
           IconButton(
             onPressed: _openNotificationsPage,
-            tooltip: 'Ouvrir les notifications',
+            tooltip: context.tr(BanayLocalizationKeys.homeNotificationsTooltip),
             style: IconButton.styleFrom(
               backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
               foregroundColor: Colors.white,
@@ -543,6 +549,9 @@ class _MainHomePanelState extends State<MainHomePanel>
   Future<void> _openLivePreview(String title, String category) async {
     Map<String, dynamic>? liveInfo;
     var liveStarted = false;
+    final livekitConfigIncompleteMessage = context.tr(
+      BanayLocalizationKeys.homeLivekitConfigIncomplete,
+    );
 
     try {
       liveInfo = await _catalogApiService.startCurrentUserLive(
@@ -556,9 +565,7 @@ class _MainHomePanelState extends State<MainHomePanel>
       final roomName = liveInfo['roomName']?.toString().trim() ?? '';
 
       if (liveUrl.isEmpty || liveToken.isEmpty || roomName.isEmpty) {
-        throw AppApiException(
-          'La configuration LiveKit du serveur est incomplete.',
-        );
+        throw AppApiException(livekitConfigIncompleteMessage);
       }
 
       if (!mounted) {
@@ -590,8 +597,8 @@ class _MainHomePanelState extends State<MainHomePanel>
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Impossible de demarrer le live pour le moment.'),
+        SnackBar(
+          content: Text(context.tr(BanayLocalizationKeys.homeCannotStartLive)),
         ),
       );
     } finally {
@@ -605,10 +612,13 @@ class _MainHomePanelState extends State<MainHomePanel>
 
   Future<void> _showLaunchLiveSheet() async {
     final titleController = TextEditingController(
-      text: '$_currentDisplayName en direct',
+      text: context.tr(
+        BanayLocalizationKeys.homeLiveDefaultTitle,
+        params: {'name': _currentDisplayName},
+      ),
     );
     final categoryController = TextEditingController(
-      text: 'Presentation produit',
+      text: context.tr(BanayLocalizationKeys.homeLiveDefaultCategory),
     );
 
     await showModalBottomSheet<void>(
@@ -665,14 +675,18 @@ class _MainHomePanelState extends State<MainHomePanel>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Creer un live',
+                            context.tr(
+                              BanayLocalizationKeys.homeCreateLiveTitle,
+                            ),
                             style: theme.textTheme.titleLarge?.copyWith(
                               fontWeight: FontWeight.w800,
                             ),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Prepare ton direct et rends-le visible tout de suite.',
+                            context.tr(
+                              BanayLocalizationKeys.homeCreateLiveSubtitle,
+                            ),
                             style: TextStyle(color: theme.appColors.mutedText),
                           ),
                         ],
@@ -686,7 +700,7 @@ class _MainHomePanelState extends State<MainHomePanel>
                   primary: accentColor,
                   panelColor: panelColor,
                   borderColor: accentColor.withValues(alpha: 0.12),
-                  hintText: 'Titre du live',
+                  hintText: context.tr(BanayLocalizationKeys.homeLiveTitleHint),
                   leadingIcon: Icon(
                     Icons.mic_external_on_outlined,
                     color: accentColor,
@@ -698,7 +712,9 @@ class _MainHomePanelState extends State<MainHomePanel>
                   primary: accentColor,
                   panelColor: panelColor,
                   borderColor: accentColor.withValues(alpha: 0.12),
-                  hintText: 'Theme ou categorie',
+                  hintText: context.tr(
+                    BanayLocalizationKeys.homeLiveCategoryHint,
+                  ),
                   leadingIcon: Icon(Icons.sell_outlined, color: accentColor),
                 ),
                 const SizedBox(height: 16),
@@ -711,9 +727,11 @@ class _MainHomePanelState extends State<MainHomePanel>
 
                       if (liveTitle.isEmpty) {
                         ScaffoldMessenger.of(sheetContext).showSnackBar(
-                          const SnackBar(
+                          SnackBar(
                             content: Text(
-                              'Ajoute un titre pour lancer le live.',
+                              context.tr(
+                                BanayLocalizationKeys.homeLiveTitleRequired,
+                              ),
                             ),
                           ),
                         );
@@ -722,9 +740,11 @@ class _MainHomePanelState extends State<MainHomePanel>
 
                       if (liveCategory.isEmpty) {
                         ScaffoldMessenger.of(sheetContext).showSnackBar(
-                          const SnackBar(
+                          SnackBar(
                             content: Text(
-                              'Ajoute une categorie pour lancer le live.',
+                              context.tr(
+                                BanayLocalizationKeys.homeLiveCategoryRequired,
+                              ),
                             ),
                           ),
                         );
@@ -735,7 +755,9 @@ class _MainHomePanelState extends State<MainHomePanel>
                       _openLivePreview(liveTitle, liveCategory);
                     },
                     icon: const Icon(Icons.live_tv_rounded, size: 18),
-                    label: const Text('Lancer le live'),
+                    label: Text(
+                      context.tr(BanayLocalizationKeys.homeLaunchLive),
+                    ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: accentColor,
                       foregroundColor: theme.colorScheme.onPrimary,
@@ -762,7 +784,7 @@ class _MainHomePanelState extends State<MainHomePanel>
         child: ElevatedButton.icon(
           onPressed: _showLaunchLiveSheet,
           icon: const Icon(Icons.live_tv_rounded, size: 18),
-          label: const Text('Lancer un live'),
+          label: Text(context.tr(BanayLocalizationKeys.homeStartLive)),
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.green.withValues(alpha: 0.25),
             foregroundColor: theme.colorScheme.onPrimary,
@@ -850,10 +872,15 @@ class _MainHomePanelState extends State<MainHomePanel>
                                   );
                                 }
                                 if (!hasMore) {
-                                  return const Center(
+                                  return Center(
                                     child: Padding(
-                                      padding: EdgeInsets.all(16),
-                                      child: Text('Plus de produits '),
+                                      padding: const EdgeInsets.all(16),
+                                      child: Text(
+                                        context.tr(
+                                          BanayLocalizationKeys
+                                              .homeNoMoreProducts,
+                                        ),
+                                      ),
                                     ),
                                   );
                                 }

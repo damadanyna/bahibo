@@ -7,6 +7,7 @@ import 'package:banay/component/ui/dinamic_categories_h_list.dart';
 import 'package:banay/component/ui/dinamic_icon_input.dart';
 import 'package:banay/page/category_page.dart';
 import 'package:banay/page/productDetail.dart';
+import 'package:banay/localization/banay_localizations.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/catalog_api_service.dart';
 import 'package:banay/services/search_history_service.dart';
@@ -328,18 +329,23 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
     final decision = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Supprimer de l\'historique'),
+        title: Text(
+          context.tr(BanayLocalizationKeys.searchHideHistoryDialogTitle),
+        ),
         content: Text(
-          'Voulez-vous vraiment supprimer "$query" de votre historique de recherche ?',
+          context.tr(
+            BanayLocalizationKeys.searchHideHistoryDialogBody,
+            params: {'query': query},
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Annuler'),
+            child: Text(context.tr(BanayLocalizationKeys.searchCancel)),
           ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Supprimer'),
+            child: Text(context.tr(BanayLocalizationKeys.searchDelete)),
           ),
         ],
       ),
@@ -375,7 +381,10 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
           border: Border.all(color: theme.appColors.inputBorder),
         ),
         child: Text(
-          'Aucune suggestion disponible pour "$query".',
+          context.tr(
+            BanayLocalizationKeys.searchNoSuggestions,
+            params: {'query': query},
+          ),
           style: TextStyle(
             color: theme.appColors.mutedText,
             fontWeight: FontWeight.w600,
@@ -403,7 +412,7 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
               ),
               const SizedBox(width: 10),
               Text(
-                'Suggestions',
+                context.tr(BanayLocalizationKeys.searchSuggestionsTitle),
                 style: TextStyle(
                   color: theme.colorScheme.primary,
                   fontWeight: FontWeight.w800,
@@ -442,8 +451,8 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
                             const SizedBox(height: 2),
                             Text(
                               suggestion.subtitle.isEmpty
-                                  ? suggestion.typeLabel
-                                  : '${suggestion.typeLabel} · ${suggestion.subtitle}',
+                                  ? context.tr(suggestion.typeLabel)
+                                  : '${context.tr(suggestion.typeLabel)} · ${suggestion.subtitle}',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
@@ -456,7 +465,7 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        'Rechercher',
+                        context.tr(BanayLocalizationKeys.searchAction),
                         style: TextStyle(
                           color: theme.colorScheme.primary,
                           fontWeight: FontWeight.w700,
@@ -637,7 +646,7 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Recherche',
+                  context.tr(BanayLocalizationKeys.searchTitle),
                   style: theme.textTheme.headlineMedium?.copyWith(
                     fontWeight: FontWeight.w900,
                   ),
@@ -651,8 +660,7 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
                   panelColor: theme.cardColor,
                   borderColor: appColors.inputBorder,
                   textInputAction: TextInputAction.search,
-                  hintText:
-                      'Rechercher un utilisateur, produit, categorie ou lieu...',
+                  hintText: context.tr(BanayLocalizationKeys.searchHint),
                   contentPadding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
                   leadingSize: 24,
                   leadingIcon: Icon(
@@ -716,7 +724,7 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
       children: [
         const SizedBox(height: 8),
         Text(
-          'Historique de recherche',
+          context.tr(BanayLocalizationKeys.searchHistoryTitle),
           style: theme.textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w800,
           ),
@@ -757,7 +765,9 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
                     const SizedBox(width: 6),
                     IconButton(
                       onPressed: () => _confirmHideSearchHistoryEntry(query),
-                      tooltip: 'Masquer cet historique',
+                      tooltip: context.tr(
+                        BanayLocalizationKeys.searchHideHistoryTooltip,
+                      ),
                       icon: Icon(
                         Icons.close_rounded,
                         size: 18,
@@ -803,7 +813,10 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Aucun utilisateur, produit, categorie ou lieu pour "$query".',
+              context.tr(
+                BanayLocalizationKeys.searchNoResults,
+                params: {'query': query},
+              ),
               style: TextStyle(
                 color: theme.appColors.mutedText,
                 fontWeight: FontWeight.w600,
@@ -836,15 +849,26 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
       children: [
         Text(
           query.isEmpty
-              ? 'Resultats depuis la base BANAY'
-              : 'Resultats lies a la recherche (${suggestions.length})',
+              ? context.tr(BanayLocalizationKeys.searchResultsFromDatabase)
+              : context.tr(
+                  BanayLocalizationKeys.searchResultsForQuery,
+                  params: {'count': '${suggestions.length}'},
+                ),
           style: theme.textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w800,
           ),
         ),
         const SizedBox(height: 6),
         Text(
-          '${_resultCounts['products'] ?? productCount} produits • ${_resultCounts['users'] ?? userCount} utilisateurs • ${_resultCounts['categories'] ?? 0} categories • ${_resultCounts['locations'] ?? 0} lieux',
+          context.tr(
+            BanayLocalizationKeys.searchResultsSummary,
+            params: {
+              'products': '${_resultCounts['products'] ?? productCount}',
+              'users': '${_resultCounts['users'] ?? userCount}',
+              'categories': '${_resultCounts['categories'] ?? 0}',
+              'locations': '${_resultCounts['locations'] ?? 0}',
+            },
+          ),
           style: TextStyle(
             color: theme.appColors.mutedText,
             fontWeight: FontWeight.w600,
@@ -900,7 +924,7 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
                                     borderRadius: BorderRadius.circular(999),
                                   ),
                                   child: Text(
-                                    suggestion.typeLabel,
+                                    context.tr(suggestion.typeLabel),
                                     style: TextStyle(
                                       color: theme.colorScheme.primary,
                                       fontSize: 12,
@@ -1155,13 +1179,13 @@ class _SearchSuggestion {
   String get typeLabel {
     switch (type) {
       case _SuggestionType.product:
-        return 'Produit';
+        return BanayLocalizationKeys.searchTypeProduct;
       case _SuggestionType.user:
-        return 'Utilisateur';
+        return BanayLocalizationKeys.searchTypeUser;
       case _SuggestionType.category:
-        return 'Categorie';
+        return BanayLocalizationKeys.searchTypeCategory;
       case _SuggestionType.location:
-        return 'Lieu';
+        return BanayLocalizationKeys.searchTypeLocation;
     }
   }
 

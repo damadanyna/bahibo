@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:banay/component/app_network_image.dart';
 import 'package:banay/component/ui/dinamic_icon_button.dart';
+import 'package:banay/localization/banay_localizations.dart';
 import 'package:banay/page/image_viewer_page.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/app_auth_service.dart';
@@ -46,7 +47,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
   String? _locationLabel;
   DateTime? _displayNameChangedAt;
   DateTime? _nextDisplayNameChangeAt;
-  String _displayName = 'Utilisateur BANAY';
+  String _displayName = '';
   String _avatarUrl = '';
   String _coverImageUrl = '';
   String? _currentUserId;
@@ -172,8 +173,11 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
 
   String _formatRemainingDaysLabel(int remainingDays) {
     return remainingDays > 1
-        ? '$remainingDays jours restants'
-        : '1 jour restant';
+        ? context.tr(
+            BanayLocalizationKeys.accountDaysRemainingMany,
+            params: {'days': '$remainingDays'},
+          )
+        : context.tr(BanayLocalizationKeys.accountDayRemainingOne);
   }
 
   String _formatDate(DateTime value) {
@@ -183,19 +187,31 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
     return '$day/$month/$year';
   }
 
+  String get _resolvedDisplayName => _displayName.trim().isNotEmpty
+      ? _displayName
+      : context.tr(BanayLocalizationKeys.accountDefaultDisplayName);
+
   String get _displayNamePolicyLabel {
     final nextChangeAt = _nextDisplayNameChangeAt;
     if (nextChangeAt == null) {
-      return 'Vous pouvez modifier votre nom maintenant. Apres chaque modification, le prochain changement sera disponible dans 7 jours.';
+      return context.tr(
+        BanayLocalizationKeys.accountDisplayNamePolicyFirstChange,
+      );
     }
 
     if (_canUpdateDisplayName) {
-      return 'Vous pouvez modifier votre nom maintenant. Le nom utilisateur ne peut etre modifie qu\'une fois tous les 7 jours.';
+      return context.tr(BanayLocalizationKeys.accountDisplayNamePolicyReady);
     }
 
     final remainingDays = _displayNameCooldownDaysRemaining ?? 0;
 
-    return 'Le nom utilisateur ne peut etre modifie qu\'une fois tous les 7 jours. ${_formatRemainingDaysLabel(remainingDays)}. Prochaine date autorisee: ${_formatDate(nextChangeAt)}.';
+    return context.tr(
+      BanayLocalizationKeys.accountDisplayNamePolicyCooldown,
+      params: {
+        'remainingDays': _formatRemainingDaysLabel(remainingDays),
+        'nextDate': _formatDate(nextChangeAt),
+      },
+    );
   }
 
   Future<void> _showDisplayNameEditor() async {
@@ -205,14 +221,28 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
         context: context,
         builder: (dialogContext) {
           return AlertDialog(
-            title: const Text('Modification limitee'),
+            title: Text(
+              dialogContext.tr(
+                BanayLocalizationKeys.accountDisplayNameEditBlockedTitle,
+              ),
+            ),
             content: Text(
-              'Le nom utilisateur ne peut etre modifie qu\'une fois tous les 7 jours. ${_formatRemainingDaysLabel(_displayNameCooldownDaysRemaining ?? 0)}. Vous pourrez le changer a nouveau a partir du ${_formatDate(nextChangeAt!)}.',
+              dialogContext.tr(
+                BanayLocalizationKeys.accountDisplayNameEditBlockedBody,
+                params: {
+                  'remainingDays': _formatRemainingDaysLabel(
+                    _displayNameCooldownDaysRemaining ?? 0,
+                  ),
+                  'nextDate': _formatDate(nextChangeAt!),
+                },
+              ),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text('Fermer'),
+                child: Text(
+                  dialogContext.tr(BanayLocalizationKeys.accountCloseAction),
+                ),
               ),
             ],
           );
@@ -223,14 +253,20 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
 
     final controller = TextEditingController(text: _displayName);
     final nextChangeHint = _displayNameChangedAt == null
-        ? 'Apres cette modification, vous devrez attendre 7 jours avant de pouvoir rechanger ce nom.'
-        : 'Le prochain changement sera disponible 7 jours apres cette modification.';
+        ? context.tr(
+            BanayLocalizationKeys.accountDisplayNameNextChangeHintFirst,
+          )
+        : context.tr(
+            BanayLocalizationKeys.accountDisplayNameNextChangeHintAfter,
+          );
 
     final nextName = await showDialog<String>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Modifier le nom'),
+          title: Text(
+            dialogContext.tr(BanayLocalizationKeys.accountDisplayNameEditTitle),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -239,9 +275,13 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                 controller: controller,
                 maxLength: 120,
                 textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(
-                  labelText: 'Nom utilisateur',
-                  hintText: 'Entrez votre nouveau nom',
+                decoration: InputDecoration(
+                  labelText: dialogContext.tr(
+                    BanayLocalizationKeys.accountDisplayNameFieldLabel,
+                  ),
+                  hintText: dialogContext.tr(
+                    BanayLocalizationKeys.accountDisplayNameFieldHint,
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
@@ -254,12 +294,16 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Annuler'),
+              child: Text(
+                dialogContext.tr(BanayLocalizationKeys.accountCancelAction),
+              ),
             ),
             FilledButton(
               onPressed: () =>
                   Navigator.of(dialogContext).pop(controller.text.trim()),
-              child: const Text('Enregistrer'),
+              child: Text(
+                dialogContext.tr(BanayLocalizationKeys.accountSaveAction),
+              ),
             ),
           ],
         );
@@ -311,8 +355,16 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
         SnackBar(
           content: Text(
             _nextDisplayNameChangeAt == null
-                ? 'Nom utilisateur mis a jour.'
-                : 'Nom utilisateur mis a jour. ${_formatRemainingDaysLabel(_displayNameCooldownDaysRemaining ?? 7)} avant le prochain changement, a partir du ${_formatDate(_nextDisplayNameChangeAt!)}.',
+                ? context.tr(BanayLocalizationKeys.accountDisplayNameUpdated)
+                : context.tr(
+                    BanayLocalizationKeys.accountDisplayNameUpdatedCooldown,
+                    params: {
+                      'remainingDays': _formatRemainingDaysLabel(
+                        _displayNameCooldownDaysRemaining ?? 7,
+                      ),
+                      'nextDate': _formatDate(_nextDisplayNameChangeAt!),
+                    },
+                  ),
           ),
         ),
       );
@@ -339,7 +391,9 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
         setState(() {
           _locationAccessBlocker = null;
           _isLoadingLocation = false;
-          _locationLabel = 'Localisation indisponible';
+          _locationLabel = context.tr(
+            BanayLocalizationKeys.accountLocationUnavailable,
+          );
         });
       }
       return;
@@ -436,7 +490,9 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
 
       setState(() {
         _locationAccessBlocker = null;
-        _locationLabel ??= 'Localisation indisponible';
+        _locationLabel ??= context.tr(
+          BanayLocalizationKeys.accountLocationUnavailable,
+        );
         _isLoadingLocation = false;
       });
     }
@@ -491,32 +547,48 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
     };
 
     final title = switch (blocker) {
-      _LocationAccessBlocker.servicesDisabled => 'Activez la localisation',
-      _LocationAccessBlocker.permissionDenied => 'Autorisez la localisation',
-      _LocationAccessBlocker.permissionDeniedForever => 'Autorisation requise',
-      _LocationAccessBlocker.preciseLocationRequired =>
-        'Localisation precise requise',
+      _LocationAccessBlocker.servicesDisabled => context.tr(
+        BanayLocalizationKeys.accountLocationServicesDisabledTitle,
+      ),
+      _LocationAccessBlocker.permissionDenied => context.tr(
+        BanayLocalizationKeys.accountLocationPermissionDeniedTitle,
+      ),
+      _LocationAccessBlocker.permissionDeniedForever => context.tr(
+        BanayLocalizationKeys.accountLocationPermissionRequiredTitle,
+      ),
+      _LocationAccessBlocker.preciseLocationRequired => context.tr(
+        BanayLocalizationKeys.accountLocationPreciseRequiredTitle,
+      ),
     };
 
     final message = switch (blocker) {
-      _LocationAccessBlocker.servicesDisabled =>
-        'BANAY a besoin que le service de localisation du telephone soit active pour continuer.',
-      _LocationAccessBlocker.permissionDenied =>
-        'BANAY a besoin de votre position pour fonctionner. Autorisez la localisation pour continuer.',
-      _LocationAccessBlocker.permissionDeniedForever =>
-        'La permission de localisation a ete refusee de facon permanente. Ouvrez les reglages de l\'application pour l\'activer.',
-      _LocationAccessBlocker.preciseLocationRequired =>
-        'BANAY a besoin d\'une localisation precise. Activez l\'option de localisation precise dans les reglages de l\'application.',
+      _LocationAccessBlocker.servicesDisabled => context.tr(
+        BanayLocalizationKeys.accountLocationServicesDisabledMessage,
+      ),
+      _LocationAccessBlocker.permissionDenied => context.tr(
+        BanayLocalizationKeys.accountLocationPermissionDeniedMessage,
+      ),
+      _LocationAccessBlocker.permissionDeniedForever => context.tr(
+        BanayLocalizationKeys.accountLocationPermissionDeniedForeverMessage,
+      ),
+      _LocationAccessBlocker.preciseLocationRequired => context.tr(
+        BanayLocalizationKeys.accountLocationPreciseRequiredMessage,
+      ),
     };
 
     final primaryLabel = switch (blocker) {
-      _LocationAccessBlocker.servicesDisabled =>
-        'Ouvrir les reglages de localisation',
-      _LocationAccessBlocker.permissionDenied => 'Autoriser maintenant',
-      _LocationAccessBlocker.permissionDeniedForever =>
-        'Ouvrir les reglages de l\'application',
-      _LocationAccessBlocker.preciseLocationRequired =>
-        'Ouvrir les reglages de l\'application',
+      _LocationAccessBlocker.servicesDisabled => context.tr(
+        BanayLocalizationKeys.accountOpenLocationSettings,
+      ),
+      _LocationAccessBlocker.permissionDenied => context.tr(
+        BanayLocalizationKeys.accountAllowNow,
+      ),
+      _LocationAccessBlocker.permissionDeniedForever => context.tr(
+        BanayLocalizationKeys.accountOpenAppSettings,
+      ),
+      _LocationAccessBlocker.preciseLocationRequired => context.tr(
+        BanayLocalizationKeys.accountOpenAppSettings,
+      ),
     };
 
     final primaryAction = switch (blocker) {
@@ -597,7 +669,9 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                       child: OutlinedButton.icon(
                         onPressed: _loadCurrentLocation,
                         icon: const Icon(Icons.refresh_rounded, size: 18),
-                        label: const Text('Reessayer'),
+                        label: Text(
+                          context.tr(BanayLocalizationKeys.accountRetryAction),
+                        ),
                       ),
                     ),
                   ],
@@ -675,10 +749,16 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                 leading: const Icon(Icons.photo_camera_outlined),
                 title: Text(
                   target == _EditableImageTarget.cover
-                      ? 'Remplacer l\'image de fond'
-                      : 'Remplacer l\'avatar',
+                      ? sheetContext.tr(
+                          BanayLocalizationKeys.accountReplaceCoverImage,
+                        )
+                      : sheetContext.tr(
+                          BanayLocalizationKeys.accountReplaceAvatar,
+                        ),
                 ),
-                subtitle: const Text('Prendre une photo'),
+                subtitle: Text(
+                  sheetContext.tr(BanayLocalizationKeys.accountTakePhoto),
+                ),
                 onTap: () async {
                   Navigator.of(sheetContext).pop();
                   await _pickProfileImage(target, ImageSource.camera);
@@ -686,7 +766,11 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
               ),
               ListTile(
                 leading: const Icon(Icons.photo_library_outlined),
-                title: const Text('Choisir dans la galerie'),
+                title: Text(
+                  sheetContext.tr(
+                    BanayLocalizationKeys.accountChooseFromGallery,
+                  ),
+                ),
                 onTap: () async {
                   Navigator.of(sheetContext).pop();
                   await _pickProfileImage(target, ImageSource.gallery);
@@ -728,8 +812,8 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
         SnackBar(
           content: Text(
             target == _EditableImageTarget.cover
-                ? 'Image de fond mise a jour.'
-                : 'Avatar mis a jour.',
+                ? context.tr(BanayLocalizationKeys.accountCoverImageUpdated)
+                : context.tr(BanayLocalizationKeys.accountAvatarUpdated),
           ),
         ),
       );
@@ -761,13 +845,15 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Transformer en boutique'),
-          content: const Text(
-            'Envoyer une demande pour que l\'administrateur valide la creation de votre boutique ?',
+          title: Text(
+            dialogContext.tr(BanayLocalizationKeys.accountShopConfirmTitle),
+          ),
+          content: Text(
+            dialogContext.tr(BanayLocalizationKeys.accountShopConfirmBody),
           ),
           actions: [
             DynamicIconButton(
-              text: 'Annuler',
+              text: dialogContext.tr(BanayLocalizationKeys.accountCancelAction),
               icon: const Icon(Icons.close_rounded, size: 18),
               onPressed: () => Navigator.of(dialogContext).pop(false),
               expanded: false,
@@ -777,7 +863,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
               borderRadius: 18,
             ),
             DynamicIconButton(
-              text: 'Envoyer',
+              text: dialogContext.tr(BanayLocalizationKeys.accountSendAction),
               icon: const Icon(Icons.verified_outlined, size: 18),
               onPressed: () => Navigator.of(dialogContext).pop(true),
               expanded: false,
@@ -814,9 +900,9 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(
-            'Demande envoyee. Un administrateur doit valider votre boutique.',
+            context.tr(BanayLocalizationKeys.accountShopRequestSent),
           ),
         ),
       );
@@ -845,24 +931,24 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
     final isRejected = _shopRequestStatus == 'REJECTED';
 
     final title = isSeller
-        ? 'Boutique active'
+        ? context.tr(BanayLocalizationKeys.accountShopStatusActiveTitle)
         : isPending
-        ? 'Validation en attente'
+        ? context.tr(BanayLocalizationKeys.accountShopStatusPendingTitle)
         : isApproved
-        ? 'Validation accordee'
+        ? context.tr(BanayLocalizationKeys.accountShopStatusApprovedTitle)
         : isRejected
-        ? 'Demande a renvoyer'
-        : 'Transforme en boutique';
+        ? context.tr(BanayLocalizationKeys.accountShopStatusRejectedTitle)
+        : context.tr(BanayLocalizationKeys.accountShopStatusDefaultTitle);
 
     final description = isSeller
-        ? 'Votre compte est deja configure comme boutique.'
+        ? context.tr(BanayLocalizationKeys.accountShopStatusActiveDescription)
         : isPending
-        ? 'La demande a ete envoyee. L\'administrateur doit maintenant verifier votre profil.'
+        ? context.tr(BanayLocalizationKeys.accountShopStatusPendingDescription)
         : isApproved
-        ? 'La demande a ete approuvee. L\'activation finale par la plateforme est en cours.'
+        ? context.tr(BanayLocalizationKeys.accountShopStatusApprovedDescription)
         : isRejected
-        ? 'La plateforme a refuse la precedente demande. Vous pouvez en envoyer une nouvelle.'
-        : 'Envoyez une demande pour que l\'administrateur verifie et valide la creation de votre boutique.';
+        ? context.tr(BanayLocalizationKeys.accountShopStatusRejectedDescription)
+        : context.tr(BanayLocalizationKeys.accountShopStatusDefaultDescription);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
@@ -916,14 +1002,20 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
               width: double.infinity,
               child: DynamicIconButton(
                 text: isSeller
-                    ? 'Boutique active'
+                    ? context.tr(BanayLocalizationKeys.accountShopButtonActive)
                     : isPending
-                    ? 'En attente de validation'
+                    ? context.tr(BanayLocalizationKeys.accountShopButtonPending)
                     : isApproved
-                    ? 'Validation accordee'
+                    ? context.tr(
+                        BanayLocalizationKeys.accountShopButtonApproved,
+                      )
                     : isRejected
-                    ? 'Renvoyer la demande'
-                    : 'Demander la creation de boutique',
+                    ? context.tr(
+                        BanayLocalizationKeys.accountShopButtonRejected,
+                      )
+                    : context.tr(
+                        BanayLocalizationKeys.accountShopButtonDefault,
+                      ),
                 icon: _isSubmittingShopRequest
                     ? SizedBox(
                         width: 18,
@@ -1012,7 +1104,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
           imageUrls: [normalizedUrl],
           heroTag: heroTag,
           overlay: ImageViewerOverlayData(
-            sellerName: _displayName,
+            sellerName: _resolvedDisplayName,
             sellerUserId: _currentUserId,
             sellerAvatarUrl: _avatarUrl,
             isUserProfileImage: true,
@@ -1210,7 +1302,9 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                           children: [
                             if (_isLoading)
                               Text(
-                                'Chargement du profil...',
+                                context.tr(
+                                  BanayLocalizationKeys.accountProfileLoading,
+                                ),
                                 style: theme.textTheme.bodyMedium?.copyWith(
                                   color: subtitleColor,
                                   fontWeight: FontWeight.w600,
@@ -1218,7 +1312,9 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                               )
                             else if (_isUploadingImage)
                               Text(
-                                'Mise a jour de l\'image...',
+                                context.tr(
+                                  BanayLocalizationKeys.accountImageUpdating,
+                                ),
                                 style: theme.textTheme.bodyMedium?.copyWith(
                                   color: subtitleColor,
                                   fontWeight: FontWeight.w600,
@@ -1230,7 +1326,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                                 children: [
                                   Expanded(
                                     child: Text(
-                                      _displayName,
+                                      _resolvedDisplayName,
                                       style: theme.textTheme.headlineSmall
                                           ?.copyWith(
                                             color: titleColor,
@@ -1258,8 +1354,14 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                                           ),
                                     label: Text(
                                       _canUpdateDisplayName
-                                          ? 'Modifier'
-                                          : 'Voir la regle',
+                                          ? context.tr(
+                                              BanayLocalizationKeys
+                                                  .accountEditAction,
+                                            )
+                                          : context.tr(
+                                              BanayLocalizationKeys
+                                                  .accountViewRuleAction,
+                                            ),
                                     ),
                                   ),
                                 ],
@@ -1277,9 +1379,15 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                                   Flexible(
                                     child: Text(
                                       _isLoadingLocation
-                                          ? 'Localisation en cours...'
+                                          ? context.tr(
+                                              BanayLocalizationKeys
+                                                  .accountLocationLoading,
+                                            )
                                           : (_locationLabel ??
-                                                'Localisation indisponible'),
+                                                context.tr(
+                                                  BanayLocalizationKeys
+                                                      .accountLocationUnavailable,
+                                                )),
                                       style: theme.textTheme.bodyMedium
                                           ?.copyWith(
                                             color: subtitleColor,

@@ -9,6 +9,7 @@ import 'package:banay/page/navigation/main_navigation_messages_panel.dart';
 import 'package:banay/page/navigation/main_navigation_search_panel.dart';
 import 'package:banay/page/notifications_page.dart';
 import 'package:banay/page/productDetail.dart';
+import 'package:banay/localization/banay_localizations.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/app_auth_service.dart';
 import 'package:banay/services/chat_realtime_service.dart';
@@ -23,13 +24,6 @@ class MainNavigationItem {
 
   const MainNavigationItem({required this.icon, required this.label});
 }
-
-const List<MainNavigationItem> BANAYMainNavigationItems = [
-  MainNavigationItem(icon: Icons.home_filled, label: 'Accueil'),
-  MainNavigationItem(icon: Icons.search_rounded, label: 'Recherche'),
-  MainNavigationItem(icon: Icons.message, label: 'Messages'),
-  MainNavigationItem(icon: Icons.person, label: 'Compte'),
-];
 
 class BANAYNavigationShell extends StatefulWidget {
   static final GlobalKey<MainNavigationShellState> shellKey =
@@ -208,8 +202,8 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
-          const SnackBar(
-            content: Text('Retourne une fois pour quitter'),
+          SnackBar(
+            content: Text(context.tr(BanayLocalizationKeys.backAgainToExit)),
             duration: _exitConfirmationWindow,
           ),
         );
@@ -222,6 +216,24 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final navigationItems = [
+      MainNavigationItem(
+        icon: Icons.home_filled,
+        label: context.tr(BanayLocalizationKeys.navigationHome),
+      ),
+      MainNavigationItem(
+        icon: Icons.search_rounded,
+        label: context.tr(BanayLocalizationKeys.navigationSearch),
+      ),
+      MainNavigationItem(
+        icon: Icons.message,
+        label: context.tr(BanayLocalizationKeys.navigationMessages),
+      ),
+      MainNavigationItem(
+        icon: Icons.person,
+        label: context.tr(BanayLocalizationKeys.navigationAccount),
+      ),
+    ];
     final pages = [
       const MainHomePanel(),
       const MainNavigationSearchPanel(),
@@ -263,7 +275,7 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
                     builder: (context, unreadMessageCount, _) =>
                         MainNavigationBar(
                           currentIndex: _currentIndex,
-                          items: BANAYMainNavigationItems,
+                          items: navigationItems,
                           unreadMessageCount: unreadMessageCount,
                           onTap: _handleNavigationSelection,
                         ),
