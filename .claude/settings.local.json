@@ -11,7 +11,8 @@
       "Bash(ipconfig)",
       "Bash(ipconfig /all)",
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Banay\\\\Documents\\\\project 2026\\\\bahibo\" -Directory)",
-      "Bash(Select-Object Name)"
+      "Bash(Select-Object Name)",
+      "Bash(xargs grep -l \"AppComment\")"
     ]
   }
 }

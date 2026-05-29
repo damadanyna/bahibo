@@ -543,4 +543,12 @@ class CatalogApiService {
       }),
     );
   }
+
+  Future<void> trackBehaviorEvent(Map<String, dynamic> event) async {
+    await _client.post(
+      '/events/behavior',
+      authenticated: true,
+      body: event,
+    );
+  }
 }

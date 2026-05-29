@@ -2,11 +2,16 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:banay/component/app_network_image.dart';
+import 'package:banay/component/profile_models.dart';
+import 'package:banay/component/seller_profile_page.dart';
+import 'package:banay/component/ui/dinamic_followed_people_h_list.dart';
 import 'package:banay/component/ui/dinamic_icon_button.dart';
+import 'package:banay/component/user_profile_page.dart';
 import 'package:banay/localization/banay_localizations.dart';
 import 'package:banay/page/image_viewer_page.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/app_auth_service.dart';
+import 'package:banay/services/catalog_api_service.dart';
 import 'package:banay/services/chat_realtime_service.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/foundation.dart';
@@ -24,6 +29,18 @@ enum _LocationAccessBlocker {
   preciseLocationRequired,
 }
 
+enum _SimpleUserTab { following, location, about }
+
+const List<(String, double, double)> _madagascarCities = [
+  ('Antananarivo', -18.9137, 47.5361),
+  ('Toamasina', -18.1492, 49.4023),
+  ('Antsirabe', -19.8659, 47.0337),
+  ('Fianarantsoa', -21.4527, 47.0863),
+  ('Mahajanga', -15.7162, 46.3200),
+  ('Toliara', -23.3533, 43.6830),
+  ('Antsiranana', -12.3520, 49.2968),
+];
+
 class MainSimpleUser extends StatefulWidget {
   const MainSimpleUser({super.key});
 
@@ -33,6 +50,7 @@ class MainSimpleUser extends StatefulWidget {
 
 class _MainSimpleUserState extends State<MainSimpleUser> {
   final AppAuthService _authService = AppAuthService();
+  final CatalogApiService _catalogApiService = CatalogApiService();
   final ImagePicker _imagePicker = ImagePicker();
   StreamSubscription<Map<String, dynamic>>? _realtimeEventsSubscription;
 
@@ -43,7 +61,9 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
   bool _isSubmittingShopRequest = false;
   bool _isLoadingLocation = true;
   bool _isSavingLocation = false;
+  bool _isLoadingFollowedPeople = true;
   _LocationAccessBlocker? _locationAccessBlocker;
+  _SimpleUserTab _selectedTab = _SimpleUserTab.following;
   String? _profileLoadError;
   String? _locationLabel;
   DateTime? _displayNameChangedAt;
@@ -54,12 +74,14 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
   String? _currentUserId;
   String _userRole = 'CUSTOMER';
   String _shopRequestStatus = 'NONE';
+  List<Map<String, dynamic>> _followedPeople = <Map<String, dynamic>>[];
 
   @override
   void initState() {
     super.initState();
     _loadProfile();
     _loadCurrentLocation();
+    _loadFollowedPeople();
     _bindRealtimeProfileUpdates();
   }
 
@@ -118,6 +140,128 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
         _profileLoadError = error.message;
       });
     }
+  }
+
+  Future<void> _loadFollowedPeople() async {
+    try {
+      final followedPeople = await _catalogApiService.fetchCurrentUserFollowing();
+      if (!mounted) return;
+      followedPeople.sort(
+        (a, b) => _personFollowingScore(b).compareTo(_personFollowingScore(a)),
+      );
+      setState(() {
+        _followedPeople = followedPeople;
+        _isLoadingFollowedPeople = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoadingFollowedPeople = false);
+    }
+  }
+
+  bool _resolvePersonCertified(Map<String, dynamic> person) {
+    final candidates = <Object?>[
+      person['isCertified'],
+      person['isSellerCertified'],
+      person['isVerified'],
+      person['sellerCertified'],
+    ];
+    for (final c in candidates) {
+      if (c is bool && c) return true;
+      final s = c?.toString().trim().toLowerCase() ?? '';
+      if (s == 'true' || s == '1' || s == 'yes') return true;
+    }
+    return false;
+  }
+
+  int _resolvePersonUnreadCount(Map<String, dynamic> person) {
+    final candidates = <Object?>[
+      person['unreadCount'],
+      person['unreadNotifications'],
+      person['newPublicationsCount'],
+    ];
+    for (final c in candidates) {
+      if (c is int && c > 0) return c;
+      final n = int.tryParse(c?.toString().trim() ?? '');
+      if (n != null && n > 0) return n;
+    }
+    return 0;
+  }
+
+  int _resolvePersonProductCount(Map<String, dynamic> person) {
+    final candidates = <Object?>[
+      person['productCount'],
+      person['publicationCount'],
+      person['productsCount'],
+    ];
+    for (final c in candidates) {
+      if (c is int && c >= 0) return c;
+      final n = int.tryParse(c?.toString().trim() ?? '');
+      if (n != null && n >= 0) return n;
+    }
+    return 0;
+  }
+
+  int _personFollowingScore(Map<String, dynamic> person) {
+    return (_resolvePersonCertified(person) ? 1000 : 0) +
+        (_resolvePersonUnreadCount(person) * 10) +
+        _resolvePersonProductCount(person).clamp(0, 9);
+  }
+
+  Future<void> _onRefresh() async {
+    await Future.wait([_loadProfile(), _loadFollowedPeople()]);
+  }
+
+  Future<void> _openFollowedPerson(Map<String, dynamic> person) async {
+    final role = person['role']?.toString().trim().toUpperCase() ?? '';
+    final sellerProfileId = person['sellerProfileId']?.toString().trim() ?? '';
+    final userId =
+        person['userId']?.toString().trim() ??
+        person['id']?.toString().trim() ??
+        '';
+
+    if (role == 'SELLER' && sellerProfileId.isNotEmpty) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => FutureBuilder<Map<String, dynamic>>(
+            future: _catalogApiService.fetchSellerProfile(sellerProfileId),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return Scaffold(
+                  backgroundColor: Theme.of(context).appColors.backgroundBase,
+                  body: const Center(child: CircularProgressIndicator()),
+                );
+              }
+              return SellerProfilePage(
+                profile: buildSellerProfileFromApi(snapshot.data!),
+              );
+            },
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (userId.isEmpty) return;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => FutureBuilder<Map<String, dynamic>>(
+          future: _catalogApiService.fetchUserProfile(userId),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return Scaffold(
+                backgroundColor: Theme.of(context).appColors.backgroundBase,
+                body: const Center(child: CircularProgressIndicator()),
+              );
+            }
+            return UserProfilePage(
+              profile: buildPublicUserProfileFromApi(snapshot.data!),
+            );
+          },
+        ),
+      ),
+    );
   }
 
   void _bindRealtimeProfileUpdates() {
@@ -458,9 +602,12 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
               .where((value) => value.isNotEmpty)
               .toList();
 
-      final label = parts.isEmpty
+      final geocodedLabel = parts.isEmpty
           ? '${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}'
           : parts.take(2).join(', ');
+      final label =
+          _nearestMadagascarCity(position.latitude, position.longitude) ??
+          geocodedLabel;
 
       if (!mounted) {
         return;
@@ -530,159 +677,42 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
     await _loadCurrentLocation();
   }
 
-  Widget _buildLocationAccessBlocker(
-    ThemeData theme,
-    _LocationAccessBlocker blocker,
-  ) {
-    final appColors = theme.appColors;
-    final colorScheme = theme.colorScheme;
-
-    final icon = switch (blocker) {
-      _LocationAccessBlocker.servicesDisabled => Icons.location_off_outlined,
-      _LocationAccessBlocker.permissionDenied =>
-        Icons.location_searching_outlined,
-      _LocationAccessBlocker.permissionDeniedForever =>
-        Icons.app_settings_alt_outlined,
-      _LocationAccessBlocker.preciseLocationRequired =>
-        Icons.my_location_outlined,
-    };
-
-    final title = switch (blocker) {
-      _LocationAccessBlocker.servicesDisabled => context.tr(
-        BanayLocalizationKeys.accountLocationServicesDisabledTitle,
-      ),
-      _LocationAccessBlocker.permissionDenied => context.tr(
-        BanayLocalizationKeys.accountLocationPermissionDeniedTitle,
-      ),
-      _LocationAccessBlocker.permissionDeniedForever => context.tr(
-        BanayLocalizationKeys.accountLocationPermissionRequiredTitle,
-      ),
-      _LocationAccessBlocker.preciseLocationRequired => context.tr(
-        BanayLocalizationKeys.accountLocationPreciseRequiredTitle,
-      ),
-    };
-
-    final message = switch (blocker) {
-      _LocationAccessBlocker.servicesDisabled => context.tr(
-        BanayLocalizationKeys.accountLocationServicesDisabledMessage,
-      ),
-      _LocationAccessBlocker.permissionDenied => context.tr(
-        BanayLocalizationKeys.accountLocationPermissionDeniedMessage,
-      ),
-      _LocationAccessBlocker.permissionDeniedForever => context.tr(
-        BanayLocalizationKeys.accountLocationPermissionDeniedForeverMessage,
-      ),
-      _LocationAccessBlocker.preciseLocationRequired => context.tr(
-        BanayLocalizationKeys.accountLocationPreciseRequiredMessage,
-      ),
-    };
-
-    final primaryLabel = switch (blocker) {
-      _LocationAccessBlocker.servicesDisabled => context.tr(
-        BanayLocalizationKeys.accountOpenLocationSettings,
-      ),
-      _LocationAccessBlocker.permissionDenied => context.tr(
-        BanayLocalizationKeys.accountAllowNow,
-      ),
-      _LocationAccessBlocker.permissionDeniedForever => context.tr(
-        BanayLocalizationKeys.accountOpenAppSettings,
-      ),
-      _LocationAccessBlocker.preciseLocationRequired => context.tr(
-        BanayLocalizationKeys.accountOpenAppSettings,
-      ),
-    };
-
-    final primaryAction = switch (blocker) {
-      _LocationAccessBlocker.servicesDisabled => _openLocationSettingsAndRetry,
-      _LocationAccessBlocker.permissionDenied => _loadCurrentLocation,
-      _LocationAccessBlocker.permissionDeniedForever =>
-        _openAppSettingsAndRetry,
-      _LocationAccessBlocker.preciseLocationRequired =>
-        _openAppSettingsAndRetry,
-    };
-
-    return Scaffold(
-      backgroundColor: appColors.backgroundBase,
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: theme.cardColor,
-                  borderRadius: BorderRadius.circular(28),
-                  border: Border.all(color: appColors.inputBorder),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 72,
-                      height: 72,
-                      decoration: BoxDecoration(
-                        color: colorScheme.primary.withValues(alpha: 0.12),
-                        shape: BoxShape.circle,
-                      ),
-                      alignment: Alignment.center,
-                      child: Icon(icon, size: 34, color: colorScheme.primary),
-                    ),
-                    const SizedBox(height: 20),
-                    Text(
-                      title,
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        color: colorScheme.onSurface,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      message,
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: appColors.mutedText,
-                        fontWeight: FontWeight.w600,
-                        height: 1.4,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    SizedBox(
-                      width: double.infinity,
-                      child: DynamicIconButton(
-                        text: primaryLabel,
-                        icon: const Icon(Icons.arrow_forward_rounded, size: 18),
-                        onPressed: primaryAction,
-                        backgroundColor: colorScheme.primary,
-                        foregroundColor: colorScheme.onPrimary,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 18,
-                          vertical: 14,
-                        ),
-                        borderRadius: 20,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _loadCurrentLocation,
-                        icon: const Icon(Icons.refresh_rounded, size: 18),
-                        label: Text(
-                          context.tr(BanayLocalizationKeys.accountRetryAction),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
+  Future<void> _selectCity(
+    String cityName,
+    double latitude,
+    double longitude,
+  ) async {
+    if (_isSavingLocation) return;
+    setState(() {
+      _locationLabel = cityName;
+      _locationAccessBlocker = null;
+      _isLoadingLocation = false;
+    });
+    await _persistCurrentLocation(
+      locationLabel: cityName,
+      latitude: latitude,
+      longitude: longitude,
     );
+  }
+
+  String? _nearestMadagascarCity(double latitude, double longitude) {
+    String? nearest;
+    double nearestDistance = double.infinity;
+
+    for (final city in _madagascarCities) {
+      final distance = Geolocator.distanceBetween(
+        latitude,
+        longitude,
+        city.$2,
+        city.$3,
+      );
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = city.$1;
+      }
+    }
+
+    return nearestDistance <= 100000 ? nearest : null;
   }
 
   Future<void> _persistCurrentLocation({
@@ -1131,16 +1161,11 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
     final titleColor = theme.colorScheme.onSurface;
     final subtitleColor = appColors.mutedText;
 
-    final locationAccessBlocker = _locationAccessBlocker;
-    if (locationAccessBlocker != null) {
-      return _buildLocationAccessBlocker(theme, locationAccessBlocker);
-    }
-
     return Scaffold(
       backgroundColor: appColors.backgroundBase,
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: _loadProfile,
+          onRefresh: _onRefresh,
           child: ListView(
             padding: const EdgeInsets.fromLTRB(0, 0, 0, 120),
             children: [
@@ -1433,15 +1458,611 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                           ],
                         ),
                       ),
-                      _buildShopRequestCard(theme),
                     ],
                   ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              _buildTabNavigation(theme, appColors),
+              const SizedBox(height: 8),
+              _buildTabContent(theme, appColors),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTabNavigation(ThemeData theme, dynamic appColors) {
+    final accentColor = theme.colorScheme.primary;
+    final mutedColor = theme.appColors.mutedText;
+
+    final tabs = [
+      (_SimpleUserTab.following, 'Abonnement', Icons.groups_rounded),
+      (_SimpleUserTab.location, 'Localisation', Icons.location_on_rounded),
+      (_SimpleUserTab.about, 'A propos', Icons.info_outline_rounded),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.only(top: 4),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: theme.appColors.borderColor, width: 1),
+        ),
+      ),
+      child: Row(
+        children: tabs.map((tab) {
+          final isSelected = _selectedTab == tab.$1;
+          return Expanded(
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => setState(() => _selectedTab = tab.$1),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding: const EdgeInsets.fromLTRB(8, 10, 8, 12),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(
+                        color: isSelected ? accentColor : Colors.transparent,
+                        width: 3,
+                      ),
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        tab.$3,
+                        size: 18,
+                        color: isSelected ? accentColor : mutedColor,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        tab.$2,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: isSelected ? accentColor : mutedColor,
+                          fontWeight: isSelected
+                              ? FontWeight.w800
+                              : FontWeight.w600,
+                          fontSize: 12.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildTabContent(ThemeData theme, dynamic appColors) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 220),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      child: KeyedSubtree(
+        key: ValueKey<_SimpleUserTab>(_selectedTab),
+        child: switch (_selectedTab) {
+          _SimpleUserTab.following => _buildFollowingTab(theme),
+          _SimpleUserTab.location => _buildLocationTab(theme),
+          _SimpleUserTab.about => _buildShopRequestCard(theme),
+        },
+      ),
+    );
+  }
+
+  Widget _buildFollowingTab(ThemeData theme) {
+    final appColors = theme.appColors;
+
+    if (_isLoadingFollowedPeople) {
+      return const Padding(
+        padding: EdgeInsets.all(48),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_followedPeople.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: appColors.borderColor),
+          ),
+          child: Column(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.10),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.people_outline_rounded,
+                  color: theme.colorScheme.primary,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Aucun abonnement',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Abonnez-vous a des vendeurs pour les retrouver ici.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: appColors.mutedText,
+                  fontWeight: FontWeight.w500,
+                  height: 1.4,
                 ),
               ),
             ],
           ),
         ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      child: Column(
+        children: _followedPeople.map((person) {
+          final name = resolveFollowedPersonName(
+            person,
+            fallbackName: 'Membre BANAY',
+          );
+          final avatarUrl = resolveFollowedPersonAvatarUrl(person);
+          final userId = resolveFollowedPersonUserId(person);
+          final role = person['role']?.toString().trim().toUpperCase() ?? '';
+          final isSeller = role == 'SELLER';
+          final subtitle = resolveFollowedPersonSubtitle(
+            person,
+            fallbackSubtitle: 'Membre BANAY',
+          );
+          final isCertified = _resolvePersonCertified(person);
+          final unreadCount = _resolvePersonUnreadCount(person);
+          final productCount = _resolvePersonProductCount(person);
+
+          final badgeLabel = productCount > 0
+              ? '$productCount pub.'
+              : (isSeller ? 'Vendeur' : 'Membre');
+
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => _openFollowedPerson(person),
+                borderRadius: BorderRadius.circular(18),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: theme.cardColor,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: isCertified
+                          ? theme.colorScheme.primary.withValues(alpha: 0.35)
+                          : appColors.borderColor,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          AppCircleNetworkAvatar(
+                            imageUrl: avatarUrl,
+                            radius: 24,
+                            userId: userId,
+                          ),
+                          if (unreadCount > 0)
+                            Positioned(
+                              right: 0,
+                              top: 0,
+                              child: Container(
+                                width: 13,
+                                height: 13,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE53935),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: theme.cardColor,
+                                    width: 2,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                ),
+                                if (isCertified) ...[
+                                  const SizedBox(width: 4),
+                                  Icon(
+                                    Icons.verified_rounded,
+                                    size: 14,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              subtitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: appColors.mutedText,
+                                fontSize: 12,
+                              ),
+                            ),
+                            if (unreadCount > 0) ...[
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 6,
+                                    height: 6,
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFFE53935),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    '$unreadCount non lu${unreadCount > 1 ? 'es' : 'e'}',
+                                    style: const TextStyle(
+                                      color: Color(0xFFE53935),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary.withValues(
+                            alpha: 0.10,
+                          ),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          badgeLabel,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
       ),
+    );
+  }
+
+  Widget _buildLocationTab(ThemeData theme) {
+    final appColors = theme.appColors;
+    final colorScheme = theme.colorScheme;
+    final locationAccessBlocker = _locationAccessBlocker;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: theme.cardColor,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: appColors.borderColor),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: colorScheme.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    Icons.location_on_rounded,
+                    color: colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Ma localisation',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            if (locationAccessBlocker != null)
+              _buildInlineLocationBlocker(theme, locationAccessBlocker)
+            else if (_isLoadingLocation)
+              Row(
+                children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    context.tr(BanayLocalizationKeys.accountLocationLoading),
+                    style: TextStyle(
+                      color: appColors.mutedText,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              )
+            else
+              Row(
+                children: [
+                  Icon(
+                    Icons.place_outlined,
+                    size: 16,
+                    color: appColors.mutedText,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _locationLabel ??
+                          context.tr(
+                            BanayLocalizationKeys.accountLocationUnavailable,
+                          ),
+                      style: TextStyle(
+                        color: appColors.mutedText,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: DynamicIconButton(
+                text: _isLoadingLocation
+                    ? context.tr(BanayLocalizationKeys.accountLocationLoading)
+                    : context.tr(BanayLocalizationKeys.accountRetryAction),
+                icon: _isLoadingLocation
+                    ? SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.1,
+                          color: colorScheme.onPrimary,
+                        ),
+                      )
+                    : const Icon(Icons.my_location_rounded, size: 18),
+                onPressed: _isLoadingLocation ? null : _loadCurrentLocation,
+                backgroundColor: colorScheme.primary,
+                foregroundColor: colorScheme.onPrimary,
+                borderRadius: 18,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 14,
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Divider(height: 1),
+            const SizedBox(height: 16),
+            Text(
+              'Ou sélectionnez une ville',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: appColors.mutedText,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _madagascarCities.map((city) {
+                final isSelected = _locationLabel == city.$1;
+                return GestureDetector(
+                  onTap: () => _selectCity(city.$1, city.$2, city.$3),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? colorScheme.primary
+                          : colorScheme.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: isSelected
+                            ? colorScheme.primary
+                            : colorScheme.primary.withValues(alpha: 0.22),
+                      ),
+                    ),
+                    child: Text(
+                      city.$1,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: isSelected
+                            ? colorScheme.onPrimary
+                            : colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInlineLocationBlocker(
+    ThemeData theme,
+    _LocationAccessBlocker blocker,
+  ) {
+    final colorScheme = theme.colorScheme;
+    final appColors = theme.appColors;
+
+    final icon = switch (blocker) {
+      _LocationAccessBlocker.servicesDisabled => Icons.location_off_outlined,
+      _LocationAccessBlocker.permissionDenied =>
+        Icons.location_searching_outlined,
+      _LocationAccessBlocker.permissionDeniedForever =>
+        Icons.app_settings_alt_outlined,
+      _LocationAccessBlocker.preciseLocationRequired =>
+        Icons.my_location_outlined,
+    };
+
+    final title = switch (blocker) {
+      _LocationAccessBlocker.servicesDisabled =>
+        context.tr(BanayLocalizationKeys.accountLocationServicesDisabledTitle),
+      _LocationAccessBlocker.permissionDenied =>
+        context.tr(BanayLocalizationKeys.accountLocationPermissionDeniedTitle),
+      _LocationAccessBlocker.permissionDeniedForever =>
+        context.tr(
+          BanayLocalizationKeys.accountLocationPermissionRequiredTitle,
+        ),
+      _LocationAccessBlocker.preciseLocationRequired =>
+        context.tr(BanayLocalizationKeys.accountLocationPreciseRequiredTitle),
+    };
+
+    final message = switch (blocker) {
+      _LocationAccessBlocker.servicesDisabled =>
+        context.tr(
+          BanayLocalizationKeys.accountLocationServicesDisabledMessage,
+        ),
+      _LocationAccessBlocker.permissionDenied =>
+        context.tr(
+          BanayLocalizationKeys.accountLocationPermissionDeniedMessage,
+        ),
+      _LocationAccessBlocker.permissionDeniedForever =>
+        context.tr(
+          BanayLocalizationKeys.accountLocationPermissionDeniedForeverMessage,
+        ),
+      _LocationAccessBlocker.preciseLocationRequired =>
+        context.tr(
+          BanayLocalizationKeys.accountLocationPreciseRequiredMessage,
+        ),
+    };
+
+    final primaryLabel = switch (blocker) {
+      _LocationAccessBlocker.servicesDisabled =>
+        context.tr(BanayLocalizationKeys.accountOpenLocationSettings),
+      _LocationAccessBlocker.permissionDenied =>
+        context.tr(BanayLocalizationKeys.accountAllowNow),
+      _LocationAccessBlocker.permissionDeniedForever =>
+        context.tr(BanayLocalizationKeys.accountOpenAppSettings),
+      _LocationAccessBlocker.preciseLocationRequired =>
+        context.tr(BanayLocalizationKeys.accountOpenAppSettings),
+    };
+
+    final primaryAction = switch (blocker) {
+      _LocationAccessBlocker.servicesDisabled => _openLocationSettingsAndRetry,
+      _LocationAccessBlocker.permissionDenied => _loadCurrentLocation,
+      _LocationAccessBlocker.permissionDeniedForever => _openAppSettingsAndRetry,
+      _LocationAccessBlocker.preciseLocationRequired => _openAppSettingsAndRetry,
+    };
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, color: colorScheme.error, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  color: colorScheme.error,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          message,
+          style: TextStyle(
+            color: appColors.mutedText,
+            fontWeight: FontWeight.w500,
+            fontSize: 13,
+            height: 1.4,
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: DynamicIconButton(
+            text: primaryLabel,
+            icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+            onPressed: primaryAction,
+            backgroundColor: colorScheme.primary,
+            foregroundColor: colorScheme.onPrimary,
+            borderRadius: 18,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:banay/component/app_network_image.dart';
 import 'package:banay/component/app_share_sheet.dart';
 import 'package:banay/component/profile_models.dart';
+import 'package:banay/services/banay_behavior_tracker.dart';
 import 'package:banay/component/seller_profile_page.dart';
 import 'package:banay/component/ui/seller_certified_badge.dart';
 import 'package:banay/formatter/price_formatter.dart';
@@ -555,6 +556,20 @@ class _ProductCardState extends State<ProductCard> {
     Map<String, dynamic> resolvedProduct, {
     int imageIndex = 0,
   }) {
+    final productId = resolvedProduct['id']?.toString().trim() ?? '';
+    final categorySlug =
+        resolvedProduct['categorySlug']?.toString().trim().isNotEmpty == true
+        ? resolvedProduct['categorySlug'].toString().trim()
+        : resolvedProduct['category']?.toString().trim();
+    final seller = widget.resolveSeller(resolvedProduct);
+    final sellerId = seller['id']?.toString().trim();
+
+    BanayBehaviorTracker.instance.trackProductViewed(
+      productId: productId,
+      categorySlug: categorySlug,
+      sellerId: sellerId?.isNotEmpty == true ? sellerId : null,
+    );
+
     if (widget.onTap != null) {
       widget.onTap!(imageIndex);
       return;

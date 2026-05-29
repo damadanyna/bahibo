@@ -7,6 +7,8 @@ import 'package:banay/component/app_message_composer.dart';
 import 'package:banay/component/app_network_image.dart';
 import 'package:banay/component/profile_models.dart';
 import 'package:banay/component/seller_profile_page.dart';
+import 'package:banay/component/user_profile_page.dart';
+import 'package:banay/services/catalog_api_service.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
 
 class AppCommentMention {
@@ -183,6 +185,7 @@ class _AppCommentsSheetContentState extends State<_AppCommentsSheetContent> {
 
   late final TextEditingController _commentController;
   final ImagePicker _imagePicker = ImagePicker();
+  final CatalogApiService _catalogApiService = CatalogApiService();
   late int _commentCount;
   bool _isSubmitting = false;
   bool _isSearchingMentions = false;
@@ -210,15 +213,44 @@ class _AppCommentsSheetContentState extends State<_AppCommentsSheetContent> {
   }
 
   void _openCommentAuthorProfile(AppCommentItem comment) {
+    final authorId = comment.authorId?.trim() ?? '';
+    if (authorId.isEmpty) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => UserProfilePage(
+            profile: buildProfileFromUser(
+              userId: null,
+              name: comment.authorName,
+              avatarUrl: comment.avatarUrl,
+              subtitle: 'Membre de la communaute BANAY',
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => SellerProfilePage(
-          profile: buildProfileFromUser(
-            userId: comment.authorId,
-            name: comment.authorName,
-            avatarUrl: comment.avatarUrl,
-            subtitle: 'Membre de la communaute BANAY',
-          ),
+        builder: (_) => FutureBuilder<Map<String, dynamic>>(
+          future: _catalogApiService.fetchUserProfile(authorId),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return Scaffold(
+                backgroundColor: Theme.of(context).appColors.backgroundBase,
+                body: const Center(child: CircularProgressIndicator()),
+              );
+            }
+            final data = snapshot.data!;
+            final profile = buildPublicUserProfileFromApi(data);
+            final role =
+                (data['role'] as String?)?.trim().toUpperCase() ?? '';
+            if (role == 'SELLER' &&
+                (profile.sellerProfileId?.isNotEmpty == true)) {
+              return SellerProfilePage(profile: profile);
+            }
+            return UserProfilePage(profile: profile);
+          },
         ),
       ),
     );
@@ -606,138 +638,156 @@ class _AppCommentsSheetContentState extends State<_AppCommentsSheetContent> {
     final theme = Theme.of(context);
     final appColors = theme.appColors;
     final effectiveDepth = _effectiveDepth(comment, depth);
-    final horizontalInset = effectiveDepth * 18.0;
+    final isReply = effectiveDepth > 0;
+    final avatarRadius = isReply ? 15.0 : 19.0;
+    final hasReplies = comment.replies.isNotEmpty;
 
-    return Padding(
-      padding: EdgeInsets.only(left: horizontalInset),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: depth == 0
-                  ? appColors.heroSurface
-                  : appColors.heroSurface.withValues(alpha: 0.82),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: appColors.heroBorder),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            GestureDetector(
+              onTap: () => _openCommentAuthorProfile(comment),
+              child: Container(
+                padding: const EdgeInsets.all(2.5),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                ),
+                child: AppCircleNetworkAvatar(
+                  radius: avatarRadius,
+                  imageUrl: comment.avatarUrl,
+                  userId: comment.authorId,
+                ),
+              ),
             ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () => _openCommentAuthorProfile(comment),
-                    customBorder: const CircleBorder(),
-                    child: Container(
-                      padding: const EdgeInsets.all(1.5),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: appColors.success.withValues(alpha: 0.32),
-                          width: 1.5,
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => _openCommentAuthorProfile(comment),
+                          child: Text(
+                            comment.authorName,
+                            style: TextStyle(
+                              color: appColors.heroForeground,
+                              fontSize: isReply ? 12.5 : 13.5,
+                              fontWeight: FontWeight.w800,
+                              height: 1.2,
+                            ),
+                          ),
                         ),
                       ),
-                      child: AppCircleNetworkAvatar(
-                        radius: depth == 0 ? 18 : 16,
-                        imageUrl: comment.avatarUrl,
-                        userId: comment.authorId,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: () => _openCommentAuthorProfile(comment),
-                                borderRadius: BorderRadius.circular(10),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 2,
-                                  ),
-                                  child: Text(
-                                    comment.authorName,
-                                    style: TextStyle(
-                                      color: theme.colorScheme.primary,
-                                      fontSize: depth == 0 ? 13.5 : 12.8,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          Text(
-                            comment.timeLabel,
-                            style: TextStyle(
-                              color: theme.colorScheme.primary.withValues(
-                                alpha: 0.52,
-                              ),
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      _buildMessageText(context, comment),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 12,
-                        runSpacing: 8,
-                        children: <Widget>[
-                          GestureDetector(
-                            onTap: () => _startReply(comment),
-                            child: Text(
-                              'Repondre',
-                              style: TextStyle(
-                                color: theme.colorScheme.primary,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          if (comment.replies.isNotEmpty)
-                            Text(
-                              '${comment.replies.length} reponse${comment.replies.length > 1 ? 's' : ''}',
-                              style: TextStyle(
-                                color: appColors.mutedText,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                        ],
+                      const SizedBox(width: 8),
+                      Text(
+                        comment.timeLabel,
+                        style: TextStyle(
+                          color: appColors.mutedText,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ],
                   ),
-                ),
-              ],
-            ),
-          ),
-          if (comment.replies.isNotEmpty) ...<Widget>[
-            const SizedBox(height: 10),
-            Column(
-              children: comment.replies
-                  .map(
-                    (reply) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _buildCommentThread(context, reply, depth: 1),
-                    ),
-                  )
-                  .toList(growable: false),
+                  const SizedBox(height: 5),
+                  _buildMessageText(context, comment),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: <Widget>[
+                      GestureDetector(
+                        onTap: () => _startReply(comment),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Icon(
+                              Icons.reply_rounded,
+                              size: 13,
+                              color: appColors.mutedText,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Répondre',
+                              style: TextStyle(
+                                color: appColors.mutedText,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (hasReplies && !isReply) ...<Widget>[
+                        const SizedBox(width: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary.withValues(
+                              alpha: 0.10,
+                            ),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            '${comment.replies.length} réponse${comment.replies.length > 1 ? 's' : ''}',
+                            style: TextStyle(
+                              color: theme.colorScheme.primary,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                ],
+              ),
             ),
           ],
+        ),
+        if (hasReplies && !isReply) ...<Widget>[
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.only(left: 22),
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border(
+                  left: BorderSide(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.18),
+                    width: 2,
+                  ),
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.only(left: 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: comment.replies
+                      .map(
+                        (reply) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _buildCommentThread(
+                            context,
+                            reply,
+                            depth: 1,
+                          ),
+                        ),
+                      )
+                      .toList(growable: false),
+                ),
+              ),
+            ),
+          ),
         ],
-      ),
+      ],
     );
   }
 
@@ -745,18 +795,25 @@ class _AppCommentsSheetContentState extends State<_AppCommentsSheetContent> {
     final theme = Theme.of(context);
     final appColors = theme.appColors;
 
-    if (_activeMentionQuery == null) {
-      return const SizedBox.shrink();
-    }
+    if (_activeMentionQuery == null) return const SizedBox.shrink();
 
     if (_isSearchingMentions) {
       return Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: appColors.heroSurface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: appColors.heroBorder),
+          color: appColors.panelBackground,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: theme.colorScheme.primary.withValues(alpha: 0.06),
+              blurRadius: 16,
+              offset: const Offset(0, -4),
+            ),
+          ],
+          border: Border.all(
+            color: appColors.heroBorder.withValues(alpha: 0.50),
+          ),
         ),
         child: Row(
           children: <Widget>[
@@ -770,7 +827,7 @@ class _AppCommentsSheetContentState extends State<_AppCommentsSheetContent> {
             ),
             const SizedBox(width: 10),
             Text(
-              'Recherche des membres...',
+              'Recherche...',
               style: TextStyle(
                 color: appColors.mutedText,
                 fontSize: 12.5,
@@ -782,47 +839,164 @@ class _AppCommentsSheetContentState extends State<_AppCommentsSheetContent> {
       );
     }
 
-    if (_mentionSuggestions.isEmpty) {
-      return const SizedBox.shrink();
-    }
+    if (_mentionSuggestions.isEmpty) return const SizedBox.shrink();
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 10),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: appColors.heroSurface,
+        color: appColors.panelBackground,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: appColors.heroBorder),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: theme.colorScheme.primary.withValues(alpha: 0.06),
+            blurRadius: 16,
+            offset: const Offset(0, -4),
+          ),
+        ],
+        border: Border.all(
+          color: appColors.heroBorder.withValues(alpha: 0.50),
+        ),
       ),
       child: Column(
-        children: _mentionSuggestions
-            .map(
-              (mention) => ListTile(
-                dense: true,
-                leading: AppCircleNetworkAvatar(
-                  radius: 17,
-                  imageUrl: mention.avatarUrl,
-                  userId: mention.userId,
+        mainAxisSize: MainAxisSize.min,
+        children: _mentionSuggestions.asMap().entries.map((entry) {
+          final index = entry.key;
+          final mention = entry.value;
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              if (index > 0)
+                Divider(
+                  height: 1,
+                  color: appColors.heroBorder.withValues(alpha: 0.50),
                 ),
-                title: Text(
-                  mention.displayName,
-                  style: TextStyle(
-                    color: appColors.heroForeground,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => _selectMention(mention),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    child: Row(
+                      children: <Widget>[
+                        AppCircleNetworkAvatar(
+                          radius: 18,
+                          imageUrl: mention.avatarUrl,
+                          userId: mention.userId,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                mention.displayName,
+                                style: TextStyle(
+                                  color: appColors.heroForeground,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              Text(
+                                mention.trigger,
+                                style: TextStyle(
+                                  color: theme.colorScheme.primary,
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(
+                          Icons.north_west_rounded,
+                          size: 14,
+                          color: appColors.mutedText,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                subtitle: Text(
-                  mention.trigger,
-                  style: TextStyle(
-                    color: appColors.mutedText,
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                onTap: () => _selectMention(mention),
               ),
-            )
-            .toList(growable: false),
+            ],
+          );
+        }).toList(growable: false),
+      ),
+    );
+  }
+
+  Widget _buildReplyBanner(ThemeData theme, dynamic appColors) {
+    final replyingTo = _replyingTo!;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withValues(alpha: 0.06),
+        borderRadius: const BorderRadius.only(
+          topRight: Radius.circular(14),
+          bottomRight: Radius.circular(14),
+        ),
+        border: Border(
+          left: BorderSide(color: theme.colorScheme.primary, width: 3),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+        child: Row(
+          children: <Widget>[
+            AppCircleNetworkAvatar(
+              radius: 13,
+              imageUrl: replyingTo.avatarUrl,
+              userId: replyingTo.authorId,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'Réponse à ${replyingTo.authorName}',
+                    style: TextStyle(
+                      color: theme.colorScheme.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    replyingTo.message,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: appColors.mutedText,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: _resetComposer,
+              child: Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: appColors.heroBorder,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.close_rounded,
+                  size: 11,
+                  color: appColors.mutedText,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -834,129 +1008,154 @@ class _AppCommentsSheetContentState extends State<_AppCommentsSheetContent> {
 
     return SafeArea(
       child: FractionallySizedBox(
-        heightFactor: 0.8,
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            18,
-            14,
-            18,
-            20 + MediaQuery.of(context).viewInsets.bottom,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Center(
+        heightFactor: 0.88,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            // — Drag handle —
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 12, bottom: 16),
                 child: Container(
-                  width: 46,
-                  height: 5,
+                  width: 40,
+                  height: 4,
                   decoration: BoxDecoration(
                     color: appColors.heroBorder,
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
               ),
-              const SizedBox(height: 18),
-              Text(
-                'Commentaires',
-                style: TextStyle(
-                  color: appColors.heroForeground,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                ),
+            ),
+            // — Header —
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
+              child: Row(
+                children: <Widget>[
+                  Text(
+                    'Commentaires',
+                    style: TextStyle(
+                      color: appColors.heroForeground,
+                      fontSize: 19,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '$_commentCount',
+                      style: TextStyle(
+                        color: theme.colorScheme.primary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 6),
-              Text(
-                '$_commentCount commentaires et reponses',
-                style: TextStyle(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.72),
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Expanded(
-                child: widget.comments.isEmpty
-                    ? Center(
-                        child: Text(
-                          'Aucun commentaire pour le moment.',
-                          style: TextStyle(
-                            color: appColors.mutedText,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
+            ),
+            Divider(
+              height: 1,
+              color: appColors.heroBorder.withValues(alpha: 0.50),
+            ),
+            // — Comment list —
+            Expanded(
+              child: widget.comments.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Container(
+                            width: 64,
+                            height: 64,
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary
+                                  .withValues(alpha: 0.08),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.chat_bubble_outline_rounded,
+                              color: theme.colorScheme.primary
+                                  .withValues(alpha: 0.50),
+                              size: 28,
+                            ),
                           ),
-                        ),
-                      )
-                    : ListView.separated(
-                        itemCount: widget.comments.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 14),
-                        itemBuilder: (context, index) => _buildCommentThread(
-                          context,
-                          widget.comments[index],
-                        ),
-                      ),
-              ),
-              const SizedBox(height: 12),
-              if (_replyingTo != null)
-                Container(
-                  width: double.infinity,
-                  margin: const EdgeInsets.only(bottom: 10),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: appColors.heroSurface,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: appColors.heroBorder),
-                  ),
-                  child: Row(
-                    children: <Widget>[
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Text(
-                              'Reponse a ${_replyingTo!.authorName}',
-                              style: TextStyle(
-                                color: theme.colorScheme.primary,
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w700,
-                              ),
+                          const SizedBox(height: 14),
+                          Text(
+                            'Aucun commentaire',
+                            style: TextStyle(
+                              color: appColors.heroForeground,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              _replyingTo!.message,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: appColors.mutedText,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                              ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Soyez le premier à commenter.',
+                            style: TextStyle(
+                              color: appColors.mutedText,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w500,
                             ),
-                          ],
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
+                      itemCount: widget.comments.length,
+                      separatorBuilder: (context, i) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Divider(
+                          height: 1,
+                          color: appColors.heroBorder.withValues(alpha: 0.30),
                         ),
                       ),
-                      TextButton(
-                        onPressed: _resetComposer,
-                        child: const Text('Annuler'),
+                      itemBuilder: (context, index) => _buildCommentThread(
+                        context,
+                        widget.comments[index],
                       ),
-                    ],
-                  ),
-                ),
-              _buildMentionSuggestions(context),
-              AppMessageComposer(
-                controller: _commentController,
-                onAttachmentTap: _openCommentAttachmentSheet,
-                onSend: _submitComment,
-                primary: theme.colorScheme.primary,
-                panelColor: appColors.inputFill,
-                borderColor: appColors.inputBorder,
-                minLines: 1,
-                maxLines: 4,
+                    ),
+            ),
+            // — Bottom composer zone —
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                18,
+                0,
+                18,
+                14 + MediaQuery.of(context).viewInsets.bottom,
               ),
-            ],
-          ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Divider(
+                    height: 1,
+                    color: appColors.heroBorder.withValues(alpha: 0.50),
+                  ),
+                  const SizedBox(height: 10),
+                  if (_replyingTo != null) _buildReplyBanner(theme, appColors),
+                  _buildMentionSuggestions(context),
+                  AppMessageComposer(
+                    controller: _commentController,
+                    onAttachmentTap: _openCommentAttachmentSheet,
+                    onSend: _submitComment,
+                    primary: theme.colorScheme.primary,
+                    panelColor: appColors.inputFill,
+                    borderColor: appColors.inputBorder,
+                    minLines: 1,
+                    maxLines: 4,
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
