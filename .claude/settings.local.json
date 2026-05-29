@@ -9,7 +9,9 @@
       "PowerShell($adb = \"$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $adb devices)",
       "PowerShell($adb = \"$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $adb -s R5CN80NL5GB install -r \"C:\\\\Users\\\\Banay\\\\Documents\\\\project 2026\\\\bahibo\\\\build\\\\app\\\\outputs\\\\flutter-apk\\\\app-debug.apk\" 2>&1)",
       "Bash(ipconfig)",
-      "Bash(ipconfig /all)"
+      "Bash(ipconfig /all)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Banay\\\\Documents\\\\project 2026\\\\bahibo\" -Directory)",
+      "Bash(Select-Object Name)"
     ]
   }
 }

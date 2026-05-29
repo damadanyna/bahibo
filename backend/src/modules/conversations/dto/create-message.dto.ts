@@ -1,10 +1,15 @@
-import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, MaxLength } from "class-validator";
 
 export class CreateMessageDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(2000)
   content!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(191)
+  clientMessageId?: string;
 
   @IsOptional()
   @IsString()

@@ -1,5 +1,6 @@
 import 'package:banay/localization/banay_localization_account.dart';
 import 'package:banay/localization/banay_localization_account_keys.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'package:banay/localization/banay_localization_auth.dart';
@@ -278,6 +279,9 @@ class BanayLocalizations {
 
   final Locale locale;
 
+    static const LocalizationsDelegate<BanayLocalizations> delegate =
+            _BanayLocalizationsDelegate();
+
   static const List<Locale> supportedLocales = [
     Locale('mg'),
     Locale('en'),
@@ -333,6 +337,28 @@ class BanayLocalizations {
         },
     };
   }
+}
+
+class _BanayLocalizationsDelegate
+        extends LocalizationsDelegate<BanayLocalizations> {
+    const _BanayLocalizationsDelegate();
+
+    @override
+    bool isSupported(Locale locale) {
+        return BanayLocalizations.supportedLocales.any(
+            (supportedLocale) => supportedLocale.languageCode == locale.languageCode,
+        );
+    }
+
+    @override
+    Future<BanayLocalizations> load(Locale locale) {
+        return SynchronousFuture<BanayLocalizations>(BanayLocalizations(locale));
+    }
+
+    @override
+    bool shouldReload(covariant LocalizationsDelegate<BanayLocalizations> old) {
+        return false;
+    }
 }
 
 extension BanayLocalizationContext on BuildContext {

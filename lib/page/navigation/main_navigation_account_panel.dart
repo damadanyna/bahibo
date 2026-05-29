@@ -17,6 +17,7 @@ import 'package:banay/component/ui/dinamic_icon_textarea.dart';
 import 'package:banay/component/ui/dinamic_followed_people_h_list.dart';
 import 'package:banay/component/ui/seller_certified_badge.dart';
 import 'package:banay/component/user_list_page.dart';
+import 'package:banay/localization/banay_localizations.dart';
 import 'package:banay/page/private_image_viewer.dart';
 import 'package:banay/page/dashboard_page.dart';
 import 'package:banay/page/live/live_watch_page.dart';
@@ -3540,11 +3541,33 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     Color mutedColor,
     Map<String, dynamic> person,
   ) {
-    final name = resolveFollowedPersonName(person);
-    final subtitle = resolveFollowedPersonSubtitle(person);
+    final fallbackName = context.tr(
+      BanayLocalizationKeys.homeFollowedMemberFallback,
+    );
+    final fallbackSubtitle = context.tr(
+      BanayLocalizationKeys.homeFollowedSubtitleFallback,
+    );
+    final sellerBadge = context.tr(
+      BanayLocalizationKeys.homeFollowedSellerBadge,
+    );
+    final profileBadge = context.tr(
+      BanayLocalizationKeys.homeFollowedProfileBadge,
+    );
+    final fallbackLiveTitle = context.tr(
+      BanayLocalizationKeys.homeFollowedLiveNow,
+    );
+    final name = resolveFollowedPersonName(person, fallbackName: fallbackName);
+    final subtitle = resolveFollowedPersonSubtitle(
+      person,
+      fallbackSubtitle: fallbackSubtitle,
+    );
     final avatarUrl = resolveFollowedPersonAvatarUrl(person);
     final userId = resolveFollowedPersonUserId(person);
-    final trailingText = resolveFollowedPersonTrailingText(person);
+    final trailingText = resolveFollowedPersonTrailingText(
+      person,
+      sellerBadge: sellerBadge,
+      profileBadge: profileBadge,
+    );
     final isLive = isFollowedPersonLive(person);
 
     return Material(
@@ -3605,7 +3628,10 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                     const SizedBox(height: 8),
                     Text(
                       isLive
-                          ? resolveFollowedPersonLiveTitle(person)
+                          ? resolveFollowedPersonLiveTitle(
+                              person,
+                              fallbackLiveTitle: fallbackLiveTitle,
+                            )
                           : subtitle,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,

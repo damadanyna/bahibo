@@ -37,7 +37,8 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
   StreamSubscription<Map<String, dynamic>>? _realtimeEventsSubscription;
 
   bool _isLoading = true;
-  bool _isUploadingImage = false;
+  bool _isUploadingAvatarImage = false;
+  bool _isUploadingCoverImage = false;
   bool _isUpdatingDisplayName = false;
   bool _isSubmittingShopRequest = false;
   bool _isLoadingLocation = true;
@@ -734,7 +735,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
   }
 
   Future<void> _showImageSourceSheet(_EditableImageTarget target) async {
-    if (!mounted || _isUploadingImage) {
+    if (!mounted || _isUploadingAvatarImage || _isUploadingCoverImage) {
       return;
     }
 
@@ -788,7 +789,11 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
     File imageFile,
   ) async {
     setState(() {
-      _isUploadingImage = true;
+      if (target == _EditableImageTarget.cover) {
+        _isUploadingCoverImage = true;
+      } else {
+        _isUploadingAvatarImage = true;
+      }
     });
 
     try {
@@ -828,7 +833,11 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
     } finally {
       if (mounted) {
         setState(() {
-          _isUploadingImage = false;
+          if (target == _EditableImageTarget.cover) {
+            _isUploadingCoverImage = false;
+          } else {
+            _isUploadingAvatarImage = false;
+          }
         });
       }
     }
@@ -1060,6 +1069,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
   Widget _buildImageActionButton({
     required VoidCallback onPressed,
     required ThemeData theme,
+    required bool isUploading,
   }) {
     final appColors = theme.appColors;
 
@@ -1068,7 +1078,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
       height: 38,
       child: DynamicIconButton(
         text: '',
-        icon: _isUploadingImage
+        icon: isUploading
             ? Padding(
                 padding: const EdgeInsets.all(10),
                 child: CircularProgressIndicator(
@@ -1081,7 +1091,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                 size: 19,
                 color: appColors.heroForeground,
               ),
-        onPressed: _isUploadingImage ? null : onPressed,
+        onPressed: isUploading ? null : onPressed,
         expanded: false,
         spacing: 0,
         padding: EdgeInsets.zero,
@@ -1228,6 +1238,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                                   );
                                 },
                                 theme: theme,
+                                isUploading: _isUploadingCoverImage,
                               ),
                             ),
                             Positioned(
@@ -1287,6 +1298,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                                         );
                                       },
                                       theme: theme,
+                                      isUploading: _isUploadingAvatarImage,
                                     ),
                                   ),
                                 ],
@@ -1310,7 +1322,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                                   fontWeight: FontWeight.w600,
                                 ),
                               )
-                            else if (_isUploadingImage)
+                            else if (_isUploadingAvatarImage || _isUploadingCoverImage)
                               Text(
                                 context.tr(
                                   BanayLocalizationKeys.accountImageUpdating,

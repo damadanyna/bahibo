@@ -7,8 +7,12 @@ import 'package:banay/services/app_auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sms_autofill/sms_autofill.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:banay/theme/app_theme_extensions.dart';
+
+// TODO: host your privacy policy at this URL before Play Store submission.
+const String _kPrivacyPolicyUrl = 'https://banay.app/privacy-policy';
 
 class PhoneNumberPage extends StatefulWidget {
   const PhoneNumberPage({super.key});
@@ -447,20 +451,44 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
                 SizedBox(
                   width: double.infinity,
                   child: DynamicIconButton(
-                    text: _isSubmitting
-                        ? context.tr(BanayLocalizationKeys.sendingOtp)
-                        : context.tr(BanayLocalizationKeys.continueAction),
-                    icon: Icon(
-                      _isSubmitting ? Icons.hourglass_top : Icons.arrow_forward,
-                      size: 20,
-                    ),
-                    onPressed: _isSubmitting
-                        ? null
-                        : _showPhoneConfirmationDialog,
+                    text: context.tr(BanayLocalizationKeys.continueAction),
+                    icon: const Icon(Icons.arrow_forward, size: 20),
+                    isLoading: _isSubmitting,
+                    onPressed: _showPhoneConfirmationDialog,
                     padding: const EdgeInsets.symmetric(
                       vertical: 16,
                       horizontal: 24,
                     ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                GestureDetector(
+                  onTap: () => launchUrl(
+                    Uri.parse(_kPrivacyPolicyUrl),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: 'En continuant, vous acceptez notre ',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: appColors.mutedText,
+                          ),
+                        ),
+                        TextSpan(
+                          text: 'Politique de confidentialité',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: theme.colorScheme.primary,
+                            decoration: TextDecoration.underline,
+                            decorationColor: theme.colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    textAlign: TextAlign.center,
                   ),
                 ),
               ],

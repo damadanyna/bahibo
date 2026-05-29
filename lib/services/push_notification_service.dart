@@ -62,6 +62,7 @@ class PushNotificationService {
   static bool _initialized = false;
   static bool _isNavigatingFromNotification = false;
   static Map<String, String>? _pendingNotificationData;
+  static String? _visibleConversationId;
 
   static bool get isSupportedPlatform {
     if (kIsWeb) {
@@ -92,8 +93,10 @@ class PushNotificationService {
     );
 
     final token = await messaging.getToken();
-    debugPrint('FCM permission: ${settings.authorizationStatus.name}');
-    debugPrint('FCM token: $token');
+    if (kDebugMode) {
+      debugPrint('FCM permission: ${settings.authorizationStatus.name}');
+      debugPrint('FCM token: $token');
+    }
 
     if (token != null && token.isNotEmpty) {
       await _syncDeviceToken(token);
@@ -210,13 +213,25 @@ class PushNotificationService {
   static void setVisibleConversation(String? conversationId) {
     final normalized = conversationId?.trim();
     if (normalized == null || normalized.isEmpty) {
+      _visibleConversationId = null;
       return;
     }
+
+    _visibleConversationId = normalized;
   }
 
   static bool _shouldShowForegroundNotification(RemoteMessage message) {
     final notificationType =
         message.data['type']?.toString().trim().toLowerCase() ?? '';
+    if (notificationType == 'chat_message') {
+      final conversationId = message.data['conversationId']?.toString().trim();
+      if (conversationId != null &&
+          conversationId.isNotEmpty &&
+          conversationId == _visibleConversationId) {
+        return false;
+      }
+    }
+
     return notificationType != 'user_feedback';
   }
 

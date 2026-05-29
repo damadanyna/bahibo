@@ -4,68 +4,71 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-} from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+} from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 
-import { PrismaService } from '../prisma/prisma.service';
-import { PushNotificationsService } from '../push-notifications/push-notifications.service';
-import { CloudinaryService } from '../auth/cloudinary.service';
-import { CreateMediaMessageDto } from './dto/create-media-message.dto';
-import { CreateMessageDto } from './dto/create-message.dto';
-import { ConversationsRealtimeGateway } from './realtime/conversations-realtime.gateway';
+import { PrismaService } from "../prisma/prisma.service";
+import { PushNotificationsService } from "../push-notifications/push-notifications.service";
+import { CloudinaryService } from "../auth/cloudinary.service";
+import { CreateMediaMessageDto } from "./dto/create-media-message.dto";
+import { CreateMessageDto } from "./dto/create-message.dto";
+import { ConversationsRealtimeGateway } from "./realtime/conversations-realtime.gateway";
 
-const conversationDetailInclude = Prisma.validator<Prisma.ChatConversationInclude>()({
-  buyer: true,
-  seller: true,
-  product: {
-    include: {
-      category: true,
-      sellerProfile: {
-        include: {
-          user: true,
+const conversationDetailInclude =
+  Prisma.validator<Prisma.ChatConversationInclude>()({
+    buyer: true,
+    seller: true,
+    product: {
+      include: {
+        category: true,
+        sellerProfile: {
+          include: {
+            user: true,
+          },
         },
       },
     },
-  },
-});
+  });
 
 type ConversationDetail = Prisma.ChatConversationGetPayload<{
   include: typeof conversationDetailInclude;
 }>;
 
-const conversationMessageInclude = Prisma.validator<Prisma.ChatMessageInclude>()({
-  media: true,
-  sender: true,
-});
+const conversationMessageInclude =
+  Prisma.validator<Prisma.ChatMessageInclude>()({
+    media: true,
+    sender: true,
+  });
 
 type ConversationMessageDetail = Prisma.ChatMessageGetPayload<{
   include: typeof conversationMessageInclude;
 }>;
 
-const conversationListInclude = Prisma.validator<Prisma.ChatConversationInclude>()({
-  buyer: true,
-  seller: true,
-  product: {
-    include: {
-      category: true,
-      sellerProfile: {
-        include: {
-          user: true,
+const conversationListInclude =
+  Prisma.validator<Prisma.ChatConversationInclude>()({
+    buyer: true,
+    seller: true,
+    product: {
+      include: {
+        category: true,
+        sellerProfile: {
+          include: {
+            user: true,
+          },
         },
       },
     },
-  },
-  messages: {
-    include: {
-      media: true,
-      sender: true,
+    messages: {
+      include: {
+        media: true,
+        sender: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 1,
     },
-    orderBy: {
-      createdAt: 'desc',
-    },
-    take: 1,
-  },
-});
+  });
 
 type ConversationListItem = Prisma.ChatConversationGetPayload<{
   include: typeof conversationListInclude;
@@ -74,7 +77,7 @@ type ConversationListItem = Prisma.ChatConversationGetPayload<{
 type ConversationThreadMessage = {
   id: string;
   content: string;
-  kind: 'TEXT' | 'IMAGE' | 'DOCUMENT' | 'PRODUCT';
+  kind: "TEXT" | "IMAGE" | "DOCUMENT" | "PRODUCT";
   createdAt: string;
   readAt: string | null;
   isMine: boolean;
@@ -92,10 +95,10 @@ type ConversationThreadMessage = {
   product: ConversationMessageProductSnapshot | null;
 };
 
-type ConversationRealtimeMessage = Omit<ConversationThreadMessage, 'isMine'>;
+type ConversationRealtimeMessage = Omit<ConversationThreadMessage, "isMine">;
 
 type ConversationMessageMediaPayload = {
-  mediaType: 'image' | 'document';
+  mediaType: "image" | "document";
   publicUrl: string;
   previewUrl: string | null;
   thumbnailUrl: string | null;
@@ -122,7 +125,7 @@ type ConversationMessageProductSnapshot = {
 };
 
 type MessageProductSnapshotFields = {
-  kind?: 'TEXT' | 'IMAGE' | 'DOCUMENT' | 'PRODUCT';
+  kind?: "TEXT" | "IMAGE" | "DOCUMENT" | "PRODUCT";
   productId: string | null;
   productTitle: string | null;
   productSubtitle: string | null;
@@ -164,14 +167,14 @@ type ConversationMessagesPage = {
 };
 
 type ChatMediaCleanupCandidate = {
-  mediaType: 'image' | 'document';
+  mediaType: "image" | "document";
   storageProvider: string;
   storageKey: string | null;
   publicUrl: string;
 };
 
 type ChatMediaAuditCursorState = {
-  mediaType: 'image' | 'document';
+  mediaType: "image" | "document";
   cloudinaryCursor: string | null;
 };
 
@@ -185,18 +188,18 @@ type MessageReplyFields = {
 const maxPhotoAttachmentBytes = 10 * 1024 * 1024;
 const maxDocumentAttachmentBytes = 12 * 1024 * 1024;
 const allowedPhotoAttachmentExtensions = new Set([
-  'jpg',
-  'jpeg',
-  'png',
-  'webp',
-  'heic',
-  'heif',
+  "jpg",
+  "jpeg",
+  "png",
+  "webp",
+  "heic",
+  "heif",
 ]);
 const allowedDocumentAttachmentExtensions = new Set([
-  'pdf',
-  'doc',
-  'docx',
-  'txt',
+  "pdf",
+  "doc",
+  "docx",
+  "txt",
 ]);
 
 @Injectable()
@@ -213,15 +216,15 @@ export class ConversationsService {
   async uploadAttachment(
     userId: string,
     file: Express.Multer.File | undefined,
-    type: 'photo' | 'document',
+    type: "photo" | "document",
   ) {
     if (!file) {
-      throw new BadRequestException('Attachment file is required');
+      throw new BadRequestException("Attachment file is required");
     }
 
     this.validateAttachment(file, type);
 
-    if (type === 'photo') {
+    if (type === "photo") {
       const uploadResult = await this.cloudinaryService.uploadChatImage(
         file,
         userId,
@@ -263,59 +266,64 @@ export class ConversationsService {
 
   private validateAttachment(
     file: Express.Multer.File,
-    type: 'photo' | 'document',
+    type: "photo" | "document",
   ) {
-    const fileName = file.originalname?.trim() ?? '';
+    const fileName = file.originalname?.trim() ?? "";
     const extension = this.extractFileExtension(fileName);
     const fileSize = file.size ?? file.buffer?.length ?? 0;
 
-    if (type === 'photo') {
+    if (type === "photo") {
       if (!allowedPhotoAttachmentExtensions.has(extension)) {
         throw new BadRequestException(
-          'Format de photo non pris en charge. Utilisez JPG, PNG, WEBP ou HEIC.',
+          "Format de photo non pris en charge. Utilisez JPG, PNG, WEBP ou HEIC.",
         );
       }
-      const mimeType = file.mimetype?.trim().toLowerCase() ?? '';
-      if (mimeType.length > 0 && !mimeType.startsWith('image/')) {
-        throw new BadRequestException('Le fichier envoye n\'est pas une image valide.');
+      const mimeType = file.mimetype?.trim().toLowerCase() ?? "";
+      if (mimeType.length > 0 && !mimeType.startsWith("image/")) {
+        throw new BadRequestException(
+          "Le fichier envoye n'est pas une image valide.",
+        );
       }
       if (fileSize > maxPhotoAttachmentBytes) {
-        throw new BadRequestException('La photo depasse la limite de 10 Mo.');
+        throw new BadRequestException("La photo depasse la limite de 10 Mo.");
       }
       return;
     }
 
     if (!allowedDocumentAttachmentExtensions.has(extension)) {
       throw new BadRequestException(
-        'Format de document non pris en charge. Utilisez PDF, DOC, DOCX ou TXT.',
+        "Format de document non pris en charge. Utilisez PDF, DOC, DOCX ou TXT.",
       );
     }
     if (fileSize > maxDocumentAttachmentBytes) {
-      throw new BadRequestException('Le document depasse la limite de 12 Mo.');
+      throw new BadRequestException("Le document depasse la limite de 12 Mo.");
     }
   }
 
   private extractFileExtension(fileName: string) {
-    const lastDot = fileName.lastIndexOf('.');
+    const lastDot = fileName.lastIndexOf(".");
     if (lastDot < 0 || lastDot === fileName.length - 1) {
-      return '';
+      return "";
     }
 
     return fileName.slice(lastDot + 1).toLowerCase();
   }
 
-  private buildDirectConversationKey(firstUserId: string, secondUserId: string) {
-    return [firstUserId, secondUserId].sort().join(':');
+  private buildDirectConversationKey(
+    firstUserId: string,
+    secondUserId: string,
+  ) {
+    return [firstUserId, secondUserId].sort().join(":");
   }
 
   private resolveRoleLabel(user: { role: string }) {
-    if (user.role === 'SELLER') {
-      return 'Vendeur';
+    if (user.role === "SELLER") {
+      return "Vendeur";
     }
-    if (user.role === 'ADMIN') {
-      return 'Administrateur';
+    if (user.role === "ADMIN") {
+      return "Administrateur";
     }
-    return 'Utilisateur';
+    return "Utilisateur";
   }
 
   private async findUserBlock(firstUserId: string, secondUserId: string) {
@@ -333,7 +341,7 @@ export class ConversationsService {
         ],
       },
       orderBy: {
-        createdAt: 'desc',
+        createdAt: "desc",
       },
     });
   }
@@ -342,10 +350,7 @@ export class ConversationsService {
     firstUserId: string,
     secondUserId: string,
   ) {
-    const userBlock = await this.findUserBlock(
-      firstUserId,
-      secondUserId,
-    );
+    const userBlock = await this.findUserBlock(firstUserId, secondUserId);
 
     return {
       isBlocked: userBlock != null,
@@ -353,16 +358,19 @@ export class ConversationsService {
       blockedMessage:
         userBlock == null
           ? null
-          : 'Cette conversation est bloquee. Vous pouvez lire l\'historique, mais vous ne pouvez plus envoyer de nouveaux messages.',
+          : "Cette conversation est bloquee. Vous pouvez lire l'historique, mais vous ne pouvez plus envoyer de nouveaux messages.",
     };
   }
 
-  private async assertUsersCanInteract(firstUserId: string, secondUserId: string) {
+  private async assertUsersCanInteract(
+    firstUserId: string,
+    secondUserId: string,
+  ) {
     const userBlock = await this.findUserBlock(firstUserId, secondUserId);
 
     if (userBlock != null) {
       throw new ForbiddenException(
-        'Cette conversation est bloquee. Vous ne pouvez plus envoyer de messages.',
+        "Cette conversation est bloquee. Vous ne pouvez plus envoyer de messages.",
       );
     }
   }
@@ -374,7 +382,7 @@ export class ConversationsService {
       },
       include: conversationListInclude,
       orderBy: {
-        lastMessageAt: 'desc',
+        lastMessageAt: "desc",
       },
     });
 
@@ -417,14 +425,14 @@ export class ConversationsService {
     });
 
     if (!product) {
-      throw new NotFoundException('Product not found');
+      throw new NotFoundException("Product not found");
     }
 
     const sellerUserId = product.sellerProfile.userId;
 
     if (sellerUserId === userId) {
       throw new BadRequestException(
-        'You cannot start a conversation with your own product',
+        "You cannot start a conversation with your own product",
       );
     }
 
@@ -454,7 +462,7 @@ export class ConversationsService {
         buyerUserId: userId,
         sellerUserId,
         productId,
-        kind: 'PRODUCT',
+        kind: "PRODUCT",
       },
       include: conversationDetailInclude,
     });
@@ -468,12 +476,12 @@ export class ConversationsService {
     pageOptions?: ConversationMessagesPageOptions,
   ) {
     if (!targetUserId.trim()) {
-      throw new BadRequestException('Target user is required');
+      throw new BadRequestException("Target user is required");
     }
 
     if (targetUserId === userId) {
       throw new BadRequestException(
-        'You cannot start a conversation with yourself',
+        "You cannot start a conversation with yourself",
       );
     }
 
@@ -482,7 +490,7 @@ export class ConversationsService {
     });
 
     if (!targetUser) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException("User not found");
     }
 
     const directKey = this.buildDirectConversationKey(userId, targetUserId);
@@ -507,7 +515,7 @@ export class ConversationsService {
       },
       include: conversationDetailInclude,
       orderBy: {
-        lastMessageAt: 'asc',
+        lastMessageAt: "asc",
       },
     });
 
@@ -526,7 +534,7 @@ export class ConversationsService {
       data: {
         buyerUserId: userId,
         sellerUserId: targetUserId,
-        kind: 'DIRECT',
+        kind: "DIRECT",
         directKey,
       },
       include: conversationDetailInclude,
@@ -557,7 +565,10 @@ export class ConversationsService {
       userId,
       conversationId,
     );
-    const readCount = await this.markConversationAsRead(conversation.id, userId);
+    const readCount = await this.markConversationAsRead(
+      conversation.id,
+      userId,
+    );
     if (readCount > 0) {
       this.emitConversationRead(conversation, userId);
     }
@@ -573,7 +584,7 @@ export class ConversationsService {
     userId: string,
     conversationId: string,
     messageId: string,
-    scope: 'FOR_ME' | 'FOR_EVERYONE' = 'FOR_EVERYONE',
+    scope: "FOR_ME" | "FOR_EVERYONE" = "FOR_EVERYONE",
   ) {
     const conversation = await this.findAccessibleConversation(
       userId,
@@ -585,10 +596,10 @@ export class ConversationsService {
     });
 
     if (!message) {
-      throw new NotFoundException('Message not found');
+      throw new NotFoundException("Message not found");
     }
 
-    if (scope === 'FOR_ME') {
+    if (scope === "FOR_ME") {
       // Soft-delete: hidden only for the sender, recipient still sees it.
       await this.prisma.chatMessage.update({
         where: { id: messageId },
@@ -599,7 +610,7 @@ export class ConversationsService {
       });
     } else {
       if (message.senderUserId !== userId) {
-        throw new ForbiddenException('You can only delete your own messages.');
+        throw new ForbiddenException("You can only delete your own messages.");
       }
 
       const mediaCleanupCandidate = this.buildMediaCleanupCandidate(message);
@@ -616,8 +627,8 @@ export class ConversationsService {
         await transaction.chatMessage.update({
           where: { id: messageId },
           data: {
-            content: 'Message supprime',
-            kind: 'TEXT',
+            content: "Message supprime",
+            kind: "TEXT",
             replyToMessageId: null,
             replyToSenderUserId: null,
             replyToSenderName: null,
@@ -637,7 +648,7 @@ export class ConversationsService {
       this.conversationsRealtimeGateway.emitConversationEvent(
         [conversation.buyerUserId, conversation.sellerUserId],
         {
-          type: 'message:deleted',
+          type: "message:deleted",
           conversationId: conversation.id,
           actorUserId: userId,
           mediaGroupId: message.media?.mediaGroupId ?? null,
@@ -666,7 +677,7 @@ export class ConversationsService {
     const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
 
     const cursorState = this.decodeChatMediaAuditCursor(options?.nextCursor);
-    const pageMediaType = cursorState?.mediaType ?? 'image';
+    const pageMediaType = cursorState?.mediaType ?? "image";
     const assetPage = await this.cloudinaryService.listChatAssets({
       mediaType: pageMediaType,
       maxResults: maxAssets,
@@ -682,11 +693,12 @@ export class ConversationsService {
       return !Number.isNaN(createdAt.getTime()) && createdAt <= cutoff;
     });
 
-    const referencedAssets = await this.findReferencedCloudinaryChatAssets(
-      eligibleAssets,
-    );
+    const referencedAssets =
+      await this.findReferencedCloudinaryChatAssets(eligibleAssets);
     const orphanedAssets = eligibleAssets.filter(
-      (asset) => !referencedAssets.has(asset.publicId) && !(asset.secureUrl && referencedAssets.has(asset.secureUrl)),
+      (asset) =>
+        !referencedAssets.has(asset.publicId) &&
+        !(asset.secureUrl && referencedAssets.has(asset.secureUrl)),
     );
 
     const deleted: string[] = [];
@@ -694,7 +706,7 @@ export class ConversationsService {
 
     if (deleteOrphans) {
       for (const asset of orphanedAssets) {
-        const mediaType = asset.resourceType === 'raw' ? 'document' : 'image';
+        const mediaType = asset.resourceType === "raw" ? "document" : "image";
 
         try {
           const result = await this.cloudinaryService.deleteAsset({
@@ -702,10 +714,10 @@ export class ConversationsService {
             publicId: asset.publicId,
           });
 
-          if (result.result === 'ok' || result.result === 'not found') {
+          if (result.result === "ok" || result.result === "not found") {
             deleted.push(asset.publicId);
             this.logger.log(
-              `Chat media audit deleted orphaned Cloudinary asset publicId=${asset.publicId} actorUserId=${options?.actorUserId ?? 'unknown'}`,
+              `Chat media audit deleted orphaned Cloudinary asset publicId=${asset.publicId} actorUserId=${options?.actorUserId ?? "unknown"}`,
             );
             continue;
           }
@@ -745,7 +757,7 @@ export class ConversationsService {
     });
 
     this.logger.log(
-      `Chat media audit summary actorUserId=${options?.actorUserId ?? 'unknown'} ${JSON.stringify(summary)}`,
+      `Chat media audit summary actorUserId=${options?.actorUserId ?? "unknown"} ${JSON.stringify(summary)}`,
     );
 
     return {
@@ -764,16 +776,14 @@ export class ConversationsService {
   }
 
   private buildMediaCleanupCandidate(
-    message:
-      | {
-          media: {
-            mediaType: string;
-            storageProvider: string;
-            storageKey: string | null;
-            publicUrl: string;
-          } | null;
-        }
-      | null,
+    message: {
+      media: {
+        mediaType: string;
+        storageProvider: string;
+        storageKey: string | null;
+        publicUrl: string;
+      } | null;
+    } | null,
   ) {
     const media = message?.media;
     if (!media) {
@@ -781,32 +791,35 @@ export class ConversationsService {
     }
 
     const mediaType = media.mediaType.trim().toLowerCase();
-    if (mediaType !== 'image' && mediaType !== 'document') {
+    if (mediaType !== "image" && mediaType !== "document") {
       return null;
     }
 
     const storageProvider = media.storageProvider.trim().toLowerCase();
-    if (storageProvider !== 'cloudinary') {
+    if (storageProvider !== "cloudinary") {
       return null;
     }
 
     return {
-      mediaType: mediaType as 'image' | 'document',
+      mediaType: mediaType as "image" | "document",
       storageProvider,
       storageKey: media.storageKey?.trim() || null,
       publicUrl: media.publicUrl.trim(),
     };
   }
 
-  private async tryDeleteMessageMediaAsset(media: ChatMediaCleanupCandidate | null) {
+  private async tryDeleteMessageMediaAsset(
+    media: ChatMediaCleanupCandidate | null,
+  ) {
     if (!media) {
       return;
     }
 
-    const hasRemainingReferences = await this.hasRemainingMediaReferences(media);
+    const hasRemainingReferences =
+      await this.hasRemainingMediaReferences(media);
     if (hasRemainingReferences) {
       this.logger.log(
-        `Skipped Cloudinary deletion for chat media because a DB reference still exists storageKey=${media.storageKey ?? 'none'} publicUrl=${media.publicUrl}`,
+        `Skipped Cloudinary deletion for chat media because a DB reference still exists storageKey=${media.storageKey ?? "none"} publicUrl=${media.publicUrl}`,
       );
       return;
     }
@@ -819,7 +832,7 @@ export class ConversationsService {
       });
 
       this.logger.log(
-        `Cloudinary deletion completed for chat media result=${result.result} publicId=${result.publicId ?? 'unknown'}`,
+        `Cloudinary deletion completed for chat media result=${result.result} publicId=${result.publicId ?? "unknown"}`,
       );
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
@@ -863,13 +876,19 @@ export class ConversationsService {
     assets: Array<{ publicId: string; secureUrl: string | null }>,
   ) {
     const publicIds = Array.from(
-      new Set(assets.map((asset) => asset.publicId).filter((value) => value.length > 0)),
+      new Set(
+        assets
+          .map((asset) => asset.publicId)
+          .filter((value) => value.length > 0),
+      ),
     );
     const secureUrls = Array.from(
       new Set(
         assets
           .map((asset) => asset.secureUrl)
-          .filter((value): value is string => Boolean(value && value.length > 0)),
+          .filter((value): value is string =>
+            Boolean(value && value.length > 0),
+          ),
       ),
     );
 
@@ -879,7 +898,7 @@ export class ConversationsService {
 
     const references = await this.prisma.chatMessageMedia.findMany({
       where: {
-        storageProvider: 'cloudinary',
+        storageProvider: "cloudinary",
         OR: [
           ...(publicIds.length > 0 ? [{ storageKey: { in: publicIds } }] : []),
           ...(secureUrls.length > 0 ? [{ publicUrl: { in: secureUrls } }] : []),
@@ -906,33 +925,34 @@ export class ConversationsService {
   }
 
   private decodeChatMediaAuditCursor(nextCursor?: string | null) {
-    const normalized = nextCursor?.trim() ?? '';
+    const normalized = nextCursor?.trim() ?? "";
     if (!normalized) {
       return null;
     }
 
     try {
-      const decoded = Buffer.from(normalized, 'base64url').toString('utf8');
+      const decoded = Buffer.from(normalized, "base64url").toString("utf8");
       const parsed = JSON.parse(decoded) as Partial<ChatMediaAuditCursorState>;
 
-      if (parsed.mediaType !== 'image' && parsed.mediaType !== 'document') {
-        throw new Error('Invalid mediaType');
+      if (parsed.mediaType !== "image" && parsed.mediaType !== "document") {
+        throw new Error("Invalid mediaType");
       }
 
       return {
         mediaType: parsed.mediaType,
         cloudinaryCursor:
-          typeof parsed.cloudinaryCursor === 'string' && parsed.cloudinaryCursor.length > 0
+          typeof parsed.cloudinaryCursor === "string" &&
+          parsed.cloudinaryCursor.length > 0
             ? parsed.cloudinaryCursor
             : null,
       } satisfies ChatMediaAuditCursorState;
     } catch {
-      throw new BadRequestException('Invalid nextCursor');
+      throw new BadRequestException("Invalid nextCursor");
     }
   }
 
   private buildChatMediaAuditNextCursor(input: {
-    currentMediaType: 'image' | 'document';
+    currentMediaType: "image" | "document";
     cloudinaryNextCursor: string | null;
   }) {
     if (input.cloudinaryNextCursor) {
@@ -941,18 +961,18 @@ export class ConversationsService {
           mediaType: input.currentMediaType,
           cloudinaryCursor: input.cloudinaryNextCursor,
         } satisfies ChatMediaAuditCursorState),
-        'utf8',
-      ).toString('base64url');
+        "utf8",
+      ).toString("base64url");
     }
 
-    if (input.currentMediaType === 'image') {
+    if (input.currentMediaType === "image") {
       return Buffer.from(
         JSON.stringify({
-          mediaType: 'document',
+          mediaType: "document",
           cloudinaryCursor: null,
         } satisfies ChatMediaAuditCursorState),
-        'utf8',
-      ).toString('base64url');
+        "utf8",
+      ).toString("base64url");
     }
 
     return null;
@@ -971,20 +991,20 @@ export class ConversationsService {
     });
 
     if (!message) {
-      throw new NotFoundException('Message not found');
+      throw new NotFoundException("Message not found");
     }
 
     if (message.senderUserId !== userId) {
-      throw new ForbiddenException('You can only edit your own messages.');
+      throw new ForbiddenException("You can only edit your own messages.");
     }
 
-    if (message.kind !== 'TEXT') {
-      throw new BadRequestException('Only text messages can be edited.');
+    if (message.kind !== "TEXT") {
+      throw new BadRequestException("Only text messages can be edited.");
     }
 
     const trimmed = content.trim();
     if (!trimmed) {
-      throw new BadRequestException('Message content cannot be empty.');
+      throw new BadRequestException("Message content cannot be empty.");
     }
 
     await this.prisma.chatMessage.update({
@@ -1013,12 +1033,12 @@ export class ConversationsService {
       dto,
       this.extractDtoProductSnapshot(dto) ?? {
         id: conversation.product?.id ?? null,
-        title: conversation.product?.title ?? '',
-        subtitle: conversation.product?.subtitle ?? '',
+        title: conversation.product?.title ?? "",
+        subtitle: conversation.product?.subtitle ?? "",
         priceLabel: conversation.product
           ? `${conversation.product.price} ${conversation.product.currency}`
-          : '',
-        imageUrl: conversation.product?.imageUrl ?? '',
+          : "",
+        imageUrl: conversation.product?.imageUrl ?? "",
       },
     );
   }
@@ -1076,22 +1096,25 @@ export class ConversationsService {
     const content = dto.content.trim();
 
     if (!content) {
-      throw new BadRequestException('Message content is required');
+      throw new BadRequestException("Message content is required");
     }
 
     const conversation = await this.findAccessibleConversation(
       userId,
       conversationId,
     );
-    const recipientUserId = conversation.buyerUserId === userId
-      ? conversation.sellerUserId
-      : conversation.buyerUserId;
-    const sender = conversation.buyerUserId === userId
-      ? conversation.buyer
-      : conversation.seller;
-    const recipient = conversation.buyerUserId === userId
-      ? conversation.seller
-      : conversation.buyer;
+    const recipientUserId =
+      conversation.buyerUserId === userId
+        ? conversation.sellerUserId
+        : conversation.buyerUserId;
+    const sender =
+      conversation.buyerUserId === userId
+        ? conversation.buyer
+        : conversation.seller;
+    const recipient =
+      conversation.buyerUserId === userId
+        ? conversation.seller
+        : conversation.buyer;
 
     await this.assertUsersCanInteract(userId, recipientUserId);
 
@@ -1131,7 +1154,7 @@ export class ConversationsService {
     this.conversationsRealtimeGateway.emitConversationEvent(
       [conversation.buyerUserId, conversation.sellerUserId],
       {
-        type: 'message:new',
+        type: "message:new",
         conversationId: conversation.id,
         actorUserId: userId,
         message: createdMessage
@@ -1140,25 +1163,26 @@ export class ConversationsService {
       },
     );
 
-    const recipientConnected = this.conversationsRealtimeGateway.isUserConnected(
+    const recipientConnected =
+      this.conversationsRealtimeGateway.isUserConnected(recipientUserId);
+    await this.pushNotificationsService.sendChatMessageNotification({
       recipientUserId,
-    );
-    if (!recipientConnected) {
-      await this.pushNotificationsService.sendChatMessageNotification({
-          recipientUserId,
-          conversationId: conversation.id,
-          senderDisplayName: sender.displayName,
-          senderAvatarUrl: sender.avatarUrl ?? undefined,
-          senderRoleLabel: this.resolveRoleLabel(sender),
-          recipientDisplayName: recipient.displayName,
-          content,
-          conversationKind: conversation.kind,
-          productId: conversation.productId ?? undefined,
-        });
-    }
+      conversationId: conversation.id,
+      senderDisplayName: sender.displayName,
+      senderAvatarUrl: sender.avatarUrl ?? undefined,
+      senderRoleLabel: this.resolveRoleLabel(sender),
+      recipientDisplayName: recipient.displayName,
+      content,
+      conversationKind: conversation.kind,
+      productId: conversation.productId ?? undefined,
+    });
 
     if (createdMessageId && recipientConnected) {
-      this.emitConversationDelivered(conversation, recipientUserId, createdMessageId);
+      this.emitConversationDelivered(
+        conversation,
+        recipientUserId,
+        createdMessageId,
+      );
     }
 
     return this.getConversation(userId, conversationId);
@@ -1170,25 +1194,29 @@ export class ConversationsService {
     dto: CreateMediaMessageDto,
   ) {
     const mediaPayload = this.extractMediaPayload(dto);
-    const content = (dto.content?.trim() ?? '').length > 0
-      ? dto.content!.trim()
-      : dto.kind === 'IMAGE'
-      ? 'Photo envoyee'
-      : 'Document envoye';
+    const content =
+      (dto.content?.trim() ?? "").length > 0
+        ? dto.content!.trim()
+        : dto.kind === "IMAGE"
+          ? "Photo envoyee"
+          : "Document envoye";
 
     const conversation = await this.findAccessibleConversation(
       userId,
       conversationId,
     );
-    const recipientUserId = conversation.buyerUserId === userId
-      ? conversation.sellerUserId
-      : conversation.buyerUserId;
-    const sender = conversation.buyerUserId === userId
-      ? conversation.buyer
-      : conversation.seller;
-    const recipient = conversation.buyerUserId === userId
-      ? conversation.seller
-      : conversation.buyer;
+    const recipientUserId =
+      conversation.buyerUserId === userId
+        ? conversation.sellerUserId
+        : conversation.buyerUserId;
+    const sender =
+      conversation.buyerUserId === userId
+        ? conversation.buyer
+        : conversation.seller;
+    const recipient =
+      conversation.buyerUserId === userId
+        ? conversation.seller
+        : conversation.buyer;
 
     await this.assertUsersCanInteract(userId, recipientUserId);
 
@@ -1222,7 +1250,7 @@ export class ConversationsService {
               encryptionKeyB64: mediaPayload.encryptionKeyB64 ?? undefined,
               encryptionIvB64: mediaPayload.encryptionIvB64 ?? undefined,
               fileSha256B64: mediaPayload.fileSha256B64 ?? undefined,
-                mediaGroupId: mediaPayload.mediaGroupId ?? undefined,
+              mediaGroupId: mediaPayload.mediaGroupId ?? undefined,
             },
           },
         },
@@ -1241,7 +1269,7 @@ export class ConversationsService {
     this.conversationsRealtimeGateway.emitConversationEvent(
       [conversation.buyerUserId, conversation.sellerUserId],
       {
-        type: 'message:new',
+        type: "message:new",
         conversationId: conversation.id,
         actorUserId: userId,
         message: createdMessage
@@ -1250,25 +1278,26 @@ export class ConversationsService {
       },
     );
 
-    const recipientConnected = this.conversationsRealtimeGateway.isUserConnected(
+    const recipientConnected =
+      this.conversationsRealtimeGateway.isUserConnected(recipientUserId);
+    await this.pushNotificationsService.sendChatMessageNotification({
       recipientUserId,
-    );
-    if (!recipientConnected) {
-      await this.pushNotificationsService.sendChatMessageNotification({
-          recipientUserId,
-          conversationId: conversation.id,
-          senderDisplayName: sender.displayName,
-          senderAvatarUrl: sender.avatarUrl ?? undefined,
-          senderRoleLabel: this.resolveRoleLabel(sender),
-          recipientDisplayName: recipient.displayName,
-          content,
-          conversationKind: conversation.kind,
-          productId: conversation.productId ?? undefined,
-        });
-    }
+      conversationId: conversation.id,
+      senderDisplayName: sender.displayName,
+      senderAvatarUrl: sender.avatarUrl ?? undefined,
+      senderRoleLabel: this.resolveRoleLabel(sender),
+      recipientDisplayName: recipient.displayName,
+      content,
+      conversationKind: conversation.kind,
+      productId: conversation.productId ?? undefined,
+    });
 
     if (createdMessageId && recipientConnected) {
-      this.emitConversationDelivered(conversation, recipientUserId, createdMessageId);
+      this.emitConversationDelivered(
+        conversation,
+        recipientUserId,
+        createdMessageId,
+      );
     }
 
     return this.getConversation(userId, conversationId);
@@ -1288,10 +1317,10 @@ export class ConversationsService {
 
     return {
       id: dto.productId?.trim() || null,
-      title: dto.productTitle?.trim() ?? '',
-      subtitle: dto.productSubtitle?.trim() ?? '',
-      priceLabel: dto.productPriceLabel?.trim() ?? '',
-      imageUrl: dto.productImageUrl?.trim() ?? '',
+      title: dto.productTitle?.trim() ?? "",
+      subtitle: dto.productSubtitle?.trim() ?? "",
+      priceLabel: dto.productPriceLabel?.trim() ?? "",
+      imageUrl: dto.productImageUrl?.trim() ?? "",
     };
   }
 
@@ -1299,14 +1328,17 @@ export class ConversationsService {
     return this.conversationsRealtimeGateway.isUserConnected(participant.id);
   }
 
-  private async findAccessibleConversation(userId: string, conversationId: string) {
+  private async findAccessibleConversation(
+    userId: string,
+    conversationId: string,
+  ) {
     const conversation = await this.prisma.chatConversation.findUnique({
       where: { id: conversationId },
       include: conversationDetailInclude,
     });
 
     if (!conversation) {
-      throw new NotFoundException('Conversation not found');
+      throw new NotFoundException("Conversation not found");
     }
 
     if (
@@ -1314,7 +1346,7 @@ export class ConversationsService {
       conversation.sellerUserId !== userId
     ) {
       throw new ForbiddenException(
-        'You do not have access to this conversation',
+        "You do not have access to this conversation",
       );
     }
 
@@ -1345,7 +1377,7 @@ export class ConversationsService {
     this.conversationsRealtimeGateway.emitConversationEvent(
       [conversation.buyerUserId, conversation.sellerUserId],
       {
-        type: 'conversation:read',
+        type: "conversation:read",
         conversationId: conversation.id,
         actorUserId: userId,
         readAt: new Date().toISOString(),
@@ -1358,13 +1390,14 @@ export class ConversationsService {
     recipientUserId: string,
     messageId: string,
   ) {
-    const senderUserId = conversation.buyerUserId === recipientUserId
-      ? conversation.sellerUserId
-      : conversation.buyerUserId;
+    const senderUserId =
+      conversation.buyerUserId === recipientUserId
+        ? conversation.sellerUserId
+        : conversation.buyerUserId;
     this.conversationsRealtimeGateway.emitConversationDeliveredEvent(
       senderUserId,
       {
-        type: 'conversation:delivered',
+        type: "conversation:delivered",
         conversationId: conversation.id,
         actorUserId: recipientUserId,
         messageId,
@@ -1454,9 +1487,13 @@ export class ConversationsService {
 
   private async resolveBeforeMessageCursor(
     beforeMessageId: string | undefined,
-    matcher?: (message: { id: string; conversationId: string; senderUserId: string }) => boolean,
+    matcher?: (message: {
+      id: string;
+      conversationId: string;
+      senderUserId: string;
+    }) => boolean,
   ) {
-    const normalizedBeforeMessageId = beforeMessageId?.trim() ?? '';
+    const normalizedBeforeMessageId = beforeMessageId?.trim() ?? "";
     if (normalizedBeforeMessageId.length === 0) {
       return null;
     }
@@ -1478,7 +1515,9 @@ export class ConversationsService {
     return anchorMessage;
   }
 
-  private buildBeforeMessageWhere(cursor: { id: string; createdAt: Date } | null) {
+  private buildBeforeMessageWhere(
+    cursor: { id: string; createdAt: Date } | null,
+  ) {
     if (cursor == null) {
       return undefined;
     }
@@ -1519,7 +1558,7 @@ export class ConversationsService {
         ...(beforeWhere == null ? {} : beforeWhere),
       },
       include: conversationMessageInclude,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: take + 1,
     });
     const hasOlderMessages = records.length > take;
@@ -1563,7 +1602,7 @@ export class ConversationsService {
         ...(beforeWhere == null ? {} : beforeWhere),
       },
       include: conversationMessageInclude,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: take + 1,
     });
     const hasOlderMessages = records.length > take;
@@ -1614,7 +1653,7 @@ export class ConversationsService {
             id: conversation.product.id,
             title: conversation.product.title,
             description: conversation.product.description,
-            subtitle: `${conversation.product.category.name} • ${conversation.product.isAvailable ? 'Disponible' : 'Indisponible'}`,
+            subtitle: `${conversation.product.category.name} • ${conversation.product.isAvailable ? "Disponible" : "Indisponible"}`,
             imageUrl: conversation.product.imageUrl,
             price: conversation.product.priceAmount.toNumber(),
             currency: conversation.product.currencyCode,
@@ -1674,25 +1713,27 @@ export class ConversationsService {
       page.messages,
     );
 
-    const messages = page.messages.map<ConversationThreadMessage>((message) => ({
-          id: message.id,
-          content: message.content,
-          kind: message.kind,
-          createdAt: message.createdAt.toISOString(),
-          readAt: message.readAt?.toISOString() ?? null,
-          isMine: message.senderUserId === userId,
-          reply: this.presentMessageReply(message, userId),
-          sender: {
-            id: message.sender.id,
-            displayName: message.sender.displayName,
-            avatarUrl: message.sender.avatarUrl,
-          },
-          media: this.presentMessageMedia(message),
-          product: this.presentMessageProductSnapshot(
-            message,
-            currentProductSnapshots,
-          ),
-        }));
+    const messages = page.messages.map<ConversationThreadMessage>(
+      (message) => ({
+        id: message.id,
+        content: message.content,
+        kind: message.kind,
+        createdAt: message.createdAt.toISOString(),
+        readAt: message.readAt?.toISOString() ?? null,
+        isMine: message.senderUserId === userId,
+        reply: this.presentMessageReply(message, userId),
+        sender: {
+          id: message.sender.id,
+          displayName: message.sender.displayName,
+          avatarUrl: message.sender.avatarUrl,
+        },
+        media: this.presentMessageMedia(message),
+        product: this.presentMessageProductSnapshot(
+          message,
+          currentProductSnapshots,
+        ),
+      }),
+    );
 
     const createdAt = conversations
       .map((conversation) => conversation.createdAt)
@@ -1713,7 +1754,7 @@ export class ConversationsService {
       },
       product: null,
       messages,
-      kind: 'DIRECT',
+      kind: "DIRECT",
       createdAt: createdAt.toISOString(),
       lastMessageAt: lastMessageAt.toISOString(),
       pagination: {
@@ -1752,7 +1793,7 @@ export class ConversationsService {
     const productIds = Array.from(
       new Set(
         messages
-          .map((message) => message.productId?.trim() ?? '')
+          .map((message) => message.productId?.trim() ?? "")
           .filter((productId) => productId.length > 0),
       ),
     );
@@ -1778,7 +1819,7 @@ export class ConversationsService {
         {
           id: product.id,
           title: product.title,
-          subtitle: `${product.category.name} • ${product.isAvailable ? 'Disponible' : 'Indisponible'}`,
+          subtitle: `${product.category.name} • ${product.isAvailable ? "Disponible" : "Indisponible"}`,
           priceLabel: `${product.priceAmount.toNumber()} ${product.currencyCode}`,
           imageUrl: product.imageUrl,
         },
@@ -1790,11 +1831,11 @@ export class ConversationsService {
     message: MessageProductSnapshotFields,
     currentProductSnapshots?: Map<string, ConversationMessageProductSnapshot>,
   ) {
-    if (message.kind === 'IMAGE' || message.kind === 'DOCUMENT') {
+    if (message.kind === "IMAGE" || message.kind === "DOCUMENT") {
       return null;
     }
 
-    const currentProductId = message.productId?.trim() ?? '';
+    const currentProductId = message.productId?.trim() ?? "";
     if (
       currentProductId.length > 0 &&
       currentProductSnapshots?.has(currentProductId) === true
@@ -1802,10 +1843,10 @@ export class ConversationsService {
       return currentProductSnapshots!.get(currentProductId)!;
     }
 
-    const title = message.productTitle?.trim() ?? '';
-    const subtitle = message.productSubtitle?.trim() ?? '';
-    const priceLabel = message.productPriceLabel?.trim() ?? '';
-    const imageUrl = message.productImageUrl?.trim() ?? '';
+    const title = message.productTitle?.trim() ?? "";
+    const subtitle = message.productSubtitle?.trim() ?? "";
+    const priceLabel = message.productPriceLabel?.trim() ?? "";
+    const imageUrl = message.productImageUrl?.trim() ?? "";
 
     if (
       title.length === 0 &&
@@ -1832,7 +1873,7 @@ export class ConversationsService {
     }
 
     const mediaType = message.media.mediaType.trim().toLowerCase();
-    if (mediaType !== 'image' && mediaType !== 'document') {
+    if (mediaType !== "image" && mediaType !== "document") {
       return null;
     }
 
@@ -1857,16 +1898,18 @@ export class ConversationsService {
   }
 
   private extractMediaPayload(dto: CreateMediaMessageDto) {
-    const normalizedStorageProvider = dto.storageProvider?.trim() || 'cloudinary';
+    const normalizedStorageProvider =
+      dto.storageProvider?.trim() || "cloudinary";
     const normalizedStorageKey = dto.storageKey?.trim() || null;
     const normalizedPublicUrl = dto.publicUrl.trim();
     const imageVariants =
-      dto.mediaType === 'image' && normalizedStorageProvider.toLowerCase() == 'cloudinary'
-      ? this.cloudinaryService.buildChatImageVariants({
-          publicId: normalizedStorageKey,
-          publicUrl: normalizedPublicUrl,
-        })
-      : { previewUrl: null, thumbnailUrl: null };
+      dto.mediaType === "image" &&
+      normalizedStorageProvider.toLowerCase() == "cloudinary"
+        ? this.cloudinaryService.buildChatImageVariants({
+            publicId: normalizedStorageKey,
+            publicUrl: normalizedPublicUrl,
+          })
+        : { previewUrl: null, thumbnailUrl: null };
 
     return {
       mediaType: dto.mediaType,
@@ -1893,7 +1936,7 @@ export class ConversationsService {
     message: MessageReplyFields,
     currentUserId: string,
   ) {
-    const content = message.replyToContent?.trim() ?? '';
+    const content = message.replyToContent?.trim() ?? "";
 
     if (content.length === 0) {
       return null;
@@ -1903,17 +1946,17 @@ export class ConversationsService {
       messageId: message.replyToMessageId ?? null,
       senderLabel:
         message.replyToSenderUserId != null &&
-            message.replyToSenderUserId === currentUserId
-        ? 'Vous'
-        : (((message.replyToSenderName?.trim().length ?? 0) > 0)
-              ? message.replyToSenderName!.trim()
-              : 'Message'),
+        message.replyToSenderUserId === currentUserId
+          ? "Vous"
+          : (message.replyToSenderName?.trim().length ?? 0) > 0
+            ? message.replyToSenderName!.trim()
+            : "Message",
       content,
     };
   }
 
   private presentRealtimeMessageReply(message: MessageReplyFields) {
-    const content = message.replyToContent?.trim() ?? '';
+    const content = message.replyToContent?.trim() ?? "";
 
     if (content.length === 0) {
       return null;
@@ -1922,9 +1965,9 @@ export class ConversationsService {
     return {
       messageId: message.replyToMessageId ?? null,
       senderLabel:
-        ((message.replyToSenderName?.trim().length ?? 0) > 0)
+        (message.replyToSenderName?.trim().length ?? 0) > 0
           ? message.replyToSenderName!.trim()
-          : 'Message',
+          : "Message",
       content,
     };
   }

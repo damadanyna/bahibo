@@ -13,6 +13,7 @@ import 'package:banay/localization/banay_localizations.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/app_auth_service.dart';
 import 'package:banay/services/chat_realtime_service.dart';
+import 'package:banay/services/push_notification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -54,6 +55,11 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
     _currentIndex = widget.initialIndex;
     _loadAccountPanelKind();
     _bindRealtimeProfileUpdates();
+    // Consume any notification that fired while the shell was not yet mounted
+    // (cold-start: app killed → notification tap → session gate resolves → shell builds).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(PushNotificationService.processPendingNotificationNavigation());
+    });
   }
 
   @override

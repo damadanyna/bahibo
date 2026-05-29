@@ -30,6 +30,7 @@ import 'package:banay/services/push_notification_service.dart';
 import 'package:banay/services/session_storage.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -94,7 +95,7 @@ class _ChatPageState extends State<ChatPage>
     with AppPageRefreshMixin<ChatPage>, RouteAware {
   static final Map<String, _ChatPageViewState> _viewStateCache =
       <String, _ChatPageViewState>{};
-  static const bool _autoSeenEnabled = true;
+  static const bool _autoSeenEnabled = false;
   static const Duration _typingStopDelay = Duration(milliseconds: 1200);
   static const int _conversationPageFetchLimit = 50;
   static const int _recentConversationMessageLimit = 50;
@@ -181,6 +182,7 @@ class _ChatPageState extends State<ChatPage>
       _chatViewportController.scheduleScrollToBottom();
     }
     _scrollController.addListener(_handleScroll);
+    unawaited(_loadDraft());
     ChatPhotoUploadService.instance.addListener(_handlePhotoUploadsChanged);
     ChatDocumentUploadService.instance.addListener(
       _handleDocumentUploadsChanged,
@@ -231,9 +233,48 @@ class _ChatPageState extends State<ChatPage>
     _scrollController.removeListener(_handleScroll);
     _emitTyping(false);
     disposePageRefresh();
+    _saveDraft();
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  // ── Draft persistence ────────────────────────────────────────────────────
+
+  String? get _draftPrefsKey {
+    final cid = _conversationId?.trim();
+    if (cid != null && cid.isNotEmpty) return 'BANAY.draft.conv.$cid';
+    final pid = widget.conversationProductId?.trim();
+    if (pid != null && pid.isNotEmpty) return 'BANAY.draft.product.$pid';
+    final uid = widget.conversationUserId?.trim();
+    if (uid != null && uid.isNotEmpty) return 'BANAY.draft.user.$uid';
+    return null;
+  }
+
+  Future<void> _loadDraft() async {
+    final key = _draftPrefsKey;
+    if (key == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final draft = prefs.getString(key) ?? '';
+    if (mounted && draft.isNotEmpty && _messageController.text.isEmpty) {
+      _messageController.text = draft;
+      _messageController.selection = TextSelection.collapsed(
+        offset: draft.length,
+      );
+    }
+  }
+
+  void _saveDraft() {
+    final key = _draftPrefsKey;
+    if (key == null) return;
+    final text = _messageController.text.trim();
+    SharedPreferences.getInstance().then((prefs) {
+      if (text.isEmpty) {
+        prefs.remove(key);
+      } else {
+        prefs.setString(key, text);
+      }
+    });
   }
 
   @override
@@ -382,7 +423,10 @@ class _ChatPageState extends State<ChatPage>
 
   bool _hasUnreadIncomingMessages() {
     return _messages.any(
-      (message) => !message.isMine && message.createdAt != null,
+      (message) =>
+          !message.isMine &&
+          (message.createdAt?.trim().isNotEmpty ?? false) &&
+          (message.readAt?.trim().isEmpty ?? true),
     );
   }
 
@@ -887,6 +931,7 @@ class _ChatPageState extends State<ChatPage>
       id: pendingMessage.id,
       message: pendingMessage.content,
       createdAt: createdAt,
+      readAt: null,
       time: _formatMessageTime(createdAt),
       isMine: true,
       deliveryState: _deliveryStateForPendingTextMessage(pendingMessage),
@@ -1102,6 +1147,7 @@ class _ChatPageState extends State<ChatPage>
             message: (message['content'] as String?) ?? '',
             kind: _ChatMessageKind.fromApi(message['kind']),
             createdAt: createdAt,
+            readAt: message['readAt'] as String?,
             editedAt: message['editedAt'] as String?,
             time: _formatMessageTime(createdAt),
             isMine: message['isMine'] == true,
@@ -1222,6 +1268,7 @@ class _ChatPageState extends State<ChatPage>
       message: message.message,
       kind: message.kind,
       createdAt: displayOverride.createdAt ?? message.createdAt,
+      readAt: message.readAt,
       editedAt: message.editedAt,
       time: displayOverride.time.isNotEmpty
           ? displayOverride.time
@@ -4544,6 +4591,7 @@ class _ChatMessage {
   final String message;
   final _ChatMessageKind kind;
   final String? createdAt;
+  final String? readAt;
   final String? editedAt;
   final String time;
   final bool isMine;
@@ -4557,6 +4605,7 @@ class _ChatMessage {
     required this.message,
     this.kind = _ChatMessageKind.text,
     this.createdAt,
+    this.readAt,
     this.editedAt,
     required this.time,
     required this.isMine,

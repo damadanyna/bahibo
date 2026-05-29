@@ -11,8 +11,12 @@ import 'package:banay/services/location_permission_service.dart';
 import 'package:banay/providers/theme_provider.dart';
 import 'package:banay/services/push_notification_service.dart';
 import 'package:banay/services/session_storage.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
@@ -20,19 +24,33 @@ import 'package:provider/provider.dart';
 
 enum _LocationPermissionDialogAction { later, continueRequest }
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  final appLanguageProvider = await AppLanguageProvider.bootstrap();
-  await ApiConfig.initialize();
-  configureBanayTlsOverride(ApiConfig.baseUrl);
-  await PushNotificationService.initialize();
+void main() {
+  runZonedGuarded<Future<void>>(
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
+      await Firebase.initializeApp();
 
-  // Désactiver la rotation et forcer le mode portrait
-  SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
-  runApp(MyApp(appLanguageProvider: appLanguageProvider));
+      FlutterError.onError =
+          FirebaseCrashlytics.instance.recordFlutterFatalError;
+      PlatformDispatcher.instance.onError = (error, stack) {
+        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+        return true;
+      };
+
+      final appLanguageProvider = await AppLanguageProvider.bootstrap();
+      await ApiConfig.initialize();
+      configureBanayTlsOverride(ApiConfig.baseUrl);
+      await PushNotificationService.initialize();
+
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+      ]);
+      runApp(MyApp(appLanguageProvider: appLanguageProvider));
+    },
+    (error, stack) =>
+        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -266,6 +284,12 @@ class _AppLifecycleBootstrapState extends State<_AppLifecycleBootstrap>
             darkTheme: ThemeProvider.darkTheme,
             themeMode: themeProvider.themeMode,
             locale: appLanguageProvider.locale,
+            localizationsDelegates: [
+              BanayLocalizations.delegate,
+              const _FallbackMaterialLocalizationsDelegate(),
+              GlobalWidgetsLocalizations.delegate,
+              const _FallbackCupertinoLocalizationsDelegate(),
+            ],
             supportedLocales: BanayLocalizations.supportedLocales,
           );
         },
@@ -432,6 +456,53 @@ class _LocationPermissionDialog extends StatelessWidget {
       ),
     );
   }
+}
+
+class _FallbackMaterialLocalizationsDelegate
+    extends LocalizationsDelegate<MaterialLocalizations> {
+  const _FallbackMaterialLocalizationsDelegate();
+
+  static const _fallback = Locale('fr');
+
+  @override
+  bool isSupported(Locale locale) => true;
+
+  @override
+  Future<MaterialLocalizations> load(Locale locale) {
+    final effective = GlobalMaterialLocalizations.delegate.isSupported(locale)
+        ? locale
+        : _fallback;
+    return GlobalMaterialLocalizations.delegate.load(effective);
+  }
+
+  @override
+  bool shouldReload(
+    covariant LocalizationsDelegate<MaterialLocalizations> old,
+  ) => false;
+}
+
+class _FallbackCupertinoLocalizationsDelegate
+    extends LocalizationsDelegate<CupertinoLocalizations> {
+  const _FallbackCupertinoLocalizationsDelegate();
+
+  static const _fallback = Locale('fr');
+
+  @override
+  bool isSupported(Locale locale) => true;
+
+  @override
+  Future<CupertinoLocalizations> load(Locale locale) {
+    final effective =
+        GlobalCupertinoLocalizations.delegate.isSupported(locale)
+            ? locale
+            : _fallback;
+    return GlobalCupertinoLocalizations.delegate.load(effective);
+  }
+
+  @override
+  bool shouldReload(
+    covariant LocalizationsDelegate<CupertinoLocalizations> old,
+  ) => false;
 }
 
 class _PermissionInfoRow extends StatelessWidget {

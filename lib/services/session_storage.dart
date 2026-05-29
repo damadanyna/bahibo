@@ -26,8 +26,17 @@ class SessionStorage {
     encryptedSharedPreferences: true,
   );
 
+  // first_unlock_this_device: accessible after first unlock since reboot (needed for
+  // background push-notification handlers that read the token before the user unlocks).
+  // synchronizable: false prevents iCloud Keychain backup of auth tokens.
+  static const IOSOptions _iosOptions = IOSOptions(
+    accessibility: KeychainAccessibility.first_unlock_this_device,
+    synchronizable: false,
+  );
+
   final FlutterSecureStorage _secure = const FlutterSecureStorage(
     aOptions: _androidOptions,
+    iOptions: _iosOptions,
   );
 
   Future<void> saveSession({

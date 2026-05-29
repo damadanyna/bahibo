@@ -21,6 +21,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../component/ProductCard.dart';
+import '../../component/app_network_image.dart';
 
 class MainHomePanel extends StatefulWidget {
   const MainHomePanel({super.key});
@@ -52,6 +53,8 @@ class _MainHomePanelState extends State<MainHomePanel>
   bool _isSeller = false;
   bool _isLoadingFollowedPeople = true;
   String _currentDisplayName = 'BANAY Shop';
+  String _avatarUrl = '';
+  String _currentUserId = '';
   String _viewerLocationLabel = '';
   double? _viewerLocationLatitude;
   double? _viewerLocationLongitude;
@@ -219,6 +222,12 @@ class _MainHomePanelState extends State<MainHomePanel>
       return nextPerson;
     }).toList();
 
+    final isOwnProfile =
+        _currentUserId.isNotEmpty && userId == _currentUserId;
+    if (isOwnProfile && avatarUrl.isNotEmpty) {
+      hasChanged = true;
+    }
+
     if (!mounted || !hasChanged) {
       return;
     }
@@ -227,6 +236,9 @@ class _MainHomePanelState extends State<MainHomePanel>
       products = updatedProducts;
       followedPeople = updatedFollowedPeople;
       _isLoadingFollowedPeople = false;
+      if (isOwnProfile && avatarUrl.isNotEmpty) {
+        _avatarUrl = avatarUrl;
+      }
     });
   }
 
@@ -268,6 +280,8 @@ class _MainHomePanelState extends State<MainHomePanel>
       final role =
           (user['role'] as String?)?.trim().toUpperCase() ?? 'CUSTOMER';
       final displayName = (user['displayName'] as String?)?.trim();
+      final avatarUrl = (user['avatarUrl'] as String?)?.trim() ?? '';
+      final userId = (user['id'] as String?)?.trim() ?? '';
       final locationLabel = (user['locationLabel'] as String?)?.trim() ?? '';
       final locationLatitude = (user['locationLatitude'] as num?)?.toDouble();
       final locationLongitude = (user['locationLongitude'] as num?)?.toDouble();
@@ -276,6 +290,8 @@ class _MainHomePanelState extends State<MainHomePanel>
         _currentDisplayName = displayName != null && displayName.isNotEmpty
             ? displayName
             : _currentDisplayName;
+        if (avatarUrl.isNotEmpty) _avatarUrl = avatarUrl;
+        if (userId.isNotEmpty) _currentUserId = userId;
         _viewerLocationLabel = locationLabel;
         _viewerLocationLatitude = locationLatitude;
         _viewerLocationLongitude = locationLongitude;
@@ -826,7 +842,18 @@ class _MainHomePanelState extends State<MainHomePanel>
                       color: theme.colorScheme.primary,
                     ),
                   ),
-                  Row(children: [_buildNotificationButton(theme)]),
+                  Row(
+                    children: [
+                      _buildNotificationButton(theme),
+                      const SizedBox(width: 8),
+                      AppCircleNetworkAvatar(
+                        imageUrl: _avatarUrl,
+                        radius: 18,
+                        userId: _currentUserId,
+                        showPresenceBadge: false,
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),

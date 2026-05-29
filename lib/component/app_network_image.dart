@@ -270,6 +270,7 @@ class AppCircleNetworkAvatar extends StatelessWidget {
     final avatar = normalizedImageUrl.isEmpty
         ? _DefaultCircleAvatar(radius: radius)
         : AppNetworkImage(
+            key: ValueKey(normalizedImageUrl),
             imageUrl: normalizedImageUrl,
             width: diameter,
             height: diameter,

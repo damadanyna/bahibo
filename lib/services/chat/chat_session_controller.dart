@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:banay/services/app_api_client.dart';
+import 'package:banay/services/chat/chat_participant_profile_update.dart';
 import 'package:banay/services/chat/chat_session_state.dart';
 import 'package:banay/services/chat/chat_session_target.dart';
 import 'package:banay/services/chat_document_upload_service.dart';
@@ -89,8 +90,8 @@ class ChatSessionController extends ChangeNotifier {
 
     await hydrateFromStore(mergeRecentMessages: false);
     await syncPendingTextMessages();
-    await drainPendingTextMessages();
     await loadConversation(showEntrySkeleton: _state.messages.isEmpty);
+    unawaited(drainPendingTextMessages());
   }
 
   Future<void> loadConversation({bool showEntrySkeleton = false}) async {
@@ -417,6 +418,7 @@ class ChatSessionController extends ChangeNotifier {
               productId: pendingMessage.productId!,
               content: pendingMessage.content,
               reply: pendingMessage.replyPayload,
+              clientMessageId: pendingMessage.id,
             )
           : pendingMessage.productSnapshot != null &&
                 (pendingMessage.targetUserId?.isNotEmpty ?? false)
@@ -425,18 +427,21 @@ class ChatSessionController extends ChangeNotifier {
               content: pendingMessage.content,
               reply: pendingMessage.replyPayload,
               productSnapshot: pendingMessage.productSnapshot,
+              clientMessageId: pendingMessage.id,
             )
           : (pendingMessage.targetUserId?.isNotEmpty ?? false)
           ? await _conversationsApiService.sendUserMessage(
               targetUserId: pendingMessage.targetUserId!,
               content: pendingMessage.content,
               reply: pendingMessage.replyPayload,
+              clientMessageId: pendingMessage.id,
             )
           : (pendingMessage.conversationId?.isNotEmpty ?? false)
           ? await _conversationsApiService.sendMessage(
               conversationId: pendingMessage.conversationId!,
               content: pendingMessage.content,
               reply: pendingMessage.replyPayload,
+              clientMessageId: pendingMessage.id,
             )
           : throw AppApiException('Conversation introuvable pour ce message');
 
@@ -801,30 +806,25 @@ class ChatSessionController extends ChangeNotifier {
     }
 
     if (event['type'] == 'profile:public-updated') {
+      final eventUserId = event['userId']?.toString().trim() ?? '';
       final conversationData = _state.conversation;
       final profileData = event['profile'];
       if (conversationData == null || profileData is! Map) {
         return true;
       }
 
-      final nextConversation = Map<String, dynamic>.from(conversationData);
-      final participantData = nextConversation['participant'];
-      if (participantData is! Map) {
+      final profile = Map<String, dynamic>.from(profileData);
+      final nextConversation = mergeConversationParticipantProfileUpdate(
+        conversationData,
+        userId: eventUserId,
+        displayName: profile['displayName']?.toString(),
+        avatarUrl: profile['avatarUrl']?.toString(),
+        coverImageUrl: profile['coverImageUrl']?.toString(),
+        role: profile['role']?.toString(),
+      );
+      if (nextConversation == null) {
         return true;
       }
-
-      final nextParticipant = Map<String, dynamic>.from(participantData);
-      final profile = Map<String, dynamic>.from(profileData);
-      final displayName = profile['displayName']?.toString().trim() ?? '';
-      final avatarUrl = profile['avatarUrl']?.toString().trim() ?? '';
-      if (displayName.isNotEmpty) {
-        nextParticipant['displayName'] = displayName;
-        nextParticipant['name'] = displayName;
-      }
-      if (avatarUrl.isNotEmpty) {
-        nextParticipant['avatarUrl'] = avatarUrl;
-      }
-      nextConversation['participant'] = nextParticipant;
       _updateState(_state.copyWith(conversation: nextConversation));
       return true;
     }
@@ -1200,7 +1200,7 @@ class ChatSessionController extends ChangeNotifier {
   void _scheduleRealtimeDeleteReconciliation() {
     _realtimeDeleteReconcileTimer?.cancel();
     _realtimeDeleteReconcileTimer = Timer(
-      const Duration(milliseconds: 180),
+      const Duration(milliseconds: 500),
       () {
         _realtimeDeleteReconcileTimer = null;
         if (_disposed) {
@@ -1215,7 +1215,7 @@ class ChatSessionController extends ChangeNotifier {
   void _scheduleRealtimeNewMessageReconciliation() {
     _realtimeNewMessageReconcileTimer?.cancel();
     _realtimeNewMessageReconcileTimer = Timer(
-      const Duration(milliseconds: 120),
+      const Duration(milliseconds: 400),
       () {
         _realtimeNewMessageReconcileTimer = null;
         if (_disposed) {

@@ -133,6 +133,7 @@ class ChatPhotoUploadService extends ChangeNotifier {
   ChatPhotoUploadService._();
 
   static final ChatPhotoUploadService instance = ChatPhotoUploadService._();
+  static const int _maxConcurrentUploads = 2;
 
   final ConversationsApiService _conversationsApiService =
       ConversationsApiService();
@@ -278,6 +279,11 @@ class ChatPhotoUploadService extends ChangeNotifier {
       return;
     }
     if (_processingTaskIds.contains(taskId)) {
+      return;
+    }
+
+    if (_processingTaskIds.length >= _maxConcurrentUploads) {
+      // Slot will be claimed when an active upload finishes and calls _drainQueuedTasks.
       return;
     }
 
@@ -430,6 +436,18 @@ class ChatPhotoUploadService extends ChangeNotifier {
       );
     } finally {
       _processingTaskIds.remove(taskId);
+      _drainQueuedTasks();
+    }
+  }
+
+  void _drainQueuedTasks() {
+    for (final task in List<ChatPhotoUploadTask>.from(_tasks)) {
+      if (_processingTaskIds.length >= _maxConcurrentUploads) break;
+      if (!task.isTerminal &&
+          !_processingTaskIds.contains(task.id) &&
+          task.state == ChatPhotoUploadState.queued) {
+        unawaited(_processTask(task.id));
+      }
     }
   }
 

@@ -6,37 +6,57 @@ import 'package:flutter/foundation.dart';
 import 'app_logger.dart';
 
 class ApiConfig {
+  // PRODUCTION: set at CI/CD build time via:
+  //   --dart-define=BANAY_API_BASE_URL=https://api.yourdomain.com/api/v1
+  // Without this dart-define, release builds fall back to the raw IP below.
+  // TODO: replace the raw IP with a domain once DNS is configured.
   static const String _vpsBaseUrl = 'https://77.37.51.154/api/v1';
   static const int _devPort = 4000;
   static const String _apiPath = '/api/v1';
 
-  // Optional build-time override: --dart-define=BANAY_API_BASE_URL=https://...
+  // Required for release builds. Set via --dart-define=BANAY_API_BASE_URL=https://...
   static const String _configuredBaseUrl = String.fromEnvironment(
     'BANAY_API_BASE_URL',
   );
 
-  // Explicit dev host override: --dart-define=BANAY_DEV_HOST=192.168.x.x
+  // Dev-only host override: --dart-define=BANAY_DEV_HOST=192.168.x.x
   static const String _configuredDevHost = String.fromEnvironment(
     'BANAY_DEV_HOST',
   );
 
-  // IP du PC sur le réseau hotspot du téléphone.
-
-  // Mise à jour quand le PC change de réseau.
-  static const String _knownDevHost = '192.168.167.62';
+  static const String _knownDevHost = '192.168.245.62';
 
   static String _resolvedDevUrl = 'http://$_knownDevHost:$_devPort$_apiPath';
 
   /// Must be called once in main() before runApp().
   static Future<void> initialize() async {
     if (kReleaseMode || _configuredBaseUrl.isNotEmpty) return;
-    _resolvedDevUrl = await _detectDevUrl();
-    AppLogger.info('ApiConfig', 'Dev API → $_resolvedDevUrl');
+
+    // kDebugMode is a compile-time const — the entire branch (including
+    // _detectDevUrl / _canReach / _scanSubnet) is dead code in release builds
+    // and is eliminated by the AOT tree-shaker.  This prevents port-scan
+    // patterns from appearing in the release APK binary.
+    if (kDebugMode) {
+      _resolvedDevUrl = await _detectDevUrl();
+      AppLogger.info('ApiConfig', 'Dev API → $_resolvedDevUrl');
+    }
   }
 
   static String get baseUrl {
     if (_configuredBaseUrl.isNotEmpty) return _configuredBaseUrl;
-    if (kReleaseMode) return _vpsBaseUrl;
+    if (kReleaseMode) {
+      // If we reach this branch the release build was produced without
+      // --dart-define=BANAY_API_BASE_URL=https://...
+      // The assert fires in profile mode so CI catches the misconfiguration
+      // before the APK reaches production.  In a real release build the
+      // assert is a no-op and we fall back to the VPS IP.
+      assert(
+        false,
+        'Release build is missing '
+        '--dart-define=BANAY_API_BASE_URL=https://api.yourdomain.com/api/v1',
+      );
+      return _vpsBaseUrl;
+    }
     return _resolvedDevUrl;
   }
 

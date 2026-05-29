@@ -102,16 +102,20 @@ class ConversationsApiService {
       authenticated: true,
     );
     final normalized = Map<String, dynamic>.from(data as Map);
-    await _localConversationStore.saveConversationSnapshot(
-      normalized,
-      fallbackId: conversationId,
+    unawaited(
+      _localConversationStore.saveConversationSnapshot(
+        normalized,
+        fallbackId: conversationId,
+      ),
     );
     if (_shouldCacheConversationPage(beforeMessageId)) {
-      await _writeCacheValue(
-        '$_conversationByIdCachePrefix${conversationId.trim()}',
-        normalized,
+      unawaited(
+        _writeCacheValue(
+          '$_conversationByIdCachePrefix${conversationId.trim()}',
+          normalized,
+        ),
       );
-      await _cacheConversationAliases(normalized, fallbackId: conversationId);
+      unawaited(_cacheConversationAliases(normalized, fallbackId: conversationId));
     }
     return normalized;
   }
@@ -156,16 +160,20 @@ class ConversationsApiService {
       authenticated: true,
     );
     final normalized = Map<String, dynamic>.from(data as Map);
-    await _localConversationStore.saveConversationSnapshot(
-      normalized,
-      fallbackProductId: productId,
+    unawaited(
+      _localConversationStore.saveConversationSnapshot(
+        normalized,
+        fallbackProductId: productId,
+      ),
     );
     if (_shouldCacheConversationPage(beforeMessageId)) {
-      await _writeCacheValue(
-        '$_conversationByProductCachePrefix${productId.trim()}',
-        normalized,
+      unawaited(
+        _writeCacheValue(
+          '$_conversationByProductCachePrefix${productId.trim()}',
+          normalized,
+        ),
       );
-      await _cacheConversationAliases(normalized, fallbackProductId: productId);
+      unawaited(_cacheConversationAliases(normalized, fallbackProductId: productId));
     }
     return normalized;
   }
@@ -210,16 +218,20 @@ class ConversationsApiService {
       authenticated: true,
     );
     final normalized = Map<String, dynamic>.from(data as Map);
-    await _localConversationStore.saveConversationSnapshot(
-      normalized,
-      fallbackUserId: targetUserId,
+    unawaited(
+      _localConversationStore.saveConversationSnapshot(
+        normalized,
+        fallbackUserId: targetUserId,
+      ),
     );
     if (_shouldCacheConversationPage(beforeMessageId)) {
-      await _writeCacheValue(
-        '$_conversationByUserCachePrefix${targetUserId.trim()}',
-        normalized,
+      unawaited(
+        _writeCacheValue(
+          '$_conversationByUserCachePrefix${targetUserId.trim()}',
+          normalized,
+        ),
       );
-      await _cacheConversationAliases(normalized, fallbackUserId: targetUserId);
+      unawaited(_cacheConversationAliases(normalized, fallbackUserId: targetUserId));
     }
     return normalized;
   }
@@ -419,11 +431,14 @@ class ConversationsApiService {
     required String content,
     Map<String, dynamic>? productSnapshot,
     Map<String, dynamic>? reply,
+    String? clientMessageId,
   }) async {
     final data = await _client.post(
       '/conversations/$conversationId/messages',
       body: {
         'content': content,
+        if (clientMessageId != null && clientMessageId.isNotEmpty)
+          'clientMessageId': clientMessageId,
         if (productSnapshot != null) ...productSnapshot,
         if (reply != null) ...reply,
       },
@@ -442,11 +457,14 @@ class ConversationsApiService {
     required String content,
     Map<String, dynamic>? productSnapshot,
     Map<String, dynamic>? reply,
+    String? clientMessageId,
   }) async {
     final data = await _client.post(
       '/conversations/product/$productId/messages',
       body: {
         'content': content,
+        if (clientMessageId != null && clientMessageId.isNotEmpty)
+          'clientMessageId': clientMessageId,
         if (productSnapshot != null) ...productSnapshot,
         if (reply != null) ...reply,
       },
@@ -465,11 +483,14 @@ class ConversationsApiService {
     required String content,
     Map<String, dynamic>? productSnapshot,
     Map<String, dynamic>? reply,
+    String? clientMessageId,
   }) async {
     final data = await _client.post(
       '/conversations/user/$targetUserId/messages',
       body: {
         'content': content,
+        if (clientMessageId != null && clientMessageId.isNotEmpty)
+          'clientMessageId': clientMessageId,
         if (productSnapshot != null) ...productSnapshot,
         if (reply != null) ...reply,
       },

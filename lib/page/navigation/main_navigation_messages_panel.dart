@@ -12,9 +12,11 @@ import 'package:banay/page/productDetail.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/app_auth_service.dart';
 import 'package:banay/services/catalog_api_service.dart';
+import 'package:banay/services/chat/chat_participant_profile_update.dart';
 import 'package:banay/services/chat_realtime_service.dart';
 import 'package:banay/services/conversations_api_service.dart';
 import 'package:banay/services/presence_service.dart';
+import 'package:banay/services/app_performance.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
@@ -53,6 +55,7 @@ class _MainNavigationMessagesPanelState
   static const Duration _conversationsPollInterval = Duration(seconds: 15);
   static const int _warmConversationLimit = 3;
   static const int _warmConversationMessageLimit = 8;
+  static const int _maxEmbeddedConversations = 5;
 
   final AppAuthService _authService = AppAuthService();
   final ConversationsApiService _conversationsApiService =
@@ -63,6 +66,7 @@ class _MainNavigationMessagesPanelState
   Timer? _conversationsPollTimer;
   StreamSubscription<Map<String, dynamic>>? _realtimeEventsSubscription;
   List<Map<String, dynamic>> _conversations = const [];
+  List<Map<String, dynamic>> _cachedGroupedConversations = const [];
   final Map<String, bool> _typingConversationStates = {};
   final Map<String, Widget> _embeddedConversationPages = <String, Widget>{};
   String? _activeEmbeddedConversationKey;
@@ -294,6 +298,7 @@ class _MainNavigationMessagesPanelState
 
     if (!mounted) {
       _conversations = nextConversations;
+      _updateGroupedConversations();
       _updateUnreadCountNotifier(nextConversations);
       return;
     }
@@ -301,6 +306,7 @@ class _MainNavigationMessagesPanelState
     setState(() {
       _conversations = nextConversations;
     });
+    _updateGroupedConversations();
     _watchConversationParticipants(nextConversations);
     _updateUnreadCountNotifier(nextConversations);
   }
@@ -325,33 +331,18 @@ class _MainNavigationMessagesPanelState
 
     var hasChanged = false;
     final updatedConversations = _conversations.map((conversation) {
-      final nextConversation = Map<String, dynamic>.from(conversation);
-      final participant = nextConversation['participant'];
-      if (participant is! Map) {
+      final nextConversation = mergeConversationParticipantProfileUpdate(
+        conversation,
+        userId: userId,
+        displayName: resolvedName,
+        avatarUrl: avatarUrl,
+        coverImageUrl: coverImageUrl,
+        role: role,
+      );
+      if (nextConversation == null) {
         return conversation;
       }
-
-      final nextParticipant = Map<String, dynamic>.from(participant);
-      final participantId = nextParticipant['id']?.toString().trim() ?? '';
-      if (participantId != userId) {
-        return conversation;
-      }
-
       hasChanged = true;
-      if (resolvedName.isNotEmpty) {
-        nextParticipant['displayName'] = resolvedName;
-        nextParticipant['name'] = resolvedName;
-      }
-      if (avatarUrl.isNotEmpty) {
-        nextParticipant['avatarUrl'] = avatarUrl;
-      }
-      if (coverImageUrl.isNotEmpty) {
-        nextParticipant['coverImageUrl'] = coverImageUrl;
-      }
-      if (role != null && role.isNotEmpty) {
-        nextParticipant['role'] = role;
-      }
-      nextConversation['participant'] = nextParticipant;
       return nextConversation;
     }).toList();
 
@@ -362,6 +353,7 @@ class _MainNavigationMessagesPanelState
     setState(() {
       _conversations = updatedConversations;
     });
+    _updateGroupedConversations();
   }
 
   String? _conversationId(Map<String, dynamic> conversation) {
@@ -496,12 +488,16 @@ class _MainNavigationMessagesPanelState
             _isLoading = false;
             _loadError = null;
           });
+          _updateGroupedConversations();
           _watchConversationParticipants(cachedConversations);
           _updateUnreadCountNotifier(cachedConversations);
         }
       }
 
-      final conversations = await _conversationsApiService.fetchConversations();
+      final conversations = await AppPerformance.traceAsync(
+        'fetch_conversations',
+        _conversationsApiService.fetchConversations,
+      );
 
       if (!mounted) return;
       setState(() {
@@ -509,6 +505,7 @@ class _MainNavigationMessagesPanelState
         _isLoading = false;
         _loadError = null;
       });
+      _updateGroupedConversations();
       _watchConversationParticipants(conversations);
       _warmRecentConversations(conversations);
       _updateUnreadCountNotifier(conversations);
@@ -585,6 +582,12 @@ class _MainNavigationMessagesPanelState
 
       PresenceService.instance.watchUser(participantId);
     }
+  }
+
+  void _updateGroupedConversations() {
+    _cachedGroupedConversations = _groupConversationsByParticipant(
+      _conversations,
+    );
   }
 
   bool _conversationParticipantIsOnline(Map<String, dynamic> conversation) {
@@ -990,9 +993,17 @@ class _MainNavigationMessagesPanelState
         conversationId ??
         'participant:${_participantId(conversation) ?? _conversationName(conversation)}';
 
-    _embeddedConversationPages.putIfAbsent(
-      conversationKey,
-      () => ChatPage(
+    if (!_embeddedConversationPages.containsKey(conversationKey)) {
+      // Evict the oldest non-active entry when the cache is full.
+      if (_embeddedConversationPages.length >= _maxEmbeddedConversations) {
+        final evictKey = _embeddedConversationPages.keys.firstWhere(
+          (key) => key != _activeEmbeddedConversationKey,
+          orElse: () => _embeddedConversationPages.keys.first,
+        );
+        _embeddedConversationPages.remove(evictKey);
+      }
+
+      _embeddedConversationPages[conversationKey] = ChatPage(
         key: ValueKey<String>('messages-panel:$conversationKey'),
         conversationId: conversationId,
         onCloseRequested: _closeEmbeddedConversationIfOpen,
@@ -1003,8 +1014,8 @@ class _MainNavigationMessagesPanelState
             ((conversation['participant'] as Map?)?['roleLabel'] as String?) ??
             'Utilisateur',
         avatarUrl: _conversationAvatar(conversation),
-      ),
-    );
+      );
+    }
 
     if (!mounted) {
       _activeEmbeddedConversationKey = conversationKey;
@@ -1039,9 +1050,7 @@ class _MainNavigationMessagesPanelState
     final surfaceColor = theme.cardColor;
     final mutedColor = appColors.mutedText;
     final strongTextColor = theme.colorScheme.onSurface;
-    final groupedConversations = _groupConversationsByParticipant(
-      _conversations,
-    );
+    final groupedConversations = _cachedGroupedConversations;
     final normalizedQuery = _searchQuery.trim().toLowerCase();
     final filteredConversations = normalizedQuery.isEmpty
         ? groupedConversations
@@ -1051,7 +1060,6 @@ class _MainNavigationMessagesPanelState
             return name.contains(normalizedQuery) ||
                 preview.contains(normalizedQuery);
           }).toList();
-    _watchConversationParticipants(filteredConversations);
 
     final listContent = RefreshIndicator(
       onRefresh: _refreshPanel,
