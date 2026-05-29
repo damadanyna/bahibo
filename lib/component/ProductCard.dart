@@ -646,13 +646,13 @@ class _ProductCardState extends State<ProductCard> {
             .mergeIntoProduct(widget.product);
         final theme = Theme.of(context);
         final appColors = theme.appColors;
-        const surfaceColor = Color(0xFF101112);
+        final surfaceColor = appColors.productCardSurface;
         final priceColor = Colors.white;
         final screenHeight = MediaQuery.sizeOf(context).height;
         final screenWidth = MediaQuery.sizeOf(context).width;
         final mutedColor = Colors.white.withValues(alpha: 0.84);
-        const accentGreen = Color(0xFF159A52);
-        const unavailableAccent = Color(0xFFD84343);
+        final accentGreen = appColors.availableAccent;
+        final unavailableAccent = appColors.unavailableAccent;
         final favoriteColor = appColors.favoriteAccent;
         final descriptionFontSize = screenWidth < 360 ? 10.5 : 11.0;
         final publicationFontSize = screenWidth < 360 ? 10.5 : 11.0;
@@ -970,9 +970,9 @@ class _ProductCardState extends State<ProductCard> {
     final images = widget.resolveProductImages(resolvedProduct);
     final previewImages = images.skip(1).take(3).toList(growable: false);
     final badgeColor = isFeaturedBadge
-        ? Colors.red
+        ? appColors.unavailableAccent
         : isMarketplace
-        ? const Color(0xFF8F42FF)
+        ? appColors.marketplaceBadge
         : theme.colorScheme.primary;
     final showGalleryStrip = previewImages.isNotEmpty;
     final mainImageHeight = showGalleryStrip ? height - 104 : height;
@@ -1015,9 +1015,9 @@ class _ProductCardState extends State<ProductCard> {
                                 ? Colors.black.withValues(alpha: 0.22)
                                 : Colors.transparent,
                             !isAvailable
-                                ? const Color(
-                                    0xFFD84343,
-                                  ).withValues(alpha: 0.12)
+                                ? appColors.unavailableAccent.withValues(
+                                    alpha: 0.12,
+                                  )
                                 : Colors.transparent,
                             appColors.scrimSoft.withValues(alpha: 0.18),
                           ],
@@ -1032,9 +1032,9 @@ class _ProductCardState extends State<ProductCard> {
                             vertical: 16,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(
-                              0xFFD84343,
-                            ).withValues(alpha: 0.76),
+                            color: appColors.unavailableAccent.withValues(
+                              alpha: 0.76,
+                            ),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
                               color: Colors.white.withValues(alpha: 0.18),

@@ -17,6 +17,7 @@ const Color _BANAYProductCardBackgroundLight = Color.fromARGB(
 );
 const Color _BANAYProductCardBackgroundDark = Color.fromARGB(41, 22, 22, 22);
 
+
 class ThemeProvider extends ChangeNotifier {
   static const String _themeKey = 'theme_mode';
   ThemeMode _themeMode = ThemeMode.dark;
@@ -97,6 +98,11 @@ class ThemeProvider extends ChangeNotifier {
         backButtonBorder: Color(0x3DFFFFFF),
         socialFacebook: _BANAYFacebook,
         socialWhatsApp: _BANAYWhatsApp,
+        availableAccent: Color(0xFF159A52),
+        unavailableAccent: Color(0xFFD84343),
+        liveIndicator: Color(0xFFE53935),
+        productCardSurface: Color(0xFF101112),
+        marketplaceBadge: Color(0xFF8F42FF),
       ),
     );
   }
@@ -138,6 +144,11 @@ class ThemeProvider extends ChangeNotifier {
         backButtonBorder: Color(0x3DFFFFFF),
         socialFacebook: _BANAYFacebook,
         socialWhatsApp: _BANAYWhatsApp,
+        availableAccent: Color(0xFF159A52),
+        unavailableAccent: Color(0xFFD84343),
+        liveIndicator: Color(0xFFE53935),
+        productCardSurface: Color(0xFF101112),
+        marketplaceBadge: Color(0xFF8F42FF),
       ),
     );
   }
@@ -246,10 +257,18 @@ class ThemeProvider extends ChangeNotifier {
         contentTextStyle: TextStyle(
           color: isDark ? colorScheme.onSurface : colorScheme.surface,
           fontWeight: FontWeight.w600,
+          fontSize: 13,
         ),
         behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       ),
-      dialogTheme: DialogThemeData(backgroundColor: appColors.panelBackground),
+      dialogTheme: DialogThemeData(
+        backgroundColor: appColors.panelBackground,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: appColors.inputFill,
@@ -269,6 +288,14 @@ class ThemeProvider extends ChangeNotifier {
           borderRadius: BorderRadius.circular(18),
           borderSide: BorderSide(color: colorScheme.primary, width: 1.6),
         ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide(color: colorScheme.error, width: 1.2),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide(color: colorScheme.error, width: 1.6),
+        ),
         prefixIconColor: WidgetStateColor.resolveWith((states) {
           if (states.contains(WidgetState.focused)) {
             return colorScheme.primary;
@@ -287,20 +314,53 @@ class ThemeProvider extends ChangeNotifier {
       ),
       checkboxTheme: CheckboxThemeData(
         fillColor: WidgetStatePropertyAll(colorScheme.primary),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: colorScheme.primary,
           foregroundColor: colorScheme.onPrimary,
+          elevation: 0,
+          shadowColor: Colors.transparent,
+          minimumSize: const Size(64, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(14)),
+          ),
+          textStyle: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.1,
+          ),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
-        style: TextButton.styleFrom(foregroundColor: colorScheme.primary),
+        style: TextButton.styleFrom(
+          foregroundColor: colorScheme.primary,
+          minimumSize: const Size(64, 40),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(14)),
+          ),
+          textStyle: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: colorScheme.primary,
+          minimumSize: const Size(64, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           side: BorderSide(color: colorScheme.primary.withValues(alpha: 0.32)),
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(14)),
+          ),
+          textStyle: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
     );

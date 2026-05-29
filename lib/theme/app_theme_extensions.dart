@@ -32,6 +32,23 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
   final Color socialFacebook;
   final Color socialWhatsApp;
 
+  // --- Product-specific semantic colors ---
+  /// Green indicator for an available product (availability badge/border).
+  final Color availableAccent;
+
+  /// Red indicator for an unavailable product (badge, overlay, gradient).
+  final Color unavailableAccent;
+
+  /// Red indicator for a live broadcast card/button.
+  final Color liveIndicator;
+
+  /// Intentionally dark surface for editorial product cards (always dark,
+  /// independent of theme brightness).
+  final Color productCardSurface;
+
+  /// Purple accent for marketplace / featured-product badge.
+  final Color marketplaceBadge;
+
   const AppThemeColors({
     required this.backgroundBase,
     required this.authBackground,
@@ -62,6 +79,11 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
     required this.backButtonBorder,
     required this.socialFacebook,
     required this.socialWhatsApp,
+    required this.availableAccent,
+    required this.unavailableAccent,
+    required this.liveIndicator,
+    required this.productCardSurface,
+    required this.marketplaceBadge,
   });
 
   @override
@@ -94,6 +116,11 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
     Color? backButtonBorder,
     Color? socialFacebook,
     Color? socialWhatsApp,
+    Color? availableAccent,
+    Color? unavailableAccent,
+    Color? liveIndicator,
+    Color? productCardSurface,
+    Color? marketplaceBadge,
   }) {
     return AppThemeColors(
       backgroundBase: backgroundBase ?? this.backgroundBase,
@@ -126,6 +153,11 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
       backButtonBorder: backButtonBorder ?? this.backButtonBorder,
       socialFacebook: socialFacebook ?? this.socialFacebook,
       socialWhatsApp: socialWhatsApp ?? this.socialWhatsApp,
+      availableAccent: availableAccent ?? this.availableAccent,
+      unavailableAccent: unavailableAccent ?? this.unavailableAccent,
+      liveIndicator: liveIndicator ?? this.liveIndicator,
+      productCardSurface: productCardSurface ?? this.productCardSurface,
+      marketplaceBadge: marketplaceBadge ?? this.marketplaceBadge,
     );
   }
 
@@ -181,6 +213,19 @@ class AppThemeColors extends ThemeExtension<AppThemeColors> {
       )!,
       socialFacebook: Color.lerp(socialFacebook, other.socialFacebook, t)!,
       socialWhatsApp: Color.lerp(socialWhatsApp, other.socialWhatsApp, t)!,
+      availableAccent: Color.lerp(availableAccent, other.availableAccent, t)!,
+      unavailableAccent: Color.lerp(
+        unavailableAccent,
+        other.unavailableAccent,
+        t,
+      )!,
+      liveIndicator: Color.lerp(liveIndicator, other.liveIndicator, t)!,
+      productCardSurface: Color.lerp(
+        productCardSurface,
+        other.productCardSurface,
+        t,
+      )!,
+      marketplaceBadge: Color.lerp(marketplaceBadge, other.marketplaceBadge, t)!,
     );
   }
 }

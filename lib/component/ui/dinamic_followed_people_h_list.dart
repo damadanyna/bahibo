@@ -144,7 +144,9 @@ class DinamicFollowedPeopleHList extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Text(
               title,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
         ],
@@ -251,7 +253,7 @@ class DinamicFollowedPeopleHList extends StatelessWidget {
                                   fontSize: 12,
                                   height: 1.3,
                                   color: isLive
-                                      ? const Color(0xFFE53935)
+                                      ? appColors.liveIndicator
                                       : appColors.mutedText,
                                   fontWeight: isLive
                                       ? FontWeight.w700
@@ -265,7 +267,7 @@ class DinamicFollowedPeopleHList extends StatelessWidget {
                                   child: ElevatedButton.icon(
                                     onPressed: () => onLiveTap!(person),
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFFE53935),
+                                      backgroundColor: appColors.liveIndicator,
                                       foregroundColor: Colors.white,
                                       elevation: 0,
                                       padding: const EdgeInsets.symmetric(
@@ -432,7 +434,9 @@ class _FollowedPeopleEmptyState extends StatelessWidget {
             Text(
               emptyTitle,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
