@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 
 import '../../component/ProductCard.dart';
 import '../../component/app_network_image.dart';
+import '../../page/productDetail.dart';
 
 class MainHomePanel extends StatefulWidget {
   const MainHomePanel({super.key});
@@ -550,49 +551,67 @@ class _MainHomePanelState extends State<MainHomePanel>
   }
 
   Widget _buildNotificationButton(ThemeData theme) {
+    final appColors = theme.appColors;
+    final isDark = theme.brightness == Brightness.dark;
     return ValueListenableBuilder<int>(
       valueListenable: NotificationsApiService.unreadCountNotifier,
       builder: (context, unreadNotificationCount, _) => Stack(
         clipBehavior: Clip.none,
         children: [
-          IconButton(
-            onPressed: _openNotificationsPage,
-            tooltip: context.tr(BanayLocalizationKeys.homeNotificationsTooltip),
-            style: IconButton.styleFrom(
-              backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.all(12),
-            ),
-            icon: Icon(
-              unreadNotificationCount > 0
-                  ? Icons.notifications_active_rounded
-                  : Icons.notifications_none_rounded,
-              color: Colors.white,
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: _openNotificationsPage,
+              borderRadius: BorderRadius.circular(14),
+              child: Ink(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? appColors.panelMuted
+                      : theme.colorScheme.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: isDark
+                        ? appColors.borderColor
+                        : theme.colorScheme.primary.withValues(alpha: 0.14),
+                  ),
+                ),
+                child: Icon(
+                  unreadNotificationCount > 0
+                      ? Icons.notifications_rounded
+                      : Icons.notifications_outlined,
+                  size: 22,
+                  color: unreadNotificationCount > 0
+                      ? theme.colorScheme.primary
+                      : appColors.mutedText,
+                ),
+              ),
             ),
           ),
           if (unreadNotificationCount > 0)
             Positioned(
-              top: -2,
-              right: -2,
+              top: -3,
+              right: -3,
               child: Container(
-                constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.primary,
                   borderRadius: BorderRadius.circular(999),
                   border: Border.all(
-                    color: theme.scaffoldBackgroundColor,
+                    color: appColors.backgroundBase,
                     width: 2,
                   ),
                 ),
                 child: Text(
-                  unreadNotificationCount > 9
-                      ? '9+'
-                      : '$unreadNotificationCount',
+                  unreadNotificationCount > 9 ? '9+' : '$unreadNotificationCount',
                   textAlign: TextAlign.center,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onPrimary,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
                     fontWeight: FontWeight.w800,
+                    height: 1.2,
                   ),
                 ),
               ),
@@ -837,20 +856,53 @@ class _MainHomePanelState extends State<MainHomePanel>
   }
 
   Widget _buildSellerLiveButton(ThemeData theme) {
+    final appColors = theme.appColors;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-      child: SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: _showLaunchLiveSheet,
-          icon: const Icon(Icons.live_tv_rounded, size: 18),
-          label: Text(context.tr(BanayLocalizationKeys.homeStartLive)),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.green.withValues(alpha: 0.25),
-            foregroundColor: theme.colorScheme.onPrimary,
-            minimumSize: const Size.fromHeight(48),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _showLaunchLiveSheet,
+          borderRadius: BorderRadius.circular(18),
+          child: Ink(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  appColors.liveIndicator.withValues(alpha: 0.18),
+                  appColors.liveIndicator.withValues(alpha: 0.08),
+                ],
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+              ),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: appColors.liveIndicator.withValues(alpha: 0.38),
+              ),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: appColors.liveIndicator,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Icon(Icons.live_tv_rounded, size: 18, color: appColors.liveIndicator),
+                const SizedBox(width: 8),
+                Text(
+                  context.tr(BanayLocalizationKeys.homeStartLive),
+                  style: TextStyle(
+                    color: appColors.liveIndicator,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -874,30 +926,47 @@ class _MainHomePanelState extends State<MainHomePanel>
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 5, 16, 7),
+              padding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Banay',
-                    style: TextStyle(
-                      fontSize: 25,
-                      fontWeight: FontWeight.w900,
-                      color: theme.colorScheme.primary,
+                  RichText(
+                    text: TextSpan(
+                      children: [
+                        TextSpan(
+                          text: 'B',
+                          style: TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w900,
+                            color: theme.colorScheme.primary,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        TextSpan(
+                          text: 'anay',
+                          style: TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w900,
+                            color: theme.colorScheme.onSurface,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  Row(
-                    children: [
-                      _buildNotificationButton(theme),
-                      const SizedBox(width: 8),
-                      AppCircleNetworkAvatar(
-                        imageUrl: _avatarUrl,
-                        radius: 18,
-                        userId: _currentUserId,
-                        showPresenceBadge: false,
-                      ),
-                    ],
+                  const Spacer(),
+                  _buildNotificationButton(theme),
+                  const SizedBox(width: 10),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {},
+                    child: AppCircleNetworkAvatar(
+                      imageUrl: _avatarUrl,
+                      radius: 20,
+                      userId: _currentUserId,
+                      showPresenceBadge: false,
+                    ),
                   ),
+                  const SizedBox(width: 4),
                 ],
               ),
             ),
@@ -961,6 +1030,22 @@ class _MainHomePanelState extends State<MainHomePanel>
                               return ProductCard(
                                 product: visibleProducts[index - 1],
                                 variant: ProductCardVariant.marketplace,
+                                onProductOpen: (product, isLiked) =>
+                                    Navigator.of(context).push(
+                                      PageRouteBuilder(
+                                        pageBuilder: (_, _, _) =>
+                                            ProductDetailPage(
+                                              product: product,
+                                              initialLikeCount: (product['likesCount'] as num?)?.toInt() ?? 0,
+                                              initialCommentCount: (product['commentsCount'] as num?)?.toInt() ?? 0,
+                                              initialShareCount: (product['sharesCount'] as num?)?.toInt() ?? 0,
+                                              initialIsLiked: isLiked,
+                                              initialIsSubscribed: _isFollowedSeller(product),
+                                            ),
+                                        transitionDuration: Duration.zero,
+                                        reverseTransitionDuration: Duration.zero,
+                                      ),
+                                    ),
                               );
                             },
                           ),

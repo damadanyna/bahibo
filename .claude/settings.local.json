@@ -15,7 +15,17 @@
       "Bash(xargs grep -l \"AppComment\")",
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Banay\\\\Documents\\\\project 2026\\\\bahibo\\\\lib\" -Recurse -Directory)",
       "Bash(Select-Object FullName)",
-      "Bash(Sort-Object FullName)"
+      "Bash(Sort-Object FullName)",
+      "PowerShell(python --version 2>&1)",
+      "PowerShell(winget install --id Python.Python.3.12 --silent --accept-package-agreements --accept-source-agreements 2>&1)",
+      "PowerShell(Invoke-WebRequest -Uri \"https://www.python.org/ftp/python/3.12.0/python-3.12.0-amd64.exe\" -OutFile \"$env:TEMP\\\\python-installer.exe\" -UseBasicParsing 2>&1; echo \"Download status: $?\")",
+      "PowerShell(Test-Path \"$env:TEMP\\\\python-installer.exe\"; if \\(Test-Path \"$env:TEMP\\\\python-installer.exe\"\\) { \\(Get-Item \"$env:TEMP\\\\python-installer.exe\"\\).Length })",
+      "PowerShell(Start-Process -FilePath \"$env:TEMP\\\\python-installer.exe\" -ArgumentList \"/quiet InstallAllUsers=0 PrependPath=1 Include_test=0\" -Wait -PassThru | Select-Object ExitCode)",
+      "PowerShell($env:PATH = [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"User\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"Machine\"\\); python --version 2>&1)",
+      "PowerShell($env:PATH = [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"User\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"Machine\"\\); cd \"c:\\\\Users\\\\Banay\\\\Documents\\\\project 2026\\\\bahibo\"; python \".claude/skills/ui-ux-pro-max/scripts/search.py\" \"social marketplace ecommerce live streaming mobile app\" --design-system -p \"Bahibo\" 2>&1)",
+      "PowerShell($env:PATH = [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"User\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"Machine\"\\); cd \"c:\\\\Users\\\\Banay\\\\Documents\\\\project 2026\\\\bahibo\"; python \".claude/skills/ui-ux-pro-max/scripts/search.py\" \"social marketplace ecommerce live streaming mobile app\" --design-system --persist -p \"Bahibo\" 2>&1)",
+      "PowerShell($env:PATH = [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"User\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"Machine\"\\); cd \"c:\\\\Users\\\\Banay\\\\Documents\\\\project 2026\\\\bahibo\"; python \".claude/skills/ui-ux-pro-max/scripts/search.py\" \"animation touch accessibility flutter mobile\" --domain ux 2>&1)",
+      "PowerShell($env:PATH = [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"User\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"Machine\"\\); cd \"c:\\\\Users\\\\Banay\\\\Documents\\\\project 2026\\\\bahibo\"; python \".claude/skills/ui-ux-pro-max/scripts/search.py\" \"navigation list performance\" --stack flutter 2>&1)"
     ]
   }
 }

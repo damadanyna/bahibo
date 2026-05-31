@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:banay/theme/app_theme_extensions.dart';
@@ -223,6 +224,10 @@ class ThemeProvider extends ChangeNotifier {
     required AppThemeColors appColors,
   }) {
     final isDark = brightness == Brightness.dark;
+    final rubikTextTheme = GoogleFonts.rubikTextTheme(
+      ThemeData(brightness: brightness).textTheme,
+    );
+
     final baseTheme = ThemeData(
       useMaterial3: true,
       brightness: brightness,
@@ -231,6 +236,7 @@ class ThemeProvider extends ChangeNotifier {
       scaffoldBackgroundColor: appColors.backgroundBase,
       cardColor: appColors.panelBackground_,
       canvasColor: appColors.backgroundBase,
+      textTheme: rubikTextTheme,
       extensions: <ThemeExtension<dynamic>>[appColors],
     );
 

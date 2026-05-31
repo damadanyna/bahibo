@@ -21,6 +21,7 @@ class ProductCard extends StatefulWidget {
   final Map<String, dynamic> product;
   final Widget Function(Map<String, dynamic> product)? detailPageBuilder;
   final ValueChanged<int>? onTap;
+  final void Function(Map<String, dynamic> product, bool isLiked)? onProductOpen;
   final ProductCardVariant variant;
   final Widget? topRightOverlay;
 
@@ -29,6 +30,7 @@ class ProductCard extends StatefulWidget {
     required this.product,
     this.detailPageBuilder,
     this.onTap,
+    this.onProductOpen,
     this.variant = ProductCardVariant.editorial,
     this.topRightOverlay,
   });
@@ -570,6 +572,11 @@ class _ProductCardState extends State<ProductCard> {
       sellerId: sellerId?.isNotEmpty == true ? sellerId : null,
     );
 
+    if (widget.onProductOpen != null) {
+      widget.onProductOpen!(resolvedProduct, _isLiked);
+      return;
+    }
+
     if (widget.onTap != null) {
       widget.onTap!(imageIndex);
       return;
@@ -654,7 +661,7 @@ class _ProductCardState extends State<ProductCard> {
         final accentGreen = appColors.availableAccent;
         final unavailableAccent = appColors.unavailableAccent;
         final favoriteColor = appColors.favoriteAccent;
-        final descriptionFontSize = screenWidth < 360 ? 10.5 : 11.0;
+        final descriptionFontSize = screenWidth < 360 ? 13.0 : 13.5;
         final publicationFontSize = screenWidth < 360 ? 10.5 : 11.0;
         final metricFontSize = screenWidth < 360 ? 11.0 : 12.0;
         final galleryHeight = screenHeight * 0.55;
@@ -688,14 +695,15 @@ class _ProductCardState extends State<ProductCard> {
         return GestureDetector(
           onTap: () => _openProduct(resolvedProduct),
           child: Container(
-            margin: const EdgeInsets.symmetric(vertical: 6),
+            margin: const EdgeInsets.symmetric(vertical: 5),
             decoration: BoxDecoration(
               color: surfaceColor,
+              borderRadius: BorderRadius.circular(4),
               boxShadow: [
                 BoxShadow(
-                  color: theme.colorScheme.shadow.withValues(alpha: 0.08),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
+                  color: theme.colorScheme.shadow.withValues(alpha: 0.10),
+                  blurRadius: 24,
+                  offset: const Offset(0, 6),
                 ),
               ],
             ),
@@ -704,8 +712,11 @@ class _ProductCardState extends State<ProductCard> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  color: Colors.black.withValues(alpha: 0.82),
-                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.86),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                  ),
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
@@ -714,8 +725,9 @@ class _ProductCardState extends State<ProductCard> {
                         color: Colors.transparent,
                         child: InkWell(
                           onTap: () => _openSellerProfile(resolvedProduct),
+                          borderRadius: BorderRadius.circular(12),
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 2),
+                            padding: const EdgeInsets.symmetric(vertical: 4),
                             child: Row(
                               children: [
                                 _buildSellerAvatar(
@@ -725,8 +737,7 @@ class _ProductCardState extends State<ProductCard> {
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Text(
@@ -737,20 +748,21 @@ class _ProductCardState extends State<ProductCard> {
                                             ?.copyWith(
                                               color: accentGreen,
                                               fontWeight: FontWeight.w900,
+                                              letterSpacing: -0.1,
                                               height: 1.1,
                                             ),
                                       ),
                                       if (publicationTimeLabel.isNotEmpty) ...[
-                                        const SizedBox(height: 4),
+                                        const SizedBox(height: 3),
                                         Text(
                                           publicationTimeLabel,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: theme.textTheme.bodySmall
                                               ?.copyWith(
-                                                color: mutedColor,
+                                                color: mutedColor.withValues(alpha: 0.7),
                                                 fontSize: publicationFontSize,
-                                                fontWeight: FontWeight.w600,
+                                                fontWeight: FontWeight.w500,
                                                 height: 1.1,
                                               ),
                                         ),
@@ -758,66 +770,84 @@ class _ProductCardState extends State<ProductCard> {
                                     ],
                                   ),
                                 ),
+                                const SizedBox(width: 8),
+                                Icon(Icons.arrow_forward_ios_rounded, size: 12, color: mutedColor.withValues(alpha: 0.5)),
                               ],
                             ),
                           ),
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 14),
                       Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          Text(
-                            formatPriceAmount(price),
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              color: priceColor,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -0.4,
-                              height: 1,
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  primaryLine,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: Colors.white,
+                                    fontSize: descriptionFontSize,
+                                    fontWeight: FontWeight.w600,
+                                    height: 1.35,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      formatPriceAmount(price),
+                                      style: theme.textTheme.titleLarge?.copyWith(
+                                        color: priceColor,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: -0.6,
+                                        height: 1,
+                                        fontSize: 22,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 5),
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 1),
+                                      child: Text(
+                                        currency,
+                                        style: theme.textTheme.labelMedium?.copyWith(
+                                          color: priceColor.withValues(alpha: 0.7),
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(width: 6),
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 2),
-                            child: Text(
-                              currency,
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                color: priceColor,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          const Spacer(),
+                          const SizedBox(width: 12),
                           Container(
-                            margin: const EdgeInsets.only(bottom: 2),
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
+                              horizontal: 12,
+                              vertical: 6,
                             ),
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(999),
+                              color: (isAvailable ? accentGreen : unavailableAccent).withValues(alpha: 0.16),
                               border: Border.all(
-                                color:
-                                    (isAvailable
-                                            ? accentGreen
-                                            : unavailableAccent)
-                                        .withValues(alpha: 0.7),
+                                color: (isAvailable ? accentGreen : unavailableAccent).withValues(alpha: 0.5),
                               ),
-                              color: isAvailable
-                                  ? Colors.transparent
-                                  : unavailableAccent.withValues(alpha: 0.14),
                             ),
                             child: Text(
                               categoryLabel.toUpperCase(),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: isAvailable
-                                    ? accentGreen
-                                    : unavailableAccent,
-                                fontSize: 11,
+                              style: TextStyle(
+                                color: isAvailable ? accentGreen : unavailableAccent,
+                                fontSize: 10,
                                 fontWeight: FontWeight.w800,
-                                letterSpacing: 0.4,
+                                letterSpacing: 0.6,
                               ),
                             ),
                           ),
@@ -842,16 +872,16 @@ class _ProductCardState extends State<ProductCard> {
                             children: [
                               const Icon(
                                 Icons.visibility_off_rounded,
-                                size: 18,
+                                size: 16,
                                 color: Colors.white,
                               ),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   'Produit actuellement indisponible',
-                                  style: theme.textTheme.labelLarge?.copyWith(
+                                  style: theme.textTheme.labelMedium?.copyWith(
                                     color: Colors.white,
-                                    fontWeight: FontWeight.w800,
+                                    fontWeight: FontWeight.w700,
                                   ),
                                 ),
                               ),
@@ -859,29 +889,26 @@ class _ProductCardState extends State<ProductCard> {
                           ),
                         ),
                       ],
-                      const SizedBox(height: 8),
-                      Text(
-                        primaryLine,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: mutedColor,
-                          fontSize: descriptionFontSize,
-                          fontWeight: FontWeight.w500,
-                          height: 1.2,
-                        ),
-                      ),
                       if (locationLine.isNotEmpty) ...[
                         const SizedBox(height: 8),
-                        Text(
-                          locationLine,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: mutedColor,
-                            fontWeight: FontWeight.w600,
-                            height: 1.15,
-                          ),
+                        Row(
+                          children: [
+                            Icon(Icons.location_on_outlined, size: 12, color: mutedColor.withValues(alpha: 0.6)),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                locationLine,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: mutedColor.withValues(alpha: 0.7),
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 11,
+                                  height: 1.15,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ],
@@ -897,49 +924,47 @@ class _ProductCardState extends State<ProductCard> {
                   height: galleryHeight,
                 ),
                 Container(
-                  color: Colors.black.withValues(alpha: 0.82),
-                  padding: const EdgeInsets.fromLTRB(0, 12, 0, 14),
+                  decoration: const BoxDecoration(
+                    color: Colors.black,
+                    borderRadius: BorderRadius.vertical(bottom: Radius.circular(4)),
+                  ),
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: _buildActionMetric(
-                            icon: _isLiked
-                                ? Icons.favorite_rounded
-                                : Icons.favorite_border_rounded,
-                            label: widget.formatMetricCount(likesCount),
-                            iconColor: _isLiked ? favoriteColor : Colors.white,
-                            labelColor: Colors.white,
-                            fontSize: metricFontSize,
-                            onTap: _isLikeBusy
-                                ? null
-                                : () => _toggleLike(resolvedProduct),
-                          ),
+                        child: _buildActionMetric(
+                          icon: _isLiked
+                              ? Icons.favorite_rounded
+                              : Icons.favorite_border_rounded,
+                          label: widget.formatMetricCount(likesCount),
+                          iconColor: _isLiked ? favoriteColor : Colors.white.withValues(alpha: 0.7),
+                          labelColor: Colors.white.withValues(alpha: 0.85),
+                          fontSize: metricFontSize,
+                          onTap: _isLikeBusy
+                              ? null
+                              : () => _toggleLike(resolvedProduct),
                         ),
                       ),
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: _buildActionMetric(
-                            icon: Icons.mode_comment_rounded,
-                            label: widget.formatMetricCount(commentsCount),
-                            iconColor: Colors.white,
-                            labelColor: Colors.white,
-                            fontSize: metricFontSize,
-                            onTap: () => _openComments(resolvedProduct),
-                          ),
-                        ),
-                      ),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: _buildActionMetric(
-                          icon: Icons.share_outlined,
+                          icon: Icons.mode_comment_outlined,
+                          label: widget.formatMetricCount(commentsCount),
+                          iconColor: Colors.white.withValues(alpha: 0.7),
+                          labelColor: Colors.white.withValues(alpha: 0.85),
+                          fontSize: metricFontSize,
+                          onTap: () => _openComments(resolvedProduct),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildActionMetric(
+                          icon: Icons.ios_share_rounded,
                           label: widget.formatMetricCount(
                             _effectiveSharesCount(resolvedProduct),
                           ),
-                          iconColor: Colors.white,
-                          labelColor: Colors.white,
+                          iconColor: Colors.white.withValues(alpha: 0.7),
+                          labelColor: Colors.white.withValues(alpha: 0.85),
                           fontSize: metricFontSize,
                           onTap: () => _shareProduct(resolvedProduct),
                         ),
@@ -1200,37 +1225,36 @@ class _ProductCardState extends State<ProductCard> {
     Color? backgroundColor,
     double? fontSize,
   }) {
-    final theme = Theme.of(context);
-    final borderRadius = BorderRadius.circular(999);
+    const borderRadius = BorderRadius.all(Radius.circular(12));
     final buttonBackground =
-        backgroundColor ?? const Color.fromARGB(255, 38, 38, 38);
-    final buttonBorder = const Color.fromARGB(255, 68, 68, 68);
+        backgroundColor ?? const Color.fromARGB(255, 30, 30, 30);
+    const buttonBorder = Color.fromARGB(255, 55, 55, 55);
 
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
+    return SizedBox(
+      height: 44,
+      child: Material(
         color: buttonBackground,
         borderRadius: borderRadius,
-        border: Border.all(color: buttonBorder.withValues(alpha: 0.82)),
-      ),
-      child: Material(
-        color: Colors.transparent,
         child: InkWell(
           borderRadius: borderRadius,
           onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: borderRadius,
+              border: Border.all(color: buttonBorder.withValues(alpha: 0.7)),
+            ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, size: 18, color: iconColor),
-                const SizedBox(width: 8),
+                Icon(icon, size: 17, color: iconColor),
+                const SizedBox(width: 6),
                 Text(
                   label,
-                  style: theme.textTheme.labelSmall?.copyWith(
+                  style: TextStyle(
                     color: labelColor,
-                    fontSize: (fontSize ?? 12) + 1,
-                    fontWeight: FontWeight.w800,
+                    fontSize: fontSize ?? 12,
+                    fontWeight: FontWeight.w700,
+                    height: 1,
                   ),
                 ),
               ],

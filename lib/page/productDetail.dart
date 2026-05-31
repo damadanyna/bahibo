@@ -29,6 +29,9 @@ class ProductDetailPage extends StatefulWidget {
   final List<AppCommentItem>? initialComments;
   final int? initialLikeCount;
   final int? initialCommentCount;
+  final int? initialShareCount;
+  final bool? initialIsLiked;
+  final bool? initialIsSubscribed;
 
   const ProductDetailPage({
     super.key,
@@ -39,6 +42,9 @@ class ProductDetailPage extends StatefulWidget {
     this.initialComments,
     this.initialLikeCount,
     this.initialCommentCount,
+    this.initialShareCount,
+    this.initialIsLiked,
+    this.initialIsSubscribed,
   });
 
   @override
@@ -159,18 +165,34 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     _commentCount =
         widget.initialCommentCount ??
         _resolveCount(_productData, 'commentsCount');
-    _shareCount = _resolveCount(_productData, 'sharesCount');
+    _shareCount =
+        widget.initialShareCount ?? _resolveCount(_productData, 'sharesCount');
     _isSubscribed =
+        widget.initialIsSubscribed ??
         (_sellerMap['isFollowing'] as bool?) ??
         (widget.product['isFollowing'] as bool?) ??
         false;
+    if (widget.initialIsLiked != null) {
+      _isLiked = widget.initialIsLiked!;
+    }
     _loadLikeStatus();
     _loadSellerContext();
-    Future.delayed(const Duration(milliseconds: 260), () {
-      if (!mounted) return;
-      setState(() => _showEntrySkeleton = false);
-      _openInitialActionIfNeeded();
-    });
+    final hasInitialCounts =
+        widget.initialLikeCount != null &&
+        widget.initialCommentCount != null &&
+        widget.initialShareCount != null;
+    if (hasInitialCounts) {
+      _showEntrySkeleton = false;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _openInitialActionIfNeeded(),
+      );
+    } else {
+      Future.delayed(const Duration(milliseconds: 260), () {
+        if (!mounted) return;
+        setState(() => _showEntrySkeleton = false);
+        _openInitialActionIfNeeded();
+      });
+    }
   }
 
   @override
@@ -934,17 +956,50 @@ class _ProductDetailPageState extends State<ProductDetailPage>
         theme.textTheme.bodyLarge?.color ?? theme.colorScheme.onSurface;
     final detailSecondaryTextColor =
         theme.textTheme.bodyMedium?.color ?? theme.colorScheme.onSurfaceVariant;
-    final actionIconColor =
-        theme.iconTheme.color ??
-        (isDark ? appColors.heroForeground : theme.colorScheme.onSurface);
 
     return Scaffold(
       backgroundColor: pageBackgroundColor,
       body: SafeArea(
         bottom: false,
-        child: Stack(
+        child: Column(
           children: [
-            RefreshIndicator(
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
+              child: Row(
+                children: [
+                  const AppBackButton(),
+                  const SizedBox(width: 8),
+                  RichText(
+                    text: TextSpan(
+                      children: [
+                        TextSpan(
+                          text: 'B',
+                          style: TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w900,
+                            color: theme.colorScheme.primary,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        TextSpan(
+                          text: 'anay',
+                          style: TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w900,
+                            color: theme.colorScheme.onSurface,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Stack(
+                children: [
+                  RefreshIndicator(
               onRefresh: refreshPageWithDialog,
               child: _showEntrySkeleton
                   ? ListView(
@@ -958,54 +1013,43 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  16,
-                                  5,
-                                  16,
-                                  7,
-                                ),
-                                child: Text(
-                                  'Banay',
-                                  style: TextStyle(
-                                    fontSize: 25,
-                                    fontWeight: FontWeight.w900,
-                                    color: theme.colorScheme.primary,
-                                  ),
-                                ),
-                              ),
                               // ── Grille d'images ──
                               _buildImageGrid(images),
 
                               // ── Actions ──
                               Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 0,
-                                  vertical: 12,
-                                ),
+                                padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
                                 child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceAround,
                                   children: [
-                                    _socialActionCard(
-                                      icon: _isLiked
-                                          ? Icons.favorite
-                                          : Icons.favorite_border,
-                                      label: _formatActionCount(_likeCount),
-                                      iconColor: appColors.favoriteAccent,
-                                      onTap: _toggleLike,
+                                    Expanded(
+                                      child: _socialActionCard(
+                                        icon: _isLiked
+                                            ? Icons.favorite_rounded
+                                            : Icons.favorite_border_rounded,
+                                        label: _formatActionCount(_likeCount),
+                                        iconColor: _isLiked
+                                            ? appColors.favoriteAccent
+                                            : Colors.white.withValues(alpha: 0.7),
+                                        onTap: _toggleLike,
+                                      ),
                                     ),
-                                    _socialActionCard(
-                                      icon: Icons.chat,
-                                      label: _formatActionCount(_commentCount),
-                                      iconColor: actionIconColor,
-                                      onTap: _showCommentsSheet,
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: _socialActionCard(
+                                        icon: Icons.mode_comment_outlined,
+                                        label: _formatActionCount(_commentCount),
+                                        iconColor: Colors.white.withValues(alpha: 0.7),
+                                        onTap: _showCommentsSheet,
+                                      ),
                                     ),
-                                    _socialActionCard(
-                                      icon: Icons.reply_rounded,
-                                      label: _formatActionCount(_shareCount),
-                                      iconColor: actionIconColor,
-                                      onTap: _showShareSuggestions,
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: _socialActionCard(
+                                        icon: Icons.ios_share_rounded,
+                                        label: _formatActionCount(_shareCount),
+                                        iconColor: Colors.white.withValues(alpha: 0.7),
+                                        onTap: _showShareSuggestions,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -1013,11 +1057,14 @@ class _ProductDetailPageState extends State<ProductDetailPage>
 
                               // ── Carte principale ──
                               Container(
-                                margin: const EdgeInsets.all(12),
-                                padding: const EdgeInsets.all(16),
+                                margin: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+                                padding: const EdgeInsets.all(18),
                                 decoration: BoxDecoration(
                                   color: detailCardColor,
-                                  borderRadius: BorderRadius.circular(16),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: appColors.borderColor,
+                                  ),
                                 ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1031,29 +1078,29 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                       decoration: BoxDecoration(
                                         color: theme.colorScheme.primary
                                             .withValues(alpha: 0.12),
-                                        borderRadius: BorderRadius.circular(20),
+                                        borderRadius: BorderRadius.circular(999),
                                       ),
                                       child: Text(
                                         product['category'] ?? 'Produit',
                                         style: TextStyle(
                                           color: theme.colorScheme.primary,
                                           fontSize: 12,
-                                          fontWeight: FontWeight.w600,
+                                          fontWeight: FontWeight.w700,
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(height: 8),
+                                    const SizedBox(height: 10),
 
                                     // Titre
                                     Text(
                                       title,
                                       style: theme.textTheme.titleLarge
                                           ?.copyWith(
-                                            fontWeight: FontWeight.bold,
+                                            fontWeight: FontWeight.w800,
                                             color: detailPrimaryTextColor,
                                           ),
                                     ),
-                                    const SizedBox(height: 8),
+                                    const SizedBox(height: 10),
 
                                     // Prix
                                     Row(
@@ -1063,34 +1110,35 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                         Text(
                                           priceFormatted,
                                           style: TextStyle(
-                                            fontSize: 28,
-                                            fontWeight: FontWeight.bold,
+                                            fontSize: 30,
+                                            fontWeight: FontWeight.w900,
                                             color: theme.colorScheme.primary,
+                                            height: 1,
                                           ),
                                         ),
-                                        const SizedBox(width: 4),
+                                        const SizedBox(width: 5),
                                         Padding(
                                           padding: const EdgeInsets.only(
-                                            bottom: 4,
+                                            bottom: 3,
                                           ),
                                           child: Text(
                                             currency,
                                             style: TextStyle(
                                               fontSize: 14,
-                                              fontWeight: FontWeight.w600,
+                                              fontWeight: FontWeight.w700,
                                               color: theme.colorScheme.primary,
                                             ),
                                           ),
                                         ),
                                       ],
                                     ),
-                                    const SizedBox(height: 4),
+                                    const SizedBox(height: 8),
 
                                     // Date publication
                                     Row(
                                       children: [
                                         Icon(
-                                          Icons.access_time,
+                                          Icons.access_time_rounded,
                                           size: 13,
                                           color: detailSecondaryTextColor,
                                         ),
@@ -1100,6 +1148,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                           style: TextStyle(
                                             fontSize: 12,
                                             color: detailSecondaryTextColor,
+                                            fontWeight: FontWeight.w500,
                                           ),
                                         ),
                                       ],
@@ -1110,26 +1159,26 @@ class _ProductDetailPageState extends State<ProductDetailPage>
 
                               // ── Carte détails produit ──
                               Container(
-                                margin: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                ),
-                                padding: const EdgeInsets.all(16),
+                                margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                                padding: const EdgeInsets.all(18),
                                 decoration: BoxDecoration(
                                   color: detailCardColor,
-                                  borderRadius: BorderRadius.circular(16),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: appColors.borderColor,
+                                  ),
                                 ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
                                       'Détails du Produit',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
+                                      style: theme.textTheme.titleMedium?.copyWith(
+                                        fontWeight: FontWeight.w800,
                                         color: detailPrimaryTextColor,
                                       ),
                                     ),
-                                    const SizedBox(height: 12),
+                                    const SizedBox(height: 14),
                                     _detailRow(
                                       Icons.star_outline,
                                       'État',
@@ -1152,17 +1201,20 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                               const SizedBox(height: 12),
 
                               // ── Carte vendeur ──
-                              GestureDetector(
-                                onTap: _openSellerProfile,
-                                child: Container(
-                                  margin: const EdgeInsets.symmetric(
-                                    horizontal: 12,
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                                child: Material(
+                                  color: detailCardColor,
+                                  borderRadius: BorderRadius.circular(20),
+                                  child: InkWell(
+                                    onTap: _openSellerProfile,
+                                    borderRadius: BorderRadius.circular(20),
+                                    child: Ink(
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: appColors.borderColor),
                                   ),
                                   padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    color: detailCardColor,
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
                                   child: Row(
                                     children: [
                                       Stack(
@@ -1326,38 +1378,39 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                   ),
                                 ),
                               ),
+                            ),
+                          ),
 
                               const SizedBox(height: 12),
 
                               // ── Description ──
                               Container(
-                                margin: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                ),
-                                padding: const EdgeInsets.all(16),
+                                margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                                padding: const EdgeInsets.all(18),
                                 decoration: BoxDecoration(
                                   color: detailCardColor,
-                                  borderRadius: BorderRadius.circular(16),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(color: appColors.borderColor),
                                 ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
                                       'Description',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
+                                      style: theme.textTheme.titleMedium?.copyWith(
+                                        fontWeight: FontWeight.w800,
                                         color: detailPrimaryTextColor,
                                       ),
                                     ),
-                                    const SizedBox(height: 8),
+                                    const SizedBox(height: 10),
                                     Text(
                                       product['description'] ??
                                           'Aucune description disponible.',
                                       style: TextStyle(
                                         fontSize: 14,
                                         color: detailSecondaryTextColor,
-                                        height: 1.6,
+                                        height: 1.65,
+                                        fontWeight: FontWeight.w400,
                                       ),
                                     ),
                                   ],
@@ -1379,6 +1432,9 @@ class _ProductDetailPageState extends State<ProductDetailPage>
           ],
         ),
       ),
+    ],
+  ),
+),
 
       // ── Bouton fixe en bas ──
       bottomNavigationBar: Container(
@@ -1518,12 +1574,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       );
     }
 
-    return Stack(
-      children: [
-        galleryContent,
-        const Positioned(top: 12, left: 12, child: AppBackButton()),
-      ],
-    );
+    return galleryContent;
   }
 
   void _openProductGallery(List<String> images, int index) {
@@ -1739,54 +1790,41 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     VoidCallback? onTap,
   }) {
     final hasLabel = label.trim().isNotEmpty;
-    final theme = Theme.of(context);
-    final appColors = theme.appColors;
-    final isDark = theme.brightness == Brightness.dark;
-    final actionCardColor = isDark
-        ? theme.scaffoldBackgroundColor
-        : theme.colorScheme.surfaceContainer;
-    final actionBorderColor = isDark
-        ? appColors.heroBorder
-        : theme.colorScheme.outlineVariant.withValues(alpha: 0.55);
-    final actionTextColor = isDark
-        ? appColors.heroForeground
-        : theme.colorScheme.onSurface;
+    const borderRadius = BorderRadius.all(Radius.circular(12));
+    const buttonBackground = Color.fromARGB(255, 30, 30, 30);
+    const buttonBorder = Color.fromARGB(255, 55, 55, 55);
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(22),
-        child: Ink(
-          width: 108,
-          padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 7),
-          decoration: BoxDecoration(
-            color: actionCardColor,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: actionBorderColor),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 22, color: iconColor),
-              if (hasLabel) ...[
-                const SizedBox(width: 7),
-                Flexible(
-                  child: Text(
+    return SizedBox(
+      height: 44,
+      child: Material(
+        color: buttonBackground,
+        borderRadius: borderRadius,
+        child: InkWell(
+          borderRadius: borderRadius,
+          onTap: onTap,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: borderRadius,
+              border: Border.all(color: buttonBorder.withValues(alpha: 0.7)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 17, color: iconColor),
+                if (hasLabel) ...[
+                  const SizedBox(width: 6),
+                  Text(
                     label,
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: actionTextColor,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      height: 1,
                     ),
                   ),
-                ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

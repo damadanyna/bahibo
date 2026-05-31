@@ -3235,53 +3235,57 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
 
     final accentColor = _accentColor(theme);
 
-    return Container(
-      padding: const EdgeInsets.only(top: 4),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: _panelBorderColor(theme), width: 1),
-        ),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: tabs.map((tab) {
           final isSelected = _selectedTab == tab.$1;
           return Expanded(
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () => setState(() => _selectedTab = tab.$1),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  padding: const EdgeInsets.fromLTRB(8, 10, 8, 12),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(
-                        color: isSelected ? accentColor : Colors.transparent,
-                        width: 3,
-                      ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                  onTap: () => setState(() => _selectedTab = tab.$1),
+                  borderRadius: BorderRadius.circular(12),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeOut,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? accentColor.withValues(alpha: 0.10)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(12),
+                      border: isSelected
+                          ? Border.all(color: accentColor.withValues(alpha: 0.22))
+                          : null,
                     ),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        tab.$3,
-                        size: 18,
-                        color: isSelected ? accentColor : mutedColor,
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        tab.$2,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: isSelected ? accentColor : mutedColor,
-                          fontWeight: isSelected
-                              ? FontWeight.w800
-                              : FontWeight.w600,
-                          fontSize: 12.5,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 180),
+                          child: Icon(
+                            tab.$3,
+                            key: ValueKey(isSelected),
+                            size: 20,
+                            color: isSelected ? accentColor : mutedColor,
+                          ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 5),
+                        Text(
+                          tab.$2,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: isSelected ? accentColor : mutedColor,
+                            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
+                            fontSize: 11.5,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -3431,7 +3435,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                   icon: const Icon(Icons.add_box_outlined, size: 18),
                   label: const Text('Creer produit'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
+                    backgroundColor: accentColor,
                     foregroundColor: theme.colorScheme.onPrimary,
                     minimumSize: const Size.fromHeight(50),
                     shape: RoundedRectangleBorder(

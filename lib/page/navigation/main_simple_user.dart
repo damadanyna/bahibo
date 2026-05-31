@@ -1478,58 +1478,62 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
     final mutedColor = theme.appColors.mutedText;
 
     final tabs = [
-      (_SimpleUserTab.following, 'Abonnement', Icons.groups_rounded),
+      (_SimpleUserTab.following, 'Abonnements', Icons.groups_rounded),
       (_SimpleUserTab.location, 'Localisation', Icons.location_on_rounded),
       (_SimpleUserTab.about, 'A propos', Icons.info_outline_rounded),
     ];
 
-    return Container(
-      padding: const EdgeInsets.only(top: 4),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: theme.appColors.borderColor, width: 1),
-        ),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: tabs.map((tab) {
           final isSelected = _selectedTab == tab.$1;
           return Expanded(
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () => setState(() => _selectedTab = tab.$1),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  padding: const EdgeInsets.fromLTRB(8, 10, 8, 12),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(
-                        color: isSelected ? accentColor : Colors.transparent,
-                        width: 3,
-                      ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                  onTap: () => setState(() => _selectedTab = tab.$1),
+                  borderRadius: BorderRadius.circular(12),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeOut,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? accentColor.withValues(alpha: 0.10)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(12),
+                      border: isSelected
+                          ? Border.all(color: accentColor.withValues(alpha: 0.22))
+                          : null,
                     ),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        tab.$3,
-                        size: 18,
-                        color: isSelected ? accentColor : mutedColor,
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        tab.$2,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: isSelected ? accentColor : mutedColor,
-                          fontWeight: isSelected
-                              ? FontWeight.w800
-                              : FontWeight.w600,
-                          fontSize: 12.5,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 180),
+                          child: Icon(
+                            tab.$3,
+                            key: ValueKey(isSelected),
+                            size: 20,
+                            color: isSelected ? accentColor : mutedColor,
+                          ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 5),
+                        Text(
+                          tab.$2,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: isSelected ? accentColor : mutedColor,
+                            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
+                            fontSize: 11.5,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -1638,21 +1642,23 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
               : (isSeller ? 'Vendeur' : 'Membre');
 
           return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.only(bottom: 8),
             child: Material(
-              color: Colors.transparent,
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(16),
               child: InkWell(
                 onTap: () => _openFollowedPerson(person),
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(16),
                 child: Container(
-                  padding: const EdgeInsets.all(14),
+                  constraints: const BoxConstraints(minHeight: 64),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
-                    color: theme.cardColor,
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(16),
                     border: Border.all(
                       color: isCertified
-                          ? theme.colorScheme.primary.withValues(alpha: 0.35)
+                          ? theme.colorScheme.primary.withValues(alpha: 0.30)
                           : appColors.borderColor,
+                      width: isCertified ? 1.5 : 1,
                     ),
                   ),
                   child: Row(
@@ -1667,18 +1673,15 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                           ),
                           if (unreadCount > 0)
                             Positioned(
-                              right: 0,
-                              top: 0,
+                              right: -1,
+                              top: -1,
                               child: Container(
-                                width: 13,
-                                height: 13,
+                                width: 12,
+                                height: 12,
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFE53935),
                                   shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: theme.cardColor,
-                                    width: 2,
-                                  ),
+                                  border: Border.all(color: theme.cardColor, width: 2),
                                 ),
                               ),
                             ),
@@ -1688,6 +1691,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Row(
                               children: [
@@ -1696,9 +1700,10 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                                     name,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontWeight: FontWeight.w700,
-                                      fontSize: 15,
+                                      fontSize: 14.5,
+                                      color: theme.colorScheme.onSurface,
                                     ),
                                   ),
                                 ),
@@ -1712,7 +1717,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                                 ],
                               ],
                             ),
-                            const SizedBox(height: 3),
+                            const SizedBox(height: 2),
                             Text(
                               subtitle,
                               maxLines: 1,
@@ -1720,6 +1725,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                               style: TextStyle(
                                 color: appColors.mutedText,
                                 fontSize: 12,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                             if (unreadCount > 0) ...[
@@ -1751,14 +1757,11 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                       ),
                       const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                         decoration: BoxDecoration(
-                          color: theme.colorScheme.primary.withValues(
-                            alpha: 0.10,
-                          ),
+                          color: isSeller
+                              ? theme.colorScheme.primary.withValues(alpha: 0.10)
+                              : appColors.panelMuted,
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Text(
@@ -1766,7 +1769,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
-                            color: theme.colorScheme.primary,
+                            color: isSeller ? theme.colorScheme.primary : appColors.mutedText,
                           ),
                         ),
                       ),
