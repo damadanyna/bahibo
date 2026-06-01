@@ -95,7 +95,7 @@ class _ChatPageState extends State<ChatPage>
     with AppPageRefreshMixin<ChatPage>, RouteAware {
   static final Map<String, _ChatPageViewState> _viewStateCache =
       <String, _ChatPageViewState>{};
-  static const bool _autoSeenEnabled = false;
+  static const bool _autoSeenEnabled = true;
   static const Duration _typingStopDelay = Duration(milliseconds: 1200);
   static const int _conversationPageFetchLimit = 50;
   static const int _recentConversationMessageLimit = 50;
@@ -430,12 +430,21 @@ class _ChatPageState extends State<ChatPage>
     );
   }
 
+  bool _isUnreadMessageSectionVisible() {
+    if (!_scrollController.hasClients) {
+      return false;
+    }
+
+    return _chatViewportController.shouldKeepViewportPinnedToBottom;
+  }
+
   Future<void> _markConversationReadIfVisible() async {
     final conversationId = _conversationId?.trim() ?? '';
     if (!_autoSeenEnabled ||
         !_usesLiveConversation ||
         conversationId.isEmpty ||
         !(_route?.isCurrent ?? false) ||
+        !_isUnreadMessageSectionVisible() ||
         _isMarkingConversationRead ||
         !_hasUnreadIncomingMessages()) {
       return;
@@ -443,6 +452,12 @@ class _ChatPageState extends State<ChatPage>
 
     _isMarkingConversationRead = true;
     try {
+      if (ChatRealtimeService.instance.isConnected) {
+        ChatRealtimeService.instance.emitReadAck(
+          conversationId: conversationId,
+        );
+      }
+
       await _conversationsApiService.markConversationRead(
         conversationId: conversationId,
       );
@@ -929,6 +944,7 @@ class _ChatPageState extends State<ChatPage>
         replyPayload?['replyToSenderName']?.toString().trim() ?? '';
     return _ChatMessage(
       id: pendingMessage.id,
+      clientMessageId: pendingMessage.id,
       message: pendingMessage.content,
       createdAt: createdAt,
       readAt: null,
@@ -997,6 +1013,8 @@ class _ChatPageState extends State<ChatPage>
 
   void _handleScroll() {
     _chatViewportController.handleScroll();
+
+    unawaited(_markConversationReadIfVisible());
 
     if (!_scrollController.hasClients) {
       return;
@@ -1144,6 +1162,7 @@ class _ChatPageState extends State<ChatPage>
           }
           return _ChatMessage(
             id: messageId,
+            clientMessageId: message['clientMessageId']?.toString(),
             message: (message['content'] as String?) ?? '',
             kind: _ChatMessageKind.fromApi(message['kind']),
             createdAt: createdAt,
@@ -1152,6 +1171,7 @@ class _ChatPageState extends State<ChatPage>
             time: _formatMessageTime(createdAt),
             isMine: message['isMine'] == true,
             deliveryState: _resolveDeliveryState(
+              deliveredAt: message['deliveredAt'] as String?,
               messageId: messageId,
               isMine: message['isMine'] == true,
               readAt: message['readAt'] as String?,
@@ -1265,6 +1285,7 @@ class _ChatPageState extends State<ChatPage>
   ) {
     return _ChatMessage(
       id: message.id,
+      clientMessageId: message.clientMessageId,
       message: message.message,
       kind: message.kind,
       createdAt: displayOverride.createdAt ?? message.createdAt,
@@ -1326,6 +1347,15 @@ class _ChatPageState extends State<ChatPage>
     _ChatMessage pendingMessage,
     _ChatMessage confirmedMessage,
   ) {
+    final pendingClientMessageId = pendingMessage.clientMessageId?.trim() ?? '';
+    final confirmedClientMessageId =
+        confirmedMessage.clientMessageId?.trim() ?? '';
+    if (pendingClientMessageId.isNotEmpty ||
+        confirmedClientMessageId.isNotEmpty) {
+      return pendingClientMessageId.isNotEmpty &&
+          pendingClientMessageId == confirmedClientMessageId;
+    }
+
     if (!confirmedMessage.isMine ||
         confirmedMessage.kind != pendingMessage.kind ||
         confirmedMessage.message.trim() != pendingMessage.message.trim()) {
@@ -2398,6 +2428,7 @@ class _ChatPageState extends State<ChatPage>
   }
 
   _ChatMessageDeliveryState? _resolveDeliveryState({
+    required String? deliveredAt,
     required String? messageId,
     required bool isMine,
     required String? readAt,
@@ -2413,6 +2444,14 @@ class _ChatPageState extends State<ChatPage>
         _deliveredMessageIds.remove(normalizedMessageId);
       }
       return _ChatMessageDeliveryState.seen;
+    }
+
+    final normalizedDeliveredAt = deliveredAt?.trim() ?? '';
+    if (normalizedDeliveredAt.isNotEmpty) {
+      if (normalizedMessageId.isNotEmpty) {
+        _deliveredMessageIds.add(normalizedMessageId);
+      }
+      return _ChatMessageDeliveryState.delivered;
     }
 
     if (normalizedMessageId.isNotEmpty &&
@@ -4588,6 +4627,7 @@ class _ProductContextCard extends StatelessWidget {
 
 class _ChatMessage {
   final String? id;
+  final String? clientMessageId;
   final String message;
   final _ChatMessageKind kind;
   final String? createdAt;
@@ -4602,6 +4642,7 @@ class _ChatMessage {
 
   const _ChatMessage({
     this.id,
+    this.clientMessageId,
     required this.message,
     this.kind = _ChatMessageKind.text,
     this.createdAt,
@@ -6217,7 +6258,7 @@ class _ChatDeliveryPresentation {
     switch (state) {
       case _ChatMessageDeliveryState.sending:
         return _ChatDeliveryPresentation(
-          label: 'Envoi',
+          label: 'En cours',
           icon: Icons.schedule_rounded,
           color: fallbackColor,
         );

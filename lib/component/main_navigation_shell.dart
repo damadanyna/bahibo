@@ -141,8 +141,11 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
     required String sellerRole,
     required String avatarUrl,
   }) async {
-    if (mounted && _currentIndex != 2) {
-      _switchNavigationIndex(2, recordHistory: false);
+    MainNavigationMessagesPanel.markConversationAsReadInList(conversationId);
+
+    final visibleConversationId = PushNotificationService.visibleConversationId;
+    if (visibleConversationId == conversationId) {
+      return;
     }
 
     await Future<void>.delayed(const Duration(milliseconds: 30));
@@ -150,21 +153,23 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
       return;
     }
 
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ChatPage(
-          conversationId: conversationId,
-          productPageBuilder: (product, {openedFromChat = false}) =>
-              ProductDetailPage(
-                product: product,
-                openedFromChat: openedFromChat,
-              ),
-          sellerName: sellerName,
-          sellerRole: sellerRole,
-          avatarUrl: avatarUrl,
-        ),
+    final chatRoute = MaterialPageRoute(
+      builder: (_) => ChatPage(
+        conversationId: conversationId,
+        productPageBuilder: (product, {openedFromChat = false}) =>
+            ProductDetailPage(product: product, openedFromChat: openedFromChat),
+        sellerName: sellerName,
+        sellerRole: sellerRole,
+        avatarUrl: avatarUrl,
       ),
     );
+
+    if (visibleConversationId != null && visibleConversationId.isNotEmpty) {
+      await Navigator.of(context).pushReplacement(chatRoute);
+      return;
+    }
+
+    await Navigator.of(context).push(chatRoute);
   }
 
   Future<void> openNotificationsFromNotification() async {

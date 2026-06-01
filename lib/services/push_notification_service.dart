@@ -6,6 +6,7 @@ import 'package:banay/page/chat_page.dart';
 import 'package:banay/page/notifications_page.dart';
 import 'package:banay/page/productDetail.dart';
 import 'package:banay/services/app_api_client.dart';
+import 'package:banay/services/conversations_api_service.dart';
 import 'package:banay/services/session_storage.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -57,6 +58,8 @@ class PushNotificationService {
     'banay/notifications',
   );
   static final AppApiClient _apiClient = AppApiClient();
+  static final ConversationsApiService _conversationsApiService =
+      ConversationsApiService();
   static final SessionStorage _sessionStorage = SessionStorage();
 
   static bool _initialized = false;
@@ -220,18 +223,11 @@ class PushNotificationService {
     _visibleConversationId = normalized;
   }
 
+  static String? get visibleConversationId => _visibleConversationId;
+
   static bool _shouldShowForegroundNotification(RemoteMessage message) {
     final notificationType =
         message.data['type']?.toString().trim().toLowerCase() ?? '';
-    if (notificationType == 'chat_message') {
-      final conversationId = message.data['conversationId']?.toString().trim();
-      if (conversationId != null &&
-          conversationId.isNotEmpty &&
-          conversationId == _visibleConversationId) {
-        return false;
-      }
-    }
-
     return notificationType != 'user_feedback';
   }
 
@@ -292,6 +288,10 @@ class PushNotificationService {
         conversationId.isNotEmpty &&
         (notificationType.isEmpty || notificationType == 'chat_message');
 
+    if (isConversationNotification) {
+      unawaited(_markConversationOpenedAsRead(conversationId));
+    }
+
     final shellState = BANAYNavigationShell.shellKey.currentState;
     final navigator = navigatorKey.currentState;
     if (shellState == null && navigator == null) {
@@ -333,28 +333,39 @@ class PushNotificationService {
         _isNavigatingFromNotification = true;
         _pendingNotificationData = null;
 
+        final visibleConversationId = _visibleConversationId;
+        if (visibleConversationId == conversationId) {
+          _isNavigatingFromNotification = false;
+          return;
+        }
+
+        final chatRoute = MaterialPageRoute(
+          builder: (_) => ChatPage(
+            conversationId: conversationId,
+            productPageBuilder: (product, {openedFromChat = false}) =>
+                ProductDetailPage(
+                  product: product,
+                  openedFromChat: openedFromChat,
+                ),
+            sellerName:
+                pendingData['participantName']?.trim().isNotEmpty == true
+                ? pendingData['participantName']!.trim()
+                : 'Conversation',
+            sellerRole:
+                pendingData['participantRole']?.trim().isNotEmpty == true
+                ? pendingData['participantRole']!.trim()
+                : 'Utilisateur',
+            avatarUrl: pendingData['participantAvatarUrl']?.trim() ?? '',
+          ),
+        );
+
         try {
-          await navigator.push(
-            MaterialPageRoute(
-              builder: (_) => ChatPage(
-                conversationId: conversationId,
-                productPageBuilder: (product, {openedFromChat = false}) =>
-                    ProductDetailPage(
-                      product: product,
-                      openedFromChat: openedFromChat,
-                    ),
-                sellerName:
-                    pendingData['participantName']?.trim().isNotEmpty == true
-                    ? pendingData['participantName']!.trim()
-                    : 'Conversation',
-                sellerRole:
-                    pendingData['participantRole']?.trim().isNotEmpty == true
-                    ? pendingData['participantRole']!.trim()
-                    : 'Utilisateur',
-                avatarUrl: pendingData['participantAvatarUrl']?.trim() ?? '',
-              ),
-            ),
-          );
+          if (visibleConversationId != null &&
+              visibleConversationId.isNotEmpty) {
+            await navigator.pushReplacement(chatRoute);
+          } else {
+            await navigator.push(chatRoute);
+          }
         } finally {
           _isNavigatingFromNotification = false;
         }
@@ -383,6 +394,18 @@ class PushNotificationService {
       );
     } finally {
       _isNavigatingFromNotification = false;
+    }
+  }
+
+  static Future<void> _markConversationOpenedAsRead(
+    String conversationId,
+  ) async {
+    try {
+      await _conversationsApiService.markConversationRead(
+        conversationId: conversationId,
+      );
+    } on AppApiException {
+      // ChatPage keeps its own read sync as a fallback after navigation.
     }
   }
 

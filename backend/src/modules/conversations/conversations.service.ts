@@ -76,9 +76,12 @@ type ConversationListItem = Prisma.ChatConversationGetPayload<{
 
 type ConversationThreadMessage = {
   id: string;
+  clientMessageId: string | null;
   content: string;
   kind: "TEXT" | "IMAGE" | "DOCUMENT" | "PRODUCT";
+  acceptedAt: string | null;
   createdAt: string;
+  deliveredAt: string | null;
   readAt: string | null;
   isMine: boolean;
   reply: {
@@ -1120,27 +1123,63 @@ export class ConversationsService {
 
     const effectiveProductSnapshot =
       this.extractDtoProductSnapshot(dto) ?? productSnapshot;
+    const normalizedClientMessageId = dto.clientMessageId?.trim() || undefined;
 
     let createdMessage: ConversationMessageDetail | null = null;
     let createdMessageId: string | null = null;
     await this.prisma.$transaction(async (transaction) => {
-      createdMessage = await transaction.chatMessage.create({
-        data: {
-          conversationId: conversation.id,
-          senderUserId: userId,
-          content,
-          replyToMessageId: dto.replyToMessageId?.trim() || undefined,
-          replyToSenderUserId: dto.replyToSenderUserId?.trim() || undefined,
-          replyToSenderName: dto.replyToSenderName?.trim() || undefined,
-          replyToContent: dto.replyToContent?.trim() || undefined,
-          productId: effectiveProductSnapshot?.id ?? undefined,
-          productTitle: effectiveProductSnapshot?.title || undefined,
-          productSubtitle: effectiveProductSnapshot?.subtitle || undefined,
-          productPriceLabel: effectiveProductSnapshot?.priceLabel || undefined,
-          productImageUrl: effectiveProductSnapshot?.imageUrl || undefined,
-        },
-        include: conversationMessageInclude,
-      });
+      createdMessage =
+        normalizedClientMessageId == null
+          ? await transaction.chatMessage.create({
+              data: {
+                conversationId: conversation.id,
+                senderUserId: userId,
+                content,
+                replyToMessageId: dto.replyToMessageId?.trim() || undefined,
+                replyToSenderUserId:
+                  dto.replyToSenderUserId?.trim() || undefined,
+                replyToSenderName: dto.replyToSenderName?.trim() || undefined,
+                replyToContent: dto.replyToContent?.trim() || undefined,
+                productId: effectiveProductSnapshot?.id ?? undefined,
+                productTitle: effectiveProductSnapshot?.title || undefined,
+                productSubtitle:
+                  effectiveProductSnapshot?.subtitle || undefined,
+                productPriceLabel:
+                  effectiveProductSnapshot?.priceLabel || undefined,
+                productImageUrl:
+                  effectiveProductSnapshot?.imageUrl || undefined,
+              },
+              include: conversationMessageInclude,
+            })
+          : await transaction.chatMessage.upsert({
+              where: {
+                senderUserId_clientMessageId: {
+                  senderUserId: userId,
+                  clientMessageId: normalizedClientMessageId,
+                },
+              },
+              update: {},
+              create: {
+                conversationId: conversation.id,
+                senderUserId: userId,
+                clientMessageId: normalizedClientMessageId,
+                content,
+                replyToMessageId: dto.replyToMessageId?.trim() || undefined,
+                replyToSenderUserId:
+                  dto.replyToSenderUserId?.trim() || undefined,
+                replyToSenderName: dto.replyToSenderName?.trim() || undefined,
+                replyToContent: dto.replyToContent?.trim() || undefined,
+                productId: effectiveProductSnapshot?.id ?? undefined,
+                productTitle: effectiveProductSnapshot?.title || undefined,
+                productSubtitle:
+                  effectiveProductSnapshot?.subtitle || undefined,
+                productPriceLabel:
+                  effectiveProductSnapshot?.priceLabel || undefined,
+                productImageUrl:
+                  effectiveProductSnapshot?.imageUrl || undefined,
+              },
+              include: conversationMessageInclude,
+            });
       createdMessageId = createdMessage.id;
 
       await transaction.chatConversation.update({
@@ -1165,23 +1204,30 @@ export class ConversationsService {
 
     const recipientConnected =
       this.conversationsRealtimeGateway.isUserConnected(recipientUserId);
-    await this.pushNotificationsService.sendChatMessageNotification({
-      recipientUserId,
-      conversationId: conversation.id,
-      senderDisplayName: sender.displayName,
-      senderAvatarUrl: sender.avatarUrl ?? undefined,
-      senderRoleLabel: this.resolveRoleLabel(sender),
-      recipientDisplayName: recipient.displayName,
-      content,
-      conversationKind: conversation.kind,
-      productId: conversation.productId ?? undefined,
-    });
+    const notificationDelivered =
+      await this.pushNotificationsService.sendChatMessageNotification({
+        recipientUserId,
+        conversationId: conversation.id,
+        senderDisplayName: sender.displayName,
+        senderAvatarUrl: sender.avatarUrl ?? undefined,
+        senderRoleLabel: this.resolveRoleLabel(sender),
+        recipientDisplayName: recipient.displayName,
+        content,
+        conversationKind: conversation.kind,
+        productId: conversation.productId ?? undefined,
+      });
 
-    if (createdMessageId && recipientConnected) {
+    if (createdMessageId && (recipientConnected || notificationDelivered)) {
+      const deliveredAt = new Date();
+      await this.prisma.chatMessage.update({
+        where: { id: createdMessageId },
+        data: { deliveredAt },
+      });
       this.emitConversationDelivered(
         conversation,
         recipientUserId,
         createdMessageId,
+        deliveredAt,
       );
     }
 
@@ -1219,43 +1265,93 @@ export class ConversationsService {
         : conversation.buyer;
 
     await this.assertUsersCanInteract(userId, recipientUserId);
+    const normalizedClientMessageId = dto.clientMessageId?.trim() || undefined;
 
     let createdMessage: ConversationMessageDetail | null = null;
     let createdMessageId: string | null = null;
     await this.prisma.$transaction(async (transaction) => {
-      createdMessage = await transaction.chatMessage.create({
-        data: {
-          conversationId: conversation.id,
-          senderUserId: userId,
-          content,
-          kind: dto.kind,
-          replyToMessageId: dto.replyToMessageId?.trim() || undefined,
-          replyToSenderUserId: dto.replyToSenderUserId?.trim() || undefined,
-          replyToSenderName: dto.replyToSenderName?.trim() || undefined,
-          replyToContent: dto.replyToContent?.trim() || undefined,
-          media: {
-            create: {
-              mediaType: mediaPayload.mediaType,
-              mimeType: mediaPayload.mimeType ?? undefined,
-              fileName: mediaPayload.fileName ?? undefined,
-              fileSizeBytes: mediaPayload.fileSizeBytes ?? undefined,
-              storageProvider: mediaPayload.storageProvider,
-              storageKey: mediaPayload.storageKey ?? undefined,
-              publicUrl: mediaPayload.publicUrl,
-              previewUrl: mediaPayload.previewUrl ?? undefined,
-              thumbnailUrl: mediaPayload.thumbnailUrl ?? undefined,
-              width: mediaPayload.width ?? undefined,
-              height: mediaPayload.height ?? undefined,
-              encryptionScheme: mediaPayload.encryptionScheme ?? undefined,
-              encryptionKeyB64: mediaPayload.encryptionKeyB64 ?? undefined,
-              encryptionIvB64: mediaPayload.encryptionIvB64 ?? undefined,
-              fileSha256B64: mediaPayload.fileSha256B64 ?? undefined,
-              mediaGroupId: mediaPayload.mediaGroupId ?? undefined,
-            },
-          },
-        },
-        include: conversationMessageInclude,
-      });
+      createdMessage =
+        normalizedClientMessageId == null
+          ? await transaction.chatMessage.create({
+              data: {
+                conversationId: conversation.id,
+                senderUserId: userId,
+                content,
+                kind: dto.kind,
+                replyToMessageId: dto.replyToMessageId?.trim() || undefined,
+                replyToSenderUserId:
+                  dto.replyToSenderUserId?.trim() || undefined,
+                replyToSenderName: dto.replyToSenderName?.trim() || undefined,
+                replyToContent: dto.replyToContent?.trim() || undefined,
+                media: {
+                  create: {
+                    mediaType: mediaPayload.mediaType,
+                    mimeType: mediaPayload.mimeType ?? undefined,
+                    fileName: mediaPayload.fileName ?? undefined,
+                    fileSizeBytes: mediaPayload.fileSizeBytes ?? undefined,
+                    storageProvider: mediaPayload.storageProvider,
+                    storageKey: mediaPayload.storageKey ?? undefined,
+                    publicUrl: mediaPayload.publicUrl,
+                    previewUrl: mediaPayload.previewUrl ?? undefined,
+                    thumbnailUrl: mediaPayload.thumbnailUrl ?? undefined,
+                    width: mediaPayload.width ?? undefined,
+                    height: mediaPayload.height ?? undefined,
+                    encryptionScheme:
+                      mediaPayload.encryptionScheme ?? undefined,
+                    encryptionKeyB64:
+                      mediaPayload.encryptionKeyB64 ?? undefined,
+                    encryptionIvB64: mediaPayload.encryptionIvB64 ?? undefined,
+                    fileSha256B64: mediaPayload.fileSha256B64 ?? undefined,
+                    mediaGroupId: mediaPayload.mediaGroupId ?? undefined,
+                  },
+                },
+              },
+              include: conversationMessageInclude,
+            })
+          : await transaction.chatMessage.upsert({
+              where: {
+                senderUserId_clientMessageId: {
+                  senderUserId: userId,
+                  clientMessageId: normalizedClientMessageId,
+                },
+              },
+              update: {},
+              create: {
+                conversationId: conversation.id,
+                senderUserId: userId,
+                clientMessageId: normalizedClientMessageId,
+                content,
+                kind: dto.kind,
+                replyToMessageId: dto.replyToMessageId?.trim() || undefined,
+                replyToSenderUserId:
+                  dto.replyToSenderUserId?.trim() || undefined,
+                replyToSenderName: dto.replyToSenderName?.trim() || undefined,
+                replyToContent: dto.replyToContent?.trim() || undefined,
+                media: {
+                  create: {
+                    mediaType: mediaPayload.mediaType,
+                    mimeType: mediaPayload.mimeType ?? undefined,
+                    fileName: mediaPayload.fileName ?? undefined,
+                    fileSizeBytes: mediaPayload.fileSizeBytes ?? undefined,
+                    storageProvider: mediaPayload.storageProvider,
+                    storageKey: mediaPayload.storageKey ?? undefined,
+                    publicUrl: mediaPayload.publicUrl,
+                    previewUrl: mediaPayload.previewUrl ?? undefined,
+                    thumbnailUrl: mediaPayload.thumbnailUrl ?? undefined,
+                    width: mediaPayload.width ?? undefined,
+                    height: mediaPayload.height ?? undefined,
+                    encryptionScheme:
+                      mediaPayload.encryptionScheme ?? undefined,
+                    encryptionKeyB64:
+                      mediaPayload.encryptionKeyB64 ?? undefined,
+                    encryptionIvB64: mediaPayload.encryptionIvB64 ?? undefined,
+                    fileSha256B64: mediaPayload.fileSha256B64 ?? undefined,
+                    mediaGroupId: mediaPayload.mediaGroupId ?? undefined,
+                  },
+                },
+              },
+              include: conversationMessageInclude,
+            });
       createdMessageId = createdMessage.id;
 
       await transaction.chatConversation.update({
@@ -1280,23 +1376,30 @@ export class ConversationsService {
 
     const recipientConnected =
       this.conversationsRealtimeGateway.isUserConnected(recipientUserId);
-    await this.pushNotificationsService.sendChatMessageNotification({
-      recipientUserId,
-      conversationId: conversation.id,
-      senderDisplayName: sender.displayName,
-      senderAvatarUrl: sender.avatarUrl ?? undefined,
-      senderRoleLabel: this.resolveRoleLabel(sender),
-      recipientDisplayName: recipient.displayName,
-      content,
-      conversationKind: conversation.kind,
-      productId: conversation.productId ?? undefined,
-    });
+    const notificationDelivered =
+      await this.pushNotificationsService.sendChatMessageNotification({
+        recipientUserId,
+        conversationId: conversation.id,
+        senderDisplayName: sender.displayName,
+        senderAvatarUrl: sender.avatarUrl ?? undefined,
+        senderRoleLabel: this.resolveRoleLabel(sender),
+        recipientDisplayName: recipient.displayName,
+        content,
+        conversationKind: conversation.kind,
+        productId: conversation.productId ?? undefined,
+      });
 
-    if (createdMessageId && recipientConnected) {
+    if (createdMessageId && (recipientConnected || notificationDelivered)) {
+      const deliveredAt = new Date();
+      await this.prisma.chatMessage.update({
+        where: { id: createdMessageId },
+        data: { deliveredAt },
+      });
       this.emitConversationDelivered(
         conversation,
         recipientUserId,
         createdMessageId,
+        deliveredAt,
       );
     }
 
@@ -1389,6 +1492,7 @@ export class ConversationsService {
     conversation: { id: string; buyerUserId: string; sellerUserId: string },
     recipientUserId: string,
     messageId: string,
+    deliveredAt: Date,
   ) {
     const senderUserId =
       conversation.buyerUserId === recipientUserId
@@ -1401,7 +1505,7 @@ export class ConversationsService {
         conversationId: conversation.id,
         actorUserId: recipientUserId,
         messageId,
-        deliveredAt: new Date().toISOString(),
+        deliveredAt: deliveredAt.toISOString(),
       },
     );
   }
@@ -1411,9 +1515,12 @@ export class ConversationsService {
   ): ConversationRealtimeMessage {
     return {
       id: message.id,
+      clientMessageId: message.clientMessageId,
       content: message.content,
       kind: message.kind,
+      acceptedAt: message.acceptedAt?.toISOString() ?? null,
       createdAt: message.createdAt.toISOString(),
+      deliveredAt: message.deliveredAt?.toISOString() ?? null,
       readAt: message.readAt?.toISOString() ?? null,
       reply: this.presentRealtimeMessageReply(message),
       sender: {
@@ -1661,9 +1768,12 @@ export class ConversationsService {
         : null,
       messages: page.messages.map((message) => ({
         id: message.id,
+        clientMessageId: message.clientMessageId,
         content: message.content,
         kind: message.kind,
+        acceptedAt: message.acceptedAt?.toISOString() ?? null,
         createdAt: message.createdAt.toISOString(),
+        deliveredAt: message.deliveredAt?.toISOString() ?? null,
         readAt: message.readAt?.toISOString() ?? null,
         isMine: message.senderUserId === userId,
         reply: this.presentMessageReply(message, userId),
@@ -1716,9 +1826,12 @@ export class ConversationsService {
     const messages = page.messages.map<ConversationThreadMessage>(
       (message) => ({
         id: message.id,
+        clientMessageId: message.clientMessageId,
         content: message.content,
         kind: message.kind,
+        acceptedAt: message.acceptedAt?.toISOString() ?? null,
         createdAt: message.createdAt.toISOString(),
+        deliveredAt: message.deliveredAt?.toISOString() ?? null,
         readAt: message.readAt?.toISOString() ?? null,
         isMine: message.senderUserId === userId,
         reply: this.presentMessageReply(message, userId),

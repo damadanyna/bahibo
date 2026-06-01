@@ -46,6 +46,15 @@ class MainNavigationMessagesPanel extends StatefulWidget {
     return state._closeEmbeddedConversationIfOpen();
   }
 
+  static void markConversationAsReadInList(String conversationId) {
+    final state = panelKey.currentState;
+    if (state is! _MainNavigationMessagesPanelState) {
+      return;
+    }
+
+    state._markConversationLocallyAsRead(conversationId);
+  }
+
   @override
   State<MainNavigationMessagesPanel> createState() =>
       _MainNavigationMessagesPanelState();
@@ -974,12 +983,14 @@ class _MainNavigationMessagesPanelState
   void _openConversation(Map<String, dynamic> conversation) {
     final conversationId = _conversationId(conversation);
     if (conversationId != null) {
+      _markConversationLocallyAsRead(conversationId);
       unawaited(
         AppAnalytics.instance.logConversationOpened(
           conversationId: conversationId,
           source: 'list',
         ),
       );
+      unawaited(_markConversationOpenedAsRead(conversationId));
     } else {
       unawaited(
         AppAnalytics.instance.logUserEvent(
@@ -1037,6 +1048,34 @@ class _MainNavigationMessagesPanelState
 
     setState(() => _activeEmbeddedConversationKey = conversationKey);
     mainNavigationChatOpenNotifier.value = true;
+  }
+
+  Future<void> _markConversationOpenedAsRead(String conversationId) async {
+    try {
+      await _conversationsApiService.markConversationRead(
+        conversationId: conversationId,
+      );
+    } on AppApiException {
+      // ChatPage will retry when the visible conversation is hydrated.
+    }
+  }
+
+  void _markConversationLocallyAsRead(String conversationId) {
+    final conversationIndex = _conversations.indexWhere(
+      (conversation) => _conversationId(conversation) == conversationId,
+    );
+    if (conversationIndex < 0) {
+      return;
+    }
+
+    final currentConversation = _conversations[conversationIndex];
+    if (_conversationUnreadCount(currentConversation) == 0) {
+      return;
+    }
+
+    final nextConversation = Map<String, dynamic>.from(currentConversation)
+      ..['unreadCount'] = 0;
+    _replaceConversationInList(nextConversation, preserveOrdering: true);
   }
 
   List<Widget> _buildEmbeddedConversationLayers() {

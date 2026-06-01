@@ -6,7 +6,7 @@ import {
   IsString,
   MaxLength,
   Min,
-} from 'class-validator';
+} from "class-validator";
 
 export class CreateMediaMessageDto {
   @IsOptional()
@@ -14,13 +14,18 @@ export class CreateMediaMessageDto {
   @MaxLength(2000)
   content?: string;
 
+  @IsOptional()
   @IsString()
-  @IsIn(['IMAGE', 'DOCUMENT'])
-  kind!: 'IMAGE' | 'DOCUMENT';
+  @MaxLength(191)
+  clientMessageId?: string;
 
   @IsString()
-  @IsIn(['image', 'document'])
-  mediaType!: 'image' | 'document';
+  @IsIn(["IMAGE", "DOCUMENT"])
+  kind!: "IMAGE" | "DOCUMENT";
+
+  @IsString()
+  @IsIn(["image", "document"])
+  mediaType!: "image" | "document";
 
   @IsString()
   @IsNotEmpty()

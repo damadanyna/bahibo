@@ -871,6 +871,14 @@ class ChatSessionController extends ChangeNotifier {
           fallbackProductId: target.productId,
           fallbackUserId: target.userId,
         );
+        final isMine = normalizedMessage['isMine'] == true;
+        final messageId = normalizedMessage['id']?.toString().trim() ?? '';
+        if (!isMine && messageId.isNotEmpty) {
+          _realtimeService.emitDeliveredAck(
+            conversationId: conversationId,
+            messageId: messageId,
+          );
+        }
         _scheduleRealtimeNewMessageReconciliation();
         return true;
       case 'conversation:read':
@@ -1145,6 +1153,12 @@ class ChatSessionController extends ChangeNotifier {
     LocalPendingTextMessage pendingMessage,
     Map<String, dynamic> confirmedMessage,
   ) {
+    final confirmedClientMessageId =
+        confirmedMessage['clientMessageId']?.toString().trim() ?? '';
+    if (confirmedClientMessageId.isNotEmpty) {
+      return confirmedClientMessageId == pendingMessage.id;
+    }
+
     if (confirmedMessage['isMine'] != true) {
       return false;
     }
@@ -1453,7 +1467,17 @@ class ChatSessionController extends ChangeNotifier {
       if (messageId.isEmpty) {
         continue;
       }
-      nextById[messageId] = Map<String, dynamic>.from(message);
+      final nextMessage = Map<String, dynamic>.from(message);
+      final currentMessage = nextById[messageId];
+      if ((nextMessage['deliveredAt']?.toString().trim() ?? '').isEmpty &&
+          currentMessage != null) {
+        final currentDeliveredAt =
+            currentMessage['deliveredAt']?.toString().trim() ?? '';
+        if (currentDeliveredAt.isNotEmpty) {
+          nextMessage['deliveredAt'] = currentDeliveredAt;
+        }
+      }
+      nextById[messageId] = nextMessage;
     }
 
     final merged = nextById.values.toList(growable: false);
@@ -1473,7 +1497,30 @@ class ChatSessionController extends ChangeNotifier {
 
     final incomingSorted =
         incoming
-            .map((message) => Map<String, dynamic>.from(message))
+            .map((message) {
+              final nextMessage = Map<String, dynamic>.from(message);
+              final messageId = nextMessage['id']?.toString().trim() ?? '';
+              if (messageId.isEmpty) {
+                return nextMessage;
+              }
+
+              final currentMessage = current.firstWhere(
+                (existingMessage) =>
+                    (existingMessage['id']?.toString().trim() ?? '') ==
+                    messageId,
+                orElse: () => const <String, dynamic>{},
+              );
+              if ((nextMessage['deliveredAt']?.toString().trim() ?? '')
+                      .isEmpty &&
+                  currentMessage.isNotEmpty) {
+                final currentDeliveredAt =
+                    currentMessage['deliveredAt']?.toString().trim() ?? '';
+                if (currentDeliveredAt.isNotEmpty) {
+                  nextMessage['deliveredAt'] = currentDeliveredAt;
+                }
+              }
+              return nextMessage;
+            })
             .toList(growable: true)
           ..sort(_compareRawMessageOrder);
     final oldestIncoming = incomingSorted.first;

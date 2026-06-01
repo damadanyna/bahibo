@@ -388,6 +388,7 @@ model ChatMessage {
   senderUserId   String
   content        String
   kind           ChatMessageKind  @default(TEXT)
+  clientMessageId String?
   replyToMessageId String?
   replyToSenderUserId String?
   replyToSenderName String?
@@ -397,7 +398,9 @@ model ChatMessage {
   productSubtitle String?
   productPriceLabel String?
   productImageUrl String?
+  acceptedAt          DateTime         @default(now())
   createdAt           DateTime         @default(now())
+  deliveredAt         DateTime?
   readAt              DateTime?
   deletedForSenderAt  DateTime?
   deletedForBuyerAt   DateTime?
@@ -408,6 +411,9 @@ model ChatMessage {
   media          ChatMessageMedia?
 
   @@index([conversationId, createdAt])
+  @@index([conversationId, deliveredAt])
+  @@index([conversationId, readAt])
+  @@unique([senderUserId, clientMessageId])
   @@index([productId])
 }
 

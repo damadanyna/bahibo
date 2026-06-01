@@ -25,19 +25,25 @@ class ChatRealtimeService {
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   bool _hasInternetConnection = true;
   bool _isEnsuringConnection = false;
+  bool _shouldStayConnected = true;
   Timer? _reconnectTimer;
 
   Stream<Map<String, dynamic>> get events => _eventsController.stream;
 
+  bool get isConnected => _socket?.connected == true;
+
   void handleAppLifecycleStateChanged(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
+        _shouldStayConnected = true;
         unawaited(ensureConnected());
         break;
       case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
+        _shouldStayConnected = false;
+        disconnect();
         break;
     }
   }
@@ -51,6 +57,11 @@ class ChatRealtimeService {
 
     try {
       _ensureConnectivityMonitoring();
+
+      if (!_shouldStayConnected) {
+        disconnect();
+        return;
+      }
 
       if (!await _syncConnectivityState()) {
         disconnect();
@@ -196,12 +207,18 @@ class ChatRealtimeService {
       return;
     }
 
+    if (!_shouldStayConnected) {
+      return;
+    }
+
     _cancelReconnectRetry();
     unawaited(ensureConnected());
   }
 
   void _scheduleReconnectRetry() {
-    if (!_hasInternetConnection || _currentAccessToken == null) {
+    if (!_shouldStayConnected ||
+        !_hasInternetConnection ||
+        _currentAccessToken == null) {
       return;
     }
 
@@ -235,6 +252,30 @@ class ChatRealtimeService {
       'recipientUserId': recipientUserId,
       'isTyping': isTyping,
     });
+  }
+
+  void emitDeliveredAck({
+    required String conversationId,
+    required String messageId,
+  }) {
+    final socket = _socket;
+    if (socket == null || !socket.connected) {
+      return;
+    }
+
+    socket.emit('conversations:delivered:ack', {
+      'conversationId': conversationId,
+      'messageId': messageId,
+    });
+  }
+
+  void emitReadAck({required String conversationId}) {
+    final socket = _socket;
+    if (socket == null || !socket.connected) {
+      return;
+    }
+
+    socket.emit('conversations:read:ack', {'conversationId': conversationId});
   }
 
   void _disposeSocket({bool suppressReconnect = false}) {

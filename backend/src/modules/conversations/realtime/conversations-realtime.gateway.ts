@@ -7,21 +7,21 @@ import {
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
-} from '@nestjs/websockets';
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
-import { Server, Socket } from 'socket.io';
+} from "@nestjs/websockets";
+import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { JwtService } from "@nestjs/jwt";
+import { Server, Socket } from "socket.io";
 
-import { PrismaService } from '../../prisma/prisma.service';
+import { PrismaService } from "../../prisma/prisma.service";
 
 type ConversationRealtimePayload = {
   type:
-    | 'message:new'
-    | 'message:deleted'
-    | 'conversation:delivered'
-    | 'conversation:read'
-    | 'conversation:blocked';
+    | "message:new"
+    | "message:deleted"
+    | "conversation:delivered"
+    | "conversation:read"
+    | "conversation:blocked";
   conversationId: string;
   actorUserId: string;
   deliveredAt?: string | null;
@@ -30,9 +30,12 @@ type ConversationRealtimePayload = {
   readAt?: string | null;
   message?: {
     id: string;
+    clientMessageId: string | null;
     content: string;
-    kind: 'TEXT' | 'IMAGE' | 'DOCUMENT' | 'PRODUCT';
+    kind: "TEXT" | "IMAGE" | "DOCUMENT" | "PRODUCT";
+    acceptedAt: string | null;
     createdAt: string;
+    deliveredAt: string | null;
     readAt: string | null;
     reply: {
       messageId: string | null;
@@ -61,11 +64,20 @@ type ConversationTypingPayload = {
   isTyping: boolean;
 };
 
+type ConversationDeliveryAckPayload = {
+  conversationId: string;
+  messageId: string;
+};
+
+type ConversationReadAckPayload = {
+  conversationId: string;
+};
+
 type ProfileRealtimePayload = {
   type:
-    | 'profile:updated'
-    | 'profile:shop-request-updated'
-    | 'profile:public-updated';
+    | "profile:updated"
+    | "profile:shop-request-updated"
+    | "profile:public-updated";
   userId: string;
   profile: {
     id: string;
@@ -85,26 +97,26 @@ type ProfileRealtimePayload = {
 };
 
 type NotificationRealtimePayload = {
-  type: 'notifications:updated';
+  type: "notifications:updated";
   userId: string;
   reason:
-    | 'product_like'
-    | 'product_comment'
-    | 'followed_seller_activity'
-    | 'seller_follow'
-    | 'shop_request_approved';
+    | "product_like"
+    | "product_comment"
+    | "followed_seller_activity"
+    | "seller_follow"
+    | "shop_request_approved";
   unreadCount?: number;
 };
 
 type PresenceRealtimePayload = {
-  type: 'presence:updated';
+  type: "presence:updated";
   userId: string;
   isOnline: boolean;
   lastSeenAt?: string | null;
 };
 
 type LiveRealtimePayload = {
-  type: 'live:updated';
+  type: "live:updated";
   sellerProfileId: string;
   isLive: boolean;
   title: string | null;
@@ -113,16 +125,16 @@ type LiveRealtimePayload = {
 };
 
 type ProductRealtimePayload = {
-  type: 'product:updated';
+  type: "product:updated";
   productId: string;
   actorUserId: string;
   action:
-    | 'liked'
-    | 'unliked'
-    | 'commented'
-    | 'shared'
-    | 'updated'
-    | 'availability_changed';
+    | "liked"
+    | "unliked"
+    | "commented"
+    | "shared"
+    | "updated"
+    | "availability_changed";
   product: Record<string, unknown>;
   comment?: Record<string, unknown> | null;
 };
@@ -130,10 +142,10 @@ type ProductRealtimePayload = {
 @Injectable()
 @WebSocketGateway({
   cors: {
-    origin: '*',
+    origin: "*",
     credentials: true,
   },
-  transports: ['websocket', 'polling'],
+  transports: ["websocket", "polling"],
   pingInterval: 5000,
   pingTimeout: 8000,
 })
@@ -152,7 +164,7 @@ export class ConversationsRealtimeGateway
   ) {}
 
   afterInit() {
-    this.logger.log('Conversations realtime gateway ready');
+    this.logger.log("Conversations realtime gateway ready");
   }
 
   async handleConnection(client: Socket) {
@@ -168,12 +180,12 @@ export class ConversationsRealtimeGateway
         type?: string;
       }>(token, {
         secret: this.configService.get<string>(
-          'JWT_ACCESS_SECRET',
-          'change-me-access',
+          "JWT_ACCESS_SECRET",
+          "change-me-access",
         ),
       });
 
-      if (!payload.sub || payload.type === 'refresh') {
+      if (!payload.sub || payload.type === "refresh") {
         client.disconnect();
         return;
       }
@@ -186,7 +198,7 @@ export class ConversationsRealtimeGateway
       });
       await this.emitPendingMessageDeliveries(payload.sub);
       this.emitPresenceEvent({
-        type: 'presence:updated',
+        type: "presence:updated",
         userId: payload.sub,
         isOnline: true,
         lastSeenAt: null,
@@ -202,12 +214,14 @@ export class ConversationsRealtimeGateway
     if (userId != null) {
       const lastSeenAt = new Date();
       const isOnline = this.isUserConnected(userId, client.id);
-      void this.prisma.user.update({
-        where: { id: userId },
-        data: { lastSeenAt },
-      }).catch(() => undefined);
+      void this.prisma.user
+        .update({
+          where: { id: userId },
+          data: { lastSeenAt },
+        })
+        .catch(() => undefined);
       this.emitPresenceEvent({
-        type: 'presence:updated',
+        type: "presence:updated",
         userId,
         isOnline,
         lastSeenAt: lastSeenAt.toISOString(),
@@ -216,7 +230,7 @@ export class ConversationsRealtimeGateway
     }
   }
 
-  @SubscribeMessage('conversations:ping')
+  @SubscribeMessage("conversations:ping")
   handlePing(@ConnectedSocket() client: Socket) {
     return {
       ok: true,
@@ -225,7 +239,7 @@ export class ConversationsRealtimeGateway
     };
   }
 
-  @SubscribeMessage('conversations:typing')
+  @SubscribeMessage("conversations:typing")
   handleTyping(
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: ConversationTypingPayload,
@@ -239,13 +253,123 @@ export class ConversationsRealtimeGateway
       return;
     }
 
-    this.server.to(this.userRoom(payload.recipientUserId)).emit(
-      'conversations:typing',
-      {
-        type: 'typing:update',
+    this.server
+      .to(this.userRoom(payload.recipientUserId))
+      .emit("conversations:typing", {
+        type: "typing:update",
         conversationId: payload.conversationId,
         actorUserId,
         isTyping: payload.isTyping,
+      });
+  }
+
+  @SubscribeMessage("conversations:delivered:ack")
+  async handleDeliveredAck(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: ConversationDeliveryAckPayload,
+  ) {
+    const actorUserId = client.data.userId as string | undefined;
+    const conversationId = payload.conversationId?.trim() ?? "";
+    const messageId = payload.messageId?.trim() ?? "";
+    if (
+      actorUserId == null ||
+      conversationId.length === 0 ||
+      messageId.length === 0
+    ) {
+      return;
+    }
+
+    const message = await this.prisma.chatMessage.findFirst({
+      where: {
+        id: messageId,
+        conversationId,
+        senderUserId: {
+          not: actorUserId,
+        },
+        deliveredAt: null,
+        conversation: {
+          OR: [{ buyerUserId: actorUserId }, { sellerUserId: actorUserId }],
+        },
+      },
+      select: {
+        id: true,
+        conversationId: true,
+        senderUserId: true,
+      },
+    });
+
+    if (message == null) {
+      return;
+    }
+
+    const deliveredAt = new Date();
+    await this.prisma.chatMessage.update({
+      where: { id: message.id },
+      data: { deliveredAt },
+    });
+
+    this.emitConversationDeliveredEvent(message.senderUserId, {
+      type: "conversation:delivered",
+      conversationId: message.conversationId,
+      actorUserId,
+      messageId: message.id,
+      deliveredAt: deliveredAt.toISOString(),
+    });
+  }
+
+  @SubscribeMessage("conversations:read:ack")
+  async handleReadAck(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: ConversationReadAckPayload,
+  ) {
+    const actorUserId = client.data.userId as string | undefined;
+    const conversationId = payload.conversationId?.trim() ?? "";
+    if (actorUserId == null || conversationId.length === 0) {
+      return;
+    }
+
+    const conversation = await this.prisma.chatConversation.findFirst({
+      where: {
+        id: conversationId,
+        OR: [{ buyerUserId: actorUserId }, { sellerUserId: actorUserId }],
+      },
+      select: {
+        id: true,
+        buyerUserId: true,
+        sellerUserId: true,
+      },
+    });
+
+    if (conversation == null) {
+      return;
+    }
+
+    const readAt = new Date();
+    const result = await this.prisma.chatMessage.updateMany({
+      where: {
+        conversationId,
+        senderUserId: {
+          not: actorUserId,
+        },
+        readAt: null,
+      },
+      data: {
+        deliveredAt: readAt,
+        readAt,
+      },
+    });
+
+    if (result.count <= 0) {
+      return;
+    }
+
+    this.emitConversationEvent(
+      [conversation.buyerUserId, conversation.sellerUserId],
+      {
+        type: "conversation:read",
+        conversationId,
+        actorUserId,
+        readAt: readAt.toISOString(),
       },
     );
   }
@@ -260,7 +384,9 @@ export class ConversationsRealtimeGateway
 
     const uniqueUserIds = [...new Set(participantUserIds)];
     for (const userId of uniqueUserIds) {
-      this.server.to(this.userRoom(userId)).emit('conversations:updated', payload);
+      this.server
+        .to(this.userRoom(userId))
+        .emit("conversations:updated", payload);
     }
   }
 
@@ -272,7 +398,9 @@ export class ConversationsRealtimeGateway
       return;
     }
 
-    this.server.to(this.userRoom(userId)).emit('conversations:updated', payload);
+    this.server
+      .to(this.userRoom(userId))
+      .emit("conversations:updated", payload);
   }
 
   emitProfileEvent(userId: string, payload: ProfileRealtimePayload) {
@@ -280,7 +408,7 @@ export class ConversationsRealtimeGateway
       return;
     }
 
-    this.server.to(this.userRoom(userId)).emit('profiles:updated', payload);
+    this.server.to(this.userRoom(userId)).emit("profiles:updated", payload);
   }
 
   emitPublicProfileEvent(payload: ProfileRealtimePayload) {
@@ -288,7 +416,7 @@ export class ConversationsRealtimeGateway
       return;
     }
 
-    this.server.emit('profiles:updated', payload);
+    this.server.emit("profiles:updated", payload);
   }
 
   emitNotificationEvent(userId: string, payload: NotificationRealtimePayload) {
@@ -296,7 +424,9 @@ export class ConversationsRealtimeGateway
       return;
     }
 
-    this.server.to(this.userRoom(userId)).emit('notifications:updated', payload);
+    this.server
+      .to(this.userRoom(userId))
+      .emit("notifications:updated", payload);
   }
 
   emitPresenceEvent(payload: PresenceRealtimePayload) {
@@ -304,7 +434,7 @@ export class ConversationsRealtimeGateway
       return;
     }
 
-    this.server.emit('presence:updated', payload);
+    this.server.emit("presence:updated", payload);
   }
 
   emitLiveEvent(userIds: string[], payload: LiveRealtimePayload) {
@@ -314,7 +444,7 @@ export class ConversationsRealtimeGateway
 
     const uniqueUserIds = [...new Set(userIds)];
     for (const userId of uniqueUserIds) {
-      this.server.to(this.userRoom(userId)).emit('live:updated', payload);
+      this.server.to(this.userRoom(userId)).emit("live:updated", payload);
     }
   }
 
@@ -323,7 +453,7 @@ export class ConversationsRealtimeGateway
       return;
     }
 
-    this.server.emit('products:updated', payload);
+    this.server.emit("products:updated", payload);
   }
 
   isUserConnected(userId: string, excludingSocketId?: string) {
@@ -359,6 +489,7 @@ export class ConversationsRealtimeGateway
         senderUserId: {
           not: userId,
         },
+        deliveredAt: null,
         readAt: null,
         conversation: {
           OR: [
@@ -379,26 +510,35 @@ export class ConversationsRealtimeGateway
     });
 
     for (const message of unreadMessages) {
+      const deliveredAt = new Date();
+      await this.prisma.chatMessage.update({
+        where: { id: message.id },
+        data: { deliveredAt },
+      });
       this.emitConversationDeliveredEvent(message.senderUserId, {
-        type: 'conversation:delivered',
+        type: "conversation:delivered",
         conversationId: message.conversationId,
         actorUserId: userId,
         messageId: message.id,
-        deliveredAt: new Date().toISOString(),
+        deliveredAt: deliveredAt.toISOString(),
       });
     }
   }
 
   private extractAccessToken(client: Socket) {
     const authToken = client.handshake.auth.token;
-    if (typeof authToken === 'string' && authToken.trim().length > 0) {
+    if (typeof authToken === "string" && authToken.trim().length > 0) {
       return authToken.trim();
     }
 
     const authorizationHeader = client.handshake.headers.authorization;
-    if (typeof authorizationHeader === 'string') {
-      const [scheme, credentials] = authorizationHeader.split(' ');
-      if (scheme?.toLowerCase() === 'bearer' && credentials != null && credentials.trim().length > 0) {
+    if (typeof authorizationHeader === "string") {
+      const [scheme, credentials] = authorizationHeader.split(" ");
+      if (
+        scheme?.toLowerCase() === "bearer" &&
+        credentials != null &&
+        credentials.trim().length > 0
+      ) {
         return credentials.trim();
       }
     }
