@@ -1,8 +1,8 @@
-import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { IsNotEmpty, IsString, MaxLength } from "class-validator";
 
 export class CreateNotificationFeedbackDto {
   @IsString()
   @IsNotEmpty()
-  @MaxLength(1000)
+  @MaxLength(50000)
   message!: string;
 }

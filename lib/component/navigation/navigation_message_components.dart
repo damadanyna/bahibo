@@ -374,7 +374,7 @@ class NavigationConversationTile extends StatelessWidget {
                               vertical: 3,
                             ),
                             decoration: BoxDecoration(
-                              color: theme.colorScheme.error,
+                              color: const Color(0xFFE53935),
                               borderRadius: BorderRadius.circular(999),
                             ),
                             child: Text(
@@ -540,4 +540,3 @@ class NavigationIconActionButton extends StatelessWidget {
     );
   }
 }
-

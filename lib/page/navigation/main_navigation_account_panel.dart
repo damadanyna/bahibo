@@ -22,6 +22,7 @@ import 'package:banay/page/private_image_viewer.dart';
 import 'package:banay/page/dashboard_page.dart';
 import 'package:banay/page/live/live_watch_page.dart';
 import 'package:banay/page/live/live_preview_page.dart';
+import 'package:banay/page/qa_event_log_page.dart';
 import 'package:banay/page/productDetailSeller.dart' as seller_detail;
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/app_auth_service.dart';
@@ -3102,13 +3103,17 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          _resolvedStudioName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w900,
-                            height: 1,
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onLongPress: _openQaEventLogPage,
+                          child: Text(
+                            _resolvedStudioName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.headlineSmall?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              height: 1,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -3222,6 +3227,12 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     );
   }
 
+  Future<void> _openQaEventLogPage() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const QaEventLogPage()));
+  }
+
   Widget _buildTabNavigation(
     ThemeData theme,
     Color panelColor,
@@ -3252,14 +3263,19 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
                     curve: Curves.easeOut,
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: isSelected
                           ? accentColor.withValues(alpha: 0.10)
                           : Colors.transparent,
                       borderRadius: BorderRadius.circular(12),
                       border: isSelected
-                          ? Border.all(color: accentColor.withValues(alpha: 0.22))
+                          ? Border.all(
+                              color: accentColor.withValues(alpha: 0.22),
+                            )
                           : null,
                     ),
                     child: Column(
@@ -3280,7 +3296,9 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: isSelected ? accentColor : mutedColor,
-                            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
+                            fontWeight: isSelected
+                                ? FontWeight.w800
+                                : FontWeight.w500,
                             fontSize: 11.5,
                           ),
                         ),
@@ -3607,26 +3625,29 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                             ),
                           ),
                         ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.primary.withValues(
-                              alpha: 0.1,
+                        if (trailingText.isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 5,
                             ),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            trailingText,
-                            style: TextStyle(
-                              color: theme.colorScheme.primary,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary.withValues(
+                                alpha: 0.1,
+                              ),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              trailingText,
+                              style: TextStyle(
+                                color: theme.colorScheme.primary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -3873,8 +3894,10 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                               child: Align(
                                 alignment: Alignment.bottomCenter,
                                 child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 220),
-                                  height: 104 * bars[index],
+                                  duration: const Duration(milliseconds: 320),
+                                  curve: Curves.easeOutCubic,
+                                  width: double.infinity,
+                                  height: 90 * bars[index],
                                   decoration: BoxDecoration(
                                     gradient: LinearGradient(
                                       begin: Alignment.topCenter,

@@ -10,6 +10,7 @@ import 'package:banay/page/navigation/main_navigation_search_panel.dart';
 import 'package:banay/page/notifications_page.dart';
 import 'package:banay/page/productDetail.dart';
 import 'package:banay/localization/banay_localizations.dart';
+import 'package:banay/services/app_analytics.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/app_auth_service.dart';
 import 'package:banay/services/chat_realtime_service.dart';
@@ -69,6 +70,13 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
   }
 
   void _handleNavigationSelection(int index) {
+    unawaited(
+      AppAnalytics.instance.logUserEvent(
+        name: 'navigation_tab_selected',
+        parameters: {'tab_index': index, 'tab_name': _navigationTabName(index)},
+        source: 'navigation',
+      ),
+    );
     _switchNavigationIndex(index);
   }
 
@@ -296,6 +304,21 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
   }
 }
 
+String _navigationTabName(int index) {
+  switch (index) {
+    case 0:
+      return 'home';
+    case 1:
+      return 'search';
+    case 2:
+      return 'messages';
+    case 3:
+      return 'account';
+    default:
+      return 'unknown';
+  }
+}
+
 class MainNavigationBar extends StatelessWidget {
   final int currentIndex;
   final List<MainNavigationItem> items;
@@ -326,12 +349,12 @@ class MainNavigationBar extends StatelessWidget {
         : appColors.mutedText;
     final activeIconColor = accentGreen;
     const innerHorizontalPadding = 16.0;
-    const barHeight = 38.0;
-    const activeBubbleSize = 35.0;
-    const cradleSize = 50.0;
+    const barHeight = 48.0;
+    const activeBubbleSize = 44.0;
+    const cradleSize = 60.0;
 
     return SizedBox(
-      height: barHeight + bottomInset + 10,
+      height: barHeight + bottomInset + 14,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final contentWidth =
@@ -505,7 +528,7 @@ class _CapsuleNavigationButton extends StatelessWidget {
           clipBehavior: Clip.none,
           children: [
             Center(
-              child: Icon(icon, size: isSelected ? 35 : 23, color: iconColor),
+              child: Icon(icon, size: isSelected ? 38 : 27, color: iconColor),
             ),
             if (badgeLabel != null)
               Positioned(

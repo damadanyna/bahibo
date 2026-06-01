@@ -8,6 +8,7 @@ import 'package:banay/component/ui/dinamic_icon_input.dart';
 import 'package:banay/page/category_page.dart';
 import 'package:banay/page/productDetail.dart';
 import 'package:banay/localization/banay_localizations.dart';
+import 'package:banay/services/app_analytics.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/catalog_api_service.dart';
 import 'package:banay/services/search_history_service.dart';
@@ -224,6 +225,19 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
         ),
       );
 
+      await AppAnalytics.instance.logSearchQuery(query: normalizedQuery);
+      await AppAnalytics.instance.logUserEvent(
+        name: 'search_results_loaded',
+        parameters: {
+          'query': normalizedQuery,
+          'result_count': rawResults.length,
+          'user_count': counts['users'] ?? 0,
+          'category_count': counts['categories'] ?? 0,
+          'location_count': counts['locations'] ?? 0,
+        },
+        source: 'search',
+      );
+
       if (!mounted) return;
 
       setState(() {
@@ -240,6 +254,12 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
         _isSearchingApi = false;
       });
     } on AppApiException catch (error) {
+      await AppAnalytics.instance.logUserEvent(
+        name: 'search_failed',
+        parameters: {'query': normalizedQuery, 'reason': error.message},
+        source: 'search',
+        status: 'failure',
+      );
       if (!mounted) return;
       setState(() {
         _suggestions = const [];
@@ -396,88 +416,93 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: theme.cardColor,
+        color: theme.brightness == Brightness.dark
+            ? theme.appColors.inputFill
+            : theme.cardColor,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: theme.appColors.inputBorder),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 280),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                Icons.people_alt_outlined,
-                size: 18,
-                color: theme.colorScheme.primary,
+              Row(
+                children: [
+                  Icon(
+                    Icons.people_alt_outlined,
+                    size: 18,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    context.tr(BanayLocalizationKeys.searchSuggestionsTitle),
+                    style: TextStyle(
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 10),
-              Text(
-                context.tr(BanayLocalizationKeys.searchSuggestionsTitle),
-                style: TextStyle(
-                  color: theme.colorScheme.primary,
-                  fontWeight: FontWeight.w800,
+              const SizedBox(height: 10),
+              ...suggestions.map(
+                (suggestion) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: InkWell(
+                    onTap: () => _selectAutocompleteSuggestion(suggestion),
+                    borderRadius: BorderRadius.circular(14),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 2,
+                        vertical: 4,
+                      ),
+                      child: Row(
+                        children: [
+                          _buildAutocompleteLeading(theme, suggestion),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  suggestion.label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  suggestion.subtitle.isEmpty
+                                      ? context.tr(suggestion.typeLabel)
+                                      : '${context.tr(suggestion.typeLabel)} · ${suggestion.subtitle}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: theme.appColors.mutedText,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(
+                            Icons.arrow_forward_rounded,
+                            color: theme.colorScheme.primary,
+                            size: 20,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          ...suggestions.map(
-            (suggestion) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: InkWell(
-                onTap: () => _selectAutocompleteSuggestion(suggestion),
-                borderRadius: BorderRadius.circular(14),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 2,
-                    vertical: 4,
-                  ),
-                  child: Row(
-                    children: [
-                      _buildAutocompleteLeading(theme, suggestion),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              suggestion.label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              suggestion.subtitle.isEmpty
-                                  ? context.tr(suggestion.typeLabel)
-                                  : '${context.tr(suggestion.typeLabel)} · ${suggestion.subtitle}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: theme.appColors.mutedText,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        context.tr(BanayLocalizationKeys.searchAction),
-                        style: TextStyle(
-                          color: theme.colorScheme.primary,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -584,6 +609,16 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
 
   Future<void> _openSearchResult(_SearchSuggestion suggestion) async {
     final searchedQuery = _searchController.text.trim();
+    await AppAnalytics.instance.logUserEvent(
+      name: 'search_result_opened',
+      parameters: {
+        'query': searchedQuery,
+        'result_id': suggestion.id,
+        'result_type': suggestion.type.name,
+        'label': suggestion.label,
+      },
+      source: 'search',
+    );
     _selectSuggestion(suggestion);
 
     if (suggestion.type == _SuggestionType.product &&
@@ -681,27 +716,27 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
                     _searchFocusNode.requestFocus();
                   },
                 ),
-                if (showAutocomplete) ...[
-                  const SizedBox(height: 12),
-                  _buildAutocompleteSection(theme, autocompleteSuggestions),
-                ],
                 const SizedBox(height: 20),
-                if (showSearchResults)
-                  Expanded(child: _buildSuggestionsPanel(theme, suggestions))
-                else
-                  Expanded(
-                    child: ListView(
-                      padding: EdgeInsets.zero,
-                      children: [
-                        DinamicCategoriesHList(
-                          categories: _categories,
-                          showTitle: false,
-                          onCategoryTap: _openCategoryShortcut,
+                Expanded(
+                  child: showAutocomplete
+                      ? _buildAutocompleteSection(
+                          theme,
+                          autocompleteSuggestions,
+                        )
+                      : showSearchResults
+                      ? _buildSuggestionsPanel(theme, suggestions)
+                      : ListView(
+                          padding: EdgeInsets.zero,
+                          children: [
+                            DinamicCategoriesHList(
+                              categories: _categories,
+                              showTitle: false,
+                              onCategoryTap: _openCategoryShortcut,
+                            ),
+                            _buildSearchHistorySection(theme),
+                          ],
                         ),
-                        _buildSearchHistorySection(theme),
-                      ],
-                    ),
-                  ),
+                ),
               ],
             ),
           ),

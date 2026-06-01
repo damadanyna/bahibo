@@ -4,6 +4,7 @@ import 'package:banay/component/main_navigation_shell.dart';
 import 'package:banay/component/ui/dinamic_icon_button.dart';
 import 'package:banay/component/ui/dinamic_icon_input.dart';
 import 'package:banay/localization/banay_localizations.dart';
+import 'package:banay/services/app_analytics.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/app_auth_service.dart';
 import 'package:flutter/material.dart';
@@ -82,6 +83,15 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
         displayName: displayName,
         avatarUrl: avatarUrl,
       );
+      await AppAnalytics.instance.logProfileCreated();
+      await AppAnalytics.instance.logUserEvent(
+        name: 'profile_submitted',
+        parameters: {
+          'phone_e164': widget.phoneE164,
+          'has_avatar': avatarUrl != null && avatarUrl.isNotEmpty,
+        },
+        source: 'profile',
+      );
 
       if (!mounted) return;
 
@@ -90,6 +100,12 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
         MaterialPageRoute(builder: (context) => const BANAYNavigationShell()),
       );
     } on AppApiException catch (error) {
+      await AppAnalytics.instance.logUserEvent(
+        name: 'profile_submit_failed',
+        parameters: {'phone_e164': widget.phoneE164, 'reason': error.message},
+        source: 'profile',
+        status: 'failure',
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,

@@ -2,6 +2,7 @@ import 'package:banay/auth/otp_verification.dart';
 import 'package:banay/component/ui/dinamic_icon_button.dart';
 import 'package:banay/component/ui/dinamic_icon_input.dart';
 import 'package:banay/localization/banay_localizations.dart';
+import 'package:banay/services/app_analytics.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/app_auth_service.dart';
 import 'package:flutter/material.dart';
@@ -245,6 +246,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
         countryDialCode: _selectedCountryDialCode,
         appSignature: appSignature,
       );
+      await AppAnalytics.instance.logOtpRequested();
 
       if (!mounted) {
         return;
@@ -264,6 +266,12 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
         ),
       );
     } on AppApiException catch (error) {
+      await AppAnalytics.instance.logUserEvent(
+        name: 'otp_request_failed',
+        parameters: {'phone_e164': phoneE164, 'reason': error.message},
+        source: 'auth',
+        status: 'failure',
+      );
       if (!mounted) {
         return;
       }

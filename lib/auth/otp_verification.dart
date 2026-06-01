@@ -4,6 +4,7 @@ import 'package:banay/auth/profileInformation.dart';
 import 'package:banay/component/main_navigation_shell.dart';
 import 'package:banay/component/ui/dinamic_icon_button.dart';
 import 'package:banay/localization/banay_localizations.dart';
+import 'package:banay/services/app_analytics.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/app_auth_service.dart';
 import 'package:flutter/scheduler.dart';
@@ -202,12 +203,18 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
         phoneE164: widget.phoneE164,
         otpCode: otpCode,
       );
+      await AppAnalytics.instance.logOtpVerified();
 
       if (!mounted) {
         return;
       }
 
       if (response['authenticated'] == true) {
+        await AppAnalytics.instance.logUserEvent(
+          name: 'session_authenticated',
+          parameters: {'phone_e164': widget.phoneE164},
+          source: 'auth',
+        );
         shouldResetFlags = false;
         _runAfterFrame(() {
           Navigator.pushAndRemoveUntil(
@@ -221,6 +228,11 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
         return;
       }
 
+      await AppAnalytics.instance.logUserEvent(
+        name: 'profile_onboarding_started',
+        parameters: {'phone_e164': widget.phoneE164},
+        source: 'auth',
+      );
       shouldResetFlags = false;
       _runAfterFrame(() {
         Navigator.pushReplacement(
@@ -235,6 +247,12 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
         );
       });
     } on AppApiException catch (error) {
+      await AppAnalytics.instance.logUserEvent(
+        name: 'otp_verify_failed',
+        parameters: {'phone_e164': widget.phoneE164, 'reason': error.message},
+        source: 'auth',
+        status: 'failure',
+      );
       if (!mounted) {
         return;
       }
@@ -264,6 +282,11 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
         countryDialCode: widget.countryDialCode,
         appSignature: widget.appSignature,
       );
+      await AppAnalytics.instance.logUserEvent(
+        name: 'otp_resent',
+        parameters: {'phone_e164': widget.phoneE164},
+        source: 'auth',
+      );
 
       if (!mounted) {
         return;
@@ -281,6 +304,12 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
         SnackBar(content: Text(context.tr(BanayLocalizationKeys.newOtpSent))),
       );
     } on AppApiException catch (error) {
+      await AppAnalytics.instance.logUserEvent(
+        name: 'otp_resend_failed',
+        parameters: {'phone_e164': widget.phoneE164, 'reason': error.message},
+        source: 'auth',
+        status: 'failure',
+      );
       if (!mounted) {
         return;
       }

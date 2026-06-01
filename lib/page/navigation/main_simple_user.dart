@@ -9,6 +9,7 @@ import 'package:banay/component/ui/dinamic_icon_button.dart';
 import 'package:banay/component/user_profile_page.dart';
 import 'package:banay/localization/banay_localizations.dart';
 import 'package:banay/page/image_viewer_page.dart';
+import 'package:banay/page/qa_event_log_page.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/app_auth_service.dart';
 import 'package:banay/services/catalog_api_service.dart';
@@ -144,7 +145,8 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
 
   Future<void> _loadFollowedPeople() async {
     try {
-      final followedPeople = await _catalogApiService.fetchCurrentUserFollowing();
+      final followedPeople = await _catalogApiService
+          .fetchCurrentUserFollowing();
       if (!mounted) return;
       followedPeople.sort(
         (a, b) => _personFollowingScore(b).compareTo(_personFollowingScore(a)),
@@ -462,6 +464,12 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
     }
 
     await _updateDisplayName(nextName);
+  }
+
+  Future<void> _openQaEventLogPage() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const QaEventLogPage()));
   }
 
   Future<void> _updateDisplayName(String displayName) async {
@@ -1347,7 +1355,8 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                                   fontWeight: FontWeight.w600,
                                 ),
                               )
-                            else if (_isUploadingAvatarImage || _isUploadingCoverImage)
+                            else if (_isUploadingAvatarImage ||
+                                _isUploadingCoverImage)
                               Text(
                                 context.tr(
                                   BanayLocalizationKeys.accountImageUpdating,
@@ -1362,13 +1371,17 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Expanded(
-                                    child: Text(
-                                      _resolvedDisplayName,
-                                      style: theme.textTheme.headlineSmall
-                                          ?.copyWith(
-                                            color: titleColor,
-                                            fontWeight: FontWeight.w900,
-                                          ),
+                                    child: GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onLongPress: _openQaEventLogPage,
+                                      child: Text(
+                                        _resolvedDisplayName,
+                                        style: theme.textTheme.headlineSmall
+                                            ?.copyWith(
+                                              color: titleColor,
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(width: 12),
@@ -1500,14 +1513,19 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
                     curve: Curves.easeOut,
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: isSelected
                           ? accentColor.withValues(alpha: 0.10)
                           : Colors.transparent,
                       borderRadius: BorderRadius.circular(12),
                       border: isSelected
-                          ? Border.all(color: accentColor.withValues(alpha: 0.22))
+                          ? Border.all(
+                              color: accentColor.withValues(alpha: 0.22),
+                            )
                           : null,
                     ),
                     child: Column(
@@ -1528,7 +1546,9 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: isSelected ? accentColor : mutedColor,
-                            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
+                            fontWeight: isSelected
+                                ? FontWeight.w800
+                                : FontWeight.w500,
                             fontSize: 11.5,
                           ),
                         ),
@@ -1651,7 +1671,10 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                 borderRadius: BorderRadius.circular(16),
                 child: Container(
                   constraints: const BoxConstraints(minHeight: 64),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
@@ -1681,7 +1704,10 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFE53935),
                                   shape: BoxShape.circle,
-                                  border: Border.all(color: theme.cardColor, width: 2),
+                                  border: Border.all(
+                                    color: theme.cardColor,
+                                    width: 2,
+                                  ),
                                 ),
                               ),
                             ),
@@ -1757,10 +1783,15 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                       ),
                       const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
                         decoration: BoxDecoration(
                           color: isSeller
-                              ? theme.colorScheme.primary.withValues(alpha: 0.10)
+                              ? theme.colorScheme.primary.withValues(
+                                  alpha: 0.10,
+                                )
                               : appColors.panelMuted,
                           borderRadius: BorderRadius.circular(999),
                         ),
@@ -1769,7 +1800,9 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
-                            color: isSeller ? theme.colorScheme.primary : appColors.mutedText,
+                            color: isSeller
+                                ? theme.colorScheme.primary
+                                : appColors.mutedText,
                           ),
                         ),
                       ),
@@ -1975,53 +2008,57 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
     };
 
     final title = switch (blocker) {
-      _LocationAccessBlocker.servicesDisabled =>
-        context.tr(BanayLocalizationKeys.accountLocationServicesDisabledTitle),
-      _LocationAccessBlocker.permissionDenied =>
-        context.tr(BanayLocalizationKeys.accountLocationPermissionDeniedTitle),
-      _LocationAccessBlocker.permissionDeniedForever =>
-        context.tr(
-          BanayLocalizationKeys.accountLocationPermissionRequiredTitle,
-        ),
-      _LocationAccessBlocker.preciseLocationRequired =>
-        context.tr(BanayLocalizationKeys.accountLocationPreciseRequiredTitle),
+      _LocationAccessBlocker.servicesDisabled => context.tr(
+        BanayLocalizationKeys.accountLocationServicesDisabledTitle,
+      ),
+      _LocationAccessBlocker.permissionDenied => context.tr(
+        BanayLocalizationKeys.accountLocationPermissionDeniedTitle,
+      ),
+      _LocationAccessBlocker.permissionDeniedForever => context.tr(
+        BanayLocalizationKeys.accountLocationPermissionRequiredTitle,
+      ),
+      _LocationAccessBlocker.preciseLocationRequired => context.tr(
+        BanayLocalizationKeys.accountLocationPreciseRequiredTitle,
+      ),
     };
 
     final message = switch (blocker) {
-      _LocationAccessBlocker.servicesDisabled =>
-        context.tr(
-          BanayLocalizationKeys.accountLocationServicesDisabledMessage,
-        ),
-      _LocationAccessBlocker.permissionDenied =>
-        context.tr(
-          BanayLocalizationKeys.accountLocationPermissionDeniedMessage,
-        ),
-      _LocationAccessBlocker.permissionDeniedForever =>
-        context.tr(
-          BanayLocalizationKeys.accountLocationPermissionDeniedForeverMessage,
-        ),
-      _LocationAccessBlocker.preciseLocationRequired =>
-        context.tr(
-          BanayLocalizationKeys.accountLocationPreciseRequiredMessage,
-        ),
+      _LocationAccessBlocker.servicesDisabled => context.tr(
+        BanayLocalizationKeys.accountLocationServicesDisabledMessage,
+      ),
+      _LocationAccessBlocker.permissionDenied => context.tr(
+        BanayLocalizationKeys.accountLocationPermissionDeniedMessage,
+      ),
+      _LocationAccessBlocker.permissionDeniedForever => context.tr(
+        BanayLocalizationKeys.accountLocationPermissionDeniedForeverMessage,
+      ),
+      _LocationAccessBlocker.preciseLocationRequired => context.tr(
+        BanayLocalizationKeys.accountLocationPreciseRequiredMessage,
+      ),
     };
 
     final primaryLabel = switch (blocker) {
-      _LocationAccessBlocker.servicesDisabled =>
-        context.tr(BanayLocalizationKeys.accountOpenLocationSettings),
-      _LocationAccessBlocker.permissionDenied =>
-        context.tr(BanayLocalizationKeys.accountAllowNow),
-      _LocationAccessBlocker.permissionDeniedForever =>
-        context.tr(BanayLocalizationKeys.accountOpenAppSettings),
-      _LocationAccessBlocker.preciseLocationRequired =>
-        context.tr(BanayLocalizationKeys.accountOpenAppSettings),
+      _LocationAccessBlocker.servicesDisabled => context.tr(
+        BanayLocalizationKeys.accountOpenLocationSettings,
+      ),
+      _LocationAccessBlocker.permissionDenied => context.tr(
+        BanayLocalizationKeys.accountAllowNow,
+      ),
+      _LocationAccessBlocker.permissionDeniedForever => context.tr(
+        BanayLocalizationKeys.accountOpenAppSettings,
+      ),
+      _LocationAccessBlocker.preciseLocationRequired => context.tr(
+        BanayLocalizationKeys.accountOpenAppSettings,
+      ),
     };
 
     final primaryAction = switch (blocker) {
       _LocationAccessBlocker.servicesDisabled => _openLocationSettingsAndRetry,
       _LocationAccessBlocker.permissionDenied => _loadCurrentLocation,
-      _LocationAccessBlocker.permissionDeniedForever => _openAppSettingsAndRetry,
-      _LocationAccessBlocker.preciseLocationRequired => _openAppSettingsAndRetry,
+      _LocationAccessBlocker.permissionDeniedForever =>
+        _openAppSettingsAndRetry,
+      _LocationAccessBlocker.preciseLocationRequired =>
+        _openAppSettingsAndRetry,
     };
 
     return Column(

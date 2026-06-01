@@ -10,6 +10,7 @@ import 'package:banay/component/user_list_page.dart';
 import 'package:banay/page/chat_page.dart';
 import 'package:banay/page/productDetail.dart';
 import 'package:banay/services/app_api_client.dart';
+import 'package:banay/services/app_analytics.dart';
 import 'package:banay/services/app_auth_service.dart';
 import 'package:banay/services/catalog_api_service.dart';
 import 'package:banay/services/chat/chat_participant_profile_update.dart';
@@ -196,11 +197,13 @@ class _MainNavigationMessagesPanelState
 
   void _updateUnreadCountNotifier([List<Map<String, dynamic>>? conversations]) {
     final source = conversations ?? _conversations;
-    mainNavigationUnreadMessageCountNotifier.value = source.fold<int>(
-      0,
-      (total, conversation) =>
-          total + (((conversation['unreadCount'] as num?)?.toInt()) ?? 0),
-    );
+    final groupedConversations = _groupConversationsByParticipant(source);
+    mainNavigationUnreadMessageCountNotifier.value = groupedConversations
+        .where(
+          (conversation) =>
+              (((conversation['unreadCount'] as num?)?.toInt()) ?? 0) > 0,
+        )
+        .length;
   }
 
   bool _applyIncrementalConversationEvent(Map<String, dynamic> event) {
@@ -712,16 +715,6 @@ class _MainNavigationMessagesPanelState
         preview.contains('réponse');
   }
 
-  int get _invitationBadgeCount {
-    final unreadConversations = _conversations
-        .where(_conversationIsUnread)
-        .length;
-    if (unreadConversations <= 0) {
-      return 0;
-    }
-    return unreadConversations > 9 ? 9 : unreadConversations;
-  }
-
   Future<void> _refreshPanel() async {
     await _loadConversations();
   }
@@ -982,6 +975,25 @@ class _MainNavigationMessagesPanelState
     final conversationId = _conversationId(conversation);
     if (conversationId != null) {
       unawaited(
+        AppAnalytics.instance.logConversationOpened(
+          conversationId: conversationId,
+          source: 'list',
+        ),
+      );
+    } else {
+      unawaited(
+        AppAnalytics.instance.logUserEvent(
+          name: 'conversation_opened',
+          parameters: {
+            'conversation_id': 'unknown',
+            'participant_name': _conversationName(conversation),
+          },
+          source: 'chat',
+        ),
+      );
+    }
+    if (conversationId != null) {
+      unawaited(
         _conversationsApiService.warmConversationById(
           conversationId,
           limit: _warmConversationMessageLimit,
@@ -1193,61 +1205,6 @@ class _MainNavigationMessagesPanelState
                   ),
                 ),
               ],
-              if (_invitationBadgeCount > 0)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(0, 12, 0, 8),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(16),
-                    onTap: () {},
-                    child: Ink(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        color: surfaceColor,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            constraints: const BoxConstraints(minWidth: 24),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.error,
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              _invitationBadgeCount > 9
-                                  ? '9+'
-                                  : '$_invitationBadgeCount',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w900,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              'Nouvelles invitations par message',
-                              style: TextStyle(
-                                color: strongTextColor.withValues(alpha: 0.92),
-                                fontWeight: FontWeight.w800,
-                                fontSize: 15,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
               if (_loadError != null)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(0, 8, 0, 0),

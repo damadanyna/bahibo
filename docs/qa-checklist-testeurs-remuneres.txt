@@ -1,0 +1,80 @@
+CHECKLIST QA BANAY
+Version: 2026-06-01
+Usage: document a envoyer aux testeurs remuneres
+
+Instructions pour le testeur
+- Appareil: indiquer modele, version Android, qualite reseau (bon/moyen/faible)
+- Build testee: indiquer version APK
+- Pour chaque anomalie: joindre capture ecran ou video courte
+- Si un test echoue: remplir la colonne "Bug observe" et proposer une priorite
+- Priorite:
+  P0 = blocant, impossible de continuer
+  P1 = majeur, fonctionnalite cle tres degradee
+  P2 = moyen, contournement possible
+  P3 = mineur ou cosmetique
+
+Colonnes a remplir
+| ID | Zone | Etapes | Resultat attendu | Bug observe | Priorite |
+
+| TC-001 | OTP / Connexion | Ouvrir l'app ; saisir un numero valide ; demander OTP ; saisir le bon code | Le code est accepte ; l'utilisateur avance vers l'etape suivante ou entre dans l'app selon son statut |  |  |
+| TC-002 | OTP / Connexion | Ouvrir l'app ; saisir un numero valide ; demander OTP ; saisir un mauvais code | Le code est refuse avec un message clair ; aucun crash ; possibilite de reessayer |  |  |
+| TC-003 | OTP / Connexion | Demander un OTP ; attendre expiration ; saisir le code expire | Le code expire est refuse avec un message clair ; l'utilisateur peut redemander un OTP |  |  |
+| TC-004 | OTP / Connexion | Demander plusieurs OTP de suite trop rapidement | L'app ou le backend bloque les demandes excessives avec un message comprensible |  |  |
+| TC-005 | Onboarding profil | Saisir un nom valide sans ajouter de photo de profil | Le compte est cree ; l'app affiche un avatar placeholder ; aucun crash |  |  |
+| TC-006 | Onboarding profil | Saisir un nom valide ; ajouter une photo de profil ; continuer | L'image est envoyee ; le compte est cree ; l'avatar s'affiche correctement |  |  |
+| TC-007 | Onboarding profil | Saisir un nom trop court ; continuer | L'app bloque la suite avec un message de validation clair |  |  |
+| TC-008 | Session | Se connecter ; fermer totalement l'app ; rouvrir l'app | La session est restauree si elle est encore valide |  |  |
+| TC-009 | Navigation | Ouvrir successivement Home ; Recherche ; Messages ; Compte ; revenir sur Home | La navigation est fluide ; aucun onglet ne plante ; la barre du bas reste lisible |  |  |
+| TC-010 | Navigation | Ouvrir Messages avec badge non lu ; revenir sur Home ; rouvrir Messages | Les compteurs restent coherents entre la liste et la barre de navigation |  |  |
+| TC-011 | Recherche | Aller dans Recherche ; taper 2 a 4 lettres d'un nom de personne | Les suggestions s'affichent sans overflow ; l'interface reste lisible avec clavier ouvert |  |  |
+| TC-012 | Recherche | Taper une requete produit ; toucher une suggestion produit | La page produit correspondante s'ouvre |  |  |
+| TC-013 | Recherche | Taper une requete personne ; toucher une suggestion personne | Le bon profil s'ouvre |  |  |
+| TC-014 | Recherche | Taper une requete qui ne renvoie rien | L'app affiche un etat vide clair ; aucun crash |  |  |
+| TC-015 | Recherche | Vider le champ avec la croix ; retaper une requete | Le champ se vide bien ; les suggestions se mettent a jour correctement |  |  |
+| TC-016 | Recherche | Verifier le libelle des types dans les suggestions et resultats | Le type personne est affiche comme "Personne" ; les labels sont coherents |  |  |
+| TC-017 | Home | Ouvrir Home sur reseau correct | Les produits se chargent ; les skeletons disparaissent ; aucun element casse |  |  |
+| TC-018 | Home | Scroller longuement dans Home jusqu'au chargement suivant | Le chargement pagine fonctionne ; pas de duplication evidente ; pas de freeze |  |  |
+| TC-019 | Home / Profil | Depuis Home, toucher l'avatar de l'AppBar | La page Notifications s'ouvre |  |  |
+| TC-020 | Notifications | Recevoir au moins une notification non lue ; revenir sur Home | Le badge rouge sur l'avatar affiche le bon nombre de notifications non lues |  |  |
+| TC-021 | Notifications | Ouvrir la page Notifications depuis l'avatar | La liste s'affiche ; les notifications sont visibles ; pas de crash |  |  |
+| TC-022 | Notifications | Lire une ou plusieurs notifications puis revenir sur Home | Le compteur non lu diminue correctement ou disparait si tout est lu |  |  |
+| TC-023 | Messages | Ouvrir Messages avec au moins une conversation non lue | La liste s'affiche ; chaque conversation non lue montre son bon compteur local |  |  |
+| TC-024 | Messages | Avoir 1 seule conversation non lue avec plusieurs messages non lus ; regarder le badge dans la navigation | Le badge de la navigation affiche 1 conversation non lue et non le nombre total de messages |  |  |
+| TC-025 | Messages | Ouvrir une conversation non lue puis revenir a la liste | La conversation est marquee lue ; le compteur global se met a jour |  |  |
+| TC-026 | Messages | Recevoir un nouveau message pendant que l'app est ouverte | La conversation remonte dans la liste ; le badge est mis a jour |  |  |
+| TC-027 | Messages | Verifier les badges de messages dans la liste | Le fond du compteur non lu est rouge ; le texte reste lisible |  |  |
+| TC-028 | Profil utilisateur | Ouvrir son compte avec avatar absent ou cover absente | Les placeholders s'affichent proprement ; aucun crash |  |  |
+| TC-029 | Profil utilisateur | Changer l'avatar depuis le compte | Le nouvel avatar est upload et visible apres sauvegarde |  |  |
+| TC-030 | Profil utilisateur | Changer la photo de couverture depuis le compte | La nouvelle cover est upload et visible apres sauvegarde |  |  |
+| TC-031 | Profil utilisateur | Changer le nom affiché | Le nouveau nom est visible apres mise a jour dans les zones attendues |  |  |
+| TC-032 | Profil public | Ouvrir le profil d'une personne sans avatar ou sans cover | Les placeholders sont propres ; aucun crash ni image casse |  |  |
+| TC-033 | Produit | Ouvrir plusieurs fiches produit depuis Home et Recherche | Les details correspondent au produit choisi ; aucun ecran blanc |  |  |
+| TC-034 | Produit | Ouvrir un produit sans image ou image invalide si disponible | Un placeholder propre s'affiche ; pas de crash |  |  |
+| TC-035 | Follow / Social | Suivre puis ne plus suivre un vendeur si la fonction est disponible | L'etat visuel change correctement ; retour cohérent apres refresh |  |  |
+| TC-036 | Performance | Tester la recherche, Home et Messages sur reseau faible | L'app reste utilisable ; les erreurs reseau sont comprehensibles |  |  |
+| TC-037 | Performance | Couper internet puis ouvrir Recherche, Messages, Notifications | L'app n'explose pas ; un message d'erreur ou etat vide est affiche |  |  |
+| TC-038 | UI Mobile | Utiliser un petit ecran Android avec clavier ouvert sur Recherche | Aucun overflow visuel ; suggestions scrollables ; actions accessibles |  |  |
+| TC-039 | UI Mobile | Verifier la barre de navigation en bas sur petit ecran | Les icones restent visibles ; les badges restent lisibles ; aucune superposition anormale |  |  |
+| TC-040 | Regression generale | Utiliser l'app pendant 10 a 15 minutes en navigation libre | Aucun crash ; pas de blocage majeur ; comportement coherent |  |  |
+
+Modele de ticket bug a remplir si anomalie
+- ID du test:
+- Ecran / zone:
+- Etapes precises pour reproduire:
+- Resultat observe:
+- Resultat attendu:
+- Frequence: toujours / parfois / rare
+- Priorite: P0 / P1 / P2 / P3
+- Appareil:
+- Version Android:
+- Reseau: wifi / 4G / 5G / faible
+- Capture ecran / video:
+
+Synthese testeur en fin de session
+- Nombre de bugs trouves:
+- Bugs bloquants:
+- Bugs majeurs:
+- Bugs moyens:
+- Bugs mineurs:
+- Parcours le plus fragile observe:
+- Recommandation avant mise en production: OUI / NON / OUI AVEC CORRECTIONS

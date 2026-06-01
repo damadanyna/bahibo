@@ -27,6 +27,8 @@ class DynamicIconInput extends StatefulWidget {
   final EdgeInsetsGeometry contentPadding;
   final bool showBorder;
   final bool obscureText;
+  final Color? backgroundColor;
+  final BorderRadiusGeometry? borderRadius;
 
   const DynamicIconInput({
     super.key,
@@ -50,6 +52,8 @@ class DynamicIconInput extends StatefulWidget {
     this.contentPadding = const EdgeInsets.fromLTRB(7, 3, 5, 3),
     this.showBorder = true,
     this.obscureText = false,
+    this.backgroundColor,
+    this.borderRadius,
   });
 
   @override
@@ -80,8 +84,10 @@ class _DynamicIconInputState extends State<DynamicIconInput> {
     return Container(
       padding: widget.contentPadding,
       decoration: BoxDecoration(
-        color: isDark ? appColors.inputFill : widget.panelColor,
-        borderRadius: BorderRadius.circular(999),
+        color:
+            widget.backgroundColor ??
+            (isDark ? appColors.inputFill : widget.panelColor),
+        borderRadius: widget.borderRadius ?? BorderRadius.circular(999),
         border: widget.showBorder
             ? Border.all(
                 color:
@@ -161,4 +167,3 @@ class _DynamicIconInputState extends State<DynamicIconInput> {
     );
   }
 }
-

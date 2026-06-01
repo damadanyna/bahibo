@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'dart:convert';
 
 import 'app_api_client.dart';
 
@@ -79,6 +80,14 @@ class NotificationsApiService {
       '/notifications/feedback',
       authenticated: true,
       body: {'message': message},
+    );
+  }
+
+  Future<void> sendQaLogExport(Map<String, dynamic> payload) async {
+    await _client.post(
+      '/notifications/feedback',
+      authenticated: true,
+      body: {'message': 'QA_LOG_EXPORT\n${jsonEncode(payload)}'},
     );
   }
 }

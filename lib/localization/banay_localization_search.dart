@@ -26,7 +26,7 @@ const Map<String, Map<String, String>> banaySearchLocalizedValues = {
     BanaySearchLocalizationKeys.resultsSummary:
         '{products} produits • {users} utilisateurs • {categories} categories • {locations} lieux',
     BanaySearchLocalizationKeys.typeProduct: 'Produit',
-    BanaySearchLocalizationKeys.typeUser: 'Utilisateur',
+    BanaySearchLocalizationKeys.typeUser: 'Personne',
     BanaySearchLocalizationKeys.typeCategory: 'Categorie',
     BanaySearchLocalizationKeys.typeLocation: 'Lieu',
   },
@@ -83,7 +83,7 @@ const Map<String, Map<String, String>> banaySearchLocalizedValues = {
     BanaySearchLocalizationKeys.resultsSummary:
         '{products} produits • {users} utilisateurs • {categories} categories • {locations} lieux',
     BanaySearchLocalizationKeys.typeProduct: 'Produit',
-    BanaySearchLocalizationKeys.typeUser: 'Utilisateur',
+    BanaySearchLocalizationKeys.typeUser: 'Personne',
     BanaySearchLocalizationKeys.typeCategory: 'Categorie',
     BanaySearchLocalizationKeys.typeLocation: 'Lieu',
   },
