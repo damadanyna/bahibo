@@ -1217,7 +1217,16 @@ export class ConversationsService {
         productId: conversation.productId ?? undefined,
       });
 
-    if (createdMessageId && (recipientConnected || notificationDelivered)) {
+    this.logger.debug(
+      `[DELIVERY CHECK] recipientId=${recipientUserId} | ` +
+        `connected=${recipientConnected} | ` +
+        `pushSent=${notificationDelivered} | ` +
+        `willDeliver=${recipientConnected}`,
+    );
+
+    // Marquer comme distribué uniquement si le destinataire est connecté
+    // Les messages hors-ligne seront marqués distribués par emitPendingMessageDeliveries lors de la reconnexion
+    if (createdMessageId && recipientConnected) {
       const deliveredAt = new Date();
       await this.prisma.chatMessage.update({
         where: { id: createdMessageId },
@@ -1389,7 +1398,16 @@ export class ConversationsService {
         productId: conversation.productId ?? undefined,
       });
 
-    if (createdMessageId && (recipientConnected || notificationDelivered)) {
+    this.logger.debug(
+      `[DELIVERY CHECK] recipientId=${recipientUserId} | ` +
+        `connected=${recipientConnected} | ` +
+        `pushSent=${notificationDelivered} | ` +
+        `willDeliver=${recipientConnected}`,
+    );
+
+    // Marquer comme distribué uniquement si le destinataire est connecté
+    // Les messages hors-ligne seront marqués distribués par emitPendingMessageDeliveries lors de la reconnexion
+    if (createdMessageId && recipientConnected) {
       const deliveredAt = new Date();
       await this.prisma.chatMessage.update({
         where: { id: createdMessageId },

@@ -1,13 +1,19 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { getApps, initializeApp, cert, type App, type ServiceAccount } from 'firebase-admin/app';
-import { getMessaging } from 'firebase-admin/messaging';
+import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import {
+  getApps,
+  initializeApp,
+  cert,
+  type App,
+  type ServiceAccount,
+} from "firebase-admin/app";
+import { getMessaging } from "firebase-admin/messaging";
 
-import { PrismaService } from '../prisma/prisma.service';
-import { RegisterDeviceTokenDto } from '../auth/dto/register-device-token.dto';
+import { PrismaService } from "../prisma/prisma.service";
+import { RegisterDeviceTokenDto } from "../auth/dto/register-device-token.dto";
 
-const ANDROID_NOTIFICATION_CHANNEL_ID = 'banay_messages_v2';
-const ANDROID_NOTIFICATION_SOUND = 'notification';
+const ANDROID_NOTIFICATION_CHANNEL_ID = "banay_messages_v2";
+const ANDROID_NOTIFICATION_SOUND = "notification";
 
 type SendChatMessageNotificationArgs = {
   recipientUserId: string;
@@ -17,7 +23,7 @@ type SendChatMessageNotificationArgs = {
   senderRoleLabel: string;
   recipientDisplayName: string;
   content: string;
-  conversationKind: 'DIRECT' | 'PRODUCT';
+  conversationKind: "DIRECT" | "PRODUCT";
   productId?: string;
 };
 
@@ -120,6 +126,9 @@ export class PushNotificationsService {
     });
 
     if (deviceTokens.length == 0) {
+      this.logger.debug(
+        `[PUSH] userId=${args.recipientUserId} has NO device tokens → false`,
+      );
       return false;
     }
 
@@ -137,26 +146,26 @@ export class PushNotificationsService {
         body: this.buildMessagePreview(args.content),
       },
       data: {
-        type: 'chat_message',
+        type: "chat_message",
         conversationId: args.conversationId,
         participantName: args.senderDisplayName,
         participantRole: args.senderRoleLabel,
-        participantAvatarUrl: args.senderAvatarUrl ?? '',
+        participantAvatarUrl: args.senderAvatarUrl ?? "",
         conversationKind: args.conversationKind,
-        productId: args.productId ?? '',
+        productId: args.productId ?? "",
       },
       android: {
-        priority: 'high',
+        priority: "high",
         notification: {
           channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
           sound: ANDROID_NOTIFICATION_SOUND,
-          clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+          clickAction: "FLUTTER_NOTIFICATION_CLICK",
         },
       },
       apns: {
         payload: {
           aps: {
-            sound: 'default',
+            sound: "default",
           },
         },
       },
@@ -167,8 +176,8 @@ export class PushNotificationsService {
       .filter(({ item }) => {
         const code = item.error?.code;
         return (
-          code === 'messaging/invalid-registration-token' ||
-          code === 'messaging/registration-token-not-registered'
+          code === "messaging/invalid-registration-token" ||
+          code === "messaging/registration-token-not-registered"
         );
       })
       .map(({ index }) => deviceTokens[index].token);
@@ -183,7 +192,15 @@ export class PushNotificationsService {
       });
     }
 
-    return response.successCount > 0;
+    const result = response.successCount > 0;
+    this.logger.debug(
+      `[PUSH] userId=${args.recipientUserId} | ` +
+        `sent=${response.successCount}/${deviceTokens.length} | ` +
+        `failed=${response.failureCount} | ` +
+        `result=${result}`,
+    );
+
+    return result;
   }
 
   async sendProductPublishedNotification(
@@ -238,27 +255,27 @@ export class PushNotificationsService {
         body: `a publie un nouveau produit : ${args.productTitle}.`,
       },
       data: {
-        type: 'product_added',
+        type: "product_added",
         sellerProfileId: args.sellerProfileId,
         sellerUserId: args.sellerUserId,
         sellerName: args.sellerDisplayName,
-        sellerAvatarUrl: args.sellerAvatarUrl ?? '',
+        sellerAvatarUrl: args.sellerAvatarUrl ?? "",
         productId: args.productId,
         productTitle: args.productTitle,
-        productImageUrl: args.productImageUrl ?? '',
+        productImageUrl: args.productImageUrl ?? "",
       },
       android: {
-        priority: 'high',
+        priority: "high",
         notification: {
           channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
           sound: ANDROID_NOTIFICATION_SOUND,
-          clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+          clickAction: "FLUTTER_NOTIFICATION_CLICK",
         },
       },
       apns: {
         payload: {
           aps: {
-            sound: 'default',
+            sound: "default",
           },
         },
       },
@@ -269,8 +286,8 @@ export class PushNotificationsService {
       .filter(({ item }) => {
         const code = item.error?.code;
         return (
-          code === 'messaging/invalid-registration-token' ||
-          code === 'messaging/registration-token-not-registered'
+          code === "messaging/invalid-registration-token" ||
+          code === "messaging/registration-token-not-registered"
         );
       })
       .map(({ index }) => deviceTokens[index].token);
@@ -338,27 +355,27 @@ export class PushNotificationsService {
         body: `a mis a jour le produit : ${args.productTitle}.`,
       },
       data: {
-        type: 'product_updated',
+        type: "product_updated",
         sellerProfileId: args.sellerProfileId,
         sellerUserId: args.sellerUserId,
         sellerName: args.sellerDisplayName,
-        sellerAvatarUrl: args.sellerAvatarUrl ?? '',
+        sellerAvatarUrl: args.sellerAvatarUrl ?? "",
         productId: args.productId,
         productTitle: args.productTitle,
-        productImageUrl: args.productImageUrl ?? '',
+        productImageUrl: args.productImageUrl ?? "",
       },
       android: {
-        priority: 'high',
+        priority: "high",
         notification: {
           channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
           sound: ANDROID_NOTIFICATION_SOUND,
-          clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+          clickAction: "FLUTTER_NOTIFICATION_CLICK",
         },
       },
       apns: {
         payload: {
           aps: {
-            sound: 'default',
+            sound: "default",
           },
         },
       },
@@ -369,8 +386,8 @@ export class PushNotificationsService {
       .filter(({ item }) => {
         const code = item.error?.code;
         return (
-          code === 'messaging/invalid-registration-token' ||
-          code === 'messaging/registration-token-not-registered'
+          code === "messaging/invalid-registration-token" ||
+          code === "messaging/registration-token-not-registered"
         );
       })
       .map(({ index }) => deviceTokens[index].token);
@@ -438,27 +455,27 @@ export class PushNotificationsService {
         body: `${args.commenterDisplayName} a commente le produit ${args.productTitle}.`,
       },
       data: {
-        type: 'followed_product_comment',
+        type: "followed_product_comment",
         sellerProfileId: args.sellerProfileId,
         sellerUserId: args.sellerUserId,
         sellerName: args.sellerDisplayName,
-        sellerAvatarUrl: args.sellerAvatarUrl ?? '',
+        sellerAvatarUrl: args.sellerAvatarUrl ?? "",
         productId: args.productId,
         productTitle: args.productTitle,
-        productImageUrl: args.productImageUrl ?? '',
+        productImageUrl: args.productImageUrl ?? "",
       },
       android: {
-        priority: 'high',
+        priority: "high",
         notification: {
           channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
           sound: ANDROID_NOTIFICATION_SOUND,
-          clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+          clickAction: "FLUTTER_NOTIFICATION_CLICK",
         },
       },
       apns: {
         payload: {
           aps: {
-            sound: 'default',
+            sound: "default",
           },
         },
       },
@@ -469,8 +486,8 @@ export class PushNotificationsService {
       .filter(({ item }) => {
         const code = item.error?.code;
         return (
-          code === 'messaging/invalid-registration-token' ||
-          code === 'messaging/registration-token-not-registered'
+          code === "messaging/invalid-registration-token" ||
+          code === "messaging/registration-token-not-registered"
         );
       })
       .map(({ index }) => deviceTokens[index].token);
@@ -516,26 +533,26 @@ export class PushNotificationsService {
         body: `a commente votre produit ${args.productTitle}.`,
       },
       data: {
-        type: 'product_comment',
+        type: "product_comment",
         sellerName: args.commenterDisplayName,
-        sellerAvatarUrl: args.commenterAvatarUrl ?? '',
+        sellerAvatarUrl: args.commenterAvatarUrl ?? "",
         commenterUserId: args.commenterUserId,
         productId: args.productId,
         productTitle: args.productTitle,
-        productImageUrl: args.productImageUrl ?? '',
+        productImageUrl: args.productImageUrl ?? "",
       },
       android: {
-        priority: 'high',
+        priority: "high",
         notification: {
           channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
           sound: ANDROID_NOTIFICATION_SOUND,
-          clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+          clickAction: "FLUTTER_NOTIFICATION_CLICK",
         },
       },
       apns: {
         payload: {
           aps: {
-            sound: 'default',
+            sound: "default",
           },
         },
       },
@@ -546,8 +563,8 @@ export class PushNotificationsService {
       .filter(({ item }) => {
         const code = item.error?.code;
         return (
-          code === 'messaging/invalid-registration-token' ||
-          code === 'messaging/registration-token-not-registered'
+          code === "messaging/invalid-registration-token" ||
+          code === "messaging/registration-token-not-registered"
         );
       })
       .map(({ index }) => deviceTokens[index].token);
@@ -588,27 +605,27 @@ export class PushNotificationsService {
       tokens: deviceTokens.map((deviceToken) => deviceToken.token),
       notification: {
         title: args.followerDisplayName,
-        body: 'vient de s\'abonner a votre boutique.',
+        body: "vient de s'abonner a votre boutique.",
       },
       data: {
-        type: 'seller_follow',
+        type: "seller_follow",
         sellerProfileId: args.sellerProfileId,
         followerUserId: args.followerUserId,
         sellerName: args.followerDisplayName,
-        sellerAvatarUrl: args.followerAvatarUrl ?? '',
+        sellerAvatarUrl: args.followerAvatarUrl ?? "",
       },
       android: {
-        priority: 'high',
+        priority: "high",
         notification: {
           channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
           sound: ANDROID_NOTIFICATION_SOUND,
-          clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+          clickAction: "FLUTTER_NOTIFICATION_CLICK",
         },
       },
       apns: {
         payload: {
           aps: {
-            sound: 'default',
+            sound: "default",
           },
         },
       },
@@ -619,8 +636,8 @@ export class PushNotificationsService {
       .filter(({ item }) => {
         const code = item.error?.code;
         return (
-          code === 'messaging/invalid-registration-token' ||
-          code === 'messaging/registration-token-not-registered'
+          code === "messaging/invalid-registration-token" ||
+          code === "messaging/registration-token-not-registered"
         );
       })
       .map(({ index }) => deviceTokens[index].token);
@@ -662,27 +679,27 @@ export class PushNotificationsService {
     const response = await getMessaging(this.firebaseApp).sendEachForMulticast({
       tokens: deviceTokens.map((deviceToken) => deviceToken.token),
       notification: {
-        title: 'Demande boutique approuvee',
-        body: 'Votre compte a ete passe en boutique. Vous pouvez maintenant publier vos produits.',
+        title: "Demande boutique approuvee",
+        body: "Votre compte a ete passe en boutique. Vous pouvez maintenant publier vos produits.",
       },
       data: {
-        type: 'shop_request_approved',
-        sellerProfileId: args.sellerProfileId ?? '',
+        type: "shop_request_approved",
+        sellerProfileId: args.sellerProfileId ?? "",
         sellerName: args.sellerDisplayName,
-        sellerAvatarUrl: args.sellerAvatarUrl ?? '',
+        sellerAvatarUrl: args.sellerAvatarUrl ?? "",
       },
       android: {
-        priority: 'high',
+        priority: "high",
         notification: {
           channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
           sound: ANDROID_NOTIFICATION_SOUND,
-          clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+          clickAction: "FLUTTER_NOTIFICATION_CLICK",
         },
       },
       apns: {
         payload: {
           aps: {
-            sound: 'default',
+            sound: "default",
           },
         },
       },
@@ -693,8 +710,8 @@ export class PushNotificationsService {
       .filter(({ item }) => {
         const code = item.error?.code;
         return (
-          code === 'messaging/invalid-registration-token' ||
-          code === 'messaging/registration-token-not-registered'
+          code === "messaging/invalid-registration-token" ||
+          code === "messaging/registration-token-not-registered"
         );
       })
       .map(({ index }) => deviceTokens[index].token);
@@ -719,7 +736,7 @@ export class PushNotificationsService {
     const serviceAccount = this.resolveServiceAccount();
     if (!serviceAccount) {
       this.logger.warn(
-        'Firebase Admin credentials are not configured. Set FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_PROJECT_ID/FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY to enable push delivery.',
+        "Firebase Admin credentials are not configured. Set FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_PROJECT_ID/FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY to enable push delivery.",
       );
       return undefined;
     }
@@ -731,14 +748,16 @@ export class PushNotificationsService {
   }
 
   private resolveServiceAccount(): ServiceAccount | undefined {
-    const rawJson = this.configService.get<string>('FIREBASE_SERVICE_ACCOUNT_JSON');
+    const rawJson = this.configService.get<string>(
+      "FIREBASE_SERVICE_ACCOUNT_JSON",
+    );
     if (rawJson?.trim()) {
       return this.parseServiceAccountJson(rawJson);
     }
 
-    const projectId = this.configService.get<string>('FIREBASE_PROJECT_ID');
-    const clientEmail = this.configService.get<string>('FIREBASE_CLIENT_EMAIL');
-    const privateKey = this.configService.get<string>('FIREBASE_PRIVATE_KEY');
+    const projectId = this.configService.get<string>("FIREBASE_PROJECT_ID");
+    const clientEmail = this.configService.get<string>("FIREBASE_CLIENT_EMAIL");
+    const privateKey = this.configService.get<string>("FIREBASE_PRIVATE_KEY");
 
     if (!projectId || !clientEmail || !privateKey) {
       return undefined;
@@ -747,7 +766,7 @@ export class PushNotificationsService {
     return {
       projectId,
       clientEmail,
-      privateKey: privateKey.replace(/\\n/g, '\n'),
+      privateKey: privateKey.replace(/\\n/g, "\n"),
     };
   }
 
@@ -760,10 +779,13 @@ export class PushNotificationsService {
 
       return {
         ...parsed,
-        privateKey: parsed.privateKey.replace(/\\n/g, '\n'),
+        privateKey: parsed.privateKey.replace(/\\n/g, "\n"),
       };
     } catch (error) {
-      this.logger.error('Unable to parse FIREBASE_SERVICE_ACCOUNT_JSON', error as Error);
+      this.logger.error(
+        "Unable to parse FIREBASE_SERVICE_ACCOUNT_JSON",
+        error as Error,
+      );
       return undefined;
     }
   }
