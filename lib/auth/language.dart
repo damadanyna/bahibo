@@ -44,6 +44,8 @@ class _LanguagePageState extends State<LanguagePage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final appColors = theme.appColors;
+    final onSurface = theme.colorScheme.onSurface;
+    final onSurfaceVariant = theme.colorScheme.onSurfaceVariant;
 
     return Scaffold(
       backgroundColor: appColors.backgroundBase,
@@ -58,7 +60,11 @@ class _LanguagePageState extends State<LanguagePage> {
               alignment: Alignment.center,
               child: Text(
                 context.tr(BanayLocalizationKeys.languagePageTitle),
-                style: TextStyle(fontSize: 25, fontWeight: FontWeight.w400),
+                style: TextStyle(
+                  fontSize: 25,
+                  fontWeight: FontWeight.w400,
+                  color: onSurface,
+                ),
               ),
             ),
             Container(
@@ -68,7 +74,7 @@ class _LanguagePageState extends State<LanguagePage> {
                 style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w400,
-                  color: appColors.mutedText,
+                  color: onSurfaceVariant,
                 ),
               ),
             ),
@@ -85,13 +91,13 @@ class _LanguagePageState extends State<LanguagePage> {
                     selectedTileColor: appColors.backgroundBase,
                     title: Text(
                       language['name']!,
-                      style: TextStyle(color: appColors.heroForeground),
+                      style: TextStyle(color: onSurface),
                     ),
                     // ignore: deprecated_member_use
                     groupValue: _selectedLanguage,
                     subtitle: Text(
                       language['native']!,
-                      style: TextStyle(color: appColors.mutedText),
+                      style: TextStyle(color: onSurfaceVariant),
                     ),
                     value: language['name']!,
                     // ignore: deprecated_member_use

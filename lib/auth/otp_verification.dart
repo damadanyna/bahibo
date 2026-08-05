@@ -326,6 +326,8 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final appColors = theme.appColors;
+    final onSurface = theme.colorScheme.onSurface;
+    final onSurfaceVariant = theme.colorScheme.onSurfaceVariant;
     final viewInsets = MediaQuery.viewInsetsOf(context);
 
     return Scaffold(
@@ -333,7 +335,7 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        foregroundColor: appColors.heroForeground,
+        foregroundColor: onSurface,
       ),
       body: Stack(
         children: [
@@ -363,7 +365,7 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
                             style: TextStyle(
                               fontSize: 28,
                               fontWeight: FontWeight.w700,
-                              color: appColors.heroForeground,
+                              color: onSurface,
                             ),
                           ),
                           const SizedBox(height: 12),
@@ -375,7 +377,7 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
                             style: TextStyle(
                               fontSize: 15,
                               height: 1.45,
-                              color: appColors.mutedText,
+                              color: onSurfaceVariant,
                             ),
                           ),
                           if (widget.appSignature == null ||
@@ -387,7 +389,7 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
                               ),
                               style: TextStyle(
                                 fontSize: 13,
-                                color: appColors.mutedText,
+                                color: onSurfaceVariant,
                               ),
                             ),
                           ],
@@ -409,7 +411,7 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
                                 ),
                                 style: TextStyle(
                                   fontWeight: FontWeight.w700,
-                                  color: appColors.heroForeground,
+                                  color: onSurface,
                                 ),
                               ),
                             ),
@@ -439,7 +441,7 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
                                 textStyle: TextStyle(
                                   fontSize: 24,
                                   fontWeight: FontWeight.w800,
-                                  color: appColors.heroForeground,
+                                  color: onSurface,
                                 ),
                                 radius: const Radius.circular(16),
                               ),
@@ -469,7 +471,7 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
                                     BanayLocalizationKeys.requestNewOtpNow,
                                   ),
                             textAlign: TextAlign.center,
-                            style: TextStyle(color: appColors.mutedText),
+                            style: TextStyle(color: onSurfaceVariant),
                           ),
                           const SizedBox(height: 18),
                           DynamicIconButton(
@@ -545,7 +547,7 @@ class _OtpVerificationPageState extends State<OtpVerificationPage>
                             BanayLocalizationKeys.otpVerifyingInProgress,
                           ),
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: appColors.mutedText),
+                          style: TextStyle(color: onSurfaceVariant),
                         ),
                         const SizedBox(height: 16),
                         LinearProgressIndicator(

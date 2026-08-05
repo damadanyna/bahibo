@@ -171,7 +171,6 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
 
   Future<void> _showPhoneConfirmationDialog() async {
     final theme = Theme.of(context);
-    final appColors = theme.appColors;
     final fullPhoneNumber = _buildPhoneE164();
 
     if (fullPhoneNumber.length < 10) {
@@ -195,7 +194,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
           children: [
             Text(
               context.tr(BanayLocalizationKeys.confirmNumber),
-              style: TextStyle(color: appColors.heroForeground),
+              style: TextStyle(color: theme.colorScheme.onSurface),
             ),
             const SizedBox(height: 8),
             Text(
@@ -204,14 +203,14 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w700,
-                color: appColors.heroForeground,
+                color: theme.colorScheme.onSurface,
               ),
             ),
           ],
         ),
         content: Text(
           context.tr(BanayLocalizationKeys.otpSmsSent),
-          style: TextStyle(color: appColors.mutedText),
+          style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
           textAlign: TextAlign.center,
         ),
         actions: [
@@ -290,6 +289,8 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final appColors = theme.appColors;
+    final onSurface = theme.colorScheme.onSurface;
+    final onSurfaceVariant = theme.colorScheme.onSurfaceVariant;
 
     return Scaffold(
       backgroundColor: appColors.backgroundBase,
@@ -304,7 +305,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
               style: TextStyle(
                 fontSize: 25,
                 fontWeight: FontWeight.w400,
-                color: appColors.heroForeground,
+                color: onSurface,
               ),
             ),
           ),
@@ -316,7 +317,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w400,
-                color: appColors.mutedText,
+                color: onSurfaceVariant,
               ),
             ),
           ),
@@ -327,7 +328,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w400,
-                color: appColors.mutedText,
+                color: onSurfaceVariant,
               ),
             ),
           ),
@@ -342,7 +343,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
                   borderColor: appColors.inputBorder,
                   hintText: context.tr(BanayLocalizationKeys.country),
                   textInputAction: TextInputAction.next,
-                  leadingIcon: Icon(Icons.public, color: appColors.mutedText),
+                  leadingIcon: Icon(Icons.public, color: onSurfaceVariant),
                   trailingIcon: PopupMenuButton<String>(
                     initialValue: _selectedCountryName,
                     tooltip: context.tr(
@@ -350,7 +351,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
                     ),
                     icon: Icon(
                       Icons.keyboard_arrow_down,
-                      color: appColors.heroForeground,
+                      color: onSurfaceVariant,
                     ),
                     onSelected: (country) {
                       setState(() {
@@ -390,7 +391,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
                         _selectedCountryDialCode,
                         style: TextStyle(
                           fontWeight: FontWeight.w700,
-                          color: appColors.heroForeground,
+                          color: onSurface,
                         ),
                       ),
                     ),
@@ -407,10 +408,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
                           FilteringTextInputFormatter.digitsOnly,
                         ],
                         textInputAction: TextInputAction.done,
-                        leadingIcon: Icon(
-                          Icons.phone,
-                          color: appColors.mutedText,
-                        ),
+                        leadingIcon: Icon(Icons.phone, color: onSurfaceVariant),
                         leadingSize: 38,
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 14,
@@ -448,10 +446,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
                         BanayLocalizationKeys.detectedNumber,
                         params: {'number': _simPhoneHint!},
                       ),
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: appColors.mutedText,
-                      ),
+                      style: TextStyle(fontSize: 12, color: onSurfaceVariant),
                     ),
                   ),
 
@@ -482,7 +477,7 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
                           text: 'En continuant, vous acceptez notre ',
                           style: TextStyle(
                             fontSize: 12,
-                            color: appColors.mutedText,
+                            color: onSurfaceVariant,
                           ),
                         ),
                         TextSpan(

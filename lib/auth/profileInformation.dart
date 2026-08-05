@@ -121,6 +121,8 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final appColors = theme.appColors;
+    final onSurface = theme.colorScheme.onSurface;
+    final onSurfaceVariant = theme.colorScheme.onSurfaceVariant;
     final screenHeight = MediaQuery.sizeOf(context).height;
     final viewInsets = MediaQuery.viewInsetsOf(context);
     final avatarSectionHeight = (screenHeight * 0.24).clamp(170.0, 250.0);
@@ -148,7 +150,7 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
                           style: TextStyle(
                             fontSize: 25,
                             fontWeight: FontWeight.w400,
-                            color: appColors.heroForeground,
+                            color: onSurface,
                           ),
                         ),
                       ),
@@ -159,7 +161,7 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
                           style: TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.w400,
-                            color: appColors.mutedText,
+                            color: onSurfaceVariant,
                           ),
                         ),
                       ),
@@ -184,7 +186,7 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
                                       ? Icon(
                                           Icons.person,
                                           size: avatarRadius * 1.8,
-                                          color: appColors.heroForeground,
+                                          color: onSurfaceVariant,
                                         )
                                       : null,
                                 ),
@@ -225,7 +227,7 @@ class _ProfileInformationPageState extends State<ProfileInformationPage> {
                         hintText: context.tr(BanayLocalizationKeys.yourName),
                         leadingIcon: Icon(
                           Icons.person_outline,
-                          color: appColors.mutedText,
+                          color: onSurfaceVariant,
                         ),
                         leadingSize: 38,
                         contentPadding: const EdgeInsets.symmetric(
