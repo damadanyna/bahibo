@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict dsOUp8dCNFUP4yA5gzc2vGyzw2jR7nDGDHYal1QAMob6QZTMwtVCZRO4If9XvRc
+\restrict 6w19AYU9GKE2sYW9NARYlbuDzYnxQeMnPOjLUAUBOxQhySMFyxNgyOGIYd7y1gT
 
 -- Dumped from database version 17.9
 -- Dumped by pg_dump version 17.9
@@ -30,6 +30,20 @@ CREATE TYPE public."ChatConversationKind" AS ENUM (
 
 
 ALTER TYPE public."ChatConversationKind" OWNER TO postgres;
+
+--
+-- Name: ChatMessageKind; Type: TYPE; Schema: public; Owner: postgres
+--
+
+CREATE TYPE public."ChatMessageKind" AS ENUM (
+    'TEXT',
+    'IMAGE',
+    'DOCUMENT',
+    'PRODUCT'
+);
+
+
+ALTER TYPE public."ChatMessageKind" OWNER TO postgres;
 
 --
 -- Name: OrderStatus; Type: TYPE; Schema: public; Owner: postgres
@@ -177,11 +191,49 @@ CREATE TABLE public."ChatMessage" (
     "replyToContent" text,
     "replyToMessageId" text,
     "replyToSenderName" text,
-    "replyToSenderUserId" text
+    "replyToSenderUserId" text,
+    kind public."ChatMessageKind" DEFAULT 'TEXT'::public."ChatMessageKind" NOT NULL,
+    "deletedForSenderAt" timestamp(3) without time zone,
+    "editedAt" timestamp(3) without time zone,
+    "deletedForBuyerAt" timestamp(3) without time zone,
+    "deletedForSellerAt" timestamp(3) without time zone,
+    "clientMessageId" text,
+    "acceptedAt" timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    "deliveredAt" timestamp(3) without time zone
 );
 
 
 ALTER TABLE public."ChatMessage" OWNER TO postgres;
+
+--
+-- Name: ChatMessageMedia; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public."ChatMessageMedia" (
+    id text NOT NULL,
+    "messageId" text NOT NULL,
+    "mediaType" text NOT NULL,
+    "mimeType" text,
+    "fileName" text,
+    "fileSizeBytes" integer,
+    "storageProvider" text NOT NULL,
+    "storageKey" text,
+    "publicUrl" text NOT NULL,
+    "previewUrl" text,
+    "thumbnailUrl" text,
+    width integer,
+    height integer,
+    "encryptionScheme" text,
+    "encryptionKeyB64" text,
+    "encryptionIvB64" text,
+    "fileSha256B64" text,
+    "createdAt" timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    "updatedAt" timestamp(3) without time zone NOT NULL,
+    "mediaGroupId" text
+);
+
+
+ALTER TABLE public."ChatMessageMedia" OWNER TO postgres;
 
 --
 -- Name: NotificationReadState; Type: TABLE; Schema: public; Owner: postgres
@@ -534,6 +586,21 @@ CREATE TABLE public."UserDeviceToken" (
 ALTER TABLE public."UserDeviceToken" OWNER TO postgres;
 
 --
+-- Name: UserFeedback; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public."UserFeedback" (
+    id text NOT NULL,
+    "userId" text NOT NULL,
+    message text NOT NULL,
+    "createdAt" timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    "updatedAt" timestamp(3) without time zone NOT NULL
+);
+
+
+ALTER TABLE public."UserFeedback" OWNER TO postgres;
+
+--
 -- Name: UserReport; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -552,6 +619,24 @@ CREATE TABLE public."UserReport" (
 ALTER TABLE public."UserReport" OWNER TO postgres;
 
 --
+-- Name: _prisma_migrations; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public._prisma_migrations (
+    id character varying(36) NOT NULL,
+    checksum character varying(64) NOT NULL,
+    finished_at timestamp with time zone,
+    migration_name character varying(255) NOT NULL,
+    logs text,
+    rolled_back_at timestamp with time zone,
+    started_at timestamp with time zone DEFAULT now() NOT NULL,
+    applied_steps_count integer DEFAULT 0 NOT NULL
+);
+
+
+ALTER TABLE public._prisma_migrations OWNER TO postgres;
+
+--
 -- Data for Name: Cart; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -565,6 +650,11 @@ f614cbbc-8596-4701-a1e3-00f9bce8abce	2026-04-02 20:47:00.078	2026-04-02 20:47:00
 5099f93b-85a3-4e90-9ea9-d19ec1df7dc0	2026-04-03 00:19:30.407	2026-04-03 00:19:30.407	f261a10b-c29c-4bd3-a413-bf99ee82cdb0
 f359679c-c032-4789-8312-f921931314d9	2026-04-19 16:06:11.822	2026-04-19 16:06:11.822	f7fc4466-6951-4dd5-9e5b-fcbc6baf393d
 b8aa4bd3-a079-45e6-af3b-8d296a02f38f	2026-04-26 09:50:54.166	2026-04-26 09:50:54.166	9b3b238f-3e67-4073-9b6b-afbd3731f195
+e549bce6-529a-44e6-98b1-a5e422a47a25	2026-05-06 16:37:05.22	2026-05-06 16:37:05.22	9a6c8f8b-bd18-4b9e-972f-1179e18da727
+aef69177-d384-4a3c-b960-aefcc84f1048	2026-05-13 19:23:42.547	2026-05-13 19:23:42.547	user-admin-demo
+57df4da3-1be7-4805-9573-b36f5416244c	2026-05-13 19:23:42.565	2026-05-13 19:23:42.565	user-shop-pending-demo
+51923027-3a33-45a9-90d0-41a1bf7cf09a	2026-05-13 19:23:42.568	2026-05-13 19:23:42.568	user-seller-verify-demo
+e53ecc5d-dc7f-42f3-8db8-7dd5f28257fd	2026-08-04 18:52:03.156	2026-08-04 18:52:03.156	533ed33f-dbe8-419a-8285-77dd01a553e7
 \.
 
 
@@ -573,7 +663,7 @@ b8aa4bd3-a079-45e6-af3b-8d296a02f38f	2026-04-26 09:50:54.166	2026-04-26 09:50:54
 --
 
 COPY public."CartItem" (id, quantity, "createdAt", "updatedAt", "cartId", "productId") FROM stdin;
-45507893-1154-47c8-9fe1-6aa82a260cb4	1	2026-04-02 16:43:30.334	2026-04-02 16:43:30.334	391154b5-38b6-4d84-86a2-a66a1c6ff7ef	prod-seed-bag
+45507893-1154-47c8-9fe1-6aa82a260cb4	1	2026-04-02 16:43:30.334	2026-05-13 19:24:19.064	391154b5-38b6-4d84-86a2-a66a1c6ff7ef	prod-seed-bag
 \.
 
 
@@ -582,14 +672,15 @@ COPY public."CartItem" (id, quantity, "createdAt", "updatedAt", "cartId", "produ
 --
 
 COPY public."Category" (id, name, slug, icon, "createdAt", "updatedAt") FROM stdin;
-55dd2ced-64b4-4b70-8b06-7250b9fa2fe1	Smartphones	smartphones	📱	2026-04-02 16:43:30.159	2026-04-02 16:43:30.159
-e28856dc-ae47-4d6f-abfc-d394b19793fa	Beaute	beauty	🌸	2026-04-02 16:43:30.159	2026-04-02 16:43:30.159
-f5df6305-1ab6-4f3b-9972-ebebc10053d5	Mode	fashion	👜	2026-04-02 16:43:30.159	2026-04-02 16:43:30.159
-95c627c8-23ee-40eb-87b6-79d1d8256f8f	Maison	home	🪑	2026-04-02 16:43:30.159	2026-04-02 16:43:30.159
 2712b453-15f3-4e50-a095-e5716fccb144	Moto	moto	\N	2026-04-04 05:59:20.009	2026-04-04 05:59:20.009
 65e0a618-b863-4562-b1dd-319e3ef7a197	telephone	telephone	\N	2026-04-04 06:09:35.898	2026-04-04 06:09:35.898
 2a64e44f-b82c-451a-95b7-2562177e6c6a	femme	femme	\N	2026-04-04 06:31:49.916	2026-04-04 06:31:49.916
 710a07fa-b0cc-4994-b744-45584f9c6a50	uggucic	uggucic	\N	2026-04-04 16:36:36.218	2026-04-04 16:36:36.218
+55dd2ced-64b4-4b70-8b06-7250b9fa2fe1	Smartphones	smartphones	📱	2026-04-02 16:43:30.159	2026-05-13 19:24:19.023
+e28856dc-ae47-4d6f-abfc-d394b19793fa	Beaute	beauty	🌸	2026-04-02 16:43:30.159	2026-05-13 19:24:19.023
+f5df6305-1ab6-4f3b-9972-ebebc10053d5	Mode	fashion	👜	2026-04-02 16:43:30.159	2026-05-13 19:24:19.023
+95c627c8-23ee-40eb-87b6-79d1d8256f8f	Maison	home	🪑	2026-04-02 16:43:30.159	2026-05-13 19:24:19.023
+0ff5279a-a20f-4094-a5e5-9cb3073d707d	vetement	vetement	\N	2026-05-14 18:45:38.964	2026-05-14 18:45:38.964
 \.
 
 
@@ -598,16 +689,9 @@ f5df6305-1ab6-4f3b-9972-ebebc10053d5	Mode	fashion	👜	2026-04-02 16:43:30.159	2
 --
 
 COPY public."ChatConversation" (id, "buyerUserId", "sellerUserId", "productId", "createdAt", "updatedAt", "lastMessageAt", "directKey", kind) FROM stdin;
-0c9fb139-6a31-40ff-bdf5-b541d3c010ec	f261a10b-c29c-4bd3-a413-bf99ee82cdb0	fc758d78-e3c2-4ea7-a489-8e2886635f13	\N	2026-04-03 00:19:52.371	2026-04-03 04:43:51.817	2026-04-03 04:43:51.815	f261a10b-c29c-4bd3-a413-bf99ee82cdb0:fc758d78-e3c2-4ea7-a489-8e2886635f13	DIRECT
-a980a82e-7a36-407b-ad1f-7cca92e60894	f261a10b-c29c-4bd3-a413-bf99ee82cdb0	b718efee-173e-441b-98f3-364b40c05e73	\N	2026-04-03 04:44:21.892	2026-04-03 04:44:51.084	2026-04-03 04:44:51.083	b718efee-173e-441b-98f3-364b40c05e73:f261a10b-c29c-4bd3-a413-bf99ee82cdb0	DIRECT
-eb4f3a52-78e6-4091-86ff-27067139f577	f7fc4466-6951-4dd5-9e5b-fcbc6baf393d	fc758d78-e3c2-4ea7-a489-8e2886635f13	\N	2026-04-19 16:20:24.512	2026-04-19 16:20:29.481	2026-04-19 16:20:29.479	f7fc4466-6951-4dd5-9e5b-fcbc6baf393d:fc758d78-e3c2-4ea7-a489-8e2886635f13	DIRECT
-58e36424-de24-4007-88f3-8da16709cf7a	f7fc4466-6951-4dd5-9e5b-fcbc6baf393d	b718efee-173e-441b-98f3-364b40c05e73	\N	2026-04-19 16:13:57.646	2026-04-19 16:38:59.378	2026-04-19 16:38:59.376	b718efee-173e-441b-98f3-364b40c05e73:f7fc4466-6951-4dd5-9e5b-fcbc6baf393d	DIRECT
-89da74d8-5b34-4b39-b0b6-c2271c3c03b5	fc758d78-e3c2-4ea7-a489-8e2886635f13	b718efee-173e-441b-98f3-364b40c05e73	30e26f74-1462-4829-bb70-beea516822f3	2026-04-05 12:02:19.708	2026-04-05 12:02:19.882	2026-04-05 12:02:19.88	\N	PRODUCT
-9d9f9e58-60ce-46d5-b43e-6eb71afbc33a	fc758d78-e3c2-4ea7-a489-8e2886635f13	b718efee-173e-441b-98f3-364b40c05e73	c79d01a5-8872-4e86-b588-9e6c98b53bd2	2026-04-05 13:43:57.798	2026-04-05 13:44:37.021	2026-04-05 13:44:37.02	\N	PRODUCT
-bb05bd3a-677a-4a81-abdf-61f81f3ba09b	fc758d78-e3c2-4ea7-a489-8e2886635f13	b718efee-173e-441b-98f3-364b40c05e73	4bae1fb8-7119-4588-a44c-7c98cd77fb2e	2026-04-05 16:22:01.021	2026-04-05 16:22:14.036	2026-04-05 16:22:14.035	\N	PRODUCT
-ef81fc17-6f61-4491-85e5-134bba18f08d	fc758d78-e3c2-4ea7-a489-8e2886635f13	b718efee-173e-441b-98f3-364b40c05e73	3a4a58b8-8f96-42dd-b14f-f0ba045747e4	2026-04-05 12:01:37.104	2026-04-06 13:44:02.514	2026-04-06 13:44:02.512	\N	PRODUCT
-aaceea95-27ca-4eff-a37c-246107bc51aa	9b3b238f-3e67-4073-9b6b-afbd3731f195	b718efee-173e-441b-98f3-364b40c05e73	\N	2026-04-26 09:52:05.637	2026-04-26 09:52:20.294	2026-04-26 09:52:20.292	9b3b238f-3e67-4073-9b6b-afbd3731f195:b718efee-173e-441b-98f3-364b40c05e73	DIRECT
-6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	fc758d78-e3c2-4ea7-a489-8e2886635f13	\N	2026-04-02 21:46:37.594	2026-04-27 17:14:44.34	2026-04-27 17:14:44.339	b718efee-173e-441b-98f3-364b40c05e73:fc758d78-e3c2-4ea7-a489-8e2886635f13	DIRECT
+a4aed824-447d-4283-91dc-dce532798fd5	b718efee-173e-441b-98f3-364b40c05e73	fc758d78-e3c2-4ea7-a489-8e2886635f13	\N	2026-05-18 10:00:04.076	2026-05-19 16:08:56.25	2026-05-19 16:08:56.249	b718efee-173e-441b-98f3-364b40c05e73:fc758d78-e3c2-4ea7-a489-8e2886635f13	DIRECT
+52427c4f-c13b-4dd0-8825-78008bd41a18	fc758d78-e3c2-4ea7-a489-8e2886635f13	b718efee-173e-441b-98f3-364b40c05e73	3a4a58b8-8f96-42dd-b14f-f0ba045747e4	2026-05-19 18:17:09.515	2026-05-27 20:10:24.157	2026-05-27 20:10:24.155	\N	PRODUCT
+1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	b718efee-173e-441b-98f3-364b40c05e73	7cd76f8d-41f4-45c9-b83b-6dc986840016	2026-05-29 21:02:48.344	2026-08-06 00:56:29.757	2026-08-06 00:56:29.756	\N	PRODUCT
 \.
 
 
@@ -615,167 +699,123 @@ aaceea95-27ca-4eff-a37c-246107bc51aa	9b3b238f-3e67-4073-9b6b-afbd3731f195	b718ef
 -- Data for Name: ChatMessage; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public."ChatMessage" (id, "conversationId", "senderUserId", content, "createdAt", "readAt", "productId", "productImageUrl", "productPriceLabel", "productSubtitle", "productTitle", "replyToContent", "replyToMessageId", "replyToSenderName", "replyToSenderUserId") FROM stdin;
-f570c086-2c56-4d6f-adc4-ff4e0190af6f	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	djeue	2026-04-02 21:49:41.969	2026-04-02 21:59:25.046	\N	\N	\N	\N	\N	\N	\N	\N	\N
-2b7d3b02-5976-4e3c-beeb-c18400582f16	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	dfoisf	2026-04-02 21:46:41.178	2026-04-02 21:59:51.729	\N	\N	\N	\N	\N	\N	\N	\N	\N
-292974c8-ac7f-4546-90e0-3b848f8151ea	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	sdoijfoisdjfoijdsfojsdf	2026-04-02 21:49:57.306	2026-04-02 21:59:51.729	\N	\N	\N	\N	\N	\N	\N	\N	\N
-b11816c5-a452-4e31-9917-3e3320a519aa	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	je taime	2026-04-02 21:52:22.982	2026-04-02 21:59:51.729	\N	\N	\N	\N	\N	\N	\N	\N	\N
-c1ec1c13-8f4d-4726-bc38-557c0fe3e266	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	Tsy mamaly	2026-04-02 21:59:45.396	2026-04-02 21:59:51.729	\N	\N	\N	\N	\N	\N	\N	\N	\N
-b84bf62c-2e17-46d6-b3a1-41fdc2f80da6	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	Ato ve	2026-04-02 22:00:12.865	2026-04-02 22:00:22.127	\N	\N	\N	\N	\N	\N	\N	\N	\N
-ed7844d3-54d3-4e0c-be51-4125fcc22bdf	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	ie	2026-04-02 22:00:26.499	2026-04-02 22:00:28.7	\N	\N	\N	\N	\N	\N	\N	\N	\N
-dcc50d01-56bd-44c9-a3ca-6db0036aaf95	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	de aona	2026-04-02 22:00:46.305	2026-04-02 22:00:46.706	\N	\N	\N	\N	\N	\N	\N	\N	\N
-ca89ab64-a76b-4f3e-8913-8b35545208c1	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	zao hiany manao inona ianao zao ?, Nga mbola tsy matory	2026-04-02 22:01:08.311	2026-04-02 22:01:10.095	\N	\N	\N	\N	\N	\N	\N	\N	\N
-3ab563c8-46e1-4d8c-b905-a360fdf880ec	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	aiza	2026-04-02 22:32:35.096	2026-04-02 22:35:26.156	\N	\N	\N	\N	\N	\N	\N	\N	\N
-d0a68c8f-08fc-449b-84ea-e221f457e481	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	ao ve	2026-04-02 22:32:44.245	2026-04-02 22:35:26.156	\N	\N	\N	\N	\N	\N	\N	\N	\N
-52ad094e-0f3f-46ab-bc92-cae9ce5c240e	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	eooo	2026-04-02 22:35:09.043	2026-04-02 22:35:26.156	\N	\N	\N	\N	\N	\N	\N	\N	\N
-8cbdd11e-c556-4e5d-b6de-6aca62d6d0b9	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	ao ve	2026-04-02 22:35:21.193	2026-04-02 22:35:26.156	\N	\N	\N	\N	\N	\N	\N	\N	\N
-ead07dfc-f372-424e-8980-e5905b960b53	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	fa misy inona	2026-04-02 22:35:30.701	2026-04-02 22:35:31.516	\N	\N	\N	\N	\N	\N	\N	\N	\N
-64eb022c-f83d-4332-9f81-edf05e4dad68	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	efa alina zao	2026-04-02 22:35:41.004	2026-04-02 22:35:43.536	\N	\N	\N	\N	\N	\N	\N	\N	\N
-da192876-16cc-498e-bfb5-6701f018bcf0	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	ka zaho manao test envoie sms	2026-04-02 22:35:54.604	2026-04-02 22:35:55.536	\N	\N	\N	\N	\N	\N	\N	\N	\N
-f242595c-2e81-4e07-8692-b4eaa7360dff	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	😃	2026-04-02 22:36:08.397	2026-04-02 22:36:10.537	\N	\N	\N	\N	\N	\N	\N	\N	\N
-6f3820df-e4a7-4d33-abd1-189c8a14628c	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	mety ve	2026-04-02 22:39:40.904	2026-04-02 22:39:41.107	\N	\N	\N	\N	\N	\N	\N	\N	\N
-6dd2ddf0-2c47-41f3-8476-3dbcaef68d06	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	mbola manao buid.debug	2026-04-02 22:39:54.732	2026-04-02 22:39:55.515	\N	\N	\N	\N	\N	\N	\N	\N	\N
-41c262f1-247b-46ec-b89d-935f7165633e	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	salut	2026-04-02 23:15:41.394	2026-04-02 23:16:29.774	\N	\N	\N	\N	\N	\N	\N	\N	\N
-0e55556a-d647-432a-a43f-6cb690ccb3e6	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	notif	2026-04-02 23:16:00.301	2026-04-02 23:16:29.774	\N	\N	\N	\N	\N	\N	\N	\N	\N
-f71d06d7-0c84-42d9-85ea-9aeaeca2c24d	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	not	2026-04-02 23:16:33.504	2026-04-02 23:16:42.516	\N	\N	\N	\N	\N	\N	\N	\N	\N
-f5cad9a8-d2dd-4df2-b3cf-a0d76fb01131	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	ter	2026-04-02 23:24:53.42	2026-04-02 23:30:34.512	\N	\N	\N	\N	\N	\N	\N	\N	\N
-a67fb438-343c-4477-b7a6-c906a2392eaa	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	mety ve alou e?	2026-04-02 23:25:09.558	2026-04-02 23:30:34.512	\N	\N	\N	\N	\N	\N	\N	\N	\N
-b1013256-c7cd-44c1-b0d2-15faf646b94d	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	test am zay	2026-04-02 23:28:47.102	2026-04-02 23:30:34.512	\N	\N	\N	\N	\N	\N	\N	\N	\N
-072b0d8a-2c7d-4513-bbcd-fc0e12426cc9	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	aya	2026-04-02 23:29:00.787	2026-04-02 23:30:34.512	\N	\N	\N	\N	\N	\N	\N	\N	\N
-185a25e3-3038-45c5-a3da-32cfcfc25a28	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	eoo	2026-04-02 23:29:45.045	2026-04-02 23:30:34.512	\N	\N	\N	\N	\N	\N	\N	\N	\N
-ee84b2f8-544c-4e9a-bd60-f158e4d5f911	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	kkk	2026-04-02 23:29:53.683	2026-04-02 23:30:34.512	\N	\N	\N	\N	\N	\N	\N	\N	\N
-ed06fe73-0301-4578-82ff-50de6f2b6a7a	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	eo	2026-04-02 23:33:11.862	2026-04-02 23:37:57.2	\N	\N	\N	\N	\N	\N	\N	\N	\N
-868366da-523f-4df5-9da4-fadcd2ee8498	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	ggg	2026-04-02 23:33:20.182	2026-04-02 23:37:57.2	\N	\N	\N	\N	\N	\N	\N	\N	\N
-ebfac953-f50c-4df2-b8f3-d69b59be2046	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	oguffuvititvtvutviytc-tv-vr(rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr-(irb--bti	2026-04-02 23:33:52.884	2026-04-02 23:37:57.2	\N	\N	\N	\N	\N	\N	\N	\N	\N
-bceaa4d3-24e2-467e-9f1f-1092f07577e2	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	pret	2026-04-02 23:37:49.757	2026-04-02 23:37:57.2	\N	\N	\N	\N	\N	\N	\N	\N	\N
-84e6b20c-2300-4d0e-80f7-5f3ca7489fd4	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	ok	2026-04-02 23:38:17.715	2026-04-02 23:38:18.22	\N	\N	\N	\N	\N	\N	\N	\N	\N
-52133c43-0c37-45c8-a38d-e617b7f606e7	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	ca mache	2026-04-02 23:38:34.889	2026-04-02 23:38:37.515	\N	\N	\N	\N	\N	\N	\N	\N	\N
-389f3c86-8835-42f6-99c1-33442c5ab45e	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	hiiu	2026-04-02 23:38:58.295	2026-04-02 23:39:03.754	\N	\N	\N	\N	\N	\N	\N	\N	\N
-308e575f-7766-4f01-93bc-dea041167bee	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	iguo	2026-04-02 23:43:04.838	2026-04-02 23:43:06.246	\N	\N	\N	\N	\N	\N	\N	\N	\N
-1ce4ce23-c929-4976-ad09-a479465a89da	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	ighui9uyy	2026-04-02 23:43:12.157	2026-04-02 23:43:12.258	\N	\N	\N	\N	\N	\N	\N	\N	\N
-48568771-6191-4b14-a9ce-bd1ed6a5a19a	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	gdstuu	2026-04-02 23:43:15.723	2026-04-02 23:43:18.216	\N	\N	\N	\N	\N	\N	\N	\N	\N
-024563d8-b64e-459b-aba9-9d2f8f57fec6	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	i7fl7fl7fl7dl7fo7	2026-04-02 23:43:21.954	2026-04-02 23:43:24.253	\N	\N	\N	\N	\N	\N	\N	\N	\N
-894f9b73-bbf0-476b-bf71-b8ec302e47f6	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	u5 i5fivrri6vi66kfvkvyfoc6f	2026-04-02 23:45:16.695	2026-04-02 23:45:18.217	\N	\N	\N	\N	\N	\N	\N	\N	\N
-02d16193-ac27-4949-96d1-812b88fed0ce	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	teste de vites	2026-04-02 23:57:50.853	2026-04-02 23:57:53.39	\N	\N	\N	\N	\N	\N	\N	\N	\N
-478d1705-eecb-48fe-933a-f17f30aba497	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	86dfo6oy	2026-04-02 23:57:56.119	2026-04-02 23:57:56.201	\N	\N	\N	\N	\N	\N	\N	\N	\N
-4e79b2e6-8032-43ef-b814-eea5da3112de	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	o7fflyfyl	2026-04-02 23:57:58.374	2026-04-02 23:57:58.403	\N	\N	\N	\N	\N	\N	\N	\N	\N
-43c560a9-93b1-42cf-89c3-1134ce35c716	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	i6yfkkyflyfl7	2026-04-02 23:58:02.525	2026-04-02 23:58:02.602	\N	\N	\N	\N	\N	\N	\N	\N	\N
-369d87c8-a110-44c6-b3ba-083c99174351	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	luflulyf7fl7fo7f	2026-04-02 23:58:05.397	2026-04-02 23:58:05.425	\N	\N	\N	\N	\N	\N	\N	\N	\N
-55a18a83-77bc-46af-ba4e-eb98203b4c6e	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	rtyyuufufufuffuufufuf	2026-04-03 00:02:21.995	2026-04-03 00:02:22.252	\N	\N	\N	\N	\N	\N	\N	\N	\N
-bea84e5a-e2fb-420b-aef1-525a6ff42ef7	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	igigggugug	2026-04-03 00:02:26.251	2026-04-03 00:02:26.363	\N	\N	\N	\N	\N	\N	\N	\N	\N
-f7eb1744-2c38-4bee-bcc0-e2ed6dfca9e1	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	fhhgfggyy777778tt8t88yy8	2026-04-03 00:04:49.999	2026-04-03 00:04:50.075	\N	\N	\N	\N	\N	\N	\N	\N	\N
-430c968f-70fd-49c6-ad65-1b507e59485d	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	8r8r8g8	2026-04-03 00:07:07.171	2026-04-03 00:08:41.84	\N	\N	\N	\N	\N	\N	\N	\N	\N
-9dba8a03-37c0-423b-9bb8-91d05a161e4c	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	igogoho	2026-04-03 00:07:09.549	2026-04-03 00:08:41.84	\N	\N	\N	\N	\N	\N	\N	\N	\N
-e2180df3-2641-4951-9080-356927d7f122	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	igigogogogohh	2026-04-03 00:07:11.561	2026-04-03 00:08:41.84	\N	\N	\N	\N	\N	\N	\N	\N	\N
-2ebed1e6-eea3-4674-97d7-6cce4460ea57	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	igigigiggufufufifigigigigog	2026-04-03 00:07:15.501	2026-04-03 00:08:41.84	\N	\N	\N	\N	\N	\N	\N	\N	\N
-d0d130a9-8b49-4f58-b5c7-d24c65f134d6	0c9fb139-6a31-40ff-bdf5-b541d3c010ec	f261a10b-c29c-4bd3-a413-bf99ee82cdb0	salut dany	2026-04-03 00:19:56.827	2026-04-03 00:20:37.026	\N	\N	\N	\N	\N	\N	\N	\N	\N
-cd130a07-49a6-413e-bc78-271b36a7faab	0c9fb139-6a31-40ff-bdf5-b541d3c010ec	f261a10b-c29c-4bd3-a413-bf99ee82cdb0	ca marche plus	2026-04-03 00:20:27.445	2026-04-03 00:20:37.026	\N	\N	\N	\N	\N	\N	\N	\N	\N
-054a8f0b-9cbb-40c9-b3ee-045fec756815	0c9fb139-6a31-40ff-bdf5-b541d3c010ec	fc758d78-e3c2-4ea7-a489-8e2886635f13	jfjj	2026-04-03 00:20:42.97	2026-04-03 00:20:43.078	\N	\N	\N	\N	\N	\N	\N	\N	\N
-f2bd3f8f-c02f-4f73-a030-fa770969358e	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	ufur7rf7f7og8t8t8tg8g88g88g8if	2026-04-03 00:08:54.098	2026-04-03 04:37:23.973	\N	\N	\N	\N	\N	\N	\N	\N	\N
-c7bdd204-a165-43e1-8bed-dfd8f7f1dff8	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	igiggiggigjhguuuuyhhhyihiihohohohho	2026-04-03 00:09:04.635	2026-04-03 04:37:23.973	\N	\N	\N	\N	\N	\N	\N	\N	\N
-51a08b35-9fd7-486e-b4ed-ebc47fdf2fdf	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	ihohohp	2026-04-03 00:09:06.634	2026-04-03 04:37:23.973	\N	\N	\N	\N	\N	\N	\N	\N	\N
-66d71737-d462-42e3-9cc6-793821b099cf	0c9fb139-6a31-40ff-bdf5-b541d3c010ec	f261a10b-c29c-4bd3-a413-bf99ee82cdb0	bonjours  Cherie	2026-04-03 04:42:47.296	2026-04-03 04:42:57.019	\N	\N	\N	\N	\N	\N	\N	\N	\N
-5f7cffe5-8cb7-4a88-b815-9d307f4585c4	0c9fb139-6a31-40ff-bdf5-b541d3c010ec	fc758d78-e3c2-4ea7-a489-8e2886635f13	salut	2026-04-03 04:43:02.98	2026-04-03 04:43:03.108	\N	\N	\N	\N	\N	\N	\N	\N	\N
-72040bd5-17ca-4b5a-adc9-069a14b0fe56	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	Je T aime	2026-04-03 04:37:31.345	2026-04-03 04:43:14.743	\N	\N	\N	\N	\N	\N	\N	\N	\N
-8bc0467a-4178-4dad-b7f4-16dad0ea4586	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	je taime	2026-04-03 04:41:04.77	2026-04-03 04:43:14.743	\N	\N	\N	\N	\N	\N	\N	\N	\N
-a43c3ec5-e741-412b-9b01-9cb0c13fc877	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	coucou	2026-04-03 04:43:17.719	2026-04-03 04:43:17.744	\N	\N	\N	\N	\N	\N	\N	\N	\N
-e1f9d1bb-d82d-4288-903e-d76b73deb11d	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	teste de vitesse	2026-04-03 04:43:29.839	2026-04-03 04:43:29.861	\N	\N	\N	\N	\N	\N	\N	\N	\N
-455bccfa-0c67-4fcd-832c-29d2aa01df42	0c9fb139-6a31-40ff-bdf5-b541d3c010ec	fc758d78-e3c2-4ea7-a489-8e2886635f13	tesbfndkkd	2026-04-03 04:43:38.565	2026-04-03 04:43:38.637	\N	\N	\N	\N	\N	\N	\N	\N	\N
-664c7117-b363-4e8e-acc4-849c25fdfa6c	0c9fb139-6a31-40ff-bdf5-b541d3c010ec	fc758d78-e3c2-4ea7-a489-8e2886635f13	hjjjttj u uuuyyuu7	2026-04-03 04:43:45.484	2026-04-03 04:43:45.647	\N	\N	\N	\N	\N	\N	\N	\N	\N
-cf226bde-c292-4c0e-9648-c64d85300bc0	0c9fb139-6a31-40ff-bdf5-b541d3c010ec	fc758d78-e3c2-4ea7-a489-8e2886635f13	hhhh	2026-04-03 04:43:47.475	2026-04-03 04:43:47.525	\N	\N	\N	\N	\N	\N	\N	\N	\N
-cd0848f2-6986-405a-bd9b-8f2486326b0b	0c9fb139-6a31-40ff-bdf5-b541d3c010ec	fc758d78-e3c2-4ea7-a489-8e2886635f13	uu3ryhj	2026-04-03 04:43:49.908	2026-04-03 04:43:50.011	\N	\N	\N	\N	\N	\N	\N	\N	\N
-20190425-cd7d-44f9-ae94-fb56d6ce1083	0c9fb139-6a31-40ff-bdf5-b541d3c010ec	fc758d78-e3c2-4ea7-a489-8e2886635f13	gjkkk	2026-04-03 04:43:51.815	2026-04-03 04:43:51.986	\N	\N	\N	\N	\N	\N	\N	\N	\N
-fddb1706-c5eb-464f-8228-567f53cd472d	a980a82e-7a36-407b-ad1f-7cca92e60894	f261a10b-c29c-4bd3-a413-bf99ee82cdb0	tainalika	2026-04-03 04:44:28.221	2026-04-03 04:44:41.44	\N	\N	\N	\N	\N	\N	\N	\N	\N
-154140a3-10f5-4d63-b6a5-b80ea3916d1a	a980a82e-7a36-407b-ad1f-7cca92e60894	f261a10b-c29c-4bd3-a413-bf99ee82cdb0	hhdjjsjsjs	2026-04-03 04:44:36.653	2026-04-03 04:44:41.44	\N	\N	\N	\N	\N	\N	\N	\N	\N
-432ec025-c3e7-4537-be80-801ef6222486	a980a82e-7a36-407b-ad1f-7cca92e60894	f261a10b-c29c-4bd3-a413-bf99ee82cdb0	jdjsjsjjz	2026-04-03 04:44:39.242	2026-04-03 04:44:41.44	\N	\N	\N	\N	\N	\N	\N	\N	\N
-409bd9fc-004f-4189-a5cb-fa72c9305b42	a980a82e-7a36-407b-ad1f-7cca92e60894	f261a10b-c29c-4bd3-a413-bf99ee82cdb0	❤️	2026-04-03 04:44:51.082	2026-04-03 04:44:51.129	\N	\N	\N	\N	\N	\N	\N	\N	\N
-2ccd597e-1de9-471b-b94b-32b97b5d273e	ef81fc17-6f61-4491-85e5-134bba18f08d	fc758d78-e3c2-4ea7-a489-8e2886635f13	Cet article est toujours disponible ?	2026-04-05 12:01:37.302	2026-04-05 12:01:44.273	\N	\N	\N	\N	\N	\N	\N	\N	\N
-ae70478a-7547-492d-bde2-dbd993464dd8	ef81fc17-6f61-4491-85e5-134bba18f08d	b718efee-173e-441b-98f3-364b40c05e73	oui 👍	2026-04-05 12:02:01.011	2026-04-05 12:02:06.277	\N	\N	\N	\N	\N	\N	\N	\N	\N
-f520a19b-6e69-413f-95e6-c6db41735f4d	89da74d8-5b34-4b39-b0b6-c2271c3c03b5	fc758d78-e3c2-4ea7-a489-8e2886635f13	Cet article est toujours disponible ?	2026-04-05 12:02:19.878	2026-04-05 12:02:30.688	\N	\N	\N	\N	\N	\N	\N	\N	\N
-c44aab69-9559-4359-b2ae-753ccf28fe39	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	Bojour	2026-04-05 12:11:54.132	2026-04-05 12:11:54.197	\N	\N	\N	\N	\N	\N	\N	\N	\N
-9ac97e59-4b63-491c-a910-6511572e2ca8	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	salut	2026-04-05 12:12:07.074	2026-04-05 12:12:07.191	\N	\N	\N	\N	\N	\N	\N	\N	\N
-86db3873-f111-402b-ab90-7d84ee0a8d64	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	%%%%%%%%%%%%%%%%%	2026-04-05 12:20:12.8	2026-04-05 12:20:12.858	\N	\N	\N	\N	\N	\N	\N	\N	\N
-51f835ee-badc-4177-9da3-d123795017ae	ef81fc17-6f61-4491-85e5-134bba18f08d	fc758d78-e3c2-4ea7-a489-8e2886635f13	Cet article est toujours disponible ?	2026-04-05 12:27:56.219	2026-04-05 12:28:03.222	\N	\N	\N	\N	\N	\N	\N	\N	\N
-19aaaf4e-959b-4779-9fda-c62b91e2ad4e	ef81fc17-6f61-4491-85e5-134bba18f08d	fc758d78-e3c2-4ea7-a489-8e2886635f13	Cet article est toujours disponible ?	2026-04-05 12:35:51.07	2026-04-05 12:35:57.337	3a4a58b8-8f96-42dd-b14f-f0ba045747e4	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775320601/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775320596223?_a=BAMAOGfk0	4000000 MGA	Moto • Disponible	MOTO New Mada	\N	\N	\N	\N
-8ae648de-5663-4517-8daf-c503f9cc54f8	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	oui	2026-04-05 12:39:17.249	2026-04-05 12:39:17.343	\N	\N	\N	\N	\N	\N	\N	\N	\N
-07b9aabb-ba1a-41bf-a342-8dc7d5491f6a	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	oui	2026-04-05 12:39:23.473	2026-04-05 12:39:23.551	\N	\N	\N	\N	\N	\N	\N	\N	\N
-fc5368f0-b622-4266-a659-475753b943cc	ef81fc17-6f61-4491-85e5-134bba18f08d	fc758d78-e3c2-4ea7-a489-8e2886635f13	combien	2026-04-05 12:42:48.283	2026-04-05 12:42:51.189	3a4a58b8-8f96-42dd-b14f-f0ba045747e4	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775320601/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775320596223?_a=BAMAOGfk0	4000000 MGA	Moto • Disponible	MOTO New Mada	\N	\N	\N	\N
-b1443bc7-000f-4da8-8586-010fe78ce881	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	merci	2026-04-05 12:43:28.692	2026-04-05 12:43:28.812	\N	\N	\N	\N	\N	\N	\N	\N	\N
-715ae500-52ff-49d1-880b-6138cdfd55fc	9d9f9e58-60ce-46d5-b43e-6eb71afbc33a	fc758d78-e3c2-4ea7-a489-8e2886635f13	Cet article est toujours disponible ?	2026-04-05 13:43:57.837	2026-04-05 13:44:10.905	c79d01a5-8872-4e86-b588-9e6c98b53bd2	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775282364/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775282360011?_a=BAMAOGfk0	145000 MGA	Moto • Disponible	gente moto	\N	\N	\N	\N
-9276cc21-af57-4b6c-a710-359a788b64fb	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	oui	2026-04-05 13:44:20.537	2026-04-05 13:44:21.635	\N	\N	\N	\N	\N	\N	\N	\N	\N
-de807106-d2de-4fe5-bce2-79df061f0a08	9d9f9e58-60ce-46d5-b43e-6eb71afbc33a	fc758d78-e3c2-4ea7-a489-8e2886635f13	afaka miady varotra ve	2026-04-05 13:44:37.019	2026-04-05 13:44:37.91	c79d01a5-8872-4e86-b588-9e6c98b53bd2	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775282364/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775282360011?_a=BAMAOGfk0	145000 MGA	Moto • Disponible	gente moto	\N	\N	\N	\N
-1f1ae75f-3698-4a5b-9c58-86a2f48eea9e	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	oui afaka ka	2026-04-05 13:51:21.434	2026-04-05 16:22:00.921	\N	\N	\N	\N	\N	\N	\N	\N	\N
-38a429d2-ea7e-42d0-bf0a-090114cb55c7	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	ao ve o	2026-04-05 13:53:53.526	2026-04-05 16:22:00.921	\N	\N	\N	\N	\N	\N	\N	\N	\N
-3bdd6ae9-5028-46a4-9609-5bb53f7c59c6	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	aot ve o	2026-04-05 13:55:01.98	2026-04-05 16:22:00.921	\N	\N	\N	\N	\N	\N	\N	\N	\N
-b91b2c2e-6348-4757-a821-5658fd823e40	bb05bd3a-677a-4a81-abdf-61f81f3ba09b	fc758d78-e3c2-4ea7-a489-8e2886635f13	Cet article est toujours disponible ?	2026-04-05 16:22:01.061	2026-04-05 16:22:06.829	4bae1fb8-7119-4588-a44c-7c98cd77fb2e	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775283001/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775282995434?_a=BAMAOGfk0	420000 MGA	telephone • Disponible	Real me	\N	\N	\N	\N
-33003799-5b25-4f3d-a7e2-a194673df424	bb05bd3a-677a-4a81-abdf-61f81f3ba09b	fc758d78-e3c2-4ea7-a489-8e2886635f13	any ve	2026-04-05 16:22:14.035	2026-04-05 16:22:15.786	4bae1fb8-7119-4588-a44c-7c98cd77fb2e	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775283001/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775282995434?_a=BAMAOGfk0	420000 MGA	telephone • Disponible	Real me	\N	\N	\N	\N
-5645ae9a-fad2-4ebc-a8f6-90b713f722b9	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	ouiu	2026-04-05 16:22:22.635	2026-04-05 16:22:22.782	\N	\N	\N	\N	\N	\N	\N	\N	\N
-18c076ab-fc9c-421e-95d9-69183a85cb49	ef81fc17-6f61-4491-85e5-134bba18f08d	fc758d78-e3c2-4ea7-a489-8e2886635f13	Cet article est toujours disponible ?	2026-04-05 16:24:01.269	2026-04-05 16:27:44.91	3a4a58b8-8f96-42dd-b14f-f0ba045747e4	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775320601/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775320596223?_a=BAMAOGfk0	4000000 MGA	Moto • Disponible	MOTO New Mada	\N	\N	\N	\N
-84f3fa5f-d2ed-4c8b-882e-e35d621d5b5a	ef81fc17-6f61-4491-85e5-134bba18f08d	fc758d78-e3c2-4ea7-a489-8e2886635f13	bonjour	2026-04-06 13:25:22.001	2026-04-06 13:25:29.427	3a4a58b8-8f96-42dd-b14f-f0ba045747e4	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775320601/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775320596223?_a=BAMAOGfk0	4000000 MGA	Moto • Disponible	MOTO New Mada	\N	\N	\N	\N
-d1ba4315-a731-4fe4-98c0-ebf6ab421c43	ef81fc17-6f61-4491-85e5-134bba18f08d	fc758d78-e3c2-4ea7-a489-8e2886635f13	hello	2026-04-06 13:30:22.714	2026-04-06 13:40:06.946	3a4a58b8-8f96-42dd-b14f-f0ba045747e4	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775320601/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775320596223?_a=BAMAOGfk0	4000000 MGA	Moto • Disponible	MOTO New Mada	\N	\N	\N	\N
-ac98ca7d-35c8-4dc0-9199-4ce39372b0c1	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	youu	2026-04-06 13:39:29.926	2026-04-06 13:40:06.946	\N	\N	\N	\N	\N	\N	\N	\N	\N
-64930655-efd1-43fc-ab97-896657b2356c	ef81fc17-6f61-4491-85e5-134bba18f08d	fc758d78-e3c2-4ea7-a489-8e2886635f13	ok ok	2026-04-06 13:34:14.439	2026-04-06 13:40:06.946	3a4a58b8-8f96-42dd-b14f-f0ba045747e4	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775320601/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775320596223?_a=BAMAOGfk0	4000000 MGA	Moto • Disponible	MOTO New Mada	\N	\N	\N	\N
-f6bf5b27-2f03-4c01-8e83-2faac0708610	ef81fc17-6f61-4491-85e5-134bba18f08d	fc758d78-e3c2-4ea7-a489-8e2886635f13	Cet article est toujours disponible ?	2026-04-06 13:39:35.476	2026-04-06 13:40:06.946	3a4a58b8-8f96-42dd-b14f-f0ba045747e4	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775320601/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775320596223?_a=BAMAOGfk0	4000000 MGA	Moto • Disponible	MOTO New Mada	\N	\N	\N	\N
-d33f54c8-0f9c-4d80-88db-a6ec60d5313f	ef81fc17-6f61-4491-85e5-134bba18f08d	fc758d78-e3c2-4ea7-a489-8e2886635f13	bonjour	2026-04-06 13:44:02.511	2026-04-06 13:44:04.227	3a4a58b8-8f96-42dd-b14f-f0ba045747e4	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775320601/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775320596223?_a=BAMAOGfk0	4000000 MGA	Moto • Disponible	MOTO New Mada	\N	\N	\N	\N
-382b30d4-4114-42d8-9c75-143f37a7d7b4	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	Cet article est toujours disponible ?	2026-04-06 13:55:11.789	2026-04-06 13:55:16.921	1d3d6860-131f-4c8e-aa45-737a0f27d81b	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284641/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284636953?_a=BAMAOGfk0	450 000 MGA	telephone • Disponible	oppo renault 5 pro	\N	\N	\N	\N
-d8f311b3-7c0e-4c74-90c6-9f4e65f04151	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	de otrinona	2026-04-06 13:55:23.44	2026-04-06 13:55:23.479	\N	\N	\N	\N	\N	\N	\N	\N	\N
-90194dc0-99ca-4e4f-82aa-117354e85ff4	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	eny ary	2026-04-06 14:09:48.699	2026-04-06 15:11:16.934	\N	\N	\N	\N	\N	\N	\N	\N	\N
-412e18b2-3392-4175-a6d2-38a6f55f209a	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	Cet article est toujours disponible ?	2026-04-08 02:16:43.26	2026-04-08 02:18:11.254	3a4a58b8-8f96-42dd-b14f-f0ba045747e4	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775320601/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775320596223?_a=BAMAOGfk0	4 000 000 MGA	Moto • Disponible	MOTO New Mada	\N	\N	\N	\N
-188492ac-4952-41e6-b0d1-f94cf53c1dd0	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	bonjour	2026-04-13 16:30:55.266	2026-04-13 16:30:55.387	\N	\N	\N	\N	\N	\N	\N	\N	\N
-cf23c02d-c412-4f96-96c8-83521851db71	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	dimampolo	2026-04-13 17:29:59.06	2026-04-13 17:34:32.446	\N	\N	\N	\N	\N	\N	\N	\N	\N
-8009c701-b27c-41e3-8b21-a61db3c7806e	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	io	2026-04-13 17:36:58.395	2026-04-13 17:36:58.48	\N	\N	\N	\N	\N	de otrinona	d8f311b3-7c0e-4c74-90c6-9f4e65f04151	DAMA Dany	fc758d78-e3c2-4ea7-a489-8e2886635f13
-3f280a3c-0a94-4ca9-82bb-ae8d741798ac	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	eka	2026-04-13 17:37:19.562	2026-04-13 17:37:19.921	\N	\N	\N	\N	\N	afaka miady varotra ve	de807106-d2de-4fe5-bce2-79df061f0a08	DAMA Dany	fc758d78-e3c2-4ea7-a489-8e2886635f13
-19644be5-1cf7-4f84-b216-d3e36f11b817	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	yoo	2026-04-13 17:46:07.417	2026-04-13 17:48:45.871	\N	\N	\N	\N	\N	youu	ac98ca7d-35c8-4dc0-9199-4ce39372b0c1	DAMA Dany	fc758d78-e3c2-4ea7-a489-8e2886635f13
-4702ab23-1d40-4349-91bf-d2a87ae5421e	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	ejjejjzjzjz	2026-04-13 17:51:48.972	2026-04-13 17:51:49.04	\N	\N	\N	\N	\N	\N	\N	\N	\N
-6c05a9ae-1525-4faa-93c1-081d04825065	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	hskkzz	2026-04-13 17:51:58.217	2026-04-13 17:51:58.265	\N	\N	\N	\N	\N	\N	\N	\N	\N
-6d8eb7dc-6c19-4bd0-9e88-fe21d3106058	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	hzjz	2026-04-13 17:52:01.788	2026-04-13 17:52:01.874	\N	\N	\N	\N	\N	\N	\N	\N	\N
-8645ce45-ec83-4236-b8fb-870a7efa9053	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	gsjkz	2026-04-13 17:52:09.294	2026-04-13 17:52:45.956	\N	\N	\N	\N	\N	\N	\N	\N	\N
-ee962ee7-6e29-4be3-83c0-b87f9b4cdcbc	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	jzjhz	2026-04-13 17:52:11.28	2026-04-13 17:52:45.956	\N	\N	\N	\N	\N	\N	\N	\N	\N
-daad1d9e-40bd-4c87-8be6-909071403a58	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	hzzozpzhehz	2026-04-13 17:52:15.721	2026-04-13 17:52:45.956	\N	\N	\N	\N	\N	\N	\N	\N	\N
-4904cc0b-1331-43b0-aa42-866b51467057	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	hshshhshz	2026-04-13 17:52:23.334	2026-04-13 17:52:45.956	\N	\N	\N	\N	\N	\N	\N	\N	\N
-e9bcc93d-9e3b-4fea-8596-209602cc5cca	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	zjzzizgzjdgzhzhzhz	2026-04-13 17:52:29.912	2026-04-13 17:52:45.956	\N	\N	\N	\N	\N	\N	\N	\N	\N
-a9b5ce5f-71fc-4afa-97e1-369bf1ca868e	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	hhzhzzhhehhejzjzo ekziizcz zuzuzihzjz zhzhz	2026-04-13 17:52:41.545	2026-04-13 17:52:45.956	\N	\N	\N	\N	\N	\N	\N	\N	\N
-82c3082c-2560-4c1b-875f-22065eaf0198	58e36424-de24-4007-88f3-8da16709cf7a	f7fc4466-6951-4dd5-9e5b-fcbc6baf393d	Cet article est toujours disponible ?	2026-04-19 16:13:57.865	2026-04-19 16:14:07.008	3a4a58b8-8f96-42dd-b14f-f0ba045747e4	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775320601/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775320596223?_a=BAMAOGfk0	4 000 000 MGA	Moto • Disponible	MOTO New Mada	\N	\N	\N	\N
-8649bd73-f9d1-49b7-9044-cc992cca9298	58e36424-de24-4007-88f3-8da16709cf7a	b718efee-173e-441b-98f3-364b40c05e73	oui c est disponible	2026-04-19 16:14:26.837	2026-04-19 16:14:26.875	\N	\N	\N	\N	\N	\N	\N	\N	\N
-2e28a5bb-875d-446e-8d29-38e68176ada6	58e36424-de24-4007-88f3-8da16709cf7a	b718efee-173e-441b-98f3-364b40c05e73	ca va	2026-04-19 16:14:46.989	2026-04-19 16:14:50.979	\N	\N	\N	\N	\N	\N	\N	\N	\N
-81ebd0d6-1f94-44ef-8ac0-36dc775fb6af	58e36424-de24-4007-88f3-8da16709cf7a	b718efee-173e-441b-98f3-364b40c05e73	enw tsy connecte	2026-04-19 16:17:32.289	2026-04-19 16:19:08.217	\N	\N	\N	\N	\N	\N	\N	\N	\N
-993e2c75-a0fc-44dd-b58a-7a0d48092fe5	58e36424-de24-4007-88f3-8da16709cf7a	b718efee-173e-441b-98f3-364b40c05e73	dhhehehehhehe	2026-04-19 16:21:34.052	2026-04-19 16:21:39.118	\N	\N	\N	\N	\N	\N	\N	\N	\N
-5db466b1-6ecd-430a-89bf-d63ac8258aaf	eb4f3a52-78e6-4091-86ff-27067139f577	f7fc4466-6951-4dd5-9e5b-fcbc6baf393d	teste	2026-04-19 16:20:29.48	2026-04-20 17:09:23.504	\N	\N	\N	\N	\N	\N	\N	\N	\N
-1de94002-cf4e-448d-a8fe-8a863923925d	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	ato ve o	2026-04-19 16:17:16.582	2026-04-20 17:32:53.56	\N	\N	\N	\N	\N	\N	\N	\N	\N
-6cbc4bc4-3a00-45ae-88f6-ddd810b2ed29	58e36424-de24-4007-88f3-8da16709cf7a	f7fc4466-6951-4dd5-9e5b-fcbc6baf393d	mana	2026-04-19 16:38:59.376	2026-04-20 17:33:00.68	\N	\N	\N	\N	\N	\N	\N	\N	\N
-cb927868-66e5-47b5-ab67-820fbb11c191	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	vdbslz	2026-04-23 23:55:30.999	2026-04-24 00:07:30.784	\N	\N	\N	\N	\N	\N	\N	\N	\N
-a452bc2b-256a-4fe7-8c40-2f59da2a9bee	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	g GJ ju	2026-04-23 23:56:05.533	2026-04-24 00:07:30.784	\N	\N	\N	\N	\N	\N	\N	\N	\N
-3cd66653-cab5-4e8b-a498-25397c2ce412	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	jxf I	2026-04-23 23:56:36.247	2026-04-24 00:07:30.784	\N	\N	\N	\N	\N	\N	\N	\N	\N
-49702169-9f56-424c-b6b9-79a6b0632ba6	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	uritit	2026-04-23 23:56:43.349	2026-04-24 00:07:30.784	\N	\N	\N	\N	\N	\N	\N	\N	\N
-41ec2e25-f4ef-487b-b94b-b8226743d3a7	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	uffri	2026-04-23 23:56:45.739	2026-04-24 00:07:30.784	\N	\N	\N	\N	\N	\N	\N	\N	\N
-5855ad92-c85a-490e-9094-135e0c3d5928	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	hjdje	2026-04-24 00:01:51.814	2026-04-24 00:07:30.784	\N	\N	\N	\N	\N	\N	\N	\N	\N
-781af345-6cd3-42bb-9bb0-c4c8a5b774b5	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	jdjzjz	2026-04-24 00:01:56.248	2026-04-24 00:07:30.784	\N	\N	\N	\N	\N	\N	\N	\N	\N
-b4e8680d-4919-4f33-bc4c-48cd8623ffdc	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	jzjz	2026-04-24 00:02:04.246	2026-04-24 00:07:30.784	\N	\N	\N	\N	\N	\N	\N	\N	\N
-7f784196-704a-4ee8-88b6-e3b3f2684133	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	iziz	2026-04-24 00:02:07.19	2026-04-24 00:07:30.784	\N	\N	\N	\N	\N	\N	\N	\N	\N
-64c933f9-4fa7-4e43-87ca-6a2e1e9a56d3	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	hdjjzz	2026-04-24 00:04:22.212	2026-04-24 00:07:30.784	\N	\N	\N	\N	\N	\N	\N	\N	\N
-ea7656bc-2020-476b-b4db-8f23eab06566	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	sdhfiudshfiushdfiuhdsf	2026-04-24 00:07:57.76	2026-04-24 00:07:57.96	\N	\N	\N	\N	\N	\N	\N	\N	\N
-2779ca9c-b517-4105-bd03-fba1e5ecc1dc	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	sdhfsidufhisd	2026-04-24 00:08:08.017	2026-04-24 00:08:08.907	\N	\N	\N	\N	\N	\N	\N	\N	\N
-9739cb93-7311-4a0d-b1fc-4fe299e31a47	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	sdjfiosjdf	2026-04-24 00:09:05.55	2026-04-24 00:09:05.786	\N	\N	\N	\N	\N	\N	\N	\N	\N
-62b0d6d4-7572-4456-9882-6393d0c8323d	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	sdfsdiof	2026-04-24 00:11:01.587	2026-04-24 00:12:01.674	\N	\N	\N	\N	\N	\N	\N	\N	\N
-ed9d1a78-2cc3-40aa-9f51-3094b9b6dd15	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	ssdfd	2026-04-24 00:11:15.125	2026-04-24 00:12:01.674	\N	\N	\N	\N	\N	\N	\N	\N	\N
-9299f595-29ca-4dde-b9fc-f7b1ccf6440e	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	dsfdfsdf	2026-04-24 00:11:23.552	2026-04-24 00:12:01.674	\N	\N	\N	\N	\N	\N	\N	\N	\N
-1775a68e-483d-40c4-82a9-70c8a5377fae	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	jsjzjjzjz	2026-04-24 00:12:06.627	2026-04-24 00:12:06.653	\N	\N	\N	\N	\N	\N	\N	\N	\N
-cf127aca-21bd-48ad-9f08-a8449406b55e	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	sdfsdfsdf	2026-04-24 00:11:25.399	2026-04-24 00:12:01.674	\N	\N	\N	\N	\N	\N	\N	\N	\N
-8a0f5d1e-3bb4-4920-a7eb-06c31de2e382	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	fsdf	2026-04-24 00:11:26.754	2026-04-24 00:12:01.674	\N	\N	\N	\N	\N	\N	\N	\N	\N
-68407b9f-fd72-4d42-ba41-0aeb95feff9a	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	sdf	2026-04-24 00:11:28.063	2026-04-24 00:12:01.674	\N	\N	\N	\N	\N	\N	\N	\N	\N
-44b7b807-e8b9-440d-a8b4-347430834f01	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	sd	2026-04-24 00:11:29.134	2026-04-24 00:12:01.674	\N	\N	\N	\N	\N	\N	\N	\N	\N
-e1fcb83c-9510-4540-9e06-89bfb1351e6f	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	sdfdsf	2026-04-24 00:11:33.101	2026-04-24 00:12:01.674	\N	\N	\N	\N	\N	\N	\N	\N	\N
-72903360-8493-4c1b-951d-f1ccb96bd918	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	hjzjz	2026-04-24 00:15:02.813	2026-04-26 03:47:16.913	\N	\N	\N	\N	\N	\N	\N	\N	\N
-fe923b4f-1a8f-40d4-a2f7-43664b0bb2c7	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	jekzhaa	2026-04-24 01:05:19.56	2026-04-26 03:47:16.913	\N	\N	\N	\N	\N	\N	\N	\N	\N
-d7749642-c2ab-44c2-b63e-7bdcb9f42f0d	aaceea95-27ca-4eff-a37c-246107bc51aa	9b3b238f-3e67-4073-9b6b-afbd3731f195	Cet article est toujours disponible ?	2026-04-26 09:52:05.728	2026-04-26 09:52:14.223	3a4a58b8-8f96-42dd-b14f-f0ba045747e4	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775320601/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775320596223?_a=BAMAOGfk0	4 000 000 MGA	Moto • Disponible	MOTO New Mada	\N	\N	\N	\N
-a43ae5ef-e379-4423-9146-d20085be4ad4	aaceea95-27ca-4eff-a37c-246107bc51aa	b718efee-173e-441b-98f3-364b40c05e73	oui	2026-04-26 09:52:20.291	2026-04-26 09:52:20.362	\N	\N	\N	\N	\N	\N	\N	\N	\N
-48478fad-d51f-4ef8-9cf2-5e9539ee9e93	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	Bonjour izay ianao vao en ligne	2026-04-26 03:47:29.232	2026-04-27 17:13:59.342	\N	\N	\N	\N	\N	\N	\N	\N	\N
-f417d7ba-cb48-4e72-b612-12d0f36f6bfc	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	tsy mamaly	2026-04-26 03:47:49.476	2026-04-27 17:13:59.342	\N	\N	\N	\N	\N	\N	\N	\N	\N
-ed6558bc-f811-4a12-9ff6-05a7786eab58	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	a_za$	2026-04-26 03:48:05.503	2026-04-27 17:13:59.342	\N	\N	\N	\N	\N	\N	\N	\N	\N
-862cc894-0cc3-4966-93be-e31457939804	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	bonjour	2026-04-27 17:13:54.993	2026-04-27 17:13:59.342	\N	\N	\N	\N	\N	\N	\N	\N	\N
-63e69852-b46c-469b-903e-c8b6a62ee44e	6f944b8f-5750-4974-b8cb-a4c71f75ac07	fc758d78-e3c2-4ea7-a489-8e2886635f13	Cet article est toujours disponible ?	2026-04-27 17:14:08.594	2026-04-27 17:14:09.151	30e26f74-1462-4829-bb70-beea516822f3	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284317/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284309921?_a=BAMAOGfk0	10 000 MGA	femme • Disponible	boucle d oreil	\N	\N	\N	\N
-dcc9aa29-1aeb-4eb6-a4e1-dec029e662b3	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	oui cherie	2026-04-27 17:14:36.083	2026-04-27 17:14:36.347	\N	\N	\N	\N	\N	\N	\N	\N	\N
-f1c398fa-a42e-477f-9b73-d90d230cd509	6f944b8f-5750-4974-b8cb-a4c71f75ac07	b718efee-173e-441b-98f3-364b40c05e73	fttzz1	2026-04-27 17:14:44.337	2026-04-27 17:14:47.16	\N	\N	\N	\N	\N	\N	\N	\N	\N
+COPY public."ChatMessage" (id, "conversationId", "senderUserId", content, "createdAt", "readAt", "productId", "productImageUrl", "productPriceLabel", "productSubtitle", "productTitle", "replyToContent", "replyToMessageId", "replyToSenderName", "replyToSenderUserId", kind, "deletedForSenderAt", "editedAt", "deletedForBuyerAt", "deletedForSellerAt", "clientMessageId", "acceptedAt", "deliveredAt") FROM stdin;
+58c5e2cb-3982-42fb-9b35-0aca5934b0e4	a4aed824-447d-4283-91dc-dce532798fd5	b718efee-173e-441b-98f3-364b40c05e73	Salut	2026-05-18 10:00:04.088	2026-05-18 10:00:08.01	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+b29c86ce-930a-4b26-a4c9-aad20c6d8edf	a4aed824-447d-4283-91dc-dce532798fd5	b718efee-173e-441b-98f3-364b40c05e73	Aiza ilay sary	2026-05-18 10:00:17.115	2026-05-18 10:00:17.266	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+49eb008e-36ff-4751-815e-f170680413f8	a4aed824-447d-4283-91dc-dce532798fd5	b718efee-173e-441b-98f3-364b40c05e73	Mba alefaso ato	2026-05-18 10:00:37.623	2026-05-18 10:00:38.046	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+17d3d3c0-cafa-4b0c-8f3c-7f8b44200fa5	a4aed824-447d-4283-91dc-dce532798fd5	fc758d78-e3c2-4ea7-a489-8e2886635f13	salut andraso fa alefako ary	2026-05-18 10:00:53.228	2026-05-18 10:00:53.748	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+098454e8-7929-4ea2-987c-ee467da67e40	a4aed824-447d-4283-91dc-dce532798fd5	fc758d78-e3c2-4ea7-a489-8e2886635f13	ireo	2026-05-18 10:01:21.838	2026-05-18 10:01:22.349	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+548d652b-8d96-4e77-8d71-28cd3aa98cb1	a4aed824-447d-4283-91dc-dce532798fd5	fc758d78-e3c2-4ea7-a489-8e2886635f13	Photo envoyee	2026-05-18 10:01:22.5	2026-05-18 10:01:22.726	\N	\N	\N	\N	\N	\N	\N	\N	\N	IMAGE	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+0760e68b-8df2-4678-bc23-465cec582acb	a4aed824-447d-4283-91dc-dce532798fd5	fc758d78-e3c2-4ea7-a489-8e2886635f13	Photo envoyee	2026-05-18 10:01:22.576	2026-05-18 10:01:22.726	\N	\N	\N	\N	\N	\N	\N	\N	\N	IMAGE	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+d6435ae4-ec71-455f-8e37-9557ac9950c5	a4aed824-447d-4283-91dc-dce532798fd5	fc758d78-e3c2-4ea7-a489-8e2886635f13	Photo envoyee	2026-05-18 10:01:22.656	2026-05-18 10:01:22.726	\N	\N	\N	\N	\N	\N	\N	\N	\N	IMAGE	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+35e49ffb-5013-4422-84cb-05d5f30b22dc	a4aed824-447d-4283-91dc-dce532798fd5	fc758d78-e3c2-4ea7-a489-8e2886635f13	Photo envoyee	2026-05-18 10:01:23.057	2026-05-18 10:01:23.072	\N	\N	\N	\N	\N	\N	\N	\N	\N	IMAGE	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+2c0d1969-3623-4ea3-8a21-0a7553d96d83	a4aed824-447d-4283-91dc-dce532798fd5	fc758d78-e3c2-4ea7-a489-8e2886635f13	Photo envoyee	2026-05-18 10:01:23.209	2026-05-18 10:01:23.449	\N	\N	\N	\N	\N	\N	\N	\N	\N	IMAGE	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+a78a74c4-b2c0-450c-8a87-8c0fdf967f48	a4aed824-447d-4283-91dc-dce532798fd5	fc758d78-e3c2-4ea7-a489-8e2886635f13	Photo envoyee	2026-05-18 10:01:23.977	2026-05-18 10:01:24.326	\N	\N	\N	\N	\N	\N	\N	\N	\N	IMAGE	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+53436408-ee23-4a05-bc78-95a7c50b323c	a4aed824-447d-4283-91dc-dce532798fd5	fc758d78-e3c2-4ea7-a489-8e2886635f13	Photo envoyee	2026-05-18 10:01:24.466	2026-05-18 10:01:25.162	\N	\N	\N	\N	\N	\N	\N	\N	\N	IMAGE	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+48ebf7b1-470d-426d-b229-8a93798bf021	a4aed824-447d-4283-91dc-dce532798fd5	fc758d78-e3c2-4ea7-a489-8e2886635f13	Photo envoyee	2026-05-18 10:01:24.576	2026-05-18 10:01:25.162	\N	\N	\N	\N	\N	\N	\N	\N	\N	IMAGE	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+c4801706-17f5-4098-8e77-22a697f7d993	a4aed824-447d-4283-91dc-dce532798fd5	b718efee-173e-441b-98f3-364b40c05e73	Whoaa tsara be	2026-05-18 10:01:37.861	2026-05-18 10:01:38.083	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+0ca2a43a-c82f-4721-ac18-c55a558d0014	a4aed824-447d-4283-91dc-dce532798fd5	fc758d78-e3c2-4ea7-a489-8e2886635f13	vola omena raha misy	2026-05-18 10:01:49.283	2026-05-18 10:01:49.86	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+fb0c7464-0c8d-44b0-a28c-0c78766098ee	a4aed824-447d-4283-91dc-dce532798fd5	fc758d78-e3c2-4ea7-a489-8e2886635f13	alefaso am ito num ito 0349459128	2026-05-18 10:02:05.477	2026-05-18 10:02:05.989	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+7f1c8b55-a93d-4c97-badf-c4ea53bbddb6	a4aed824-447d-4283-91dc-dce532798fd5	b718efee-173e-441b-98f3-364b40c05e73	vola omena raha misy	2026-05-18 14:58:26.986	2026-05-18 15:02:18.436	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+27ef8bc0-769c-4697-932c-2136b2287cd1	a4aed824-447d-4283-91dc-dce532798fd5	b718efee-173e-441b-98f3-364b40c05e73	Photo envoyee	2026-05-18 15:00:06.04	2026-05-18 15:02:18.436	\N	\N	\N	\N	\N	\N	\N	\N	\N	IMAGE	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+8d05849c-a2c1-4e54-844f-071ed1302838	a4aed824-447d-4283-91dc-dce532798fd5	b718efee-173e-441b-98f3-364b40c05e73	Photo envoyee	2026-05-18 15:00:06.316	2026-05-18 15:02:18.436	\N	\N	\N	\N	\N	\N	\N	\N	\N	IMAGE	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+53c75232-7122-4f0d-9d13-dd65a99eafe6	52427c4f-c13b-4dd0-8825-78008bd41a18	fc758d78-e3c2-4ea7-a489-8e2886635f13	ihohih	2026-05-27 19:59:02.191	2026-05-27 19:59:02.537	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+bc8ff679-1997-44c8-87f4-b20467bfabf8	52427c4f-c13b-4dd0-8825-78008bd41a18	fc758d78-e3c2-4ea7-a489-8e2886635f13	kuuiuihiuh	2026-05-27 19:59:13.694	2026-05-27 19:59:14.262	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+ebbaa054-0c6b-4a9b-b5ec-9d17b42dcdbf	a4aed824-447d-4283-91dc-dce532798fd5	b718efee-173e-441b-98f3-364b40c05e73	Document envoye	2026-05-18 15:00:29.257	2026-05-18 15:02:18.436	\N	\N	\N	\N	\N	\N	\N	\N	\N	DOCUMENT	\N	\N	\N	2026-05-19 15:06:47.377	\N	2026-06-01 22:56:44.753	\N
+85502a28-f003-416d-bca8-669432b9eac5	a4aed824-447d-4283-91dc-dce532798fd5	b718efee-173e-441b-98f3-364b40c05e73	Document envoye	2026-05-18 15:01:07.203	2026-05-18 15:02:18.436	\N	\N	\N	\N	\N	\N	\N	\N	\N	DOCUMENT	\N	\N	\N	2026-05-19 15:06:47.827	\N	2026-06-01 22:56:44.753	\N
+8f9d14ce-8538-4efc-903e-6870e0465b20	a4aed824-447d-4283-91dc-dce532798fd5	b718efee-173e-441b-98f3-364b40c05e73	Ma localisation: 3G5H+829\nhttps://maps.google.com/?q=-18.9416418,47.5294558	2026-05-19 05:33:21.869	2026-05-19 15:06:39.435	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	2026-05-19 15:06:48.246	\N	2026-06-01 22:56:44.753	\N
+87471317-25b0-468d-b229-bc2f2eabc440	a4aed824-447d-4283-91dc-dce532798fd5	fc758d78-e3c2-4ea7-a489-8e2886635f13	Message supprime	2026-05-19 15:07:06.857	2026-05-19 15:07:41.297	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+a37f1397-d0de-4187-91f2-9d8c72ba0ffc	a4aed824-447d-4283-91dc-dce532798fd5	b718efee-173e-441b-98f3-364b40c05e73	Je te partage ce produit.\nChaise design minimaliste\n145 000	2026-05-19 16:08:56.243	2026-05-19 16:09:01.385	prod-seed-chair	https://images.unsplash.com/photo-1519947486511-46149fa0a254?w=800	145 000	Maison	Chaise design minimaliste	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+514418b8-85c9-44b2-9ae4-103a90241fec	52427c4f-c13b-4dd0-8825-78008bd41a18	fc758d78-e3c2-4ea7-a489-8e2886635f13	sdijfiosdsdfsdfsdfsdfjsdfj'jezfez	2026-05-27 19:57:51.362	2026-05-27 19:57:51.748	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+cdab8ec8-fa1e-45f9-8225-c7581f1d5e00	52427c4f-c13b-4dd0-8825-78008bd41a18	b718efee-173e-441b-98f3-364b40c05e73	jsjz	2026-05-27 19:58:52.987	2026-05-27 19:58:53.173	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+3e9c1518-d901-47ff-8cb7-d52e7567d647	52427c4f-c13b-4dd0-8825-78008bd41a18	fc758d78-e3c2-4ea7-a489-8e2886635f13	sdfjosidjfoidsjfoisdf	2026-05-27 20:05:26.345	2026-05-27 20:05:32.571	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+c2d3262b-d238-4038-9dbb-319d81e6b68b	52427c4f-c13b-4dd0-8825-78008bd41a18	fc758d78-e3c2-4ea7-a489-8e2886635f13	dfgofdjgoijdfg	2026-05-27 20:05:39.418	2026-05-27 20:05:40.25	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+a4172089-f563-4529-bad8-248db10936ad	52427c4f-c13b-4dd0-8825-78008bd41a18	b718efee-173e-441b-98f3-364b40c05e73	yui	2026-05-27 20:05:43.873	2026-05-27 20:05:44.384	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+1531799f-5069-40b5-8f76-b1b462f69297	52427c4f-c13b-4dd0-8825-78008bd41a18	b718efee-173e-441b-98f3-364b40c05e73	zzhzlehez	2026-05-27 20:05:46.109	2026-05-27 20:05:46.629	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+a8dbeae6-07cd-471f-a923-66bbaa6773a6	52427c4f-c13b-4dd0-8825-78008bd41a18	fc758d78-e3c2-4ea7-a489-8e2886635f13	sndfoisjofijsdoijfsoidfsd	2026-05-27 20:05:58.903	2026-05-27 20:05:59.432	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+e834563c-6161-464d-b4bc-68771429879e	52427c4f-c13b-4dd0-8825-78008bd41a18	fc758d78-e3c2-4ea7-a489-8e2886635f13	fdgdfgfdgdfg	2026-05-27 20:06:07.944	2026-05-27 20:06:08.367	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	\N
+4826b9dd-2b68-4ef3-9ca7-cf6164599227	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	squidhuqsidsqd	2026-06-01 21:27:58.593	2026-06-01 21:28:03.921	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780349276977849	2026-06-01 21:27:58.593	2026-06-01 21:27:59.288
+86263975-9c67-4277-820f-262afe115944	52427c4f-c13b-4dd0-8825-78008bd41a18	fc758d78-e3c2-4ea7-a489-8e2886635f13	sdiofjoisdjofjsdf	2026-05-27 20:09:49.092	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	2026-06-01 20:56:45.474
+c7d25825-454f-4fa0-bd1b-9ebdc5847878	52427c4f-c13b-4dd0-8825-78008bd41a18	fc758d78-e3c2-4ea7-a489-8e2886635f13	rest	2026-05-27 20:10:24.153	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	2026-06-01 20:56:45.476
+c95a90f1-bbe3-4f28-8a16-19daf590a771	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	dsfsdf	2026-06-01 21:25:37.825	2026-06-01 21:25:37.887	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780349136301012	2026-06-01 21:25:37.825	2026-06-01 21:25:38.477
+06deb8f7-e8fa-4ed1-ba9b-a36c3bf91e8a	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	Bonjour	2026-06-01 16:41:32.706	2026-06-01 20:57:43.064	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	2026-06-01 20:57:43.064
+df380d4e-d800-4a98-b447-189602f1a247	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	adobe	2026-06-01 20:37:47.435	2026-06-01 20:57:43.064	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	2026-06-01 20:57:43.064
+0374f561-7aa1-49e6-bf2e-4851e7c56d06	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	jskz	2026-06-01 20:37:58.015	2026-06-01 20:57:43.064	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	2026-06-01 20:57:43.064
+93ccda76-ca55-44c4-9f5a-12baaa5ef9c2	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	Cet article est toujours disponible ?	2026-05-29 21:02:50.352	2026-06-01 20:57:45.554	7cd76f8d-41f4-45c9-b83b-6dc986840016	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1778784342/BANAY/products/cddc006611794a16aa8a7edeea79d0bc-product-1778784338965?_a=BAMAOGfk0	12000 MGA	vetement • Disponible	teszpfbe	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	2026-06-01 20:57:45.554
+d37c7b33-1915-4d42-8ee2-4db2591cbc66	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	Cet article est toujours disponible ?	2026-05-29 21:02:50.352	2026-06-01 20:57:45.554	7cd76f8d-41f4-45c9-b83b-6dc986840016	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1778784342/BANAY/products/cddc006611794a16aa8a7edeea79d0bc-product-1778784338965?_a=BAMAOGfk0	12000 MGA	vetement • Disponible	teszpfbe	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	2026-06-01 20:57:45.554
+0cc8689c-1667-40ea-b163-38c2f5b0a60a	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	iuhiuhiu	2026-06-01 20:23:07.38	2026-06-01 20:57:45.554	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	\N	2026-06-01 22:56:44.753	2026-06-01 20:57:45.554
+b7368ef5-554d-432c-97e3-539022ff21ce	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	hrzkz	2026-06-01 20:57:50.185	2026-06-01 20:57:50.321	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780347469398027	2026-06-01 20:57:50.185	2026-06-01 20:57:51.59
+86d02f53-82ce-4c7c-ba3c-6ee00a6a03dc	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	test	2026-06-01 20:58:01.291	2026-06-01 20:58:01.528	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780347479516841	2026-06-01 20:58:01.291	2026-06-01 20:58:02.156
+0f7c45df-a0cf-4914-a8fb-9eea9f4c89f9	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	testmds	2026-06-01 20:58:09.758	2026-06-01 20:58:09.953	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780347488118811	2026-06-01 20:58:09.758	2026-06-01 20:58:10.403
+aa85a90b-0fd6-4ffc-8dbd-b9cf4166fcd2	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	test	2026-06-01 20:58:48.797	2026-06-01 20:58:58.485	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780347527304174	2026-06-01 20:58:48.797	2026-06-01 20:58:58.485
+af5f2f9c-7593-4224-afab-288b85cbfdda	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	xgyi	2026-06-01 21:02:53.408	2026-06-01 21:02:53.427	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780347772479337	2026-06-01 21:02:53.408	2026-06-01 21:02:54.121
+e8aa59c1-fd6c-4602-a2da-72c93593e6eb	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	sdtez	2026-06-01 20:59:41.349	2026-06-01 21:05:05.949	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780347579844473	2026-06-01 20:59:41.349	2026-06-01 21:05:05.949
+e8ba3e6f-2741-4fcd-bc20-deff75d29410	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	sdfojssdsdfqffqsdf	2026-06-01 21:03:06.585	2026-06-01 21:05:05.949	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780347785003886	2026-06-01 21:03:06.585	2026-06-01 21:05:05.949
+cbda2c9d-d110-48c0-bc4c-8e7701b7c636	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	isodjfsdf	2026-06-01 21:03:35.075	2026-06-01 21:05:05.949	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780347813653459	2026-06-01 21:03:35.075	2026-06-01 21:05:05.949
+f97c7fb0-1276-4d62-9892-fcd995886e51	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	oijoi	2026-06-01 21:03:45.09	2026-06-01 21:05:05.949	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780347823497808	2026-06-01 21:03:45.09	2026-06-01 21:05:05.949
+35379513-007e-4b00-b088-affab91fb83a	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	sdifjosoidjfsdfqhf sq fpqof qf	2026-06-01 21:05:21.505	2026-06-01 21:05:21.767	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780347919798832	2026-06-01 21:05:21.505	2026-06-01 21:05:22.157
+b7ec6aa8-ea0c-40a6-8b2c-fd71a3cbd6f1	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	sdfosdjf qo jps qdfj pqjfosqjdfsdf	2026-06-01 21:05:28.534	2026-06-01 21:05:28.61	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780347926702724	2026-06-01 21:05:28.534	2026-06-01 21:05:29.304
+7dd12ee7-45ca-4ca2-965d-d424130c6dac	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	sd_fs psq pf psqufpsqu f_usdf_uqs_u fpuq u _up upup_u psudsdfsf	2026-06-01 21:05:40.038	2026-06-01 21:05:40.22	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780347938117975	2026-06-01 21:05:40.038	2026-06-01 21:05:40.81
+4c718603-4f95-481e-82ad-8cdce3b000b4	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	🥰	2026-06-01 21:07:29.165	2026-06-01 21:07:39.056	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780348047770155	2026-06-01 21:07:29.165	2026-06-01 21:07:39.056
+c4239d10-ccd6-4089-a533-87417908d9a4	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	difjsodijf	2026-06-01 21:07:47.224	2026-06-01 21:07:47.368	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780348065695882	2026-06-01 21:07:47.224	2026-06-01 21:07:47.891
+78058a30-9501-49b6-b2ec-72512ccfbbd1	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	iodjfsodjf	2026-06-01 21:07:56.756	2026-06-01 21:09:16.34	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780348074961155	2026-06-01 21:07:56.756	2026-06-01 21:09:16.34
+4d65b693-e723-4da3-b40c-9d8257831a2f	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	d,fdoijsidf	2026-06-01 21:10:25.755	2026-06-01 21:10:31.486	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780348224293160	2026-06-01 21:10:25.755	2026-06-01 21:10:31.486
+a36e2d81-e94f-4d65-815b-56780fcf7ad5	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	reojtoperoekepz'*	2026-06-01 21:10:41.386	2026-06-01 21:10:51.6	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780348239713986	2026-06-01 21:10:41.386	2026-06-01 21:10:51.6
+7d62c9b1-239b-4b2b-a9c0-fc8558c4aef2	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	sdfopsdfpojsdsdf	2026-06-01 21:10:47.409	2026-06-01 21:10:51.6	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780348245688618	2026-06-01 21:10:47.409	2026-06-01 21:10:51.6
+e4bceaa7-4429-461f-8566-94592c9fabcd	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	sdnfdsoifjsdf	2026-06-01 21:13:21.02	2026-06-01 21:13:28.181	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780348399088385	2026-06-01 21:13:21.02	2026-06-01 21:13:28.181
+8bc9223c-2a28-471d-b171-89a78d25232e	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	bonne nuit	2026-06-01 21:17:53.092	2026-06-01 21:17:57.614	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780348671229784	2026-06-01 21:17:53.092	2026-06-01 21:17:53.865
+36ebbe9b-3fa5-4e10-8102-96a7afbe876a	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	sdoisdif	2026-06-01 21:21:53.359	2026-06-01 21:21:56.903	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780348911387289	2026-06-01 21:21:53.359	2026-06-01 21:21:54.022
+53fcc5fd-a20e-4c44-98a2-1e436f8ed93f	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	dsfsdfjsdf	2026-06-01 21:22:14.886	2026-06-01 21:22:18.673	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780348933092761	2026-06-01 21:22:14.886	2026-06-01 21:22:15.481
+d177e156-d0bc-4498-a360-b22df61f0c52	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	iosdiofjsdf	2026-06-01 21:23:41.064	2026-06-01 21:23:41.15	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780349019317003	2026-06-01 21:23:41.064	2026-06-01 21:23:41.776
+08bb200f-8fed-4587-be61-1ab56b77c9b2	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	isdjfosdfsdf	2026-06-01 21:25:28.262	2026-06-01 21:25:28.487	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780349126299359	2026-06-01 21:25:28.262	2026-06-01 21:25:28.915
+26719a4a-3f2f-47b9-98e7-1a64e95ce8b2	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	sdhufihsidf	2026-06-01 21:28:24.811	2026-06-01 21:28:24.978	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1780349302983165	2026-06-01 21:28:24.811	2026-06-01 21:28:25.528
+6126f8b6-8f9b-4233-9b84-a25402765b26	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	Bonjour	2026-06-09 19:12:07.132	2026-06-09 19:12:33.741	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1781032298608407	2026-06-09 19:12:07.132	2026-06-09 19:12:33.741
+208b57e1-6544-415d-a548-fe1b4f6edabe	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	dsosdjfpdsf	2026-06-09 19:12:23.644	2026-06-09 19:12:33.741	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1781032315450264	2026-06-09 19:12:23.644	2026-06-09 19:12:33.741
+5750d684-a0ed-4aa9-bb76-fae6030db17e	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	oepe	2026-06-09 19:13:09.276	2026-06-09 19:13:26.821	\N	\N	\N	\N	\N	dsfsdf	c95a90f1-bbe3-4f28-8a16-19daf590a771	DAMA Dany	\N	TEXT	\N	\N	\N	\N	pending-text-1781032388241461	2026-06-09 19:13:09.276	2026-06-09 19:13:26.821
+f43eb4b5-4516-4077-bacb-7fd56b91e100	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	eueuie	2026-06-09 19:13:12.81	2026-06-09 19:13:26.821	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1781032392052640	2026-06-09 19:13:12.81	2026-06-09 19:13:26.821
+36464092-13bb-4f40-8df7-8e868380562b	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	khuhu	2026-06-09 19:13:48.019	2026-06-09 19:13:56.15	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1781032399707870	2026-06-09 19:13:48.019	2026-06-09 19:13:48.886
+9eeb7f5b-dc71-4c9b-90b1-b3bf3b4cdbc3	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	nuni	2026-06-09 19:13:59.577	2026-06-09 19:14:06.795	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1781032411402794	2026-06-09 19:13:59.577	2026-06-09 19:14:06.795
+75457d36-d26d-4de9-bee5-c72201a7f106	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	iojsodijfsdf	2026-06-09 19:51:23.236	2026-06-09 20:11:29.329	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1781034655065163	2026-06-09 19:51:23.236	2026-06-09 19:51:24.313
+927eac8f-bc38-40a9-bd6a-248629b6054d	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	oijoihoi	2026-06-09 19:52:36.489	2026-06-09 20:11:29.329	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1781034727654339	2026-06-09 19:52:36.489	2026-06-09 19:53:19.941
+90011cb0-21a1-487d-ac9a-625c4430a38e	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	sdfoijsdfsdf	2026-06-09 19:53:31.191	2026-06-09 20:11:29.329	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1781034782002344	2026-06-09 19:53:31.191	2026-06-09 19:53:41.991
+ec9724bc-0a76-4122-9ffb-83300b650f7b	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	odsfopdsfdsf	2026-06-09 19:58:57.841	2026-06-09 20:11:29.329	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1781035109447885	2026-06-09 19:58:57.841	2026-06-09 19:59:00.404
+af7021c9-d3c1-4cb6-97d5-bec101548187	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	sdfjoisjdfosdfsf	2026-06-09 19:59:19.762	2026-06-09 20:11:29.329	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1781035131563181	2026-06-09 19:59:19.762	2026-06-09 19:59:20.62
+2469e49d-b94f-4f85-bb1c-e6fab0b41b3b	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	sdfjoisdfijsdf	2026-06-09 19:59:36.776	2026-06-09 20:11:29.329	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1781035148643464	2026-06-09 19:59:36.776	2026-06-09 19:59:37.595
+e9ff36f9-6339-4f76-b860-64473f6311bc	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	idjfoisdfdsf	2026-06-09 20:08:28.104	2026-06-09 20:11:29.329	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1781035679657213	2026-06-09 20:08:28.104	2026-06-09 20:08:29.662
+3cadf7df-2cef-44fd-8d49-4b259b163ec8	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	esdfijsdoijfoisjdfdsf	2026-06-09 20:08:36.428	2026-06-09 20:11:29.329	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1781035688132560	2026-06-09 20:08:36.428	2026-06-09 20:08:37.297
+30d88bad-5493-4eb4-86be-53a7b755edd7	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	usqihduiqhsiud	2026-06-09 20:11:00.158	2026-06-09 20:11:29.329	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1781035831643661	2026-06-09 20:11:00.158	2026-06-09 20:11:01.557
+e164fab9-ce3f-45b1-bb6c-439107d2eb78	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	sdifjosidjfoisdf	2026-06-09 20:11:10.663	2026-06-09 20:11:29.329	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1781035842226510	2026-06-09 20:11:10.663	2026-06-09 20:11:24.411
+3dc557ec-2462-49f1-afc3-27449d4a3201	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	sidjfoidsf	2026-06-09 20:11:16.166	2026-06-09 20:11:29.329	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1781035847829598	2026-06-09 20:11:16.166	2026-06-09 20:11:24.413
+2a53724e-3ea5-4531-a143-701a843b5dcf	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	siodjfosjdfosdf	2026-06-09 20:11:37.601	2026-06-09 20:11:51.225	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1781035869431801	2026-06-09 20:11:37.601	\N
+4e203802-3463-488d-a38d-49d5ca7fcbf3	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	sjdiofjosdf	2026-06-09 20:11:42.706	2026-06-09 20:11:51.225	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1781035874383748	2026-06-09 20:11:42.706	\N
+ad54a165-17b5-403c-b5d5-49e3ca58a206	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	dsifjoidsjdsf	2026-06-09 20:12:13.265	2026-06-10 04:19:57.461	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1781035904803156	2026-06-09 20:12:13.265	2026-06-09 20:13:27.547
+d4827431-6fa8-4502-977a-64c097782423	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	sdjfoisdf	2026-06-09 20:12:27.301	2026-06-10 04:19:57.461	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1781035918659666	2026-06-09 20:12:27.301	2026-06-09 20:13:27.551
+ad59dad4-2d5f-4af1-9ee9-eeefa0421bbf	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	ohsdosdsf	2026-06-10 04:18:53.36	2026-06-10 04:19:57.461	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1781065081228033	2026-06-10 04:18:53.36	2026-06-10 04:18:55.296
+6cb51de1-76bf-4772-bf7e-fe268cc19219	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	sdfijsdoijfoisddsf	2026-06-10 04:19:03.675	2026-06-10 04:19:57.461	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1781065091563918	2026-06-10 04:19:03.675	2026-06-10 04:19:04.532
+9d046cfa-bb53-4c1a-acf7-0959bb6c7532	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	sdfiojdsofjsdiofsdf	2026-06-10 04:19:15.689	2026-06-10 04:19:57.461	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1781065103646253	2026-06-10 04:19:15.689	\N
+764330b5-7a64-4e6b-9662-0ed95e1aba56	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	TEste TEste TEste	2026-06-10 04:19:49.232	2026-06-10 04:19:57.461	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1781065137213119	2026-06-10 04:19:49.232	\N
+8f00f1df-a0d3-451c-86ac-0bf2053e4942	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	b718efee-173e-441b-98f3-364b40c05e73	Bonjour est ce que a marche?	2026-08-06 00:37:04.27	2026-08-06 00:37:12.769	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1785976526009707	2026-08-06 00:37:04.27	2026-08-06 00:37:06.588
+083188c2-ffd0-4c20-a73f-b95e18bea731	1a71297d-8c0d-4de9-aab1-df13b5e7ce43	fc758d78-e3c2-4ea7-a489-8e2886635f13	oui oui	2026-08-06 00:56:29.702	2026-08-06 01:04:34.54	\N	\N	\N	\N	\N	\N	\N	\N	\N	TEXT	\N	\N	\N	\N	pending-text-1785977789669451	2026-08-06 00:56:29.702	2026-08-06 00:56:31.722
+\.
+
+
+--
+-- Data for Name: ChatMessageMedia; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public."ChatMessageMedia" (id, "messageId", "mediaType", "mimeType", "fileName", "fileSizeBytes", "storageProvider", "storageKey", "publicUrl", "previewUrl", "thumbnailUrl", width, height, "encryptionScheme", "encryptionKeyB64", "encryptionIvB64", "fileSha256B64", "createdAt", "updatedAt", "mediaGroupId") FROM stdin;
+1ef50914-91dc-464b-9763-0bfcb9bb3a44	27ef8bc0-769c-4697-932c-2136b2287cd1	image	image/jpeg	scaled_1000011217.jpg	384063	cloudinary	BANAY/chat-images/b718efee173e441b98f3364b40c05e73-chat-image-1779116402300	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779116404/BANAY/chat-images/b718efee173e441b98f3364b40c05e73-chat-image-1779116402300.jpg	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779116404/BANAY/chat-images/b718efee173e441b98f3364b40c05e73-chat-image-1779116402300.jpg	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779116404/BANAY/chat-images/b718efee173e441b98f3364b40c05e73-chat-image-1779116402300.jpg	1200	1600	\N	\N	\N	\N	2026-05-18 15:00:06.04	2026-05-18 15:00:06.04	image-1779116402354156
+2c5fd3d8-2b8f-4efd-8651-3c8949fd9e7d	8d05849c-a2c1-4e54-844f-071ed1302838	image	image/jpeg	scaled_1000011216.jpg	382896	cloudinary	BANAY/chat-images/b718efee173e441b98f3364b40c05e73-chat-image-1779116402429	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779116404/BANAY/chat-images/b718efee173e441b98f3364b40c05e73-chat-image-1779116402429.jpg	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779116404/BANAY/chat-images/b718efee173e441b98f3364b40c05e73-chat-image-1779116402429.jpg	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779116404/BANAY/chat-images/b718efee173e441b98f3364b40c05e73-chat-image-1779116402429.jpg	1200	1600	\N	\N	\N	\N	2026-05-18 15:00:06.316	2026-05-18 15:00:06.316	image-1779116402354156
+07009a50-d121-44cb-a30c-a0d0898ad104	ebbaa054-0c6b-4a9b-b5ec-9d17b42dcdbf	document	application/pdf	Entre stabilité et liberté.pdf	2340112	cloudinary	BANAY/chat-documents/b718efee173e441b98f3364b40c05e73-chat-document-1779116424802.pdf	https://res.cloudinary.com/dedzvlmsf/raw/upload/v1779116428/BANAY/chat-documents/b718efee173e441b98f3364b40c05e73-chat-document-1779116424802.pdf	\N	\N	\N	\N	\N	\N	\N	\N	2026-05-18 15:00:29.257	2026-05-18 15:00:29.257	\N
+f11fccf0-feb8-4ae7-8b55-c7a737df3b40	85502a28-f003-416d-bca8-669432b9eac5	document	application/pdf	Reçu du billet électronique, 11 février pour MS VO_260206_133448.pdf	49624	cloudinary	BANAY/chat-documents/b718efee173e441b98f3364b40c05e73-chat-document-1779116464462.pdf	https://res.cloudinary.com/dedzvlmsf/raw/upload/v1779116466/BANAY/chat-documents/b718efee173e441b98f3364b40c05e73-chat-document-1779116464462.pdf	\N	\N	\N	\N	\N	\N	\N	\N	2026-05-18 15:01:07.203	2026-05-18 15:01:07.203	\N
+77a36791-eeb6-4ea9-87ea-bb7553bb549a	548d652b-8d96-4e77-8d71-28cd3aa98cb1	image	image/jpeg	scaled_1000110480.jpg	230835	cloudinary	BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098478532	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779098481/BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098478532.jpg	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779098481/BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098478532.jpg	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779098481/BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098478532.jpg	747	1600	\N	\N	\N	\N	2026-05-18 10:01:22.5	2026-05-18 10:01:22.5	image-1779098478441312
+9d27c2da-fdc3-4de9-83dc-4f6fd1216ec3	0760e68b-8df2-4678-bc23-465cec582acb	image	image/jpeg	scaled_1000110476.jpg	318423	cloudinary	BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098478384	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779098481/BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098478384.jpg	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779098481/BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098478384.jpg	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779098481/BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098478384.jpg	1600	747	\N	\N	\N	\N	2026-05-18 10:01:22.576	2026-05-18 10:01:22.576	image-1779098478441312
+2cf432b4-4a06-4101-a595-3214e3e5a78a	d6435ae4-ec71-455f-8e37-9557ac9950c5	image	image/jpeg	scaled_1000110478.jpg	274457	cloudinary	BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098478791	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779098481/BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098478791.jpg	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779098481/BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098478791.jpg	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779098481/BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098478791.jpg	747	1600	\N	\N	\N	\N	2026-05-18 10:01:22.656	2026-05-18 10:01:22.656	image-1779098478441312
+5e8783e5-f3a4-4d10-be22-586bbe28d906	35e49ffb-5013-4422-84cb-05d5f30b22dc	image	image/jpeg	scaled_1000110482.jpg	259435	cloudinary	BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098478999	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779098481/BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098478999.jpg	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779098481/BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098478999.jpg	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779098481/BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098478999.jpg	747	1600	\N	\N	\N	\N	2026-05-18 10:01:23.057	2026-05-18 10:01:23.057	image-1779098478441312
+a7d9ea31-94bc-4446-8ed6-120342103d59	2c0d1969-3623-4ea3-8a21-0a7553d96d83	image	image/jpeg	scaled_1000110472.jpg	255638	cloudinary	BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098479151	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779098481/BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098479151.jpg	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779098481/BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098479151.jpg	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779098481/BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098479151.jpg	1600	747	\N	\N	\N	\N	2026-05-18 10:01:23.209	2026-05-18 10:01:23.209	image-1779098478441312
+ecf242cf-9323-4366-9cbb-ba7cfae76f19	a78a74c4-b2c0-450c-8a87-8c0fdf967f48	image	image/jpeg	scaled_1000110462.jpg	187109	cloudinary	BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098479678	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779098481/BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098479678.jpg	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779098481/BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098479678.jpg	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779098481/BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098479678.jpg	747	1600	\N	\N	\N	\N	2026-05-18 10:01:23.977	2026-05-18 10:01:23.977	image-1779098478441312
+83ce188d-0eab-4ba8-8ab1-2bccea1abf18	53436408-ee23-4a05-bc78-95a7c50b323c	image	image/jpeg	scaled_1000110464.jpg	387346	cloudinary	BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098479534	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779098482/BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098479534.jpg	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779098482/BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098479534.jpg	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779098482/BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098479534.jpg	747	1600	\N	\N	\N	\N	2026-05-18 10:01:24.466	2026-05-18 10:01:24.466	image-1779098478441312
+7283a307-0c48-4b8e-bf27-57b6fb59d9ad	48ebf7b1-470d-426d-b229-8a93798bf021	image	image/jpeg	scaled_1000110461.jpg	365574	cloudinary	BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098479554	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779098482/BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098479554.jpg	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779098482/BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098479554.jpg	https://res.cloudinary.com/dedzvlmsf/image/upload/v1779098482/BANAY/chat-images/fc758d78e3c24ea7a4898e2886635f13-chat-image-1779098479554.jpg	747	1600	\N	\N	\N	\N	2026-05-18 10:01:24.576	2026-05-18 10:01:24.576	image-1779098478441312
 \.
 
 
@@ -793,6 +833,10 @@ b4fb6cc1-2d5c-4139-b87f-ed9d5ebff3e1	notif-comment-3a4a58b8-8f96-42dd-b14f-f0ba0
 03a275a2-ecb4-48e4-93a5-845da6c941af	notif-like-30e26f74-1462-4829-bb70-beea516822f3	b718efee-173e-441b-98f3-364b40c05e73	2026-04-19 16:41:57.036
 128ba1ea-1f2c-4050-8847-4414a1a29353	notif-like-4bae1fb8-7119-4588-a44c-7c98cd77fb2e	b718efee-173e-441b-98f3-364b40c05e73	2026-04-19 16:41:59.982
 11781431-fee8-42c0-b8d9-13eb60bd6d0c	notif-seller-follow-8251534e-e1e7-466d-b917-1c6b51d79c15	b718efee-173e-441b-98f3-364b40c05e73	2026-04-26 09:51:33.468
+507e2b06-1eed-4e33-af77-bbd36b587ee6	notif-user-feedback-feedback-admin-demo-1	fc758d78-e3c2-4ea7-a489-8e2886635f13	2026-05-16 07:33:39.172
+284c493a-5dcb-45f4-8f2b-06a7350fba53	notif-seller-follow-0c74cbbf-78e8-4974-9bfe-fc704fbdcace	b718efee-173e-441b-98f3-364b40c05e73	2026-05-19 15:34:27.891
+90417295-5c6f-43be-8984-edccead6cb53	notif-seller-follow-d692aeed-65bd-4974-b400-6da32d87c227	b718efee-173e-441b-98f3-364b40c05e73	2026-05-19 15:34:29.899
+18403eb7-dc4b-4697-b3fa-6d81260f6fae	notif-shop-request-approved-b718efee-173e-441b-98f3-364b40c05e73-1775278702354	b718efee-173e-441b-98f3-364b40c05e73	2026-05-19 15:34:30.905
 \.
 
 
@@ -801,7 +845,7 @@ b4fb6cc1-2d5c-4139-b87f-ed9d5ebff3e1	notif-comment-3a4a58b8-8f96-42dd-b14f-f0ba0
 --
 
 COPY public."Order" (id, "orderNumber", status, "subtotalAmount", "deliveryAmount", "totalAmount", "createdAt", "updatedAt", "buyerUserId", "sellerProfileId") FROM stdin;
-e9daebd9-2af7-45cf-ade7-e4dc5fa0d4a9	BHB-SEED-001	DELIVERED	190000.00	15000.00	205000.00	2026-04-02 16:43:30.355	2026-04-02 16:43:30.355	b59f5d68-ec21-44d1-adf3-33786f0d3a35	6a138d49-94b3-4f80-9e9b-cf137bc0a245
+e9daebd9-2af7-45cf-ade7-e4dc5fa0d4a9	BHB-SEED-001	DELIVERED	190000.00	15000.00	205000.00	2026-04-02 16:43:30.355	2026-05-13 19:24:19.066	b59f5d68-ec21-44d1-adf3-33786f0d3a35	6a138d49-94b3-4f80-9e9b-cf137bc0a245
 \.
 
 
@@ -908,6 +952,95 @@ cfc4dbd1-ccfe-4b14-a5a9-45aa25faf317	+261349459128	Madagascar	+261	$2a$10$v2PVPn
 fa2c99fc-64fb-4dab-bc20-7d025cd993f5	+261342307565	Madagascar	+261	$2a$10$H/vSoNpKeYQZvltQUwJbpeNUbt0lv20OwdlB.8FoDQirI./y8h0xu	2026-04-27 17:12:22.527	0	2026-04-27 17:07:23.187	2026-04-27 17:07:22.528	2026-04-27 17:07:23.188
 e7ce1fad-144b-4532-bf98-cf1d78e516cd	+261349459128	Madagascar	+261	$2a$10$K0HM64E60dpTrP20lMDha.Y72AcKmIvOmSbSxlfUUI8BzZnYp/pJe	2026-04-27 17:18:40.231	0	2026-04-27 17:13:40.652	2026-04-27 17:13:40.232	2026-04-27 17:13:40.653
 3b555f85-ab1f-4d13-8294-9229cc435e55	+261342307565	Madagascar	+261	$2a$10$rzgRQ7SNWc8GM.3E2o4LlOoyzivvCbo6bBSx6/.F3qZKYKpgbpaTq	2026-04-28 20:52:12.635	0	2026-04-28 20:47:12.842	2026-04-28 20:47:12.637	2026-04-28 20:47:12.843
+e3a96e1c-ec70-4992-8a30-7636b087da03	+261342307565	Madagascar	+261	$2a$10$XVfgQ4I9Rw4TlR.rtJl43Oy4AVNoIYdEoJqQl7llTHMbpCewZvvyS	2026-05-05 15:36:35.525	0	2026-05-05 15:31:36.525	2026-05-05 15:31:35.527	2026-05-05 15:31:36.526
+9b0bb46d-7688-4905-97dd-c01e6b40ffb6	+261324965862	Madagascar	+261	$2a$10$5jzsAtHlWHjudIFbc8yLGOW6n4VCs1m5IJ0Opi3idIAIUwKyY5a7q	2026-05-05 16:44:29.223	0	2026-05-05 16:39:29.602	2026-05-05 16:39:29.225	2026-05-05 16:39:29.603
+c7771d26-14cf-4a88-8381-ef64644a3349	+261342307565	Madagascar	+261	$2a$10$EtlnSr3OsOhxOQw4hSYDl.kwFDZSKrwkVJ0m1.kjvRwBvt4s.xkyi	2026-05-05 16:44:41.865	0	2026-05-05 16:39:42.858	2026-05-05 16:39:41.867	2026-05-05 16:39:42.859
+88b84237-7182-4c02-bd5d-2a12a11745c4	+261324965862	Madagascar	+261	$2a$10$aMGPEXuEFUi1e7Kjo2RgWODsz8188ADT7rpuZPsykDmB32H4Hnf6q	2026-05-05 17:09:46.517	0	2026-05-05 17:04:46.866	2026-05-05 17:04:46.519	2026-05-05 17:04:46.868
+77dffee6-b6fd-4da1-8ecd-b7c1d5307daa	+261349459128	Madagascar	+261	$2a$10$LCFCH.UBTQvEzfxc6nTBi.FI8/AWb3YtDwmlyRG6VHXWk6mZYeqtW	2026-05-05 17:50:10.713	0	2026-05-05 17:45:11.036	2026-05-05 17:45:10.714	2026-05-05 17:45:11.037
+a449804f-a2f4-4da4-a21b-a27a301c95d3	+261349459128	Madagascar	+261	$2a$10$OcQUr54qzdb63OPtShkOiu9XQDP2vtrICpbPA02ibKqpj4zAXnz0C	2026-05-06 16:40:12.988	0	2026-05-06 16:35:13.596	2026-05-06 16:35:12.989	2026-05-06 16:35:13.597
+4d12285e-3cea-4ff0-a13f-9855795acc1a	+261320365103	Madagascar	+261	$2a$10$u5KG7ZiJU/.Xxx/UnB2D1uDQOIt.dpVmC9HaJbn0Q0M2dtAxnRBnS	2026-05-06 16:41:28.581	0	2026-05-06 16:36:28.82	2026-05-06 16:36:28.583	2026-05-06 16:36:28.822
+dded6a5a-7320-433b-8260-1cca0c5eea96	+261349459128	Madagascar	+261	$2a$10$byaKAWC3z9NxCt9q3Zbf3uORKDwq377XY4KdZWp7ZGmqrdF6tFGZ.	2026-05-06 16:54:58.554	0	2026-05-06 16:49:58.988	2026-05-06 16:49:58.556	2026-05-06 16:49:58.989
+78739a11-3c53-425d-a611-768381d4dcf1	+261342307565	Madagascar	+261	$2a$10$.Qn9fuMbDjSZmtdiZt3BVe6SCM.DdqwIW76YsqesWkbNUcTIAwQlO	2026-05-06 19:18:20.418	0	2026-05-06 19:13:20.909	2026-05-06 19:13:20.42	2026-05-06 19:13:20.91
+8b31d448-8732-4fad-ad12-6c5f65536ad8	+261349459128	Madagascar	+261	$2a$10$ftWE0NR085iXaNLzT2A30e9P2eG6ZKDypb.182cajOs1GdrHnvIj.	2026-05-06 19:52:49.146	0	2026-05-06 19:47:49.783	2026-05-06 19:47:49.148	2026-05-06 19:47:49.785
+193ab32a-83cc-4299-a2e9-8876ec092db0	+261320335103	Madagascar	+261	$2a$10$GHHnMYTgYcIkN.il0YSrp.3zDlXdNo7C0xvqWclE.IdweMi79IzxG	2026-05-06 19:54:00.848	0	2026-05-06 19:49:01.346	2026-05-06 19:49:00.849	2026-05-06 19:49:01.347
+d0a4026c-2f99-4332-9659-daeba3b571ce	+261320335103	Madagascar	+261	$2a$10$Z9FoBujGsHcfDHnKMWrPcOrI87bLYUDNTDGdsuaYDNrooEy2FXx2W	2026-05-06 19:54:58.575	0	2026-05-06 19:49:58.786	2026-05-06 19:49:58.576	2026-05-06 19:49:58.787
+2c84d1bd-4c3e-4554-8044-0736cc4e8b4a	+261320365103	Madagascar	+261	$2a$10$.kIy6L7JB/Ul0kpYwO.l4.JppP2W3rIz0VOLGjd87H4LpwmuBCvd2	2026-05-06 19:56:39.227	0	2026-05-06 19:51:39.44	2026-05-06 19:51:39.228	2026-05-06 19:51:39.441
+ce316ada-baae-497f-9e16-6d6c254c34d1	+261324965862	Madagascar	+261	$2a$10$6Kx9OgjgBr3.guZHsm536OVkDloljS2fTamcQrYo/OQ.NjGz/S.yK	2026-05-07 02:16:45.282	0	2026-05-07 02:11:45.869	2026-05-07 02:11:45.285	2026-05-07 02:11:45.871
+28e2bb7b-bb55-4bd2-b41c-408effba0fa6	+261349459128	Madagascar	+261	$2a$10$P2LuW.2XHox.Tc59v9oJVu2rLTvBodw0k3twFn7oRh8JPetnsJmYu	2026-05-07 02:23:42.758	0	2026-05-07 02:18:43.025	2026-05-07 02:18:42.759	2026-05-07 02:18:43.026
+b6e27f46-dffd-44a1-b170-96c27969c075	+261320365103	Madagascar	+261	$2a$10$yMf8nZts.jJUP8BoIGmEseeAAd.KupXAZO3Mloo8YdEDaiu163S9.	2026-05-07 02:26:24.678	0	2026-05-07 02:21:24.948	2026-05-07 02:21:24.679	2026-05-07 02:21:24.948
+0fb69da6-a2ad-4e58-a8fd-85080e76c7b6	+261349459128	Madagascar	+261	$2a$10$KkzpRCJh1.GjAzfXyg2RXOdjz2MY9YzIHBraDbxddaxrP7D2nB8CW	2026-05-07 02:26:47.929	0	2026-05-07 02:21:48.145	2026-05-07 02:21:47.93	2026-05-07 02:21:48.146
+16b1f959-cc5d-4a17-bdc3-baf0e6c06f21	+261342307565	Madagascar	+261	$2a$10$qQvtOHLdT5YVuz5w4f/gC.hg5noiPqMDS/8zduyT4dgjKGs9coiyi	2026-05-07 19:03:58.58	0	2026-05-07 18:58:59.073	2026-05-07 18:58:58.582	2026-05-07 18:58:59.074
+296b5a67-a539-4c07-987e-45e09c7bc736	+261342307565	Madagascar	+261	$2a$10$QNYZ2Gsz01o099bQheW1SuyNoni9VEqKiSW1m/b9cgZuLJYnWWb72	2026-05-09 15:30:44.034	0	2026-05-09 15:25:44.774	2026-05-09 15:25:44.268	2026-05-09 15:25:44.775
+5dc88974-8700-481d-af50-b3db8839779b	+261342307565	Madagascar	+261	$2a$10$T9Dmr95nds1Euku4JZWoWu6eORivQ2iBBAzyFYypbQ43SzFL4cn06	2026-05-09 15:39:08.79	0	2026-05-09 15:34:09.53	2026-05-09 15:34:08.791	2026-05-09 15:34:09.531
+dc866cf7-fb9d-490b-ad91-3c26afc74b03	+261342307565	Madagascar	+261	$2a$10$cYa9V.69x0doDmSgtcjSAOQXq6jaZouuf6kdrp71W372EtrhdDny2	2026-05-09 15:41:25.381	0	2026-05-09 15:36:25.603	2026-05-09 15:36:25.382	2026-05-09 15:36:25.605
+0c8a15d3-6d05-4ee3-9e6b-9013e7030289	+261342307565	Madagascar	+261	$2a$10$mIZyP6lbt1fnflCHZfBHeuOHvUmAuJVQRPLVlqVdVDyatFzbnS3nm	2026-05-09 17:31:21.119	0	2026-05-09 17:26:22.02	2026-05-09 17:26:21.121	2026-05-09 17:26:22.021
+40bb4dcf-18ea-4504-b7e2-e84eb9c96990	+261349459128	Madagascar	+261	$2a$10$VQiEpNP1ARmrtRYrF41QVOWud4oT805ixbnXN4mltfHcCA4WpIiAi	2026-05-09 17:48:17.216	0	2026-05-09 17:43:18.203	2026-05-09 17:43:17.217	2026-05-09 17:43:18.205
+6c80f35a-65fc-4b2f-8f2b-171a974ee784	+261342307565	Madagascar	+261	$2a$10$BEYH5VZX5/IpgcdtDkqNEe67SbzJMFsUiCviryz7gowrg2BUnRcBO	2026-05-09 18:13:51.063	0	2026-05-09 18:08:51.447	2026-05-09 18:08:51.064	2026-05-09 18:08:51.449
+01d2086d-28db-4291-b4ec-9a2e5e092dd2	+261342307565	Madagascar	+261	$2a$10$8zIvFwsi8CF2MdYZzHxd0u7vjtdKpz.GNKGYFpGCvHIjQN9DzZR1q	2026-05-09 20:00:01.187	0	2026-05-09 19:55:01.573	2026-05-09 19:55:01.189	2026-05-09 19:55:01.575
+b6a2ba28-2553-49c8-86bb-140e73808bcd	+261342307565	Madagascar	+261	$2a$10$cCvo7KULxU/BFWa3E8ZjL.B1fsZ6QypZiZuloRBg8roPr8oE1sloW	2026-05-09 22:42:53.065	0	2026-05-09 22:37:53.424	2026-05-09 22:37:53.067	2026-05-09 22:37:53.426
+e10728d5-cbe2-4f15-9751-8c2467afa580	+261346349868	Madagascar	+261	$2a$10$iaZR07ibln4qWD01m2tDoOOO4ZTpvwqDNmlaOKPHWgS1VVgMDInUi	2026-05-12 16:27:08.612	0	2026-05-12 16:22:09.06	2026-05-12 16:22:08.613	2026-05-12 16:22:09.061
+5d5c6f8e-92f8-487e-9228-adb09cf69294	+261346379868	Madagascar	+261	$2a$10$bamqxbbma892d7X8qspYoOlAu0cKuWDvRqNQGOxpBJmdiXOSkVNAm	2026-05-12 16:27:23.073	0	2026-05-12 16:22:23.324	2026-05-12 16:22:23.074	2026-05-12 16:22:23.325
+6fefc58d-dbe9-40d8-8eff-93b6a201043a	+261342307565	Madagascar	+261	$2a$10$8uXtIsM8GzSib938oWtbbOGoL4kOmq3dFOqIetNOVIaAYLFVSY2Wa	2026-05-12 16:29:32.319	0	2026-05-12 16:24:32.747	2026-05-12 16:24:32.321	2026-05-12 16:24:32.752
+4e7f37d1-3e81-4f01-bc74-0cdedc8438fb	+261342307565	Madagascar	+261	$2a$10$PztDJBV./FDaQgbL5Cg16eYOgSFG.GQOxgkyzd2NrmlOiEM48IidS	2026-05-13 15:11:55.135	0	2026-05-13 15:06:55.495	2026-05-13 15:06:55.138	2026-05-13 15:06:55.496
+542d32ec-8e03-43ab-b287-aedb4b7ecb5a	+261349459128	Madagascar	+261	$2a$10$1NhDdRtyWh1duvSHLZp97.mwI5ZArijH6.kJpJuG8IWWOC5mk6tFW	2026-05-13 15:14:17.342	0	2026-05-13 15:09:18.116	2026-05-13 15:09:17.344	2026-05-13 15:09:18.118
+7f7a9e24-dd12-43e3-b2ef-0dfa2e8e1194	+261349459128	Madagascar	+261	$2a$10$ezsF5NP/njcW1G8uMtmNkOBn7jE/Ul0K6LPvZPkWES8hLyke3y36O	2026-05-13 15:56:07.691	0	2026-05-13 15:51:09.27	2026-05-13 15:51:07.692	2026-05-13 15:51:09.271
+ac74f256-94f9-4130-a4d8-9fa0b141f53a	+261342307565	Madagascar	+261	$2a$10$nqgfQYaAzOCNbzvAwkBMNu0fXaJfoCIPjGZdk6sTeSTtbGijoKCMe	2026-05-13 15:58:22.487	0	2026-05-13 15:53:22.766	2026-05-13 15:53:22.488	2026-05-13 15:53:22.768
+a3d2a532-f3c2-4cb4-a951-b12e2887c31e	+261349459128	Madagascar	+261	$2a$10$JtBOvij.2pQammyv7JG/V.xphZlBbfJTfqjgfcuUpIUHzYyuC39ne	2026-05-14 16:04:55.64	0	2026-05-14 15:59:56.015	2026-05-14 15:59:55.642	2026-05-14 15:59:56.017
+9aa4fe91-110d-4328-9c95-dd4b64e8da19	+261342307565	Madagascar	+261	$2a$10$pMvpE0mpd8.cftihJR2xo.w12WrbwMzlMIsVAgeD71SuFbDqnhjQK	2026-05-14 18:33:36.392	0	2026-05-14 18:28:37.38	2026-05-14 18:28:36.399	2026-05-14 18:28:37.381
+4df21ee0-c4ac-4dc3-a6ad-8d04d25f8839	+261349459128	Madagascar	+261	$2a$10$YYp8NzIxvk6HiH/SCWa0oetDwLuoiUSG7VMc34FoXsejMKwsic9zu	2026-05-14 18:35:31.885	0	2026-05-14 18:30:32.408	2026-05-14 18:30:31.886	2026-05-14 18:30:32.41
+ff99caae-7dd6-4beb-9561-011b261ba131	+261349459128	Madagascar	+261	$2a$10$cPYd37mZM53Iu8uOz1M7A.tqMRNVEB8Sk8JoxkFQtHgz8/Dxll09y	2026-05-14 18:37:34.254	0	2026-05-14 18:32:35.228	2026-05-14 18:32:34.255	2026-05-14 18:32:35.229
+46da3cf8-66cf-43b5-b934-48a38a4a8d0b	+261342307565	Madagascar	+261	$2a$10$pvgoHZ1OV6IghczF5B5kC.PBq5TSJgStLOVgv0Iwc/9Ss.7eQhAZ2	2026-05-14 18:38:07.924	0	2026-05-14 18:33:08.202	2026-05-14 18:33:07.926	2026-05-14 18:33:08.203
+ddd1d286-a256-4041-a989-fc7db7343669	+261342307565	Madagascar	+261	$2a$10$F.SaHs/U9kgdTYyfCANFKuK3Ri4x9bt23RP4mhHcRVabrIYBMP2qC	2026-05-14 19:45:26.366	0	2026-05-14 19:40:26.707	2026-05-14 19:40:26.368	2026-05-14 19:40:26.708
+b907a984-7c3a-44e6-afb6-87abfc2d1c7e	+261349459128	Madagascar	+261	$2a$10$bAyH9AC/U9qG0ZyLz1RFGOaMdFjw.tqmuZJlO1idrip9tYVwluygi	2026-05-16 07:13:05.32	0	2026-05-16 07:08:06.014	2026-05-16 07:08:05.33	2026-05-16 07:08:06.016
+a6fdda25-6340-4433-9120-3b33f8d054a0	+261349459128	Madagascar	+261	$2a$10$QuzqpNJYBCAHHSjVua4KiOjfiwDxqmwya0LxE2HYwoJjHR3bRx/oe	2026-05-16 07:39:09.094	0	2026-05-16 07:34:10.613	2026-05-16 07:34:09.096	2026-05-16 07:34:10.614
+df800428-b873-4799-a75b-fd2a36f2443b	+261349459128	Madagascar	+261	$2a$10$eUsfn.alQeo3EYK0WbzjQO4RNug2f1vk4kNZ59bcse4zuuy5OqJqG	2026-05-16 08:11:59.726	0	2026-05-16 08:07:00.842	2026-05-16 08:06:59.729	2026-05-16 08:07:00.843
+93a7a974-0950-4640-bee2-008b86a9d8e1	+261342307565	Madagascar	+261	$2a$10$5vU6f.OyRY1MjSdQo8N3semjBFJ/IKeB9qc3jM5h2Oiku4T0xYHW6	2026-05-16 14:58:21.953	0	2026-05-16 14:53:22.474	2026-05-16 14:53:21.956	2026-05-16 14:53:22.475
+e55e041b-4928-40eb-9a51-3c5c2b571b56	+261349459128	Madagascar	+261	$2a$10$vcHZFbr4/X3r3lIJ9GJopexg3uTQ/j1wRaV4eL4kMVQR/HFf7nP2C	2026-05-16 14:59:49.161	0	2026-05-16 14:54:49.754	2026-05-16 14:54:49.162	2026-05-16 14:54:49.755
+ada26c0c-e0d6-4fe8-8b26-645d84849aa3	+261342307565	Madagascar	+261	$2a$10$5eAywnXF4t0sqbKyHXpBp.IWtoQ125kOUo7uYrKiJ20uZdDpySNfu	2026-05-17 09:32:30.745	0	2026-05-17 09:27:31.103	2026-05-17 09:27:30.746	2026-05-17 09:27:31.104
+5baa3184-8709-432e-9662-8fed2c8b3221	+261349459128	Madagascar	+261	$2a$10$lerSs7WLkrNS2RkoXVqF/e9HatmU6wGUqXydywRYgywxAdBLXemBW	2026-05-17 12:52:49.722	0	2026-05-17 12:47:50.034	2026-05-17 12:47:49.723	2026-05-17 12:47:50.035
+7abb6b9f-52e9-4aaa-af89-1b5faf3cd881	+261342307565	Madagascar	+261	$2a$10$qTga2t756Z.NpvkUSkFmWev7vs0Py8EC8wbKjHybYL7ZCOIG1.PNG	2026-05-17 12:53:22.834	0	2026-05-17 12:48:24.335	2026-05-17 12:48:22.835	2026-05-17 12:48:24.336
+75975e34-c99d-43bb-8dfb-0a24def2c7cc	+261349459128	Madagascar	+261	$2a$10$Mj3hFlzUgfEvuriZI2PlWetGBhOOZ6NdnQGPAG1aa37gylKGuLRae	2026-05-17 16:37:30.299	0	2026-05-17 16:32:30.808	2026-05-17 16:32:30.301	2026-05-17 16:32:30.809
+1401c690-2b0b-4e6d-afc5-d8afee8dba7c	+261342307565	Madagascar	+261	$2a$10$u/Vy.N/QctKes3hkcKsS9uQ07NIZDyjGpT2F.IscLkpQr5V1qqcKm	2026-05-17 16:47:06.674	0	2026-05-17 16:42:07.04	2026-05-17 16:42:06.675	2026-05-17 16:42:07.04
+5f804d45-7b53-48dd-be1c-43339679cc05	+261349459128	Madagascar	+261	$2a$10$yAwSg1pImGSj0SqjXHgZQOormM7dkoh2DizcvCJIfCG8Q8lxI1z2i	2026-05-17 16:48:10.695	0	2026-05-17 16:43:11.573	2026-05-17 16:43:10.697	2026-05-17 16:43:11.574
+4c97aef7-3ff0-440d-9fec-104b6ae5c3e8	+261349459128	Madagascar	+261	$2a$10$piXe3DGkuChwFjOJZ0UDRe5wj7N3LK63KNDGJrHMe2cUBwfGA5v5q	2026-05-17 16:48:57.161	0	2026-05-17 16:43:57.352	2026-05-17 16:43:57.163	2026-05-17 16:43:57.353
+aee713b0-e59a-4eff-8aea-ae4d5d52e2c2	+261342307565	Madagascar	+261	$2a$10$BA6B//pfb/5h8VOTVQwzc.gbOUttk4dOZCSWvnJr0uiPvdqNgCqum	2026-05-17 16:49:36.292	0	2026-05-17 16:44:36.563	2026-05-17 16:44:36.293	2026-05-17 16:44:36.564
+88ad34ff-7f5d-445a-9cc4-74c9b16e99cc	+261349459128	Madagascar	+261	$2a$10$eWm/9ypo89hE/P6yLCO3/.37U0pWBkALUvq.UPL9jQ7ssge3uSiGm	2026-05-17 17:09:04.636	0	2026-05-17 17:04:05.039	2026-05-17 17:04:04.64	2026-05-17 17:04:05.04
+25764db7-173d-43dc-b4bc-9f312921e889	+261342307565	Madagascar	+261	$2a$10$J79NdHwNGt8sye3FbT5F/uv5/NdD4d0lXr010AM2ULm91UZHS1DmW	2026-05-17 17:09:34.573	0	2026-05-17 17:04:34.824	2026-05-17 17:04:34.575	2026-05-17 17:04:34.827
+e62d11f4-370e-4d4f-ade7-638cd55240b6	+261342307565	Madagascar	+261	$2a$10$NlbnLowSoAEBfpBCaIwBPew.0bFTWijsORpPMUqgzp7UvsNsYCoZu	2026-05-17 19:16:21.319	0	2026-05-17 19:11:22.341	2026-05-17 19:11:21.32	2026-05-17 19:11:22.342
+e064422c-d368-4c75-8948-8e9b95e97a28	+261349459128	Madagascar	+261	$2a$10$DoRdfRlVFtxd10ontZxVnOkrX9V10JRNSEIIpttwXs6h0QJzwSk7m	2026-05-17 19:17:47.858	0	2026-05-17 19:12:48.256	2026-05-17 19:12:47.859	2026-05-17 19:12:48.257
+8d6abdfa-1634-45ce-9e54-21f216812877	+261342307565	Madagascar	+261	$2a$10$0s5vGxJHfnHTbyOku/QY/.L8t9spNnxoN23/H50gUFlTcYaSnzqGq	2026-05-18 01:20:55.282	0	2026-05-18 01:15:55.597	2026-05-18 01:15:55.285	2026-05-18 01:15:55.599
+6385e279-7800-4ec3-9e90-c5c74cc90cd4	+261349459128	Madagascar	+261	$2a$10$grRo.Hqf.HTj75fN1huT1u6LOhyWWP0DOksou/fawdcs9z7W4cJhq	2026-05-18 01:34:21.635	0	2026-05-18 01:29:22.837	2026-05-18 01:29:21.637	2026-05-18 01:29:22.838
+40322a9a-21a5-4cbd-a878-8216e3dda894	+261342307565	Madagascar	+261	$2a$10$loNWGad2NZ.f2XWeMpErDefyjEeHsMNxPa3eYpcL3y8lQuNIhzmdW	2026-05-18 01:45:10.117	0	2026-05-18 01:40:11.125	2026-05-18 01:40:10.118	2026-05-18 01:40:11.126
+a52a33b1-022e-4ed2-b90a-e1039487ca9c	+261349459128	Madagascar	+261	$2a$10$wHKW9IVVfdiJuw2NNID67eip8lmRtr5a5XZVbsGOBIR3gLeFiqIUC	2026-05-18 01:47:10.522	0	2026-05-18 01:42:11.001	2026-05-18 01:42:10.523	2026-05-18 01:42:11.002
+edbb9018-faf1-419d-8844-b9031e70c92b	+261349459128	Madagascar	+261	$2a$10$7PHu239i1M0LPZxQP4Pc9eM2C1UiJsTJtCRsU/KZODHYlQjK9ac1O	2026-05-18 09:45:04.989	0	2026-05-18 09:40:05.376	2026-05-18 09:40:04.992	2026-05-18 09:40:05.377
+6b7b11e7-db10-4d04-8174-a063281e5fee	+261342307565	Madagascar	+261	$2a$10$58LAD4O8g..nfsTkLnCa0.jmZRry2kHy3B1wZfjtmIJYvXpKI7aR2	2026-05-19 04:09:14.065	0	2026-05-19 04:04:14.488	2026-05-19 04:04:14.067	2026-05-19 04:04:14.49
+5e655f29-7b3e-411f-897a-048058ef1ca0	+261349459128	Madagascar	+261	$2a$10$dj0AjTBsmNJaA8l8tTH3Gu1wVvmpc.BhOiC0uyYL9hbWvEC0tolD.	2026-05-19 15:11:33.059	0	2026-05-19 15:06:33.483	2026-05-19 15:06:33.062	2026-05-19 15:06:33.485
+842b2e74-97ce-4805-b909-203c090761ec	+261349459128	Madagascar	+261	$2a$10$wET2lVvW78fcoiWL.V4yoONk6H1lgwpnKTJRh5qpiM1g32Dm1hAUW	2026-05-19 18:00:51.157	0	2026-05-19 17:55:52.157	2026-05-19 17:55:51.158	2026-05-19 17:55:52.159
+9c5e043e-b10d-47d4-b0ac-49edad125970	+261342307565	Madagascar	+261	$2a$10$zHvIO7N/l5D397JrhQCbIeCQIZ5H7fw/vT23g/oB2Znq1uc2jd24W	2026-05-19 18:33:43.031	0	2026-05-19 18:28:44.074	2026-05-19 18:28:43.033	2026-05-19 18:28:44.075
+ff825b22-4cc1-4f24-92c3-b9e90b587030	+261342307565	Madagascar	+261	$2a$10$0SofMfYjsBUfYCAAn5DIuOFybW1f/ky9n1TBsaIKq75P6/3IfC7o6	2026-05-19 20:40:40.765	0	2026-05-19 20:35:41.763	2026-05-19 20:35:40.767	2026-05-19 20:35:41.765
+732049aa-0222-4f0d-a10c-40b082f4735e	+261342307565	Madagascar	+261	$2a$10$QISdNz4XEpi7eM.Ekr4IBuSs.9QoQPhmskh2NIKwVtvrMPrFyAX5G	2026-05-22 01:56:08.352	0	2026-05-22 01:51:09.241	2026-05-22 01:51:08.355	2026-05-22 01:51:09.244
+590de06f-f7c6-4f3c-8ac6-68f4a2961ca8	+261349459128	Madagascar	+261	$2a$10$g7WEprfyA8ImWYtGXELzyua7nF6NUZgkgZ7EWnxJOtqODKfqVKFQ2	2026-05-22 01:58:51.861	0	2026-05-22 01:53:52.044	2026-05-22 01:53:51.862	2026-05-22 01:53:52.045
+f891141a-3d69-4c10-99db-8593ebf7b013	+261349459128	Madagascar	+261	$2a$10$e88C02XOVLdpkcomQmcneOTG4iQ/Bon/lqolRM0YEmvtgkP97S3ia	2026-05-27 08:28:07.825	0	2026-05-27 08:23:08.522	2026-05-27 08:23:07.833	2026-05-27 08:23:08.524
+1e257a50-2ab7-4a7a-a467-2597272c02c6	+261342307565	Madagascar	+261	$2a$10$EJS8KZ6qtcCm4dw.ggbsFO6aaZgrIptSB6C8yp7ynq9xv5RilU4LO	2026-05-27 15:50:19.008	0	2026-05-27 15:45:19.585	2026-05-27 15:45:19.009	2026-05-27 15:45:19.586
+b5f0abb3-6c8d-45c6-b406-91b78ac67c03	+261342307565	Madagascar	+261	$2a$10$9uXz4Ol/yxW2z7B6Jug9aOVoLV98Ag38RR1YrRe4SAedyO2ivlZLW	2026-05-29 18:38:13.181	0	2026-05-29 18:33:13.618	2026-05-29 18:33:13.183	2026-05-29 18:33:13.693
+d35e2f37-5097-4e5b-900e-cc8e17462226	+261349459128	Madagascar	+261	$2a$10$DPW7e.w8I2RENI..8nnZp.Pm/qaMDxHrsezOtG4cxXUL4uHtmkTgW	2026-06-01 16:45:53.391	0	2026-06-01 16:40:53.858	2026-06-01 16:40:53.393	2026-06-01 16:40:53.86
+fb8cd244-1cad-4211-9ba5-c58337a8b4a6	+261342307565	Madagascar	+261	$2a$10$PHVnLXxwyCEdfJxsAgzu3ubpvcmyCOZyt9tJkx1IuKojSN0QV9eHC	2026-06-01 16:46:14.523	0	2026-06-01 16:41:15.624	2026-06-01 16:41:14.525	2026-06-01 16:41:15.626
+5b1c9657-b01b-4df5-a7a1-2d089a7f8fc9	+261342307565	Madagascar	+261	$2a$10$tqOCJx0NiUMD72qISy1VSuefH5a0TX8gc4MnxhJP0ctDyDf3WlKLi	2026-06-01 18:21:38.306	0	2026-06-01 18:16:39.322	2026-06-01 18:16:38.309	2026-06-01 18:16:39.324
+2823ab06-656f-4354-b280-3dd3512d0e68	+261349459128	Madagascar	+261	$2a$10$/V7WbIboI3o2Vcyzw4vqK.B.bM8i6PLZGNHTAGWvAhW8reJokZWLe	2026-06-01 18:28:39.315	0	2026-06-01 18:23:40.283	2026-06-01 18:23:39.316	2026-06-01 18:23:40.284
+5a1f8c59-0c95-4053-b798-41ddd05687e5	+261349459128	Madagascar	+261	$2a$10$cHo0gd/WF/8ezzUjAcyf9.Bgo4YaFZRyQV7ls78oLgDj7h9k5v.C2	2026-06-01 20:27:00.893	0	2026-06-01 20:22:01.533	2026-06-01 20:22:00.907	2026-06-01 20:22:01.574
+25857bf2-5aaa-4b75-8cc2-b9f53b2ba47a	+261342307565	Madagascar	+261	$2a$10$WBD3cDl5jKtCQaCdVaz4kuLMMIr6a5WbPj8Ym0dG2IqlKsG4FuPge	2026-06-01 20:27:44.128	0	2026-06-01 20:22:44.392	2026-06-01 20:22:44.13	2026-06-01 20:22:44.392
+d5eb23ed-b717-4ec0-aa4b-b14c8d6ff4db	+261349459128	Madagascar	+261	$2a$10$wPx/spqOj2OCLU6pL24HF.yY4DmdUf8MNlRc5r3OycA8j1VzXRRQO	2026-06-01 20:42:27.358	0	2026-06-01 20:37:28.129	2026-06-01 20:37:27.359	2026-06-01 20:37:28.13
+148647e3-595c-4657-91bd-7c2f0690c52a	+261342307565	Madagascar	+261	$2a$10$oDGIytO1JewcFPBZvP0sweFsmiGR8EnPP/8ePzdZ8cdx5zhr.tRoi	2026-06-01 20:42:34.93	0	2026-06-01 20:37:35.35	2026-06-01 20:37:34.931	2026-06-01 20:37:35.351
+337403cf-9cf7-409c-a128-7e4351735477	+261342307565	Madagascar	+261	$2a$10$XdvmsjR511o0NCvI6xq.HenWoSExIt6IgnMxg1sMkmm10rshhQo5y	2026-06-09 19:15:41.282	0	2026-06-09 19:10:42.062	2026-06-09 19:10:41.286	2026-06-09 19:10:42.064
+fabafc72-dc0a-473f-8596-ea2d13c8124c	+261349459128	Madagascar	+261	$2a$10$AIgWKjbVi2nlYDB1Ai79Q.o/VHygiKc0pxbs5GTxZO4LP/K/Dyx9W	2026-06-09 19:16:45.245	0	2026-06-09 19:11:45.876	2026-06-09 19:11:45.248	2026-06-09 19:11:45.877
+fc126f9c-1bb6-4c75-831d-f53e45993d69	+261349459128	Madagascar	+261	$2a$10$4MgEk6goNQsD.4f0HBoJEOIsZxuHg/eI3TkP8NF.Nsdythkuyisce	2026-06-09 19:58:18.559	0	2026-06-09 19:53:19.162	2026-06-09 19:53:18.561	2026-06-09 19:53:19.163
+38143f04-297f-4a02-b976-866f03ca4b3c	+261349459128	Madagascar	+261	$2a$10$9mHexJTdOiHTMy2OE.iSpuQABYth36x982FBkTsEd4JLCUO1tvgKS	2026-06-09 20:12:45.464	0	2026-06-09 20:07:45.883	2026-06-09 20:07:45.466	2026-06-09 20:07:45.885
+932bbb01-cabb-4e61-92be-f0034eb19419	+261342307565	Madagascar	+261	$2a$10$8PBO6y6bPjfavw0bcuOU3e0rnFheyexCFPBwD6rFHODmTMDWriFPK	2026-06-09 20:13:12.615	0	2026-06-09 20:08:13.603	2026-06-09 20:08:12.617	2026-06-09 20:08:13.605
+8384acdb-ad70-431d-9a49-eb207d04d85f	+261349459128	Madagascar	+261	$2a$10$WQCTHAgMq63tdjj0sjprx.dxMbZPihm1bQKdBBuF5RGZ44nZc3yVy	2026-08-04 18:52:33.017	0	2026-08-04 18:47:33.452	2026-08-04 18:47:33.019	2026-08-04 18:47:33.453
+36f55d9c-2cfc-45a9-8b91-938eeac84e14	+261342307568	Madagascar	+261	$2a$10$IlN0tl/AfZHD8SeCbBPz8.wzWv/1uobeL.EWbAQ7am9cKGme/isJq	2026-08-04 18:56:52.951	0	2026-08-04 18:51:53.179	2026-08-04 18:51:52.952	2026-08-04 18:51:53.18
+4f312877-3b7d-426e-9ae6-03cc957bd0f1	+261349459128	Madagascar	+261	$2a$10$rY8ydSLV01X4/s6RVMc70eenhF8uDUgOy9BkA6Hh2eRRF6G2JA8oa	2026-08-06 00:07:34.338	0	2026-08-06 00:02:34.829	2026-08-06 00:02:34.34	2026-08-06 00:02:34.831
+21fb3322-b7ba-4cbe-8345-cf089372d82c	+261349459128	Madagascar	+261	$2a$10$lIiPk2tcTagjA/YaO0kZguE.TZXLfhMY8XT9r3hISWpHQhchoSmcO	2026-08-06 00:15:16.203	0	2026-08-06 00:10:16.517	2026-08-06 00:10:16.204	2026-08-06 00:10:16.518
+9305e032-dd4b-4493-be74-9d941c3ef8a8	+261342307565	Madagascar	+261	$2a$10$p//pjvh70WgiMmgBs4qe4.T2ZKPY8yNJxoJ9QE6LDzCqmoK0UBCgK	2026-08-06 00:40:58.209	0	2026-08-06 00:35:59.787	2026-08-06 00:35:58.211	2026-08-06 00:35:59.79
 \.
 
 
@@ -916,15 +1049,15 @@ e7ce1fad-144b-4532-bf98-cf1d78e516cd	+261349459128	Madagascar	+261	$2a$10$K0HM64
 --
 
 COPY public."Product" (id, title, description, "imageUrl", "priceAmount", "currencyCode", "isAvailable", "createdAt", "updatedAt", "sellerProfileId", "categoryId") FROM stdin;
-prod-seed-iphone	iPhone 13 Pro Max	Smartphone premium avec excellent appareil photo.	https://images.unsplash.com/photo-1598327105666-5b89351aff97?w=800	3150000.00	MGA	t	2026-04-02 16:43:30.301	2026-04-02 16:43:30.301	fca37388-adbd-44e3-b289-b98415b97eab	55dd2ced-64b4-4b70-8b06-7250b9fa2fe1
-prod-seed-bag	Sac a main cuir premium	Mode feminine avec finition cuir elegante.	https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=800	280000.00	MGA	t	2026-04-02 16:43:30.301	2026-04-02 16:43:30.301	508bbb87-c08e-411c-b550-d17e910b4cbb	f5df6305-1ab6-4f3b-9972-ebebc10053d5
-prod-seed-perfume	Coffret parfum prestige	Selection premium pour cadeaux et occasions speciales.	https://images.unsplash.com/photo-1541643600914-78b084683601?w=800	190000.00	MGA	t	2026-04-02 16:43:30.302	2026-04-02 16:43:30.302	6a138d49-94b3-4f80-9e9b-cf137bc0a245	e28856dc-ae47-4d6f-abfc-d394b19793fa
-prod-seed-chair	Chaise design minimaliste	Assise confortable pour salon ou bureau moderne.	https://images.unsplash.com/photo-1519947486511-46149fa0a254?w=800	145000.00	MGA	t	2026-04-02 16:43:30.301	2026-04-02 16:43:30.301	508bbb87-c08e-411c-b550-d17e910b4cbb	95c627c8-23ee-40eb-87b6-79d1d8256f8f
 c79d01a5-8872-4e86-b588-9e6c98b53bd2	gente moto	gente  moto routière	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775282364/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775282360011?_a=BAMAOGfk0	145000.00	MGA	t	2026-04-04 05:59:25.037	2026-04-04 05:59:25.037	cddc0066-1179-4a16-aa8a-7edeea79d0bc	2712b453-15f3-4e50-a095-e5716fccb144
-4bae1fb8-7119-4588-a44c-7c98cd77fb2e	Real me	realme vrai marque venant d'europe	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775283001/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775282995434?_a=BAMAOGfk0	420000.00	MGA	t	2026-04-04 06:10:02.096	2026-04-04 06:10:02.096	cddc0066-1179-4a16-aa8a-7edeea79d0bc	65e0a618-b863-4562-b1dd-319e3ef7a197
-30e26f74-1462-4829-bb70-beea516822f3	boucle d oreil	hdlskzgzhjzjz	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284317/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284309921?_a=BAMAOGfk0	10000.00	MGA	t	2026-04-04 06:31:58.454	2026-04-04 06:31:58.454	cddc0066-1179-4a16-aa8a-7edeea79d0bc	2a64e44f-b82c-451a-95b7-2562177e6c6a
-1d3d6860-131f-4c8e-aa45-737a0f27d81b	oppo renault 5 pro	best description	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284641/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284636953?_a=BAMAOGfk0	460000.00	MGA	t	2026-04-04 06:37:21.627	2026-04-08 02:10:58.66	cddc0066-1179-4a16-aa8a-7edeea79d0bc	65e0a618-b863-4562-b1dd-319e3ef7a197
 3a4a58b8-8f96-42dd-b14f-f0ba045747e4	MOTO New Mada	moto soa be de soa be de tena soa be	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775320601/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775320596223?_a=BAMAOGfk0	4000000.00	MGA	t	2026-04-04 16:36:41.496	2026-04-20 19:31:21.435	cddc0066-1179-4a16-aa8a-7edeea79d0bc	2712b453-15f3-4e50-a095-e5716fccb144
+7cd76f8d-41f4-45c9-b83b-6dc986840016	teszpfbe	je suis landescription	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1778784342/BANAY/products/cddc006611794a16aa8a7edeea79d0bc-product-1778784338965?_a=BAMAOGfk0	12000.00	MGA	t	2026-05-14 18:45:51.816	2026-05-14 18:45:51.816	cddc0066-1179-4a16-aa8a-7edeea79d0bc	0ff5279a-a20f-4094-a5e5-9cb3073d707d
+30e26f74-1462-4829-bb70-beea516822f3	boucle d oreil	hdlskzgzhjzjz	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284317/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284309921?_a=BAMAOGfk0	10000.00	MGA	f	2026-04-04 06:31:58.454	2026-05-09 04:02:29.722	cddc0066-1179-4a16-aa8a-7edeea79d0bc	2a64e44f-b82c-451a-95b7-2562177e6c6a
+1d3d6860-131f-4c8e-aa45-737a0f27d81b	oppo renault 5 pro	best description	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284641/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284636953?_a=BAMAOGfk0	460000.00	MGA	f	2026-04-04 06:37:21.627	2026-05-09 04:02:49.229	cddc0066-1179-4a16-aa8a-7edeea79d0bc	65e0a618-b863-4562-b1dd-319e3ef7a197
+prod-seed-bag	Sac a main cuir premium	Mode feminine avec finition cuir elegante.	https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=800	280000.00	MGA	t	2026-04-02 16:43:30.301	2026-05-13 19:24:19.061	508bbb87-c08e-411c-b550-d17e910b4cbb	f5df6305-1ab6-4f3b-9972-ebebc10053d5
+prod-seed-chair	Chaise design minimaliste	Assise confortable pour salon ou bureau moderne.	https://images.unsplash.com/photo-1519947486511-46149fa0a254?w=800	145000.00	MGA	t	2026-04-02 16:43:30.301	2026-05-13 19:24:19.061	508bbb87-c08e-411c-b550-d17e910b4cbb	95c627c8-23ee-40eb-87b6-79d1d8256f8f
+prod-seed-iphone	iPhone 13 Pro Max	Smartphone premium avec excellent appareil photo.	https://images.unsplash.com/photo-1598327105666-5b89351aff97?w=800	3150000.00	MGA	t	2026-04-02 16:43:30.301	2026-05-13 19:24:19.061	fca37388-adbd-44e3-b289-b98415b97eab	55dd2ced-64b4-4b70-8b06-7250b9fa2fe1
+prod-seed-perfume	Coffret parfum prestige	Selection premium pour cadeaux et occasions speciales.	https://images.unsplash.com/photo-1541643600914-78b084683601?w=800	190000.00	MGA	t	2026-04-02 16:43:30.302	2026-05-13 19:24:19.061	6a138d49-94b3-4f80-9e9b-cf137bc0a245	e28856dc-ae47-4d6f-abfc-d394b19793fa
 \.
 
 
@@ -947,6 +1080,8 @@ d3339615-f403-48cd-bae9-9498586ba02a	any	2026-04-19 16:11:12.475	2026-04-19 16:1
 fc7bc725-403e-4644-9119-0bdc988de0de	@Vony Verronique hiya	2026-04-20 03:43:54.797	2026-04-20 03:43:54.797	f7fc4466-6951-4dd5-9e5b-fcbc6baf393d	3a4a58b8-8f96-42dd-b14f-f0ba045747e4	7296da76-b4aa-4a15-ae87-92ee129f351c
 2ff0ed97-740e-424c-976a-dff7e1a2f52e	tyhhu	2026-04-20 03:44:01.281	2026-04-20 03:44:01.281	f7fc4466-6951-4dd5-9e5b-fcbc6baf393d	3a4a58b8-8f96-42dd-b14f-f0ba045747e4	\N
 b803729c-673f-4c49-8026-32fe624b96a1	Soa ka	2026-04-20 19:33:03.87	2026-04-20 19:33:03.87	fc758d78-e3c2-4ea7-a489-8e2886635f13	3a4a58b8-8f96-42dd-b14f-f0ba045747e4	\N
+76ff6dd3-d463-43fd-8254-bad5bbbb2e24	eeg	2026-05-19 08:22:22.995	2026-05-19 08:22:22.995	b718efee-173e-441b-98f3-364b40c05e73	7cd76f8d-41f4-45c9-b83b-6dc986840016	\N
+15a24219-819b-4c3f-8562-553b831ceb94	@Vony Verronique ewa ewa	2026-05-29 19:54:57.89	2026-05-29 19:54:57.89	fc758d78-e3c2-4ea7-a489-8e2886635f13	3a4a58b8-8f96-42dd-b14f-f0ba045747e4	1840bb98-fb67-432a-a189-cf3e2478a780
 \.
 
 
@@ -961,6 +1096,7 @@ f2fde139-a8b5-4ad3-8958-04449bdbe442	2026-04-19 14:37:10.538	d521fdae-4027-4a0f-
 de41f5c7-b6c6-4aed-8465-c7a2a1893f81	2026-04-19 16:12:39.783	5a840e9c-fa8d-4972-984f-09d8b9e32a86	f7fc4466-6951-4dd5-9e5b-fcbc6baf393d
 32399677-10e6-4cb0-beed-87b7155cc030	2026-04-19 16:13:34.841	56aec64e-b393-40e1-8d05-8b49cc7875f7	f7fc4466-6951-4dd5-9e5b-fcbc6baf393d
 9810ee07-f499-4d1c-a14f-261640e5717f	2026-04-20 03:43:54.797	fc7bc725-403e-4644-9119-0bdc988de0de	b718efee-173e-441b-98f3-364b40c05e73
+928074d1-27e5-4584-81bc-8619c1c5b934	2026-05-29 19:54:57.89	15a24219-819b-4c3f-8562-553b831ceb94	b718efee-173e-441b-98f3-364b40c05e73
 \.
 
 
@@ -969,24 +1105,30 @@ de41f5c7-b6c6-4aed-8465-c7a2a1893f81	2026-04-19 16:12:39.783	5a840e9c-fa8d-4972-
 --
 
 COPY public."ProductImage" (id, "imageUrl", "sortOrder", "createdAt", "updatedAt", "productId") FROM stdin;
-4275be1d-5aed-40b7-92f4-0a5c574b155a	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284317/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284309921?_a=BAMAOGfk0	0	2026-04-04 06:31:58.454	2026-04-04 06:31:58.454	30e26f74-1462-4829-bb70-beea516822f3
-a460358d-6c42-4d5e-ac5d-b9a6fe921c98	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284318/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284310041?_a=BAMAOGfk0	1	2026-04-04 06:31:58.454	2026-04-04 06:31:58.454	30e26f74-1462-4829-bb70-beea516822f3
-5dd9478e-5379-466a-853a-b9e5950948cd	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284315/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284310042?_a=BAMAOGfk0	2	2026-04-04 06:31:58.454	2026-04-04 06:31:58.454	30e26f74-1462-4829-bb70-beea516822f3
-8fbbfc24-a245-45ef-ad2d-8c7607891519	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284318/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284310043?_a=BAMAOGfk0	3	2026-04-04 06:31:58.454	2026-04-04 06:31:58.454	30e26f74-1462-4829-bb70-beea516822f3
-981531a1-67ac-4f21-9d39-f835a9caf401	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284317/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284310044?_a=BAMAOGfk0	4	2026-04-04 06:31:58.454	2026-04-04 06:31:58.454	30e26f74-1462-4829-bb70-beea516822f3
-63034843-6e06-4828-8abc-cd194da5cbbc	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284317/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284310045?_a=BAMAOGfk0	5	2026-04-04 06:31:58.454	2026-04-04 06:31:58.454	30e26f74-1462-4829-bb70-beea516822f3
-5bcdbabe-1d2d-4001-8713-ffd4d98e81c4	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284316/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284310046?_a=BAMAOGfk0	6	2026-04-04 06:31:58.454	2026-04-04 06:31:58.454	30e26f74-1462-4829-bb70-beea516822f3
-24af59d7-545b-4378-8d79-fbab743c13f6	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284316/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284310047?_a=BAMAOGfk0	7	2026-04-04 06:31:58.454	2026-04-04 06:31:58.454	30e26f74-1462-4829-bb70-beea516822f3
-890bfb84-e10c-42c5-abba-40a9aa4e5f63	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284641/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284636953?_a=BAMAOGfk0	0	2026-04-08 02:10:58.66	2026-04-08 02:10:58.66	1d3d6860-131f-4c8e-aa45-737a0f27d81b
-f5e29aee-a9a2-4fc1-84c6-15c13e351adb	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284641/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284636961?_a=BAMAOGfk0	1	2026-04-08 02:10:58.66	2026-04-08 02:10:58.66	1d3d6860-131f-4c8e-aa45-737a0f27d81b
-54cae2e0-e874-4632-a370-2856aa1e4ae4	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284641/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284636966?_a=BAMAOGfk0	2	2026-04-08 02:10:58.66	2026-04-08 02:10:58.66	1d3d6860-131f-4c8e-aa45-737a0f27d81b
-b76d4823-4c6d-4c7b-980f-f3d7c96c3c68	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284641/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284636971?_a=BAMAOGfk0	3	2026-04-08 02:10:58.66	2026-04-08 02:10:58.66	1d3d6860-131f-4c8e-aa45-737a0f27d81b
-d8758ed4-205c-41c2-8be8-04d00e959bce	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284641/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284636976?_a=BAMAOGfk0	4	2026-04-08 02:10:58.66	2026-04-08 02:10:58.66	1d3d6860-131f-4c8e-aa45-737a0f27d81b
-a092eb35-f392-4eee-b665-fd291342438e	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284641/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284636980?_a=BAMAOGfk0	5	2026-04-08 02:10:58.66	2026-04-08 02:10:58.66	1d3d6860-131f-4c8e-aa45-737a0f27d81b
 760486c9-68ac-48e7-a5ec-f09c5d39d76b	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775320601/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775320596223?_a=BAMAOGfk0	0	2026-04-20 19:31:21.435	2026-04-20 19:31:21.435	3a4a58b8-8f96-42dd-b14f-f0ba045747e4
 052ee540-7aa8-46f5-aa19-f5de7ab7d6b0	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775320601/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775320596344?_a=BAMAOGfk0	1	2026-04-20 19:31:21.435	2026-04-20 19:31:21.435	3a4a58b8-8f96-42dd-b14f-f0ba045747e4
 5ec7d179-387b-4bf7-8a67-da92fc50a68c	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775320601/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775320596346?_a=BAMAOGfk0	2	2026-04-20 19:31:21.435	2026-04-20 19:31:21.435	3a4a58b8-8f96-42dd-b14f-f0ba045747e4
 42a63280-aa52-44e4-9bd1-cb5fd2ee28ed	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1776713474/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1776713460907?_a=BAMAOGfk0	3	2026-04-20 19:31:21.435	2026-04-20 19:31:21.435	3a4a58b8-8f96-42dd-b14f-f0ba045747e4
+50beee25-5b9a-43a4-bd7b-4a64e657d940	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284317/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284309921?_a=BAMAOGfk0	0	2026-05-09 04:02:29.722	2026-05-09 04:02:29.722	30e26f74-1462-4829-bb70-beea516822f3
+b40231c8-9cc7-4aac-8006-776fab806115	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284318/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284310041?_a=BAMAOGfk0	1	2026-05-09 04:02:29.722	2026-05-09 04:02:29.722	30e26f74-1462-4829-bb70-beea516822f3
+8549109f-649c-4b45-b9e2-2256a8d12e8d	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284315/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284310042?_a=BAMAOGfk0	2	2026-05-09 04:02:29.722	2026-05-09 04:02:29.722	30e26f74-1462-4829-bb70-beea516822f3
+f3964d40-2c0a-4daa-9c19-5064fbb7816a	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284318/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284310043?_a=BAMAOGfk0	3	2026-05-09 04:02:29.722	2026-05-09 04:02:29.722	30e26f74-1462-4829-bb70-beea516822f3
+045abdbc-edde-4e5d-969d-8089852ffce3	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284317/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284310044?_a=BAMAOGfk0	4	2026-05-09 04:02:29.722	2026-05-09 04:02:29.722	30e26f74-1462-4829-bb70-beea516822f3
+79d79057-80ad-4598-96e9-fc853c254378	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284317/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284310045?_a=BAMAOGfk0	5	2026-05-09 04:02:29.722	2026-05-09 04:02:29.722	30e26f74-1462-4829-bb70-beea516822f3
+a65d4b41-54f6-4641-91d9-0c61b60b51f5	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284316/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284310046?_a=BAMAOGfk0	6	2026-05-09 04:02:29.722	2026-05-09 04:02:29.722	30e26f74-1462-4829-bb70-beea516822f3
+24010cea-3e1c-4654-a28f-ee73396ca188	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284316/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284310047?_a=BAMAOGfk0	7	2026-05-09 04:02:29.722	2026-05-09 04:02:29.722	30e26f74-1462-4829-bb70-beea516822f3
+80f53414-646c-4e30-bc15-45f35de9046f	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1778784347/BANAY/products/cddc006611794a16aa8a7edeea79d0bc-product-1778784339033?_a=BAMAOGfk0	3	2026-05-14 18:45:51.816	2026-05-14 18:45:51.816	7cd76f8d-41f4-45c9-b83b-6dc986840016
+6a69aec6-7875-478c-b68c-4ecad64db7b2	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1778784344/BANAY/products/cddc006611794a16aa8a7edeea79d0bc-product-1778784339034?_a=BAMAOGfk0	4	2026-05-14 18:45:51.816	2026-05-14 18:45:51.816	7cd76f8d-41f4-45c9-b83b-6dc986840016
+69136465-56af-4835-824e-cef2e837283d	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1778784351/BANAY/products/cddc006611794a16aa8a7edeea79d0bc-product-1778784339034?_a=BAMAOGfk0	5	2026-05-14 18:45:51.816	2026-05-14 18:45:51.816	7cd76f8d-41f4-45c9-b83b-6dc986840016
+9f49aec6-4ea8-4117-9631-4bf898095ae0	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284641/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284636953?_a=BAMAOGfk0	0	2026-05-09 04:02:49.229	2026-05-09 04:02:49.229	1d3d6860-131f-4c8e-aa45-737a0f27d81b
+b1fbba32-064e-46b9-81af-89c499694c34	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284641/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284636961?_a=BAMAOGfk0	1	2026-05-09 04:02:49.229	2026-05-09 04:02:49.229	1d3d6860-131f-4c8e-aa45-737a0f27d81b
+20b6ea5f-1877-42d3-983d-4bd5017a549b	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284641/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284636966?_a=BAMAOGfk0	2	2026-05-09 04:02:49.229	2026-05-09 04:02:49.229	1d3d6860-131f-4c8e-aa45-737a0f27d81b
+dbb25cb4-d2aa-48a5-a776-ddf0192517fd	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284641/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284636971?_a=BAMAOGfk0	3	2026-05-09 04:02:49.229	2026-05-09 04:02:49.229	1d3d6860-131f-4c8e-aa45-737a0f27d81b
+09b72f77-a81d-49ed-9be8-be5ce27870f6	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284641/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284636976?_a=BAMAOGfk0	4	2026-05-09 04:02:49.229	2026-05-09 04:02:49.229	1d3d6860-131f-4c8e-aa45-737a0f27d81b
+468e842d-a968-4c9d-add5-63e5e2da2cd9	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1775284641/bahibo/products/cddc006611794a16aa8a7edeea79d0bc-product-1775284636980?_a=BAMAOGfk0	5	2026-05-09 04:02:49.229	2026-05-09 04:02:49.229	1d3d6860-131f-4c8e-aa45-737a0f27d81b
+9e15ccd7-5508-41f4-8fba-fc826cdc822f	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1778784342/BANAY/products/cddc006611794a16aa8a7edeea79d0bc-product-1778784338965?_a=BAMAOGfk0	0	2026-05-14 18:45:51.816	2026-05-14 18:45:51.816	7cd76f8d-41f4-45c9-b83b-6dc986840016
+7f2e4266-1ee2-42e7-9dd7-5d822813e0c1	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1778784345/BANAY/products/cddc006611794a16aa8a7edeea79d0bc-product-1778784339030?_a=BAMAOGfk0	1	2026-05-14 18:45:51.816	2026-05-14 18:45:51.816	7cd76f8d-41f4-45c9-b83b-6dc986840016
+88b16518-38b3-497e-8496-9f8f33302717	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_1400,q_auto:good,w_1400/v1778784344/BANAY/products/cddc006611794a16aa8a7edeea79d0bc-product-1778784339032?_a=BAMAOGfk0	2	2026-05-14 18:45:51.816	2026-05-14 18:45:51.816	7cd76f8d-41f4-45c9-b83b-6dc986840016
 \.
 
 
@@ -998,12 +1140,12 @@ COPY public."ProductLike" (id, "createdAt", "userId", "productId") FROM stdin;
 52ebac60-8a42-4b59-a8b8-dee8ca83dda6	2026-04-05 16:37:11.177	b718efee-173e-441b-98f3-364b40c05e73	c79d01a5-8872-4e86-b588-9e6c98b53bd2
 18641624-d3ba-496a-9492-fac56928c3ab	2026-04-06 03:24:09.931	fc758d78-e3c2-4ea7-a489-8e2886635f13	c79d01a5-8872-4e86-b588-9e6c98b53bd2
 a4933451-650d-4e9a-beb4-e01bbf01c0ee	2026-04-06 03:26:40.33	fc758d78-e3c2-4ea7-a489-8e2886635f13	1d3d6860-131f-4c8e-aa45-737a0f27d81b
-6bd5ead5-70e8-435f-9d8a-69b48aef1c9d	2026-04-06 03:34:20.391	fc758d78-e3c2-4ea7-a489-8e2886635f13	4bae1fb8-7119-4588-a44c-7c98cd77fb2e
 ca7a8067-d16e-41ea-abe2-91977f0f7bff	2026-04-06 03:49:34.169	fc758d78-e3c2-4ea7-a489-8e2886635f13	30e26f74-1462-4829-bb70-beea516822f3
-d8acdcaa-eea4-413f-a121-a99b9be67225	2026-04-19 14:05:36.189	fc758d78-e3c2-4ea7-a489-8e2886635f13	3a4a58b8-8f96-42dd-b14f-f0ba045747e4
 ab59298e-bf65-4935-9014-432ab18d6f27	2026-04-19 16:41:01.101	f7fc4466-6951-4dd5-9e5b-fcbc6baf393d	3a4a58b8-8f96-42dd-b14f-f0ba045747e4
 e809e750-97fb-4cdd-938d-89cfe0ee3be7	2026-04-19 16:41:11.666	f7fc4466-6951-4dd5-9e5b-fcbc6baf393d	1d3d6860-131f-4c8e-aa45-737a0f27d81b
 06badb85-feac-4efe-a500-119731c644f7	2026-04-27 17:08:17.68	b718efee-173e-441b-98f3-364b40c05e73	3a4a58b8-8f96-42dd-b14f-f0ba045747e4
+8b6e8c64-96b9-4a8c-b8f4-9bf9d4b51c7b	2026-06-01 17:03:56.734	b718efee-173e-441b-98f3-364b40c05e73	7cd76f8d-41f4-45c9-b83b-6dc986840016
+8c3351ff-eb60-4430-ae81-0f4821c3e022	2026-08-06 00:49:32.333	fc758d78-e3c2-4ea7-a489-8e2886635f13	3a4a58b8-8f96-42dd-b14f-f0ba045747e4
 \.
 
 
@@ -1018,6 +1160,12 @@ COPY public."ProductShare" (id, "createdAt", "userId", "productId") FROM stdin;
 daabf6b9-0191-49e1-a535-2f24ca574149	2026-04-06 15:47:40.169	fc758d78-e3c2-4ea7-a489-8e2886635f13	3a4a58b8-8f96-42dd-b14f-f0ba045747e4
 a4ebad81-24ee-4636-97ba-1a8a371acbe5	2026-04-19 13:50:28.931	fc758d78-e3c2-4ea7-a489-8e2886635f13	3a4a58b8-8f96-42dd-b14f-f0ba045747e4
 356755c0-074a-459f-939e-b01ffd62826c	2026-04-27 17:12:29.371	b718efee-173e-441b-98f3-364b40c05e73	1d3d6860-131f-4c8e-aa45-737a0f27d81b
+1b8edc11-a15c-4e03-9fa4-1d2238687fab	2026-05-07 02:26:15.428	fc758d78-e3c2-4ea7-a489-8e2886635f13	3a4a58b8-8f96-42dd-b14f-f0ba045747e4
+81adfcba-e4c7-4f7b-b9a2-8158174e0875	2026-05-19 08:22:54.65	b718efee-173e-441b-98f3-364b40c05e73	7cd76f8d-41f4-45c9-b83b-6dc986840016
+08b7871a-d38e-42e4-b380-999ebd293f29	2026-05-19 08:22:58.749	b718efee-173e-441b-98f3-364b40c05e73	7cd76f8d-41f4-45c9-b83b-6dc986840016
+a7d08e14-2aa9-4e7f-87c3-f1533ae99863	2026-05-19 15:57:18.938	b718efee-173e-441b-98f3-364b40c05e73	prod-seed-chair
+237e3a57-751d-4198-9902-975ce08f8ae8	2026-05-19 16:08:13.233	b718efee-173e-441b-98f3-364b40c05e73	prod-seed-chair
+2acf910b-bcfa-4968-9b42-e4c8a736a7c9	2026-05-19 16:08:32.194	b718efee-173e-441b-98f3-364b40c05e73	prod-seed-chair
 \.
 
 
@@ -1027,66 +1175,13 @@ a4ebad81-24ee-4636-97ba-1a8a371acbe5	2026-04-19 13:50:28.931	fc758d78-e3c2-4ea7-
 
 COPY public."RefreshToken" (id, "tokenHash", "expiresAt", "createdAt", "userId") FROM stdin;
 539e7737-986a-4d8c-8969-b79594c9e43b	$2a$10$qCrLcBrofcQSti82PNblBOYrNN6FphfFF65lfCr2Ku7YDCqoLwLf6	2026-04-09 16:46:26.437	2026-04-02 16:46:26.439	b59f5d68-ec21-44d1-adf3-33786f0d3a35
-67de3886-c30d-48fb-95f6-d44b0c5aa9cd	$2a$10$zb8iIjfimG4bLt8/lw0it.T/SzvvEdCm.pa4fHDFe9H7md/8tIJNC	2026-05-24 04:13:46.631	2026-04-24 04:13:46.632	b718efee-173e-441b-98f3-364b40c05e73
-08d742dd-7888-4d46-8a32-4030035820f9	$2a$10$kX1eJ0CTzuqiDZeIXzzl.u3qrbHireR62G4Wm18UpJcRVOglemPS2	2026-05-06 15:39:43.166	2026-04-06 15:39:43.168	fc758d78-e3c2-4ea7-a489-8e2886635f13
-5c31f98e-06bf-4c3f-b182-4b5871025d56	$2a$10$wXDtrZwJiULUyyuV8PyWg./2QNx2ZozWNs2tQq.Fh7rjOfxR.maNy	2026-05-03 15:39:43.424	2026-04-03 15:39:43.425	b718efee-173e-441b-98f3-364b40c05e73
-1db31245-c76b-415f-ae59-c2177062f9d9	$2a$10$/tfYKxks8VpMYIOUwCQrFe9Bl9hBvr/sKfRlPfonQIehWW25ZWcZu	2026-05-04 03:18:39.552	2026-04-04 03:18:39.553	fc758d78-e3c2-4ea7-a489-8e2886635f13
-be118647-ca45-45f5-9578-f0bb6017fb8d	$2a$10$.UDug2U9lyFMqYwpwdigO.aWsWFElgnTHuq3Nnofx6Q8fqotMvCp.	2026-05-04 03:27:45.037	2026-04-04 03:27:45.039	fc758d78-e3c2-4ea7-a489-8e2886635f13
-e73861c8-9b68-4072-ae16-3879394ecd0e	$2a$10$PJiHVr05MQf3qlYzdWBJz.5y.YISc8.xiefuu7a.EaraZ4CNCnzuC	2026-05-04 03:54:55.981	2026-04-04 03:54:55.983	fc758d78-e3c2-4ea7-a489-8e2886635f13
-26513d54-f138-4f01-bab2-ce2f01446bee	$2a$10$4E941lAEtgkPXr/jVNBfpe5DtNwbXBEcaWPtXBsmu1RUcAlAUZ6nK	2026-05-06 16:02:42.084	2026-04-06 16:02:42.086	fc758d78-e3c2-4ea7-a489-8e2886635f13
-84517d2e-29eb-4cd6-8ee3-e6df30c19700	$2a$10$OPTgkNJljSPpGPC603sIMeqb5weoHAJSWUYse.0CI1Q.DHpCt0xuG	2026-05-13 17:00:08.671	2026-04-13 17:00:08.672	fc758d78-e3c2-4ea7-a489-8e2886635f13
-9c1e4711-ddcb-403f-8a63-62b658d95616	$2a$10$hVoFlFjO8MTqSeNOm/k88ecgaj/y6LCj0aLbVx/IFoDBa9QGqxXK6	2026-05-04 04:05:51.582	2026-04-04 04:05:51.584	b718efee-173e-441b-98f3-364b40c05e73
-295e1deb-354c-42a8-add7-128d638da9ac	$2a$10$dKsGi1n98ROunEkmFQrWOustkBNTExQ7dQrWBwOidmyOXJsngCmya	2026-05-02 22:32:25.592	2026-04-02 22:32:25.594	b718efee-173e-441b-98f3-364b40c05e73
-64a16e52-c981-43bf-b44c-cee157e10f0f	$2a$10$tw9.NUiWX1rv5Yhz6pjqN.gCuQ9HfvIYUpSNWgTYq01x5dpRC1x0W	2026-05-04 04:12:06.545	2026-04-04 04:12:06.547	fc758d78-e3c2-4ea7-a489-8e2886635f13
-83a8653a-c381-4183-83d4-cb60d119c421	$2a$10$M5Secv/Utu237vHnpchyBOrvGc5iWG41RC4oqOyaSsrgB0/AqiVVe	2026-05-04 04:38:39.362	2026-04-04 04:38:39.363	fc758d78-e3c2-4ea7-a489-8e2886635f13
-f2358608-da00-467d-ba5e-8df1dcd3c68d	$2a$10$jgtg2CwNMbDBlzqBCk46/.HhFvdUILWfh1j5GSeZC6AcX/r3gKKUK	2026-05-08 18:54:23.063	2026-04-08 18:54:23.064	b718efee-173e-441b-98f3-364b40c05e73
-00c77cc9-8de9-42ab-9dd5-a4fe801866c0	$2a$10$SqhppX2B56TFwXej166xt.YUxeSCcG4QumiJa0BzUA9wZ65tpnHqm	2026-05-04 05:33:07.575	2026-04-04 05:33:07.576	fc758d78-e3c2-4ea7-a489-8e2886635f13
-3529c643-4d88-40a1-a839-3513a8d29bd1	$2a$10$o9ytbhlpxVSauPtE6TCI6uTyDrmRSgWnOBKWudJyJvo3X7TuECMFe	2026-05-06 19:33:50.267	2026-04-06 19:33:50.268	b718efee-173e-441b-98f3-364b40c05e73
-6cdb7bb6-fffa-4fc0-bdd3-9c1833162b6d	$2a$10$0IOAttCfaL2zOOxNJnRSF.88o5AjjiJaS.uFoH65A1GNkf1VBbpey	2026-05-02 23:39:03.499	2026-04-02 23:39:03.5	fc758d78-e3c2-4ea7-a489-8e2886635f13
-65339604-bc76-49c1-bb8e-2fba7ccea283	$2a$10$HjBr5bir5mzUFohzv2T0eemtfLiu3PjyWIO73P8/t3S2d9uEd77kC	2026-05-06 03:57:07.084	2026-04-06 03:57:07.085	b718efee-173e-441b-98f3-364b40c05e73
-6dbabb4d-491e-4c3d-8008-4149407b925c	$2a$10$hOrHZj/n7aLbpxwQNZ1a1uNygsPjugxZCV2tvPZuZBVQ.39QoRhiK	2026-05-08 09:37:32.972	2026-04-08 09:37:32.973	fc758d78-e3c2-4ea7-a489-8e2886635f13
-73b33446-cd05-47a9-95cd-c881e9334602	$2a$10$6Dc4eeX5wBLJl3ZNVuE0S.lAgx3t9x6l7aLH8K8JrxAEGXDaoRETO	2026-05-03 00:08:27.757	2026-04-03 00:08:27.758	b718efee-173e-441b-98f3-364b40c05e73
-da430875-5719-4c8e-9818-ac3b42fdb14a	$2a$10$5r20llRGXgtBc1D46BcFD.VVX3FbZhg9.ojHhreDCJNcmVTi7dihK	2026-05-03 00:08:31.092	2026-04-03 00:08:31.094	fc758d78-e3c2-4ea7-a489-8e2886635f13
-ff675345-49b2-4687-b6fb-3ae8f88e4e31	$2a$10$LSCXNLvMnAnDjUBnlks/q.hqDOPy3e/3.IQWiu7WQQ6FCdIssxipG	2026-05-13 08:18:53.683	2026-04-13 08:18:53.685	b718efee-173e-441b-98f3-364b40c05e73
+e9ac2183-6e6b-4585-86b2-3d2ae55883fa	$2a$10$xARoOcDKZ7ah34FoFV8GD.A8evrRERXbRNhgWOYYVA3/O.w0ojFMu	2026-09-05 01:53:10.013	2026-08-06 01:53:10.014	fc758d78-e3c2-4ea7-a489-8e2886635f13
 3dac5f1c-665d-433b-9ff8-8b063fcd4c02	$2a$10$/vObzGnsJ7fzPBxguEfRJu.5IXhqvZwX.KKig3b6kvGkaAmWvpCv6	2026-05-03 04:42:25.807	2026-04-03 04:42:25.808	f261a10b-c29c-4bd3-a413-bf99ee82cdb0
-6eeaf758-3b5f-4138-a540-69ddd2cb7dd2	$2a$10$2cJq1wvLkLihAp9e4uAMG.CZ41LN0KKgO/GFHVb75X9syt1G8UQEm	2026-05-08 10:05:49.91	2026-04-08 10:05:49.911	fc758d78-e3c2-4ea7-a489-8e2886635f13
-6fdd33e4-d316-46ae-8724-7b2f69072b76	$2a$10$1V.RIJS3DLgvjv.hpnwDtO0H4unqCSGdkLJJhV5CSQ/GBv/nb9VV2	2026-05-04 06:37:47.919	2026-04-04 06:37:47.921	b718efee-173e-441b-98f3-364b40c05e73
-a5a7a1a0-0b17-48ee-aea3-abe4a587307d	$2a$10$0QaIctRxDmHrgY0FBHQ.QusHqXlUTZ1F4xGpXdS46akpHGTyml/P6	2026-05-03 08:16:19.084	2026-04-03 08:16:19.086	b718efee-173e-441b-98f3-364b40c05e73
-cddc7624-401b-4102-a763-a6692cb51c0b	$2a$10$uJja7kgUFaSPke1kUZgNA.pgHO.ZsL1FSYXUH0JYBCX4fowD19y5i	2026-05-05 14:31:34.588	2026-04-05 14:31:34.589	b718efee-173e-441b-98f3-364b40c05e73
-63705aa7-2805-458f-8615-62005c371ae1	$2a$10$6t.r6SFjYY1iaCIpY2eAz.ZRuHJWpWNzzWZ5qu1dtQ.Hez7x7X/WK	2026-05-05 15:51:30.496	2026-04-05 15:51:30.497	b718efee-173e-441b-98f3-364b40c05e73
-a5139616-c60c-4477-b3fd-552ec9382a52	$2a$10$FOirIA1EuYh0Le.Tjp8g1.mjfcCI5PmKCKijmI6EIFO8hKwRHt.NS	2026-05-13 19:54:35.763	2026-04-13 19:54:35.764	fc758d78-e3c2-4ea7-a489-8e2886635f13
-fd085443-13bd-411a-ac8c-4a528a30c544	$2a$10$X9ATqyBUkijfwEyUrQwIQe0QOizgphsBBC0OqLePkf98XkkvLujEm	2026-05-03 10:16:39.547	2026-04-03 10:16:39.548	fc758d78-e3c2-4ea7-a489-8e2886635f13
-b0a7c5ea-1543-4147-9755-e782dd94c2f8	$2a$10$SxpAY33g/dAu1UV2WagWDupUp97EessoabSoRHaVWCflHXot7jsEe	2026-05-06 13:43:33.363	2026-04-06 13:43:33.364	fc758d78-e3c2-4ea7-a489-8e2886635f13
-13c3f06d-db99-4b08-a4fd-2a8ce22ec63c	$2a$10$Hzo315Al0MlGU/9d1Qm1DusIWk/s3p/aK4wT6mXatcOs/Q7.xpdP.	2026-05-07 16:03:44.163	2026-04-07 16:03:44.164	fc758d78-e3c2-4ea7-a489-8e2886635f13
-0d8db97e-db65-49bd-9ffe-ea10ab3ea564	$2a$10$SuTL/gWNNPamp4iKgxpsRuWPLuBpgyBa9oZ8ymuhgnZBfnx2IHdSK	2026-05-07 16:04:29.027	2026-04-07 16:04:29.029	b718efee-173e-441b-98f3-364b40c05e73
-b7b7d674-70b4-4cd1-ac16-484828f7d81b	$2a$10$K.E7EJXBk5qf6ZZoYnJw2uNs1xDonOYIye5ncqzwIiITfnGSuYhEG	2026-05-03 10:31:00.18	2026-04-03 10:31:00.181	b718efee-173e-441b-98f3-364b40c05e73
-726fce2a-c275-46fd-9e30-75a40dc4d9b8	$2a$10$Y5DS8ixIvflBMPaQUX64CupmtZXPjOc7.9sqlNjiaJdI6YdHPf04K	2026-05-09 17:21:04.135	2026-04-09 17:21:04.136	b718efee-173e-441b-98f3-364b40c05e73
-325f4acf-761c-4a93-8dcb-439d47ad837b	$2a$10$k.kp22xzNtmCUDY6S8TCEu0YRQnmCymgBQBU2EaoGcVPO64CgBtTi	2026-05-04 16:28:18.219	2026-04-04 16:28:18.22	b718efee-173e-441b-98f3-364b40c05e73
-e765c56d-ef53-47a7-a3d9-e5e4aac29bfa	$2a$10$CjB3i4RWRtYYixHmHNSXQOj8tx70RveoeHDD4i64VYWak3tzzpJ.K	2026-05-04 16:28:40.603	2026-04-04 16:28:40.605	b718efee-173e-441b-98f3-364b40c05e73
-a33ad8dc-df6a-484e-a3fa-90868839d0ee	$2a$10$cGU5mRYQsGBx6lMQf3BtIOer4lO/.MVR.vFTWypyoGM/.uo8G1akW	2026-05-04 16:31:25.408	2026-04-04 16:31:25.419	b718efee-173e-441b-98f3-364b40c05e73
-a754178d-fde4-4a92-9e33-bbf935d44c9d	$2a$10$iSU2ArsR66MvgDfQatm81.LI4qju2psQxBgXTuPJ3adqcRsPLVtee	2026-05-04 16:34:04.738	2026-04-04 16:34:04.739	b718efee-173e-441b-98f3-364b40c05e73
-938742dc-cff3-435d-ab00-724ea1247b45	$2a$10$p/ex5T8mcYULEafTAI5/ROiWcQj7OwHCOYcWKP1i2zc/hzKiomlxq	2026-05-06 14:46:54.217	2026-04-06 14:46:54.218	fc758d78-e3c2-4ea7-a489-8e2886635f13
-9021f499-9362-4676-8de2-0e00baaf7f2e	$2a$10$iY135Evv2.xO2Zgf5oVf3eX2oPLLfJhM.B6zzPbsZlhCgoyGjcD2a	2026-05-08 16:25:58.463	2026-04-08 16:25:58.465	b718efee-173e-441b-98f3-364b40c05e73
-2f1e3423-2088-4dd2-852d-1ce5f70f8513	$2a$10$/qFU1ndJdVj.GpkBdeTKTONLSdNsPBKwztd7KwHCuUS/9hWdP9YPq	2026-05-10 03:10:10.594	2026-04-10 03:10:10.595	fc758d78-e3c2-4ea7-a489-8e2886635f13
-7398e414-3cc2-4f27-bf87-64586906f41e	$2a$10$8ADamPl7zEGlKPIdsNy18.gFpOgiWJa3i2MfHe1OKiRdYnVYwYbG2	2026-05-24 05:53:14.655	2026-04-24 05:53:14.657	fc758d78-e3c2-4ea7-a489-8e2886635f13
-42f8bf53-b7dc-4243-9876-a9e8e2d5b233	$2a$10$HzyvZNIVaY0TS9JRpJyeHOyPoATM0FAolJhXWeFWqh5e91JnSi4l2	2026-05-20 19:57:01.84	2026-04-20 19:57:01.842	fc758d78-e3c2-4ea7-a489-8e2886635f13
 a1343801-67ff-41bf-831a-44d40ffe5a56	$2a$10$EYghdZk6jX/D2p5RGVe1Mu/vF0SjbvNH9UEU9h2jaGnQQsNnJAxQO	2026-05-26 09:48:28.352	2026-04-26 09:48:28.354	f7fc4466-6951-4dd5-9e5b-fcbc6baf393d
 02155aef-2fa3-4e3a-8fe0-310e6c49e2c8	$2a$10$piUaHJUuRPH2PMOzlwWze.krgz0qwLWBihwSycBji9kUn0.X0N2aK	2026-05-26 09:50:54.292	2026-04-26 09:50:54.293	9b3b238f-3e67-4073-9b6b-afbd3731f195
-62f75312-7f99-4832-91a5-cd45ad65aee4	$2a$10$ZvxlFPz.BDJar0sS50cYQOoBcHNLyuWOeKUtGgHGwExe7cQpScVra	2026-05-26 10:12:50.916	2026-04-26 10:12:50.92	b718efee-173e-441b-98f3-364b40c05e73
-4ff94f4e-1aa6-4f6e-a70d-ebabb1e2920c	$2a$10$T5fmglRo.IE8kUiIZRmvgOjetQHFjd7k.4jy3HcOQ9HwHPAGWtEym	2026-05-24 00:23:08.924	2026-04-24 00:23:08.925	fc758d78-e3c2-4ea7-a489-8e2886635f13
-3746669d-d0ae-4c42-8341-c1375d71ab02	$2a$10$iGWpNyH.32HwTh.tMP40WefbsbN9qELJpspqBkHER6jktozzmG0/2	2026-05-26 13:27:16.183	2026-04-26 13:27:16.184	fc758d78-e3c2-4ea7-a489-8e2886635f13
-a6e8636b-0c36-4442-84fb-f04dde107e35	$2a$10$3wpEitUgsREgTQMQTYeL/OsgHNl.QaHUvY1wwfsPjQbpEfqKMPiG.	2026-05-26 13:56:16.867	2026-04-26 13:56:16.869	b718efee-173e-441b-98f3-364b40c05e73
-8b0963ba-5358-4b13-af14-308dd50e5c65	$2a$10$TcP1XufAWMHBkExnN/xejezADVzuY3m5i6NHxSF0uuFlN1K17zT22	2026-05-26 14:12:00.383	2026-04-26 14:12:00.385	fc758d78-e3c2-4ea7-a489-8e2886635f13
-befc5288-7dde-4fd2-b9d7-86c554ffc1fc	$2a$10$K7ikMgUgXts3cLpP.kzcReKPBLIUomAcstz6UqEQTTWTKHlqwrRXS	2026-05-26 14:36:01.968	2026-04-26 14:36:01.971	fc758d78-e3c2-4ea7-a489-8e2886635f13
-59e26ecd-0e75-493e-a0bb-1701383aef3d	$2a$10$M5Xu4sBUz84fjq4VporHMOF9KasfcHzkxM2MF2VEvod/w2QRKt42i	2026-05-26 14:39:39.248	2026-04-26 14:39:39.25	fc758d78-e3c2-4ea7-a489-8e2886635f13
-ce0abdb6-70c5-47d6-b9fe-dffaf8572e13	$2a$10$7OAzQ8mpv4CYRInq0MBA3uFAR7vcWzrpkvNJYTn1sSQvLsr4wnaxS	2026-05-24 04:07:32.61	2026-04-24 04:07:32.611	b718efee-173e-441b-98f3-364b40c05e73
-80b1c7a5-8f65-4ae1-af4a-73c19190b628	$2a$10$DXpvB.UmpV0FJxNgTkXUZOJKhhLf5F6JLlHmaSwXeGlNyEQxGkBI.	2026-05-24 04:07:33.186	2026-04-24 04:07:33.187	b718efee-173e-441b-98f3-364b40c05e73
-ee17b97b-fb3a-4b7d-8959-94b917631621	$2a$10$lhK0ZSRtrNTkF2Tee.MqN.EGtDtcTNVrrkaSqPhk7lXth1aKlszz6	2026-05-26 14:52:52.407	2026-04-26 14:52:52.409	b718efee-173e-441b-98f3-364b40c05e73
-89100f9e-289e-48f8-854c-d347b1701cae	$2a$10$mSddH.Ti6sEdPFJMx6f5X.nGfBcNSD80jyk4OrxviB.1V4QNdV.8e	2026-05-26 14:55:38.376	2026-04-26 14:55:38.377	fc758d78-e3c2-4ea7-a489-8e2886635f13
-b16e98d4-c304-42ce-8d15-b97f50a26d25	$2a$10$nbevy9koL.zxlPDnbJW2r.K4SBA2c3u17/kqo1hsQyBkmQYQmitwK	2026-05-26 16:45:33.475	2026-04-26 16:45:33.489	b718efee-173e-441b-98f3-364b40c05e73
-596a4e1b-b22b-4228-971e-bf75c060e273	$2a$10$fgqW535M/GuucbmjeRSnHORth6NUAWmpB4bMOe.RouMWNTXei98Ly	2026-05-27 17:06:11.413	2026-04-27 17:06:11.415	b718efee-173e-441b-98f3-364b40c05e73
-688e0beb-fa37-4c7a-93d0-dacaed40ccf9	$2a$10$k6vmLtNdRP7xLlGLrugabuLYa5/CmgNdQrrvGA8zmadQT7G.Qp/76	2026-05-27 17:13:40.738	2026-04-27 17:13:40.739	fc758d78-e3c2-4ea7-a489-8e2886635f13
-c29be277-719e-4d4b-83bf-3b7e5eefbfb9	$2a$10$QEd1lQLeX4dgPqbt33o3PuWD89HSyWAc/9OsMxGcN.pviSSN8gVOO	2026-05-28 20:47:12.939	2026-04-28 20:47:12.94	b718efee-173e-441b-98f3-364b40c05e73
+a93b5b8d-bf71-41c7-814e-ca094db6695d	$2a$10$83fmW11bDWIZxoRUGCf22u8U1j02to8Hx3Re.s7rNRiGy9ZqhpDpu	2026-09-05 01:52:13.566	2026-08-06 01:52:13.567	b718efee-173e-441b-98f3-364b40c05e73
+72630853-f53f-4fec-a57d-1bf59c5120dd	$2a$10$K22ypw6k72ZF9UVHp6dFGucPB41AbdFy2mOGDu0h7h22k/64rRZ.e	2026-06-04 18:22:11.49	2026-05-05 18:22:11.492	f7fc4466-6951-4dd5-9e5b-fcbc6baf393d
+30558cb1-2c07-47ad-87ae-251146bda88f	$2a$10$ZzFKWKxRx89WAbJE3OJsZ.nZT8wD6E/4lcY2v1bY89yydsqEsAeKa	2026-09-03 18:52:03.235	2026-08-04 18:52:03.236	533ed33f-dbe8-419a-8285-77dd01a553e7
 \.
 
 
@@ -1114,7 +1209,7 @@ d692aeed-65bd-4974-b400-6da32d87c227	2026-04-06 16:17:56.317	fc758d78-e3c2-4ea7-
 --
 
 COPY public."SellerLiveSession" (id, "sellerProfileId", title, category, "startedAt", "updatedAt", "endedAt") FROM stdin;
-8250dc0d-cb38-4717-971f-4526870901f0	cddc0066-1179-4a16-aa8a-7edeea79d0bc	Vony Verronique en direct	Presentation produit	2026-04-27 17:16:05.271	2026-04-27 17:16:52.374	2026-04-27 17:16:52.373
+8250dc0d-cb38-4717-971f-4526870901f0	cddc0066-1179-4a16-aa8a-7edeea79d0bc	Vony Verronique en direct	Presentation produit	2026-05-10 15:35:44.454	2026-05-10 15:36:05.327	2026-05-10 15:36:05.325
 \.
 
 
@@ -1123,10 +1218,11 @@ COPY public."SellerLiveSession" (id, "sellerProfileId", title, category, "starte
 --
 
 COPY public."SellerProfile" (id, "studioName", description, city, country, "createdAt", "updatedAt", "userId") FROM stdin;
-508bbb87-c08e-411c-b550-d17e910b4cbb	Elanga Store	Mode et accessoires soigneusement selectionnes.	Toamasina	Madagascar	2026-04-02 16:43:30.135	2026-04-02 16:43:30.135	5beec21f-4030-41a6-b602-2c5228646d8d
-fca37388-adbd-44e3-b289-b98415b97eab	Jojol Store	Boutique high-tech et smartphones premium.	Antananarivo	Madagascar	2026-04-02 16:43:30.135	2026-04-02 16:43:30.135	f299317e-35da-484f-a473-4a66c0adc02d
-6a138d49-94b3-4f80-9e9b-cf137bc0a245	NalaK	Parfums, beaute et cadeaux premium.	Fianarantsoa	Madagascar	2026-04-02 16:43:30.136	2026-04-02 16:43:30.136	4af03bff-0bbc-46fd-8936-061181dbda80
-cddc0066-1179-4a16-aa8a-7edeea79d0bc	Vony Verronique	\N	\N	\N	2026-04-04 04:58:22.363	2026-04-04 04:58:22.363	b718efee-173e-441b-98f3-364b40c05e73
+cddc0066-1179-4a16-aa8a-7edeea79d0bc	Vony Veronique	Boutique BANAY active sur la plateforme.	Mountain View	Santa Clara County	2026-04-04 04:58:22.363	2026-05-09 15:41:45.368	b718efee-173e-441b-98f3-364b40c05e73
+seller-profile-verify-demo	Seller Verify Demo Shop	Compte de test pour verification vendeur admin.	Antananarivo	Madagascar	2026-05-13 19:23:42.571	2026-05-13 19:24:18.965	user-seller-verify-demo
+6a138d49-94b3-4f80-9e9b-cf137bc0a245	NalaK	Parfums, beaute et cadeaux premium.	Fianarantsoa	Madagascar	2026-04-02 16:43:30.136	2026-05-13 19:24:19.021	4af03bff-0bbc-46fd-8936-061181dbda80
+508bbb87-c08e-411c-b550-d17e910b4cbb	Elanga Store	Mode et accessoires soigneusement selectionnes.	Toamasina	Madagascar	2026-04-02 16:43:30.135	2026-05-13 19:24:19.021	5beec21f-4030-41a6-b602-2c5228646d8d
+fca37388-adbd-44e3-b289-b98415b97eab	Jojol Store	Boutique high-tech et smartphones premium.	Antananarivo	Madagascar	2026-04-02 16:43:30.135	2026-05-13 19:24:19.021	f299317e-35da-484f-a473-4a66c0adc02d
 \.
 
 
@@ -1168,6 +1264,25 @@ cc34af7f-3950-4f3a-a596-c49aa585a4d3	2026-04-19 13:47:12.998	fc758d78-e3c2-4ea7-
 a7a40051-e932-4a3f-9ed5-c2b8858c5e2c	2026-04-19 16:18:33.302	f7fc4466-6951-4dd5-9e5b-fcbc6baf393d	cddc0066-1179-4a16-aa8a-7edeea79d0bc
 b3b335cc-e491-418b-8089-a973ea5c3199	2026-04-19 16:19:25.017	f7fc4466-6951-4dd5-9e5b-fcbc6baf393d	cddc0066-1179-4a16-aa8a-7edeea79d0bc
 4dd4bb31-7b1d-4998-886c-b01d99e34461	2026-04-26 09:51:16.278	9b3b238f-3e67-4073-9b6b-afbd3731f195	cddc0066-1179-4a16-aa8a-7edeea79d0bc
+8661860e-7285-4f16-b739-cd60600e38c5	2026-05-06 16:37:21.18	9a6c8f8b-bd18-4b9e-972f-1179e18da727	cddc0066-1179-4a16-aa8a-7edeea79d0bc
+33bac936-76f0-46f6-b95b-a1af9937e496	2026-05-07 02:26:18.525	fc758d78-e3c2-4ea7-a489-8e2886635f13	cddc0066-1179-4a16-aa8a-7edeea79d0bc
+1194a333-b664-4a38-8920-1d584b1ba763	2026-05-07 02:26:21.362	fc758d78-e3c2-4ea7-a489-8e2886635f13	cddc0066-1179-4a16-aa8a-7edeea79d0bc
+2798edf4-a1dc-4ab1-8a1f-5f58df299d9f	2026-05-19 15:24:41.521	b718efee-173e-441b-98f3-364b40c05e73	508bbb87-c08e-411c-b550-d17e910b4cbb
+4531f522-68e7-4d00-9ad6-e05d568fd851	2026-05-19 15:33:10.998	b718efee-173e-441b-98f3-364b40c05e73	508bbb87-c08e-411c-b550-d17e910b4cbb
+942d50c1-2444-4645-8105-075d5b8ed71a	2026-05-19 15:33:23.74	b718efee-173e-441b-98f3-364b40c05e73	508bbb87-c08e-411c-b550-d17e910b4cbb
+3f33dc3c-2fe4-447b-ae06-fc50ee8ca25f	2026-05-19 15:33:31.271	b718efee-173e-441b-98f3-364b40c05e73	508bbb87-c08e-411c-b550-d17e910b4cbb
+c9d3bf87-3c85-4fa8-b68f-08e9621d3493	2026-05-29 19:39:12.237	fc758d78-e3c2-4ea7-a489-8e2886635f13	cddc0066-1179-4a16-aa8a-7edeea79d0bc
+4f7b78f4-97d5-49dc-bf1c-344c394efeb1	2026-05-29 19:39:48.363	fc758d78-e3c2-4ea7-a489-8e2886635f13	cddc0066-1179-4a16-aa8a-7edeea79d0bc
+d4a3f5f9-a306-4273-bad9-8a3be7a9e05e	2026-05-29 20:01:47.867	fc758d78-e3c2-4ea7-a489-8e2886635f13	cddc0066-1179-4a16-aa8a-7edeea79d0bc
+11e3ff71-27a5-4981-ac7d-68bdd501671a	2026-05-29 21:02:40.812	fc758d78-e3c2-4ea7-a489-8e2886635f13	cddc0066-1179-4a16-aa8a-7edeea79d0bc
+76eb80b5-748a-4128-95a5-47372c1f1486	2026-05-30 15:36:38.787	fc758d78-e3c2-4ea7-a489-8e2886635f13	cddc0066-1179-4a16-aa8a-7edeea79d0bc
+ad872419-290b-4ded-aa0a-2e8aa23772d2	2026-06-01 17:07:11.711	b718efee-173e-441b-98f3-364b40c05e73	508bbb87-c08e-411c-b550-d17e910b4cbb
+fa660cc6-e8ee-4aa7-9616-26ce16ba514e	2026-06-01 18:24:07.097	fc758d78-e3c2-4ea7-a489-8e2886635f13	cddc0066-1179-4a16-aa8a-7edeea79d0bc
+feaa1bad-6167-48a6-82dc-339ca9cb360e	2026-06-01 20:22:53.367	fc758d78-e3c2-4ea7-a489-8e2886635f13	cddc0066-1179-4a16-aa8a-7edeea79d0bc
+5a81c834-b8ec-4917-a694-df190c80b775	2026-08-04 18:57:47.871	533ed33f-dbe8-419a-8285-77dd01a553e7	cddc0066-1179-4a16-aa8a-7edeea79d0bc
+ca23a66a-472f-4daa-b7db-6323b0bc5572	2026-08-06 00:14:14.441	fc758d78-e3c2-4ea7-a489-8e2886635f13	cddc0066-1179-4a16-aa8a-7edeea79d0bc
+588b8873-8617-4df2-a6cc-b9636be0f9ca	2026-08-06 00:20:36.207	fc758d78-e3c2-4ea7-a489-8e2886635f13	cddc0066-1179-4a16-aa8a-7edeea79d0bc
+21585d76-90d5-4169-abb0-8c6aab6af3b7	2026-08-06 01:07:36.843	fc758d78-e3c2-4ea7-a489-8e2886635f13	cddc0066-1179-4a16-aa8a-7edeea79d0bc
 \.
 
 
@@ -1185,15 +1300,20 @@ b1d4ba14-dc63-4bce-973f-f586e25ab452	Bahibo Express	BHB-TRACK-001	DELIVERED	2026
 --
 
 COPY public."User" (id, "phoneE164", "displayName", "passwordHash", "avatarUrl", "preferredLanguage", role, "isVerified", "createdAt", "updatedAt", "countryDialCode", "countryName", "coverImageUrl", "locationLabel", "locationLatitude", "locationLongitude", "locationUpdatedAt", "shopRequestReviewedAt", "shopRequestStatus", "shopRequestSubmittedAt", "displayNameChangedAt", "isSellerCertified", "sellerVerificationRequestStatus", "sellerVerificationRequestedAt", "sellerVerificationReviewedAt", "lastSeenAt") FROM stdin;
-b59f5d68-ec21-44d1-adf3-33786f0d3a35	+261341234567	Client Demo	$2a$10$f5H21IarnQaIXnrG1gAYAebcEKhjcveIgGcbG1sMUWhFN9YGNXZJ2	https://i.pravatar.cc/240?img=15	\N	CUSTOMER	t	2026-04-02 16:43:29.855	2026-04-02 16:43:29.855	\N	\N	\N	\N	\N	\N	\N	\N	NONE	\N	\N	f	NONE	\N	\N	\N
-f299317e-35da-484f-a473-4a66c0adc02d	+261340000111	Jojol Store	$2a$10$f5H21IarnQaIXnrG1gAYAebcEKhjcveIgGcbG1sMUWhFN9YGNXZJ2	https://i.pravatar.cc/240?img=18	\N	SELLER	t	2026-04-02 16:43:29.902	2026-04-02 16:43:29.902	\N	\N	\N	\N	\N	\N	\N	\N	NONE	\N	\N	f	NONE	\N	\N	\N
-5beec21f-4030-41a6-b602-2c5228646d8d	+261340000222	Elanga Store	$2a$10$f5H21IarnQaIXnrG1gAYAebcEKhjcveIgGcbG1sMUWhFN9YGNXZJ2	https://i.pravatar.cc/240?img=52	\N	SELLER	t	2026-04-02 16:43:29.902	2026-04-02 16:43:29.902	\N	\N	\N	\N	\N	\N	\N	\N	NONE	\N	\N	f	NONE	\N	\N	\N
-4af03bff-0bbc-46fd-8936-061181dbda80	+261340000333	NalaK	$2a$10$f5H21IarnQaIXnrG1gAYAebcEKhjcveIgGcbG1sMUWhFN9YGNXZJ2	https://i.pravatar.cc/240?img=47	\N	SELLER	t	2026-04-02 16:43:29.902	2026-04-02 16:43:29.902	\N	\N	\N	\N	\N	\N	\N	\N	NONE	\N	\N	f	NONE	\N	\N	\N
 f261a10b-c29c-4bd3-a413-bf99ee82cdb0	+261346484348	Verbose	$2a$10$EE0jsyZDrGmBDBcQ87bJsObedqyKHTjovgMQ/0KAvPCIr0M5BW0XW	\N	\N	CUSTOMER	t	2026-04-03 00:19:30.407	2026-04-03 00:19:30.407	+261	Madagascar	\N	\N	\N	\N	\N	\N	NONE	\N	\N	f	NONE	\N	\N	\N
-b718efee-173e-441b-98f3-364b40c05e73	+261342307565	Vony Verronique	$2a$10$FVg4gDRhnWDHQSnK11l.Muh/p3co6KLEEhCS9GAee1a1fxkWmNome	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_512,q_auto:good,w_512/v1775212066/bahibo/profile-avatars/261342307565-avatar-1775212059567?_a=BAMAOGfk0	\N	SELLER	t	2026-04-02 20:47:00.078	2026-04-28 20:48:51.495	+261	Madagascar	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_900,q_auto:good,w_1600/v1775211995/bahibo/profile-covers/261342307565-cover-1775211988274?_a=BAMAOGfk0	Tananarive, Antananarivo Renivohitra	-18.941854	47.5294155	2026-04-26 03:49:49.534	2026-04-04 04:58:22.354	APPROVED	2026-04-03 17:58:20.854	\N	t	APPROVED	2026-04-06 15:45:33.235	2026-04-06 15:46:21.466	2026-04-28 20:48:51.493
-f7fc4466-6951-4dd5-9e5b-fcbc6baf393d	+261324965862	Juliana	$2a$10$E9x7KUr.eA6D8z1CW9wGWOXLVggaxdFRQjWnqy9H2wARxUF1ypelW	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_512,q_auto:good,w_512/v1776614810/bahibo/profile-avatars/261324965862-avatar-1776614807121?_a=BAMAOGfk0	\N	CUSTOMER	t	2026-04-19 16:06:11.822	2026-04-26 09:55:55.15	+261	Madagascar	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_900,q_auto:good,w_1600/v1776614839/bahibo/profile-covers/261324965862-cover-1776614835768?_a=BAMAOGfk0	Mountain View, Santa Clara County	37.4219983	-122.084	2026-04-26 09:52:36.347	\N	NONE	\N	\N	f	NONE	\N	\N	2026-04-26 09:55:55.148
-fc758d78-e3c2-4ea7-a489-8e2886635f13	+261349459128	DAMA Dany	$2a$10$fKFR4W0i0bj5BvjKD70bfOdMKQkRJWMeaV3bygzo28vAf./vX9552	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_512,q_auto:good,w_512/v1775204355/bahibo/profile-avatars/261349459128-avatar-1775204348725?_a=BAMAOGfk0	\N	ADMIN	t	2026-04-02 20:28:04.151	2026-04-26 14:58:16.117	+261	Madagascar	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_900,q_auto:good,w_1600/v1775203723/bahibo/profile-covers/261349459128-cover-1775203712268?_a=BAMAOGfk0	Mountain View, Santa Clara County	37.4219983	-122.084	2026-04-26 14:55:50.806	\N	NONE	\N	\N	f	NONE	\N	\N	2026-04-26 14:58:16.113
 9b3b238f-3e67-4073-9b6b-afbd3731f195	+261340258202	Fifih	$2a$10$VpQoX0HdGkG0Nflczvffh.o/zm01JGPnL/VhrzDkdiGvZ3qfaxGsW	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_512,q_auto:good,w_512/v1777197054/bahibo/profile-avatars/261340258202-avatar-1777197047033?_a=BAMAOGfk0	\N	CUSTOMER	t	2026-04-26 09:50:54.166	2026-04-26 09:54:41.722	+261	Madagascar	\N	Tananarive, Antananarivo Renivohitra	-18.9399558	47.5298438	2026-04-26 09:51:14.715	\N	NONE	\N	\N	f	NONE	\N	\N	2026-04-26 09:54:41.718
+f299317e-35da-484f-a473-4a66c0adc02d	+261340000111	Jojol Store	$2a$10$EFazgBBXqoLK.RmII8vUP.vGx9iT8fa8qnvJYgPoqgbFrEzu.r8MO	https://i.pravatar.cc/240?img=18	\N	SELLER	t	2026-04-02 16:43:29.902	2026-05-13 19:24:18.976	\N	\N	\N	\N	\N	\N	\N	\N	NONE	\N	\N	f	NONE	\N	\N	\N
+5beec21f-4030-41a6-b602-2c5228646d8d	+261340000222	Elanga Store	$2a$10$EFazgBBXqoLK.RmII8vUP.vGx9iT8fa8qnvJYgPoqgbFrEzu.r8MO	https://i.pravatar.cc/240?img=52	\N	SELLER	t	2026-04-02 16:43:29.902	2026-05-13 19:24:18.976	\N	\N	\N	\N	\N	\N	\N	\N	NONE	\N	\N	f	NONE	\N	\N	\N
+4af03bff-0bbc-46fd-8936-061181dbda80	+261340000333	NalaK	$2a$10$EFazgBBXqoLK.RmII8vUP.vGx9iT8fa8qnvJYgPoqgbFrEzu.r8MO	https://i.pravatar.cc/240?img=47	\N	SELLER	t	2026-04-02 16:43:29.902	2026-05-13 19:24:18.976	\N	\N	\N	\N	\N	\N	\N	\N	NONE	\N	\N	f	NONE	\N	\N	\N
+b718efee-173e-441b-98f3-364b40c05e73	+261342307565	Vony Verronique	$2a$10$FVg4gDRhnWDHQSnK11l.Muh/p3co6KLEEhCS9GAee1a1fxkWmNome	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_512,q_auto:good,w_512/v1780082140/BANAY/profile-avatars/261342307565-avatar-1780082136055?_a=BAMAOGfk0	\N	SELLER	t	2026-04-02 20:47:00.078	2026-08-06 00:50:39.658	+261	Madagascar	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_900,q_auto:good,w_1600/v1780332497/BANAY/profile-covers/261342307565-cover-1780332494356?_a=BAMAOGfk0	Mountain View, Santa Clara County	37.4219983	-122.084	2026-06-09 19:13:25.693	2026-04-04 04:58:22.354	APPROVED	2026-04-03 17:58:20.854	\N	t	APPROVED	2026-04-06 15:45:33.235	2026-04-06 15:46:21.466	2026-08-06 00:50:39.657
+fc758d78-e3c2-4ea7-a489-8e2886635f13	+261349459128	DAMA Dany	$2a$10$fKFR4W0i0bj5BvjKD70bfOdMKQkRJWMeaV3bygzo28vAf./vX9552	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_512,q_auto:good,w_512/v1775204355/bahibo/profile-avatars/261349459128-avatar-1775204348725?_a=BAMAOGfk0	\N	ADMIN	t	2026-04-02 20:28:04.151	2026-08-06 01:08:23.201	+261	Madagascar	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_900,q_auto:good,w_1600/v1775203723/bahibo/profile-covers/261349459128-cover-1775203712268?_a=BAMAOGfk0	Tananarive, Antananarivo Renivohitra	-18.9417075	47.5292781	2026-08-06 01:08:18.38	\N	NONE	\N	\N	f	NONE	\N	\N	2026-08-06 01:08:23.2
+b59f5d68-ec21-44d1-adf3-33786f0d3a35	+261341234567	Client Demo	$2a$10$EFazgBBXqoLK.RmII8vUP.vGx9iT8fa8qnvJYgPoqgbFrEzu.r8MO	https://i.pravatar.cc/240?img=15	\N	CUSTOMER	t	2026-04-02 16:43:29.855	2026-05-13 19:24:18.967	\N	\N	\N	\N	\N	\N	\N	\N	NONE	\N	\N	f	NONE	\N	\N	\N
+user-admin-demo	+261340000999	Admin Demo	$2a$10$EFazgBBXqoLK.RmII8vUP.vGx9iT8fa8qnvJYgPoqgbFrEzu.r8MO	https://i.pravatar.cc/240?img=3	\N	ADMIN	t	2026-05-13 19:23:42.547	2026-05-13 19:24:18.949	\N	\N	\N	\N	\N	\N	\N	\N	NONE	\N	\N	f	NONE	\N	\N	\N
+user-shop-pending-demo	+261340000444	Shop Pending Demo	$2a$10$EFazgBBXqoLK.RmII8vUP.vGx9iT8fa8qnvJYgPoqgbFrEzu.r8MO	https://i.pravatar.cc/240?img=21	\N	CUSTOMER	t	2026-05-13 19:23:42.565	2026-05-13 19:24:18.958	\N	\N	\N	\N	\N	\N	\N	\N	PENDING	2026-05-10 08:00:00	\N	f	NONE	\N	\N	\N
+user-seller-verify-demo	+261340000555	Seller Verify Demo	$2a$10$EFazgBBXqoLK.RmII8vUP.vGx9iT8fa8qnvJYgPoqgbFrEzu.r8MO	https://i.pravatar.cc/240?img=24	\N	SELLER	t	2026-05-13 19:23:42.568	2026-05-13 19:24:18.962	\N	\N	\N	\N	\N	\N	\N	\N	NONE	\N	\N	f	PENDING	2026-05-11 09:00:00	\N	\N
+f7fc4466-6951-4dd5-9e5b-fcbc6baf393d	+261324965862	Juliana	$2a$10$E9x7KUr.eA6D8z1CW9wGWOXLVggaxdFRQjWnqy9H2wARxUF1ypelW	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_512,q_auto:good,w_512/v1776614810/bahibo/profile-avatars/261324965862-avatar-1776614807121?_a=BAMAOGfk0	\N	CUSTOMER	t	2026-04-19 16:06:11.822	2026-05-07 02:18:43.237	+261	Madagascar	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_900,q_auto:good,w_1600/v1776614839/bahibo/profile-covers/261324965862-cover-1776614835768?_a=BAMAOGfk0	Tananarive, Antananarivo Renivohitra	-18.9419035	47.5293971	2026-05-07 02:18:09.377	\N	NONE	\N	\N	f	NONE	\N	\N	2026-05-07 02:18:43.235
+533ed33f-dbe8-419a-8285-77dd01a553e7	+261342307568	Vony	$2a$10$H.ktDaUVbS.YUFtec.QhXu6MJn07xluBHYbxfMZhx7w6jxb.bOslu	\N	\N	CUSTOMER	t	2026-08-04 18:52:03.156	2026-08-04 18:58:34.083	+261	Madagascar	\N	Tananarive, Antananarivo Renivohitra	-18.9449857	47.5329128	2026-08-04 18:58:34.082	\N	NONE	\N	\N	f	NONE	\N	\N	2026-08-04 18:58:33.109
+9a6c8f8b-bd18-4b9e-972f-1179e18da727	+261320365103	Adobe	$2a$10$jckBlZ2OampTakx99CNBeucqduoAMXbEN5ywjZsSegodg3yStHULC	https://res.cloudinary.com/dedzvlmsf/image/upload/c_fill,f_auto,g_auto,h_512,q_auto:good,w_512/v1778085424/BANAY/profile-avatars/261320365103-avatar-1778085420095?_a=BAMAOGfk0	\N	CUSTOMER	t	2026-05-06 16:37:05.22	2026-05-07 02:21:33.325	+261	Madagascar	\N	Antananarivo, Antananarivo Renivohitra	-18.9452834	47.5329128	2026-05-07 02:05:52.146	\N	NONE	\N	\N	f	NONE	\N	\N	2026-05-07 02:21:33.324
 \.
 
 
@@ -1210,14 +1330,27 @@ COPY public."UserBlock" (id, "blockerUserId", "blockedUserId", "createdAt", "upd
 --
 
 COPY public."UserDeviceToken" (id, "userId", token, platform, "createdAt", "updatedAt", "lastSeenAt") FROM stdin;
-53a25056-caa3-4910-89de-8d7c18428606	b718efee-173e-441b-98f3-364b40c05e73	fibUwjDXQbq7LAcaQdVLFB:APA91bHSIR2q33bWImL-UoMKkDZK7VVpFv0Ltt7UBVJKqrmnkv7418Ur9RavxQNhND2Koh5zMM984Oug1u1irmyEwNev3yXWpLExMYR3_SsjPdkB8iOjYyI	android	2026-04-28 20:47:13.161	2026-04-28 20:47:13.161	2026-04-28 20:47:13.161
 716adc98-e6a1-4026-9b86-4f34b6531fd9	f7fc4466-6951-4dd5-9e5b-fcbc6baf393d	dhpfAwxqRqKeA_0Ir0Q9hL:APA91bE5XyVRShExhnDJN0QPBr3C7IVlc0whqtI815KfZxyLkIaLYQWIddU4ClrtfY1f8-7IRpMcMWfQY4OvfbJHHxKTG4_TDhFwouHyzVmhyLM7XHNgJk4	android	2026-04-07 15:13:13.9	2026-04-26 09:48:36.737	2026-04-26 09:48:36.734
 acc4d6d8-369f-454b-9201-2e1fed7c6a4c	9b3b238f-3e67-4073-9b6b-afbd3731f195	dMwGGt4OSM-HhHGf8ZbzHx:APA91bGwlcZ3IQYj0hRpyxZl4jg_MxGu1PFzVsCHz4mU9JyfQtv7R8EI7zWehvwxbaiPuVhKGp-hNGG0jGEDl0VXXARprtn1pjQCfhPVJhnWN2tWAj0yYLE	android	2026-04-26 09:50:54.478	2026-04-26 09:50:54.478	2026-04-26 09:50:54.477
-0a0ca5c0-cd3d-4f87-b202-297b94167ee1	b718efee-173e-441b-98f3-364b40c05e73	fTcVOqgoQlCWDkJB1VeRCd:APA91bGRaA7wrbaCK3buaHHED0wRojfmYS1YtWoC8t4P7z4w36aYr_P1Cc4VexkWy6ZrjL2D3r6sEd_BJSFqLaquW0S2pBMQc5bKZHMxsyWq6kOQJ1ywh-Y	android	2026-04-13 08:18:54.022	2026-04-26 13:26:17.157	2026-04-26 13:26:17.155
 a4f1e050-75d3-4639-b4fe-358ac5a3b668	fc758d78-e3c2-4ea7-a489-8e2886635f13	cMYIwqxeQD-PnQ1KtDoua_:APA91bFDZ9e2wivNAiHdXXft2BfB-GeU9DOGvSYaCgFxKOHoNmZswTx1QczWQiBtXJx0xxVbO5yTNZZl7B2vbW_KEM2MM5aQXS-8GuYUcXR01GZrP4_WgVg	android	2026-04-24 05:02:47.012	2026-04-26 13:27:18.402	2026-04-26 13:27:18.401
-5072e85d-ce52-4ea2-b2a5-8c6ec370ff09	b718efee-173e-441b-98f3-364b40c05e73	ejCf0fPZT0qXqlalWxe5NQ:APA91bEfpXrP09TGOA0Q_s5cfG0zPjL0dDo--JViJFRlRMFT9-njczVS0LCcAO9Ve63Q_uUmuo9bKgkb_moODxayBguuRvYN-2b1UVjbkoMNEMCdTCyIrSM	android	2026-04-26 14:00:43.446	2026-04-27 17:06:11.844	2026-04-27 17:06:11.842
-d75c5c80-0348-457a-8568-d46a7d63971c	b718efee-173e-441b-98f3-364b40c05e73	egEchG87TjybJD5bgcLVHK:APA91bFPZnf2Tza28KpFLp8yOb1Hwxn-e2U6mBDBxxr_CksQC2xUT_cMSnJ4FU5uVbrSx8YUHyzNFNMt4Jw6VvrSYkOVgfZibJmZvNME2s5loIHCsxkUsgg	android	2026-04-27 17:07:23.821	2026-04-27 17:07:23.821	2026-04-27 17:07:23.82
-ea4dd1ea-c218-4faa-b5f7-29a24f12cff8	fc758d78-e3c2-4ea7-a489-8e2886635f13	dRRHEs38Sfe8LeHPNNFpkI:APA91bG9oEYBb-FURBGANOWFB3dCA8PbEiD1jlOXWk0-9ITzXqEe9HwimT599KR4nca0N4JNtHUNSCGomChIvsp3S_Ck4-NTtQAYuUEom1n1cQ0FHV1Pm54	android	2026-04-03 00:19:30.642	2026-04-27 17:13:40.899	2026-04-27 17:13:40.898
+08f63ae8-481e-450f-a48f-dd815e0cd924	b718efee-173e-441b-98f3-364b40c05e73	fLBWPP9NROe29AUjVO61kP:APA91bEXqeUDFAdW0bXXf4qr2TLOZ504BssxbJOxr_X0g66mVPdlE1Ztl9xPBLBp8goorylGW8rUZbqNuBMOFl9_Kwn1U5OXCv4JxTwgpOYDv--leyVsuus	android	2026-05-05 15:31:38.234	2026-05-05 15:31:38.234	2026-05-05 15:31:38.233
+187d275a-3e94-4a05-a350-147c2f64098e	b718efee-173e-441b-98f3-364b40c05e73	f4ggeTlFQu61emOkLlx8tU:APA91bHK5C8EML0c9l4qDFBDJ7ZPoT8DYo3acjjujRZvEEjGEWLAlCVRuR_anh5OC-jz-t5CWwZIU4QXVKxyK6NfrfYRXo-A6uUI__edVfcCorw1CJj874s	android	2026-05-17 16:43:14.481	2026-05-18 01:10:02.019	2026-05-18 01:10:02.018
+accde2e9-da54-4705-abc0-9a37d88300c1	b718efee-173e-441b-98f3-364b40c05e73	dDvjSUkQR-28mi5zS3fAxW:APA91bFsTb8jyMqfExSWzorsNA1GT-nuKe68DR1twRjr8KkbmFqAxFZIfbrBMxj00xQtMpNyCLgdENIYO53H50V_AAi52l9ZIQ_EUT9MBlgBYYPgp4hyaGo	android	2026-05-13 15:09:19.166	2026-05-17 13:54:30.925	2026-05-17 13:54:30.924
+32d520b3-759c-45b8-8f8a-0e7fd610946e	fc758d78-e3c2-4ea7-a489-8e2886635f13	fXZsxKdxSAm8XEbrzig7Oz:APA91bF_7HStOJUKdSn1I2u73oGgsFP_GIBDNP8dEGHWVLoMuDngTNtIfdd_l4olQ_GIri5T1rj5mdH2DOEG7fNnu7QQFTZ_obnehc6P1v2P-q_6aLH-pHw	android	2026-05-05 16:39:43.715	2026-05-12 16:20:35.33	2026-05-12 16:20:35.329
+8fbcf093-fa9a-447a-a1cb-5415e34c0740	b718efee-173e-441b-98f3-364b40c05e73	cNvMLtYzQoOOh12JeiQgzb:APA91bGhNDzvP2qbyH5Pfk387bluvfaPAizz4WlSOrxWXh-9MD9djzArA76pANW0e4MJ_qN5Phw8hAxn9Hojxgr3loCYzLjTr2u_7KqfT0-QMmVujA73fqc	android	2026-05-19 20:35:43.162	2026-05-19 20:35:43.162	2026-05-19 20:35:43.161
+532adbf7-c1dd-429a-abf0-08785138addf	b718efee-173e-441b-98f3-364b40c05e73	fmksh8oaQX-oEfgKptiWvc:APA91bE4hP3OrFq6BNRNqynvu9n6ekNAyDE3H4i4K0kjxJXrPUjJxQRUPffmF2Ra8eROoZP_685Fjtlamjnea8keLeO0ZKC8RtKtIskqotYnj_65jCPvJ6s	android	2026-08-06 00:36:01.409	2026-08-06 00:50:47.003	2026-08-06 00:50:47.001
+630114c9-dc01-4e55-8d8c-82989bc29a37	fc758d78-e3c2-4ea7-a489-8e2886635f13	cOhzEF_8RCGZJYvJq5lj6W:APA91bEwh4wJVWKcjTqkQ91N7pplz98-g34cUPktW01CdUigK_aENsPn_gwLzX_PfIj0w8pDe3B_2Aulv_xGvcpTRck7FcfPNX7pLOKO-JfvFeWaMf25UOg	android	2026-06-09 19:53:20.121	2026-08-06 01:08:11.344	2026-08-06 01:08:11.342
+\.
+
+
+--
+-- Data for Name: UserFeedback; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public."UserFeedback" (id, "userId", message, "createdAt", "updatedAt") FROM stdin;
+feedback-admin-demo-1	b59f5d68-ec21-44d1-adf3-33786f0d3a35	Bonjour admin, ceci est un commentaire de test pour la boite de notifications.	2026-05-13 19:24:18.972	2026-05-13 19:24:18.972
+45d630dd-a4ca-4038-b2bb-6ff48064be5e	b718efee-173e-441b-98f3-364b40c05e73	QA_LOG_EXPORT\n{"exportedAt":"2026-06-01T18:19:02.240005","eventCount":7,"events":[{"name":"navigation_tab_selected","source":"navigation","status":"success","timestamp":"2026-06-01T18:16:51.115334","parameters":{"tab_index":3,"tab_name":"account"}},{"name":"session_authenticated","source":"auth","status":"success","timestamp":"2026-06-01T18:16:39.353065","parameters":{"phone_e164":"+261342307565"}},{"name":"otp_verified","source":"analytics","status":"success","timestamp":"2026-06-01T18:16:39.332676","parameters":{}},{"name":"otp_requested","source":"analytics","status":"success","timestamp":"2026-06-01T18:16:37.298656","parameters":{}},{"name":"notification_opened","source":"notifications","status":"success","timestamp":"2026-06-01T18:16:11.774435","parameters":{"notification_type":"avatar"}},{"name":"navigation_tab_selected","source":"navigation","status":"success","timestamp":"2026-06-01T18:16:10.223696","parameters":{"tab_index":0,"tab_name":"home"}},{"name":"navigation_tab_selected","source":"navigation","status":"success","timestamp":"2026-06-01T18:15:40.932170","parameters":{"tab_index":3,"tab_name":"account"}}],"transport":"notifications_feedback","source":"qa_hidden_screen"}	2026-06-01 18:19:03.839	2026-06-01 18:19:03.839
+8e6dfe37-8ed8-4053-87d6-6127410a6fd7	b718efee-173e-441b-98f3-364b40c05e73	QA_LOG_EXPORT\n{"exportedAt":"2026-06-01T18:19:21.338148","eventCount":7,"events":[{"name":"navigation_tab_selected","source":"navigation","status":"success","timestamp":"2026-06-01T18:16:51.115334","parameters":{"tab_index":3,"tab_name":"account"}},{"name":"session_authenticated","source":"auth","status":"success","timestamp":"2026-06-01T18:16:39.353065","parameters":{"phone_e164":"+261342307565"}},{"name":"otp_verified","source":"analytics","status":"success","timestamp":"2026-06-01T18:16:39.332676","parameters":{}},{"name":"otp_requested","source":"analytics","status":"success","timestamp":"2026-06-01T18:16:37.298656","parameters":{}},{"name":"notification_opened","source":"notifications","status":"success","timestamp":"2026-06-01T18:16:11.774435","parameters":{"notification_type":"avatar"}},{"name":"navigation_tab_selected","source":"navigation","status":"success","timestamp":"2026-06-01T18:16:10.223696","parameters":{"tab_index":0,"tab_name":"home"}},{"name":"navigation_tab_selected","source":"navigation","status":"success","timestamp":"2026-06-01T18:15:40.932170","parameters":{"tab_index":3,"tab_name":"account"}}],"transport":"notifications_feedback","source":"qa_hidden_screen"}	2026-06-01 18:19:22.954	2026-06-01 18:19:22.954
 \.
 
 
@@ -1232,6 +1365,21 @@ b9ee9c08-acca-4cab-b388-745d2bc577d7	fc758d78-e3c2-4ea7-a489-8e2886635f13	f7fc44
 68240612-2a3f-4389-a192-9d0d5f2616f6	fc758d78-e3c2-4ea7-a489-8e2886635f13	b718efee-173e-441b-98f3-364b40c05e73	6f944b8f-5750-4974-b8cb-a4c71f75ac07	CHAT_REPORT	\N	t	2026-04-20 19:01:00.885
 1cd38a1d-6a7b-467f-a56c-92d11d565111	fc758d78-e3c2-4ea7-a489-8e2886635f13	b718efee-173e-441b-98f3-364b40c05e73	6f944b8f-5750-4974-b8cb-a4c71f75ac07	CHAT_REPORT	\N	t	2026-04-20 19:06:11.191
 36fb8393-6177-40a8-ac9b-896c6f0a7137	fc758d78-e3c2-4ea7-a489-8e2886635f13	b718efee-173e-441b-98f3-364b40c05e73	6f944b8f-5750-4974-b8cb-a4c71f75ac07	CHAT_REPORT	\N	t	2026-04-20 19:08:39.051
+\.
+
+
+--
+-- Data for Name: _prisma_migrations; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public._prisma_migrations (id, checksum, finished_at, migration_name, logs, rolled_back_at, started_at, applied_steps_count) FROM stdin;
+5ebf8138-d542-40da-b177-ae55cc0a881d	cb931a5cb196ebe8c6ded2d890758e1b92781a49ebcd1c2f76387df3e8c73fcf	2026-05-13 21:41:16.180495+02	20260513_baseline		\N	2026-05-13 21:41:16.180495+02	0
+0f49bb39-5c99-4fe7-814e-6f2ba4e2ba6a	2dcb2fad4a6f747a1250b830e5089b6bc4bc9f900c40276f2656f98d01b81f7e	2026-05-14 06:50:33.533238+02	20260514_add_user_feedback		\N	2026-05-14 06:50:33.533238+02	0
+db12a082-3d91-40a4-be8e-8ce96078342d	b761e0027bf952efe630868b04fd877aacf52cdec3781e9f1feaea694e10862f	2026-05-14 09:26:32.032512+02	20260514_chat_schema_sync		\N	2026-05-14 09:26:32.032512+02	0
+1f625943-bfc5-4fd3-8228-841e6333d74b	dc2228b32c6880b0f8fb6d554174b18869ce55febd2fbcdf937ceceffe73cffb	\N	20260516_message_delete_edit	A migration failed to apply. New migrations cannot be applied before the error is recovered from. Read more about how to resolve migration issues in a production database: https://pris.ly/d/migrate-resolve\n\nMigration name: 20260516_message_delete_edit\n\nDatabase error code: 42701\n\nDatabase error:\nERREUR: la colonne « deletedForSenderAt » de la relation « ChatMessage » existe déjà\n\nDbError { severity: "ERREUR", parsed_severity: Some(Error), code: SqlState(E42701), message: "la colonne « deletedForSenderAt » de la relation « ChatMessage » existe déjà", detail: None, hint: None, position: None, where_: None, schema: None, table: None, column: None, datatype: None, constraint: None, file: Some("tablecmds.c"), line: Some(7481), routine: Some("check_for_column_name_collision") }\n\n   0: sql_schema_connector::apply_migration::apply_script\n           with migration_name="20260516_message_delete_edit"\n             at schema-engine\\connectors\\sql-schema-connector\\src\\apply_migration.rs:113\n   1: schema_commands::commands::apply_migrations::Applying migration\n           with migration_name="20260516_message_delete_edit"\n             at schema-engine\\commands\\src\\commands\\apply_migrations.rs:95\n   2: schema_core::state::ApplyMigrations\n             at schema-engine\\core\\src\\state.rs:260	2026-06-01 22:56:42.424342+02	2026-06-01 22:56:22.370454+02	0
+1d672408-c65e-459c-891e-90aeb958b531	dc2228b32c6880b0f8fb6d554174b18869ce55febd2fbcdf937ceceffe73cffb	2026-06-01 22:56:42.426347+02	20260516_message_delete_edit		\N	2026-06-01 22:56:42.426347+02	0
+f1074cc1-0576-49aa-a8fd-83fb17e46637	a7695f2467d3960480910be9274894195d04ca4813d2763d960465ec32d46f0a	2026-06-01 22:56:44.751529+02	20260518_chat_delete_for_me_per_user	\N	\N	2026-06-01 22:56:44.744762+02	1
+ac048c12-3230-4e54-b6ea-167e7cf2e15f	4219c02f62133748ccd822d826c774fae55b4d4d2036cf749ca21dee0178db6a	2026-06-01 22:56:44.769108+02	20260601_chat_message_receipts	\N	\N	2026-06-01 22:56:44.752277+02	1
 \.
 
 
@@ -1265,6 +1413,14 @@ ALTER TABLE ONLY public."Category"
 
 ALTER TABLE ONLY public."ChatConversation"
     ADD CONSTRAINT "ChatConversation_pkey" PRIMARY KEY (id);
+
+
+--
+-- Name: ChatMessageMedia ChatMessageMedia_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public."ChatMessageMedia"
+    ADD CONSTRAINT "ChatMessageMedia_pkey" PRIMARY KEY (id);
 
 
 --
@@ -1428,6 +1584,14 @@ ALTER TABLE ONLY public."UserDeviceToken"
 
 
 --
+-- Name: UserFeedback UserFeedback_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public."UserFeedback"
+    ADD CONSTRAINT "UserFeedback_pkey" PRIMARY KEY (id);
+
+
+--
 -- Name: UserReport UserReport_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1441,6 +1605,14 @@ ALTER TABLE ONLY public."UserReport"
 
 ALTER TABLE ONLY public."User"
     ADD CONSTRAINT "User_pkey" PRIMARY KEY (id);
+
+
+--
+-- Name: _prisma_migrations _prisma_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public._prisma_migrations
+    ADD CONSTRAINT _prisma_migrations_pkey PRIMARY KEY (id);
 
 
 --
@@ -1493,6 +1665,27 @@ CREATE INDEX "ChatConversation_sellerUserId_lastMessageAt_idx" ON public."ChatCo
 
 
 --
+-- Name: ChatMessageMedia_mediaGroupId_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX "ChatMessageMedia_mediaGroupId_idx" ON public."ChatMessageMedia" USING btree ("mediaGroupId");
+
+
+--
+-- Name: ChatMessageMedia_mediaType_createdAt_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX "ChatMessageMedia_mediaType_createdAt_idx" ON public."ChatMessageMedia" USING btree ("mediaType", "createdAt");
+
+
+--
+-- Name: ChatMessageMedia_messageId_key; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX "ChatMessageMedia_messageId_key" ON public."ChatMessageMedia" USING btree ("messageId");
+
+
+--
 -- Name: ChatMessage_conversationId_createdAt_idx; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -1500,10 +1693,31 @@ CREATE INDEX "ChatMessage_conversationId_createdAt_idx" ON public."ChatMessage" 
 
 
 --
+-- Name: ChatMessage_conversationId_deliveredAt_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX "ChatMessage_conversationId_deliveredAt_idx" ON public."ChatMessage" USING btree ("conversationId", "deliveredAt");
+
+
+--
+-- Name: ChatMessage_conversationId_readAt_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX "ChatMessage_conversationId_readAt_idx" ON public."ChatMessage" USING btree ("conversationId", "readAt");
+
+
+--
 -- Name: ChatMessage_productId_idx; Type: INDEX; Schema: public; Owner: postgres
 --
 
 CREATE INDEX "ChatMessage_productId_idx" ON public."ChatMessage" USING btree ("productId");
+
+
+--
+-- Name: ChatMessage_senderUserId_clientMessageId_key; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX "ChatMessage_senderUserId_clientMessageId_key" ON public."ChatMessage" USING btree ("senderUserId", "clientMessageId");
 
 
 --
@@ -1731,6 +1945,20 @@ CREATE INDEX "UserDeviceToken_userId_lastSeenAt_idx" ON public."UserDeviceToken"
 
 
 --
+-- Name: UserFeedback_createdAt_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX "UserFeedback_createdAt_idx" ON public."UserFeedback" USING btree ("createdAt");
+
+
+--
+-- Name: UserFeedback_userId_createdAt_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX "UserFeedback_userId_createdAt_idx" ON public."UserFeedback" USING btree ("userId", "createdAt");
+
+
+--
 -- Name: UserReport_conversationId_createdAt_idx; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -1804,6 +2032,14 @@ ALTER TABLE ONLY public."ChatConversation"
 
 ALTER TABLE ONLY public."ChatConversation"
     ADD CONSTRAINT "ChatConversation_sellerUserId_fkey" FOREIGN KEY ("sellerUserId") REFERENCES public."User"(id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
+-- Name: ChatMessageMedia ChatMessageMedia_messageId_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public."ChatMessageMedia"
+    ADD CONSTRAINT "ChatMessageMedia_messageId_fkey" FOREIGN KEY ("messageId") REFERENCES public."ChatMessage"(id) ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 --
@@ -2055,6 +2291,14 @@ ALTER TABLE ONLY public."UserDeviceToken"
 
 
 --
+-- Name: UserFeedback UserFeedback_userId_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public."UserFeedback"
+    ADD CONSTRAINT "UserFeedback_userId_fkey" FOREIGN KEY ("userId") REFERENCES public."User"(id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
 -- Name: UserReport UserReport_reportedUserId_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2074,5 +2318,5 @@ ALTER TABLE ONLY public."UserReport"
 -- PostgreSQL database dump complete
 --
 
-\unrestrict dsOUp8dCNFUP4yA5gzc2vGyzw2jR7nDGDHYal1QAMob6QZTMwtVCZRO4If9XvRc
+\unrestrict 6w19AYU9GKE2sYW9NARYlbuDzYnxQeMnPOjLUAUBOxQhySMFyxNgyOGIYd7y1gT
 

@@ -102,7 +102,7 @@ class ThemeProvider extends ChangeNotifier {
         availableAccent: Color(0xFF159A52),
         unavailableAccent: Color(0xFFD84343),
         liveIndicator: Color(0xFFE53935),
-        productCardSurface: Color(0xFF101112),
+        productCardSurface: Color(0xFFFFFFFF),
         marketplaceBadge: Color(0xFF8F42FF),
       ),
     );

@@ -50,6 +50,7 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
     return Container(
       padding: const EdgeInsets.fromLTRB(7, 3, 5, 3),
       decoration: BoxDecoration(
+        color: widget.panelColor,
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: widget.borderColor ?? appColors.inputBorder),
       ),

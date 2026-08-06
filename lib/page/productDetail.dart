@@ -967,7 +967,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
               padding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
               child: Row(
                 children: [
-                  const AppBackButton(),
+                  const AppBackButton(themeAdaptive: true),
                   const SizedBox(width: 8),
                   RichText(
                     text: TextSpan(
@@ -1029,7 +1029,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                         label: _formatActionCount(_likeCount),
                                         iconColor: _isLiked
                                             ? appColors.favoriteAccent
-                                            : Colors.white.withValues(alpha: 0.7),
+                                            : appColors.mutedText,
                                         onTap: _toggleLike,
                                       ),
                                     ),
@@ -1038,7 +1038,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                       child: _socialActionCard(
                                         icon: Icons.mode_comment_outlined,
                                         label: _formatActionCount(_commentCount),
-                                        iconColor: Colors.white.withValues(alpha: 0.7),
+                                        iconColor: appColors.mutedText,
                                         onTap: _showCommentsSheet,
                                       ),
                                     ),
@@ -1047,7 +1047,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                       child: _socialActionCard(
                                         icon: Icons.ios_share_rounded,
                                         label: _formatActionCount(_shareCount),
-                                        iconColor: Colors.white.withValues(alpha: 0.7),
+                                        iconColor: appColors.mutedText,
                                         onTap: _showShareSuggestions,
                                       ),
                                     ),
@@ -1791,8 +1791,11 @@ class _ProductDetailPageState extends State<ProductDetailPage>
   }) {
     final hasLabel = label.trim().isNotEmpty;
     const borderRadius = BorderRadius.all(Radius.circular(12));
-    const buttonBackground = Color.fromARGB(255, 30, 30, 30);
-    const buttonBorder = Color.fromARGB(255, 55, 55, 55);
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
+    final buttonBackground = appColors.panelMuted;
+    final buttonBorder = appColors.borderColor;
+    final textColor = theme.colorScheme.onSurface;
 
     return SizedBox(
       height: 44,
@@ -1805,7 +1808,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
           child: Container(
             decoration: BoxDecoration(
               borderRadius: borderRadius,
-              border: Border.all(color: buttonBorder.withValues(alpha: 0.7)),
+              border: Border.all(color: buttonBorder),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -1815,8 +1818,8 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                   const SizedBox(width: 6),
                   Text(
                     label,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: textColor,
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                       height: 1,

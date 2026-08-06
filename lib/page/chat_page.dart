@@ -3906,8 +3906,13 @@ class _ChatPageState extends State<ChatPage>
     final primary = theme.colorScheme.primary;
     final background = appColors.backgroundBase;
     final headerColor = appColors.backgroundBase;
-    final incomingBubbleColor = appColors.panelBackground;
-    final outgoingBubbleColor = primary.withValues(alpha: 0.28);
+    final isDark = theme.brightness == Brightness.dark;
+    final incomingBubbleColor = isDark
+        ? appColors.panelBackground
+        : appColors.panelMuted;
+    final outgoingBubbleColor = isDark
+        ? primary.withValues(alpha: 0.28)
+        : primary.withValues(alpha: 0.16);
     const panelColor = Colors.transparent;
     final subtleText = appColors.mutedText;
     final sellerName = _sellerNameValue;
@@ -4325,6 +4330,10 @@ class _ChatHeaderState extends State<_ChatHeader> {
     if (normalizedUserId.isNotEmpty) {
       PresenceService.instance.watchUser(normalizedUserId);
     }
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final headerForeground = isDark
+        ? Colors.white
+        : Theme.of(context).colorScheme.onSurface;
 
     return ValueListenableBuilder<int>(
       valueListenable: PresenceService.instance.changes,
@@ -4351,7 +4360,7 @@ class _ChatHeaderState extends State<_ChatHeader> {
               children: [
                 IconButton(
                   onPressed: widget.onClearSelection ?? widget.onBackPressed,
-                  icon: const Icon(Icons.close_rounded, color: Colors.white),
+                  icon: Icon(Icons.close_rounded, color: headerForeground),
                   splashRadius: 20,
                 ),
                 Expanded(
@@ -4361,8 +4370,8 @@ class _ChatHeaderState extends State<_ChatHeader> {
                         : '${widget.selectionCount} messages selectionnes',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: headerForeground,
                       fontSize: 17,
                       fontWeight: FontWeight.w800,
                     ),
@@ -4373,16 +4382,16 @@ class _ChatHeaderState extends State<_ChatHeader> {
                     onPressed: widget.onShareSelection,
                     tooltip: 'Partager',
                     splashRadius: 20,
-                    icon: const Icon(Icons.share_outlined, color: Colors.white),
+                    icon: Icon(Icons.share_outlined, color: headerForeground),
                   ),
                 if (widget.onDeleteSelection != null)
                   IconButton(
                     onPressed: widget.onDeleteSelection,
                     tooltip: 'Supprimer',
                     splashRadius: 20,
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.delete_outline_rounded,
-                      color: Colors.white,
+                      color: headerForeground,
                     ),
                   ),
                 if (widget.selectionMenuActions.isNotEmpty &&
@@ -4407,7 +4416,7 @@ class _ChatHeaderState extends State<_ChatHeader> {
                           ),
                         )
                         .toList(growable: false),
-                    icon: const Icon(Icons.more_vert, color: Colors.white),
+                    icon: Icon(Icons.more_vert, color: headerForeground),
                   ),
               ],
             ),
@@ -4422,7 +4431,7 @@ class _ChatHeaderState extends State<_ChatHeader> {
             children: [
               IconButton(
                 onPressed: widget.onBackPressed,
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                icon: Icon(Icons.arrow_back, color: headerForeground),
                 splashRadius: 20,
               ),
               AppCircleNetworkAvatar(
@@ -4441,7 +4450,7 @@ class _ChatHeaderState extends State<_ChatHeader> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: Colors.white,
+                        color: headerForeground,
                         fontSize: 17,
                         fontWeight: FontWeight.w700,
                       ),
@@ -4451,7 +4460,7 @@ class _ChatHeaderState extends State<_ChatHeader> {
                       resolvedStatusText,
                       style: TextStyle(
                         color: resolvedIsOnline
-                            ? Colors.white.withValues(alpha: 0.88)
+                            ? headerForeground.withValues(alpha: 0.88)
                             : widget.subtleText,
                         fontWeight: FontWeight.w500,
                         fontSize: 12,
@@ -4499,7 +4508,7 @@ class _ChatHeaderState extends State<_ChatHeader> {
                   ),
                   child: Icon(
                     Icons.more_vert,
-                    color: Colors.white.withValues(alpha: 0.94),
+                    color: headerForeground.withValues(alpha: 0.94),
                     size: 23,
                   ),
                 ),
@@ -5083,30 +5092,44 @@ class _ChatBubble extends StatelessWidget {
       bottomLeft: Radius.circular(isMine ? 12 : 4),
       bottomRight: Radius.circular(isMine ? 4 : 12),
     );
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
+    final isDark = theme.brightness == Brightness.dark;
     final outgoingBubbleAccent = const Color.fromARGB(255, 132, 27, 27);
     final outgoingBubbleLight = const Color.fromARGB(180, 28, 152, 0);
     final outgoingBubbleBorder = const Color.fromARGB(90, 22, 43, 12);
     final bubbleGradient = !isDeletedPlaceholder && isMine
-        ? LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              outgoingBubbleLight,
-              outgoingBubbleAccent.withValues(alpha: 0.60),
-              const Color.fromARGB(255, 67, 67, 67).withValues(alpha: 0.9),
-              // appColors.backgroundBase.withValues(alpha: 0.0),
-              // outgoingBubbleLight.withValues(alpha: 0.40),
-            ],
-            stops: const [0.0, 0.58, 1.0],
-          )
+        ? (isDark
+              ? LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    outgoingBubbleLight,
+                    outgoingBubbleAccent.withValues(alpha: 0.60),
+                    const Color.fromARGB(255, 67, 67, 67).withValues(alpha: 0.9),
+                  ],
+                  stops: const [0.0, 0.58, 1.0],
+                )
+              : LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF4CAF50),
+                    const Color(0xFF4CAF50),
+                    outgoingBubbleAccent,
+                  ],
+                  stops: const [0.0, 0.62, 1.0],
+                ))
         : null;
     final textColor = isDeletedPlaceholder
         ? deletedAccent
-        : Colors.white.withValues(alpha: 0.96);
+        : isDark
+        ? Colors.white.withValues(alpha: 0.96)
+        : theme.colorScheme.onSurface;
     final metaColor = isDeletedPlaceholder
         ? deletedAccent.withValues(alpha: 0.88)
         : isMine
-        ? primary.withValues(alpha: 0.74)
+        ? (isDark ? primary.withValues(alpha: 0.74) : subtleText.withValues(alpha: 0.92))
         : subtleText.withValues(alpha: 0.92);
     final normalizedParticipantUserId = participantUserId?.trim() ?? '';
     if (isMine && normalizedParticipantUserId.isNotEmpty) {
@@ -5129,13 +5152,15 @@ class _ChatBubble extends StatelessWidget {
                   : isDeletedPlaceholder
                   ? deletedAccent.withValues(alpha: 0.45)
                   : isMine
-                  ? outgoingBubbleBorder
-                  : const Color.fromARGB(0, 111, 111, 111),
+                  ? (isDark ? outgoingBubbleBorder : Colors.black.withValues(alpha: 0.10))
+                  : (isDark
+                        ? const Color.fromARGB(0, 111, 111, 111)
+                        : appColors.borderColor),
               width: isHighlighted || isDeletedPlaceholder
                   ? 1.4
                   : isMine
                   ? 1.1
-                  : 0,
+                  : (isDark ? 0 : 1),
             ),
             boxShadow: isHighlighted
                 ? [
@@ -5275,7 +5300,7 @@ class _ChatBubble extends StatelessWidget {
                           Text(
                             'modifié',
                             style: TextStyle(
-                              color: const Color.fromARGB(113, 192, 192, 192),
+                              color: metaColor,
                               fontSize: 11,
                               fontStyle: FontStyle.italic,
                             ),
@@ -5285,7 +5310,7 @@ class _ChatBubble extends StatelessWidget {
                         Text(
                           time,
                           style: TextStyle(
-                            color: const Color.fromARGB(113, 192, 192, 192),
+                            color: metaColor,
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                           ),

@@ -653,11 +653,14 @@ class _ProductCardState extends State<ProductCard> {
             .mergeIntoProduct(widget.product);
         final theme = Theme.of(context);
         final appColors = theme.appColors;
+        final isDark = theme.brightness == Brightness.dark;
         final surfaceColor = appColors.productCardSurface;
-        final priceColor = Colors.white;
+        final panelColor = isDark ? Colors.black.withValues(alpha: 0.86) : appColors.panelBackground;
+        final cardForeground = isDark ? Colors.white : theme.colorScheme.onSurface;
+        final priceColor = cardForeground;
         final screenHeight = MediaQuery.sizeOf(context).height;
         final screenWidth = MediaQuery.sizeOf(context).width;
-        final mutedColor = Colors.white.withValues(alpha: 0.84);
+        final mutedColor = isDark ? Colors.white.withValues(alpha: 0.84) : appColors.mutedText;
         final accentGreen = appColors.availableAccent;
         final unavailableAccent = appColors.unavailableAccent;
         final favoriteColor = appColors.favoriteAccent;
@@ -699,6 +702,7 @@ class _ProductCardState extends State<ProductCard> {
             decoration: BoxDecoration(
               color: surfaceColor,
               borderRadius: BorderRadius.circular(4),
+              border: isDark ? null : Border.all(color: appColors.borderColor),
               boxShadow: [
                 BoxShadow(
                   color: theme.colorScheme.shadow.withValues(alpha: 0.10),
@@ -713,7 +717,7 @@ class _ProductCardState extends State<ProductCard> {
               children: [
                 Container(
                   decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.86),
+                    color: panelColor,
                     borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
                   ),
                   padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
@@ -790,7 +794,7 @@ class _ProductCardState extends State<ProductCard> {
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                   style: theme.textTheme.bodySmall?.copyWith(
-                                    color: Colors.white,
+                                    color: cardForeground,
                                     fontSize: descriptionFontSize,
                                     fontWeight: FontWeight.w600,
                                     height: 1.35,
@@ -870,17 +874,17 @@ class _ProductCardState extends State<ProductCard> {
                           ),
                           child: Row(
                             children: [
-                              const Icon(
+                              Icon(
                                 Icons.visibility_off_rounded,
                                 size: 16,
-                                color: Colors.white,
+                                color: isDark ? Colors.white : unavailableAccent,
                               ),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   'Produit actuellement indisponible',
                                   style: theme.textTheme.labelMedium?.copyWith(
-                                    color: Colors.white,
+                                    color: isDark ? Colors.white : unavailableAccent,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
@@ -924,9 +928,9 @@ class _ProductCardState extends State<ProductCard> {
                   height: galleryHeight,
                 ),
                 Container(
-                  decoration: const BoxDecoration(
-                    color: Colors.black,
-                    borderRadius: BorderRadius.vertical(bottom: Radius.circular(4)),
+                  decoration: BoxDecoration(
+                    color: panelColor,
+                    borderRadius: const BorderRadius.vertical(bottom: Radius.circular(4)),
                   ),
                   padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
                   child: Row(
@@ -937,8 +941,8 @@ class _ProductCardState extends State<ProductCard> {
                               ? Icons.favorite_rounded
                               : Icons.favorite_border_rounded,
                           label: widget.formatMetricCount(likesCount),
-                          iconColor: _isLiked ? favoriteColor : Colors.white.withValues(alpha: 0.7),
-                          labelColor: Colors.white.withValues(alpha: 0.85),
+                          iconColor: _isLiked ? favoriteColor : mutedColor,
+                          labelColor: cardForeground.withValues(alpha: 0.85),
                           fontSize: metricFontSize,
                           onTap: _isLikeBusy
                               ? null
@@ -950,8 +954,8 @@ class _ProductCardState extends State<ProductCard> {
                         child: _buildActionMetric(
                           icon: Icons.mode_comment_outlined,
                           label: widget.formatMetricCount(commentsCount),
-                          iconColor: Colors.white.withValues(alpha: 0.7),
-                          labelColor: Colors.white.withValues(alpha: 0.85),
+                          iconColor: mutedColor,
+                          labelColor: cardForeground.withValues(alpha: 0.85),
                           fontSize: metricFontSize,
                           onTap: () => _openComments(resolvedProduct),
                         ),
@@ -963,8 +967,8 @@ class _ProductCardState extends State<ProductCard> {
                           label: widget.formatMetricCount(
                             _effectiveSharesCount(resolvedProduct),
                           ),
-                          iconColor: Colors.white.withValues(alpha: 0.7),
-                          labelColor: Colors.white.withValues(alpha: 0.85),
+                          iconColor: mutedColor,
+                          labelColor: cardForeground.withValues(alpha: 0.85),
                           fontSize: metricFontSize,
                           onTap: () => _shareProduct(resolvedProduct),
                         ),
@@ -1226,9 +1230,14 @@ class _ProductCardState extends State<ProductCard> {
     double? fontSize,
   }) {
     const borderRadius = BorderRadius.all(Radius.circular(12));
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
+    final isDark = theme.brightness == Brightness.dark;
     final buttonBackground =
-        backgroundColor ?? const Color.fromARGB(255, 30, 30, 30);
-    const buttonBorder = Color.fromARGB(255, 55, 55, 55);
+        backgroundColor ??
+        (isDark ? const Color.fromARGB(255, 30, 30, 30) : appColors.panelMuted);
+    final buttonBorder =
+        isDark ? const Color.fromARGB(255, 55, 55, 55) : appColors.borderColor;
 
     return SizedBox(
       height: 44,

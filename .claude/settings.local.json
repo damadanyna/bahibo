@@ -25,7 +25,15 @@
       "PowerShell($env:PATH = [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"User\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"Machine\"\\); cd \"c:\\\\Users\\\\Banay\\\\Documents\\\\project 2026\\\\bahibo\"; python \".claude/skills/ui-ux-pro-max/scripts/search.py\" \"social marketplace ecommerce live streaming mobile app\" --design-system -p \"Bahibo\" 2>&1)",
       "PowerShell($env:PATH = [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"User\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"Machine\"\\); cd \"c:\\\\Users\\\\Banay\\\\Documents\\\\project 2026\\\\bahibo\"; python \".claude/skills/ui-ux-pro-max/scripts/search.py\" \"social marketplace ecommerce live streaming mobile app\" --design-system --persist -p \"Bahibo\" 2>&1)",
       "PowerShell($env:PATH = [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"User\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"Machine\"\\); cd \"c:\\\\Users\\\\Banay\\\\Documents\\\\project 2026\\\\bahibo\"; python \".claude/skills/ui-ux-pro-max/scripts/search.py\" \"animation touch accessibility flutter mobile\" --domain ux 2>&1)",
-      "PowerShell($env:PATH = [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"User\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"Machine\"\\); cd \"c:\\\\Users\\\\Banay\\\\Documents\\\\project 2026\\\\bahibo\"; python \".claude/skills/ui-ux-pro-max/scripts/search.py\" \"navigation list performance\" --stack flutter 2>&1)"
+      "PowerShell($env:PATH = [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"User\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"Machine\"\\); cd \"c:\\\\Users\\\\Banay\\\\Documents\\\\project 2026\\\\bahibo\"; python \".claude/skills/ui-ux-pro-max/scripts/search.py\" \"navigation list performance\" --stack flutter 2>&1)",
+      "Bash(/c/Users/Banay/AppData/Local/Android/Sdk/platform-tools/adb.exe -s R5CN80NL5GB shell am force-stop com.banay.app)",
+      "Bash(/c/Users/Banay/AppData/Local/Android/Sdk/platform-tools/adb.exe -s R5CN80NL5GB shell 'run-as com.banay.app sh -c \"grep -c theme_mode /data/data/com.banay.app/shared_prefs/FlutterSharedPreferences.xml || true\"')",
+      "Bash(/c/Users/Banay/AppData/Local/Android/Sdk/platform-tools/adb.exe -s R5CN80NL5GB shell 'run-as com.banay.app sh -c \"grep theme_mode /data/data/com.banay.app/shared_prefs/FlutterSharedPreferences.xml\"')",
+      "Bash(flutter build *)",
+      "Bash(/c/Users/Banay/AppData/Local/Android/Sdk/platform-tools/adb.exe -s R5CN80NL5GB install -r build/app/outputs/flutter-apk/app-debug.apk)",
+      "Bash(/c/Users/Banay/AppData/Local/Android/Sdk/platform-tools/adb.exe -s R5CN80NL5GB shell monkey -p com.banay.app -c android.intent.category.LAUNCHER 1)",
+      "Bash(/c/Users/Banay/AppData/Local/Android/Sdk/platform-tools/adb.exe -s R5CN80NL5GB shell input swipe 360 1000 360 400 300)",
+      "Bash(/c/Users/Banay/AppData/Local/Android/Sdk/platform-tools/adb.exe -s R5CN80NL5GB shell input tap 130 271)"
     ]
   }
 }
