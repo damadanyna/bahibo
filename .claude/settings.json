@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(nohup /c/Users/Banay/AppData/Local/Temp/claude/c--Users-Banay-Documents-project-2026-bahibo/894e6240-1594-487e-9f88-c8c6141cc0b3/scratchpad/cloudflared.exe tunnel --url http://localhost:4000)",
+      "Bash(disown)",
+      "Bash(echo \"started pid $!\")",
+      "Bash(break)"
+    ]
+  }
+}

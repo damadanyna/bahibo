@@ -24,7 +24,8 @@ class ApiConfig {
     'BANAY_DEV_HOST',
   );
 
-  static const String _knownDevHost = '192.168.245.62';
+  // static const String _knownDevHost = '192.168.245.62'; // old LAN IP
+  static const String _knownDevHost = '192.168.21.62'; // new LAN IP
 
   static String _resolvedDevUrl = 'http://$_knownDevHost:$_devPort$_apiPath';
 
