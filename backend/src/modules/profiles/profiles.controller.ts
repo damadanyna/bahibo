@@ -16,6 +16,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ListUsersDto } from './dto/list-users.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ProfilesService } from './profiles.service';
 
@@ -365,6 +366,21 @@ export class ProfilesController {
       success: true,
       message: 'All reports fetched successfully',
       data: await this.profilesService.listAllReports(),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('admin/users')
+  async getAllUsers(
+    @Req() req: { user: { userId: string; role: string } },
+    @Query() query: ListUsersDto,
+  ) {
+    this.ensureAdminAccess(req.user.role);
+
+    return {
+      success: true,
+      message: 'Users fetched successfully',
+      data: await this.profilesService.listAllUsers(query),
     };
   }
 

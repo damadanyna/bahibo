@@ -312,6 +312,59 @@ export class ProfilesService {
     }));
   }
 
+  async listAllUsers(query: {
+    search?: string;
+    role?: UserRole;
+    page?: number;
+    limit?: number;
+  }) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 25;
+
+    const where: Prisma.UserWhereInput = {};
+    if (query.role) {
+      where.role = query.role;
+    }
+    if (query.search) {
+      where.OR = [
+        { displayName: { contains: query.search, mode: 'insensitive' } },
+        { phoneE164: { contains: query.search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [users, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          id: true,
+          displayName: true,
+          phoneE164: true,
+          countryDialCode: true,
+          avatarUrl: true,
+          role: true,
+          isVerified: true,
+          isSellerCertified: true,
+          shopRequestStatus: true,
+          sellerVerificationRequestStatus: true,
+          lastSeenAt: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    return {
+      items: users,
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    };
+  }
+
   async startCurrentUserLive(
     userId: string,
     params: { title: string; category: string },

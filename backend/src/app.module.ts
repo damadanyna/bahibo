@@ -11,6 +11,7 @@ import { PrismaModule } from './modules/prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CartModule } from './modules/cart/cart.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { FeatureFlagsModule } from './modules/feature-flags/feature-flags.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { ProfilesModule } from './modules/profiles/profiles.module';
@@ -36,6 +37,7 @@ import { ShipmentsModule } from './modules/shipments/shipments.module';
     ProductsModule,
     NotificationsModule,
     FeatureFlagsModule,
+    DashboardModule,
     CartModule,
     OrdersModule,
     ShipmentsModule,
