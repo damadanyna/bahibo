@@ -13,7 +13,7 @@ export class ConversationsMediaAuditScheduler {
     private readonly conversationsService: ConversationsService,
   ) {}
 
-  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  @Cron(CronExpression.EVERY_DAY_AT_3AM, { name: 'auditOrphanedChatMediaAssets' })
   async auditOrphanedChatMediaAssets() {
     const enabled =
       this.configService.get<string>('CHAT_MEDIA_AUDIT_SCHEDULE_ENABLED', 'false') ===

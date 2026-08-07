@@ -118,7 +118,7 @@ export class JsonFileLoggerService implements OnModuleInit {
       .slice(0, limit);
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  @Cron(CronExpression.EVERY_DAY_AT_3AM, { name: 'pruneOldLogFiles' })
   async pruneOldLogFiles(): Promise<void> {
     try {
       const files = await fs.readdir(this.logsDir);
@@ -143,7 +143,7 @@ export class JsonFileLoggerService implements OnModuleInit {
     }
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  @Cron(CronExpression.EVERY_DAY_AT_3AM, { name: 'pruneOldServerLogRows' })
   async pruneOldServerLogRows(): Promise<void> {
     try {
       const cutoff = new Date(
