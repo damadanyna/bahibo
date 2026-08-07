@@ -1,7 +1,10 @@
 import { ForbiddenException, Injectable } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 
+import { JsonFileLoggerService } from "../../common/logging/json-file-logger.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateNotificationFeedbackDto } from "./dto/create-notification-feedback.dto";
+import { CreateUserEventLogDto } from "./dto/create-user-event-log.dto";
 import { NotificationEntity } from "./entities/notification.entity";
 
 const QA_LOG_EXPORT_PREFIX = "QA_LOG_EXPORT\n";
@@ -48,7 +51,10 @@ type QaExportRecord = {
 
 @Injectable()
 export class NotificationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jsonFileLogger: JsonFileLoggerService,
+  ) {}
 
   async countUnread(userId: string): Promise<number> {
     const notifications = await this.findAll(userId);
@@ -454,6 +460,29 @@ export class NotificationsService {
     });
   }
 
+  /**
+   * Passive counterpart to createFeedback's manual QA export: the app flushes
+   * its locally-recorded UI events here automatically when it is paused, so
+   * admins can review real user behaviour without a tester triggering an
+   * export by hand.
+   */
+  async createEventLogBatch(userId: string, dto: CreateUserEventLogDto) {
+    return this.prisma.userEventLog.create({
+      data: {
+        userId,
+        eventCount: dto.eventCount,
+        payload: {
+          events: dto.events,
+          syncedAt: dto.syncedAt ?? new Date().toISOString(),
+        } as Prisma.InputJsonValue,
+      },
+      select: {
+        id: true,
+        createdAt: true,
+      },
+    });
+  }
+
   async findQaExports(
     currentUserId: string,
     currentUserRole: string,
@@ -509,6 +538,26 @@ export class NotificationsService {
     }
 
     return records;
+  }
+
+  /**
+   * Server-side companion to findQaExports: HTTP requests and unhandled
+   * errors logged by AllExceptionsFilter/HttpLoggingInterceptor, so testers
+   * can see backend behaviour next to the client-submitted QA event exports
+   * while they test. Admins see every user's traffic; everyone else only
+   * sees the requests their own account triggered, to avoid leaking other
+   * users' IPs, ids and stack traces.
+   */
+  async findServerLogs(
+    currentUserId: string,
+    currentUserRole: string,
+    level?: "error" | "all",
+  ) {
+    return this.jsonFileLogger.readRecentEntries({
+      limit: 500,
+      level: level ?? "all",
+      userId: currentUserRole === "ADMIN" ? undefined : currentUserId,
+    });
   }
 
   async buildQaExportsCsv(currentUserId: string, currentUserRole: string) {

@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
 import 'api_config.dart';
+import 'app_event_log_service.dart';
 import 'app_logger.dart';
 import 'chat_realtime_service.dart';
 import 'presence_service.dart';
@@ -139,6 +141,31 @@ class AppApiClient {
     }
   }
 
+  /// Persists network/API failures to AppEventLogService so they survive in
+  /// release builds (unlike AppLogger, which is a no-op outside kDebugMode)
+  /// and show up in the QA log export.
+  void _logNetworkFailure(
+    String eventName, {
+    required String method,
+    required String path,
+    required String reason,
+    int? statusCode,
+  }) {
+    unawaited(
+      AppEventLogService.instance.record(
+        name: eventName,
+        source: 'network',
+        status: 'failure',
+        parameters: {
+          'method': method,
+          'path': path,
+          'reason': reason,
+          if (statusCode != null) 'status_code': statusCode,
+        },
+      ),
+    );
+  }
+
   Future<dynamic> _request(
     String method,
     String path, {
@@ -186,13 +213,31 @@ class AppApiClient {
       response = await call.timeout(_requestTimeout);
     } on SocketException catch (e) {
       AppLogger.warning(_tag, 'Network unreachable for $method $path', e);
+      _logNetworkFailure(
+        'api_request_failed',
+        method: method,
+        path: path,
+        reason: 'socket_unreachable: $e',
+      );
       throw AppApiException('Impossible de joindre le serveur BANAY');
     } on HttpException catch (e) {
       AppLogger.warning(_tag, 'HTTP error for $method $path', e);
+      _logNetworkFailure(
+        'api_request_failed',
+        method: method,
+        path: path,
+        reason: 'http_exception: $e',
+      );
       throw AppApiException('Impossible de joindre le serveur BANAY');
     } catch (e) {
       // Covers timeout (TimeoutException) and any other transport error.
       AppLogger.warning(_tag, 'Request failed for $method $path', e);
+      _logNetworkFailure(
+        'api_request_failed',
+        method: method,
+        path: path,
+        reason: 'transport_error: $e',
+      );
       throw AppApiException('Impossible de joindre le serveur BANAY');
     }
 
@@ -225,6 +270,13 @@ class AppApiClient {
         _tag,
         'Server error ${response.statusCode} for $method $path: $message',
       );
+      _logNetworkFailure(
+        'api_response_error',
+        method: method,
+        path: path,
+        reason: message,
+        statusCode: response.statusCode,
+      );
       throw AppApiException(message, statusCode: response.statusCode);
     }
 
@@ -253,12 +305,30 @@ class AppApiClient {
       response = await http.get(uri, headers: headers).timeout(_requestTimeout);
     } on SocketException catch (e) {
       AppLogger.warning(_tag, 'Network unreachable for raw GET $uri', e);
+      _logNetworkFailure(
+        'api_request_failed',
+        method: 'GET',
+        path: uri.toString(),
+        reason: 'socket_unreachable: $e',
+      );
       throw AppApiException('Impossible de joindre le serveur BANAY');
     } on HttpException catch (e) {
       AppLogger.warning(_tag, 'HTTP error for raw GET $uri', e);
+      _logNetworkFailure(
+        'api_request_failed',
+        method: 'GET',
+        path: uri.toString(),
+        reason: 'http_exception: $e',
+      );
       throw AppApiException('Impossible de joindre le serveur BANAY');
     } catch (e) {
       AppLogger.warning(_tag, 'Request failed for raw GET $uri', e);
+      _logNetworkFailure(
+        'api_request_failed',
+        method: 'GET',
+        path: uri.toString(),
+        reason: 'transport_error: $e',
+      );
       throw AppApiException('Impossible de joindre le serveur BANAY');
     }
 
@@ -314,6 +384,12 @@ class AppApiClient {
           .timeout(_requestTimeout);
     } catch (e) {
       AppLogger.warning(_tag, 'Token refresh failed', e);
+      _logNetworkFailure(
+        'api_request_failed',
+        method: 'POST',
+        path: '/auth/refresh',
+        reason: 'transport_error: $e',
+      );
       return false;
     }
 

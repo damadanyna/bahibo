@@ -99,6 +99,8 @@ model User {
   reportsReceived     UserReport[]       @relation("UserReportsReceived")
   blocksSent          UserBlock[]        @relation("UserBlocksSent")
   blocksReceived      UserBlock[]        @relation("UserBlocksReceived")
+  eventLogs           UserEventLog[]
+  serverLogs          ServerLog[]
 }
 
 model UserBlock {
@@ -169,6 +171,54 @@ model UserFeedback {
 
   @@index([userId, createdAt])
   @@index([createdAt])
+}
+
+/// Passive, batched export of client-side UI events (see AppEventLogService
+/// on the Flutter side), flushed automatically when the app is paused.
+/// Distinct from UserFeedback's manual QA export flow: this is unannotated
+/// raw telemetry from every user, not a tester-submitted report.
+model UserEventLog {
+  id         String   @id @default(uuid())
+  userId     String
+  eventCount Int      @default(0)
+  payload    Json
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+}
+
+/// Server-controlled on/off switch for an app feature, checked by the
+/// Flutter client at startup (and periodically) so a feature can be
+/// disabled/re-enabled live without a rebuild or store release.
+model FeatureFlag {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  enabled     Boolean  @default(false)
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+/// Database mirror of the JSON Lines files written by JsonFileLoggerService
+/// (HTTP requests + errors from HttpLoggingInterceptor/AllExceptionsFilter).
+/// The files remain the primary log (fast append, no DB dependency); this
+/// table exists so admins can query/join server behaviour by userId with
+/// plain SQL instead of scanning files. Pruned on the same retention cron.
+model ServerLog {
+  id        String   @id @default(uuid())
+  timestamp DateTime
+  level     String
+  type      String
+  userId    String?
+  payload   Json
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, timestamp])
+  @@index([timestamp])
+  @@index([level])
 }
 
 model UserDeviceToken {

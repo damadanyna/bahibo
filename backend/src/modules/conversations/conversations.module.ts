@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
+import { LoggingModule } from '../../common/logging/logging.module';
 import { CloudinaryService } from '../auth/cloudinary.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { PushNotificationsModule } from '../push-notifications/push-notifications.module';
@@ -14,6 +15,7 @@ import { ConversationsService } from './conversations.service';
   imports: [
     PrismaModule,
     PushNotificationsModule,
+    LoggingModule,
     ConfigModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

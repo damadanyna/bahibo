@@ -4,7 +4,9 @@ import 'package:banay/auth/session_gate.dart';
 import 'package:banay/localization/banay_localizations.dart';
 import 'package:banay/providers/app_language_provider.dart';
 import 'package:banay/services/app_auth_service.dart';
+import 'package:banay/services/app_event_log_sync_service.dart';
 import 'package:banay/services/api_config.dart';
+import 'package:banay/services/feature_flags_service.dart';
 import 'package:banay/services/banay_tls_override.dart';
 import 'package:banay/services/chat_realtime_service.dart';
 import 'package:banay/services/location_permission_service.dart';
@@ -41,6 +43,7 @@ void main() {
       await ApiConfig.initialize();
       configureBanayTlsOverride(ApiConfig.baseUrl);
       await PushNotificationService.initialize();
+      unawaited(FeatureFlagsService.instance.initialize());
 
       SystemChrome.setPreferredOrientations([
         DeviceOrientation.portraitUp,
@@ -261,6 +264,10 @@ class _AppLifecycleBootstrapState extends State<_AppLifecycleBootstrap>
     ChatRealtimeService.instance.handleAppLifecycleStateChanged(state);
     if (state == AppLifecycleState.resumed) {
       unawaited(_syncCurrentUserLocationOnLaunch());
+      unawaited(FeatureFlagsService.instance.refresh());
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(AppEventLogSyncService.instance.flushPendingEvents());
     }
   }
 

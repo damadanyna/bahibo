@@ -90,4 +90,32 @@ class NotificationsApiService {
       body: {'message': 'QA_LOG_EXPORT\n${jsonEncode(payload)}'},
     );
   }
+
+  /// Background counterpart to [sendQaLogExport]: batches of raw UI events
+  /// flushed automatically (no tester interaction) so admins can review
+  /// behaviour for any user, not just ones who ran the manual QA export.
+  Future<void> sendEventLogBatch(Map<String, dynamic> payload) async {
+    await _client.post(
+      '/notifications/event-logs',
+      authenticated: true,
+      body: payload,
+    );
+  }
+
+  /// Admin-only: recent server-side logs (HTTP requests + errors) written by
+  /// the backend's JSON file logger. Used to enrich the QA export with what
+  /// actually happened server-side, not just client-side events.
+  Future<List<Map<String, dynamic>>> fetchServerLogs({
+    String level = 'all',
+  }) async {
+    final data = await _client.get(
+      '/notifications/server-logs',
+      queryParameters: {'level': level},
+      authenticated: true,
+    );
+    return (data as List)
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
 }

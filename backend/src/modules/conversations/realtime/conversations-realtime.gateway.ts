@@ -13,6 +13,7 @@ import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import { Server, Socket } from "socket.io";
 
+import { JsonFileLoggerService } from "../../../common/logging/json-file-logger.service";
 import { PrismaService } from "../../prisma/prisma.service";
 
 type ConversationRealtimePayload = {
@@ -161,6 +162,7 @@ export class ConversationsRealtimeGateway
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly jsonFileLogger: JsonFileLoggerService,
   ) {}
 
   afterInit() {
@@ -308,6 +310,17 @@ export class ConversationsRealtimeGateway
       data: { deliveredAt },
     });
 
+    this.logMessageStatus({
+      event: "delivered",
+      conversationId: message.conversationId,
+      messageId: message.id,
+      actorUserId,
+      timestamp: deliveredAt.toISOString(),
+      // Visible to both the reader who triggered the ack and the sender
+      // whose message just got marked delivered.
+      recipientUserIds: [actorUserId, message.senderUserId],
+    });
+
     this.emitConversationDeliveredEvent(message.senderUserId, {
       type: "conversation:delivered",
       conversationId: message.conversationId,
@@ -363,6 +376,18 @@ export class ConversationsRealtimeGateway
       return;
     }
 
+    this.logMessageStatus({
+      event: "read",
+      conversationId,
+      // updateMany doesn't return individual ids; null means "every unread
+      // message in this conversation as of readAt", which is what actually
+      // happened.
+      messageId: null,
+      actorUserId,
+      timestamp: readAt.toISOString(),
+      recipientUserIds: [conversation.buyerUserId, conversation.sellerUserId],
+    });
+
     this.emitConversationEvent(
       [conversation.buyerUserId, conversation.sellerUserId],
       {
@@ -372,6 +397,29 @@ export class ConversationsRealtimeGateway
         readAt: readAt.toISOString(),
       },
     );
+  }
+
+  private logMessageStatus(params: {
+    event: "delivered" | "read";
+    conversationId: string;
+    messageId?: string | null;
+    actorUserId: string;
+    timestamp: string;
+    recipientUserIds: string[];
+  }) {
+    const uniqueUserIds = [...new Set(params.recipientUserIds)];
+    for (const userId of uniqueUserIds) {
+      this.jsonFileLogger.write({
+        timestamp: params.timestamp,
+        level: "info",
+        type: "message_status",
+        event: params.event,
+        conversationId: params.conversationId,
+        messageId: params.messageId ?? null,
+        actorUserId: params.actorUserId,
+        userId,
+      });
+    }
   }
 
   emitConversationEvent(

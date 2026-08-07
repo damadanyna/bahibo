@@ -29,8 +29,10 @@ class _QaEventLogPageState extends State<QaEventLogPage> {
   final TextEditingController _noteController = TextEditingController();
 
   List<Map<String, dynamic>> _events = const <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _serverLogs = const <Map<String, dynamic>>[];
   Map<String, dynamic>? _currentUser;
   bool _isLoading = true;
+  bool _isLoadingServerLogs = false;
   bool _isCopying = false;
   bool _isExporting = false;
   bool _isSendingToBackend = false;
@@ -41,6 +43,7 @@ class _QaEventLogPageState extends State<QaEventLogPage> {
     super.initState();
     unawaited(_loadEvents());
     unawaited(_loadCurrentUser());
+    unawaited(_loadServerLogs());
     unawaited(
       AppAnalytics.instance.logUserEvent(
         name: 'qa_log_screen_opened',
@@ -70,6 +73,32 @@ class _QaEventLogPageState extends State<QaEventLogPage> {
     } catch (_) {
       // Best effort only; the backend will still associate the submission with
       // the authenticated account even if this preview cannot be loaded.
+    }
+  }
+
+  Future<void> _loadServerLogs() async {
+    if (_isLoadingServerLogs) {
+      return;
+    }
+    setState(() {
+      _isLoadingServerLogs = true;
+    });
+    try {
+      final serverLogs = await _notificationsApiService.fetchServerLogs();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _serverLogs = serverLogs;
+      });
+    } catch (_) {
+      // Best effort only; network errors just leave serverLogs empty.
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingServerLogs = false;
+        });
+      }
     }
   }
 
@@ -105,6 +134,8 @@ class _QaEventLogPageState extends State<QaEventLogPage> {
       },
       'eventCount': _events.length,
       'events': _events,
+      'serverLogCount': _serverLogs.length,
+      'serverLogs': _serverLogs,
     };
   }
 
@@ -355,7 +386,12 @@ class _QaEventLogPageState extends State<QaEventLogPage> {
         actions: [
           IconButton(
             tooltip: 'Rafraichir',
-            onPressed: _isLoading ? null : _loadEvents,
+            onPressed: _isLoading
+                ? null
+                : () {
+                    unawaited(_loadEvents());
+                    unawaited(_loadServerLogs());
+                  },
             icon: const Icon(Icons.refresh_rounded),
           ),
         ],
@@ -419,6 +455,16 @@ class _QaEventLogPageState extends State<QaEventLogPage> {
                     Chip(
                       avatar: const Icon(Icons.storage_rounded, size: 18),
                       label: Text('${_events.length} evenement(s)'),
+                    ),
+                    Chip(
+                      avatar: _isLoadingServerLogs
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.dns_rounded, size: 18),
+                      label: Text('${_serverLogs.length} log(s) serveur'),
                     ),
                     OutlinedButton.icon(
                       onPressed: (_isCopying || _events.isEmpty)

@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -12,6 +13,7 @@ import type { Response } from "express";
 
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CreateNotificationFeedbackDto } from "./dto/create-notification-feedback.dto";
+import { CreateUserEventLogDto } from "./dto/create-user-event-log.dto";
 import { NotificationsService } from "./notifications.service";
 
 @Controller("notifications")
@@ -63,6 +65,23 @@ export class NotificationsController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get("server-logs")
+  async findServerLogs(
+    @Req() req: { user: { userId: string; role: string } },
+    @Query("level") level?: "error" | "all",
+  ) {
+    return {
+      success: true,
+      message: "Server logs fetched successfully",
+      data: await this.notificationsService.findServerLogs(
+        req.user.userId,
+        req.user.role,
+        level,
+      ),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post(":notificationId/read")
   async markAsRead(
     @Req() req: { user: { userId: string } },
@@ -74,6 +93,22 @@ export class NotificationsController {
       data: await this.notificationsService.markAsRead(
         req.user.userId,
         notificationId,
+      ),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post("event-logs")
+  async createEventLogBatch(
+    @Req() req: { user: { userId: string } },
+    @Body() dto: CreateUserEventLogDto,
+  ) {
+    return {
+      success: true,
+      message: "Event log batch recorded",
+      data: await this.notificationsService.createEventLogBatch(
+        req.user.userId,
+        dto,
       ),
     };
   }
