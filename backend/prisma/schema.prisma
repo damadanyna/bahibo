@@ -76,6 +76,10 @@ model User {
   sellerVerificationRequestStatus ShopRequestStatus @default(NONE)
   sellerVerificationRequestedAt DateTime?
   sellerVerificationReviewedAt DateTime?
+  /// Set when the user deletes their account. The row itself is kept
+  /// (order/message history references it), but PII is scrubbed at the
+  /// same time this is set — see ProfilesService.deleteOwnAccount.
+  deletedAt       DateTime?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   refreshTokens   RefreshToken[]

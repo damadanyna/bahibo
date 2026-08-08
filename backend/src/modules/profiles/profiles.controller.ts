@@ -54,6 +54,16 @@ export class ProfilesController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Delete('me')
+  async deleteMe(@Req() req: { user: { userId: string } }) {
+    return {
+      success: true,
+      message: 'Account deleted successfully',
+      data: await this.profilesService.deleteOwnAccount(req.user.userId),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post('me/live/start')
   async startCurrentUserLive(
     @Req() req: { user: { userId: string } },

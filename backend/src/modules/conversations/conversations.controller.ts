@@ -153,6 +153,17 @@ export class ConversationsController {
     };
   }
 
+  @Post('delivery-ping')
+  async acknowledgeDeliveryPing(@Req() req: { user: { userId: string } }) {
+    return {
+      success: true,
+      message: 'Delivery ping acknowledged successfully',
+      data: await this.conversationsService.acknowledgeDeliveryPing(
+        req.user.userId,
+      ),
+    };
+  }
+
   @Post(':conversationId/read')
   async markConversationRead(
     @Req() req: { user: { userId: string } },

@@ -12,8 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:banay/theme/app_theme_extensions.dart';
 
-// TODO: host your privacy policy at this URL before Play Store submission.
-const String _kPrivacyPolicyUrl = 'https://banay.app/privacy-policy';
+const String _kPrivacyPolicyUrl = 'https://banay-privacy.surge.sh/index.html';
 
 class PhoneNumberPage extends StatefulWidget {
   const PhoneNumberPage({super.key});

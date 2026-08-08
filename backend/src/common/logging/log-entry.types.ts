@@ -44,7 +44,25 @@ export type MessageStatusLogEntry = {
   userId: string;
 };
 
+/**
+ * A client-side failure (e.g. a background upload that never reached the
+ * server) reported via the QA event log batch endpoint. Lets admins see
+ * these in the same server log stream as real HTTP errors instead of only
+ * in the per-user QA event export.
+ */
+export type ClientErrorLogEntry = {
+  timestamp: string;
+  level: LogLevel;
+  type: 'client_error';
+  eventName: string;
+  status: string;
+  source: string;
+  userId: string | null;
+  parameters: unknown;
+};
+
 export type ServerLogEntry =
   | HttpRequestLogEntry
   | ErrorLogEntry
-  | MessageStatusLogEntry;
+  | MessageStatusLogEntry
+  | ClientErrorLogEntry;

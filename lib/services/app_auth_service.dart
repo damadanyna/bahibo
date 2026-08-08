@@ -274,6 +274,18 @@ class AppAuthService {
     await _sessionStorage.clear();
   }
 
+  /// Google Play Account Deletion policy: lets the user permanently delete
+  /// their account from within the app. The backend anonymises the
+  /// account and revokes every session server-side; this just mirrors
+  /// that by clearing local session state the same way [logout] does.
+  Future<void> deleteAccount() async {
+    await _client.delete('/profiles/me', authenticated: true);
+
+    ChatRealtimeService.instance.disconnect();
+    PresenceService.instance.reset();
+    await _sessionStorage.clear();
+  }
+
   Future<void> _persistSession(Map<String, dynamic> data) {
     final user = Map<String, dynamic>.from(
       (data['user'] as Map?) ?? const <String, dynamic>{},

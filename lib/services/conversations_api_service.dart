@@ -262,6 +262,15 @@ class ConversationsApiService {
     );
   }
 
+  /// Tells the backend this device is reachable, so any message still
+  /// pending delivery to this user flips to "delivered" right away instead
+  /// of waiting for the recipient to bring the app to the foreground.
+  /// Meant to be called from a background push-notification handler, which
+  /// has no live realtime socket to rely on.
+  Future<void> pingDelivery() async {
+    await _client.post('/conversations/delivery-ping', authenticated: true);
+  }
+
   Future<void> warmConversationById(String conversationId, {int limit = 8}) {
     final normalizedConversationId = conversationId.trim();
     if (normalizedConversationId.isEmpty) {
@@ -335,15 +344,20 @@ class ConversationsApiService {
       );
     }
 
-    final participant = conversation['participant'];
-    final userId = participant is Map
-        ? participant['id']?.toString().trim() ?? fallbackUserId?.trim() ?? ''
-        : fallbackUserId?.trim() ?? '';
-    if (userId.isNotEmpty) {
-      await _writeCacheValue(
-        '$_conversationByUserCachePrefix$userId',
-        conversation,
-      );
+    // Same reasoning as LocalConversationStore._conversationAliases: don't
+    // let a product-scoped conversation claim the generic per-user cache
+    // slot, or the merged direct thread with that user appears wiped out.
+    if (productId.isEmpty) {
+      final participant = conversation['participant'];
+      final userId = participant is Map
+          ? participant['id']?.toString().trim() ?? fallbackUserId?.trim() ?? ''
+          : fallbackUserId?.trim() ?? '';
+      if (userId.isNotEmpty) {
+        await _writeCacheValue(
+          '$_conversationByUserCachePrefix$userId',
+          conversation,
+        );
+      }
     }
   }
 

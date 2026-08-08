@@ -345,6 +345,10 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
+    if (user.deletedAt != null) {
+      throw new UnauthorizedException('Account no longer available');
+    }
+
     const accessToken = await this.jwtService.signAsync(
       { sub: user.id, phoneE164: user.phoneE164, role: user.role },
       {

@@ -967,12 +967,20 @@ class LocalConversationStore {
       aliases.add(_conversationCacheKeyByProduct(productId));
     }
 
-    final participant = conversation['participant'];
-    final userId = participant is Map
-        ? participant['id']?.toString().trim() ?? fallbackUserId?.trim() ?? ''
-        : fallbackUserId?.trim() ?? '';
-    if (userId.isNotEmpty) {
-      aliases.add(_conversationCacheKeyByUser(userId));
+    // A product-scoped conversation is only one row among possibly several
+    // between these two users. Caching it under the generic `user:` key
+    // would make it shadow the merged direct thread that a plain "open
+    // chat with this user" lookup reads from, making that thread's other
+    // messages appear to have vanished. Only alias by user when this
+    // snapshot isn't tied to a specific product.
+    if (productId.isEmpty) {
+      final participant = conversation['participant'];
+      final userId = participant is Map
+          ? participant['id']?.toString().trim() ?? fallbackUserId?.trim() ?? ''
+          : fallbackUserId?.trim() ?? '';
+      if (userId.isNotEmpty) {
+        aliases.add(_conversationCacheKeyByUser(userId));
+      }
     }
 
     return aliases.toList(growable: false);

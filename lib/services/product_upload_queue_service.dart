@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:banay/services/app_analytics.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/catalog_api_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -548,6 +549,7 @@ class ProductUploadQueueService extends ChangeNotifier {
 
       final file = File(normalizedPath);
       if (!await file.exists()) {
+        const reason = 'local_image_missing';
         _replaceTask(
           task.id,
           task.copyWith(
@@ -557,6 +559,7 @@ class ProductUploadQueueService extends ChangeNotifier {
             progress: task.progress < 0.2 ? 0.2 : task.progress,
           ),
         );
+        _logUploadFailure(task, reason: reason, outcome: 'failed');
         return;
       }
       imageFiles.add(file);
@@ -661,7 +664,12 @@ class ProductUploadQueueService extends ChangeNotifier {
               : (task.progress < 0.24 ? 0.24 : task.progress),
         ),
       );
-    } catch (_) {
+      _logUploadFailure(
+        task,
+        reason: error.message,
+        outcome: isConnectionFailure ? 'waiting_for_connection' : 'failed',
+      );
+    } catch (error) {
       _replaceTask(
         task.id,
         task.copyWith(
@@ -676,7 +684,34 @@ class ProductUploadQueueService extends ChangeNotifier {
               : (task.progress < 0.3 ? 0.3 : task.progress),
         ),
       );
+      _logUploadFailure(
+        task,
+        reason: error.toString(),
+        outcome: _hasInternetConnection ? 'failed' : 'waiting_for_connection',
+      );
     }
+  }
+
+  void _logUploadFailure(
+    ProductUploadTask task, {
+    required String reason,
+    required String outcome,
+  }) {
+    unawaited(
+      AppAnalytics.instance.logUserEvent(
+        name: 'product_upload_failed',
+        source: 'catalog',
+        status: 'failure',
+        parameters: {
+          'task_id': task.id,
+          'operation': task.operation.name,
+          'product_id': task.productId,
+          'image_count': task.imageFilePaths.length,
+          'outcome': outcome,
+          'reason': reason,
+        },
+      ),
+    );
   }
 
   ProductUploadTask? _findTask(String taskId) {

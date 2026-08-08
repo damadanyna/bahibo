@@ -527,7 +527,14 @@ export class ConversationsRealtimeGateway
     return false;
   }
 
-  private async emitPendingMessageDeliveries(userId: string) {
+  /**
+   * Marks every message pending delivery to `userId` as delivered and
+   * notifies the original senders. Called on every socket reconnect
+   * (see handleConnection above), and also reachable via a REST ping
+   * (ConversationsService.acknowledgeDeliveryPing) so a background push
+   * handler can trigger the same effect without a live socket connection.
+   */
+  async emitPendingMessageDeliveries(userId: string) {
     if (!this.server) {
       return;
     }

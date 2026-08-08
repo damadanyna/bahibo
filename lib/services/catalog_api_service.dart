@@ -476,15 +476,12 @@ class CatalogApiService {
   Future<http.Response> _sendMultipartRequest(
     http.MultipartRequest request,
   ) async {
-    http.StreamedResponse streamedResponse;
-
     try {
-      streamedResponse = await request.send();
+      final streamedResponse = await request.send();
+      return await http.Response.fromStream(streamedResponse);
     } catch (_) {
       throw AppApiException('Impossible de joindre le serveur BANAY');
     }
-
-    return http.Response.fromStream(streamedResponse);
   }
 
   Future<List<http.MultipartFile>> _buildTrackedMultipartFiles(

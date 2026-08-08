@@ -467,6 +467,8 @@ export class NotificationsService {
    * export by hand.
    */
   async createEventLogBatch(userId: string, dto: CreateUserEventLogDto) {
+    this.mirrorFailedEventsToServerLog(userId, dto.events);
+
     return this.prisma.userEventLog.create({
       data: {
         userId,
@@ -481,6 +483,39 @@ export class NotificationsService {
         createdAt: true,
       },
     });
+  }
+
+  /**
+   * QA events flagged status: 'failure' by the app (e.g. a product upload
+   * that could not be synced) are also written to the server log stream, so
+   * admins reviewing /dashboard logs see them alongside real HTTP errors
+   * instead of only inside the per-user QA event export.
+   */
+  private mirrorFailedEventsToServerLog(
+    userId: string,
+    events: Record<string, unknown>[],
+  ) {
+    for (const event of events) {
+      const status = typeof event.status === 'string' ? event.status : 'success';
+      if (status !== 'failure' && status !== 'error') {
+        continue;
+      }
+
+      this.jsonFileLogger.write({
+        timestamp:
+          typeof event.timestamp === 'string'
+            ? event.timestamp
+            : new Date().toISOString(),
+        level: 'warn',
+        type: 'client_error',
+        eventName:
+          typeof event.name === 'string' ? event.name : 'unknown_event',
+        status,
+        source: typeof event.source === 'string' ? event.source : 'ui',
+        userId,
+        parameters: event.parameters ?? null,
+      });
+    }
   }
 
   async findQaExports(

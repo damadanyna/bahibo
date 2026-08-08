@@ -1424,6 +1424,19 @@ export class ConversationsService {
     return this.getConversation(userId, conversationId);
   }
 
+  /**
+   * Lets a device that has no live socket (app backgrounded/terminated but
+   * reachable via a push notification) still flip its pending messages to
+   * "delivered", instead of requiring the recipient to bring the app to
+   * the foreground. See ConversationsController#acknowledgeDeliveryPing.
+   */
+  async acknowledgeDeliveryPing(userId: string) {
+    await this.conversationsRealtimeGateway.emitPendingMessageDeliveries(
+      userId,
+    );
+    return { acknowledged: true };
+  }
+
   private extractDtoProductSnapshot(dto: CreateMessageDto) {
     const hasProductSnapshot =
       (dto.productId?.trim().length ?? 0) > 0 ||

@@ -22,6 +22,10 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   }
 
   await Firebase.initializeApp();
+
+  if (message.data['type'] == 'chat_message') {
+    await PushNotificationService.acknowledgeChatMessageDeliveryInBackground();
+  }
 }
 
 @pragma('vm:entry-point')
@@ -180,7 +184,25 @@ class PushNotificationService {
     queueNotificationPayloadString(payload);
   }
 
+  /// Best-effort: lets the sender see "distribue" as soon as this device is
+  /// reachable, without requiring the recipient to open the app. Runs in
+  /// the isolate FCM spins up for background/terminated-app notifications
+  /// (see firebaseMessagingBackgroundHandler above), so failures here must
+  /// never throw back into the plugin.
+  static Future<void> acknowledgeChatMessageDeliveryInBackground() async {
+    try {
+      await _conversationsApiService.pingDelivery();
+    } catch (_) {
+      // A live socket connection or the next foreground open will still
+      // mark the message delivered eventually.
+    }
+  }
+
   static Future<void> _handleForegroundMessage(RemoteMessage message) async {
+    if (message.data['type'] == 'chat_message') {
+      unawaited(acknowledgeChatMessageDeliveryInBackground());
+    }
+
     if (!_shouldShowForegroundNotification(message)) {
       return;
     }

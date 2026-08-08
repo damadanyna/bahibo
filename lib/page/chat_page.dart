@@ -1710,24 +1710,72 @@ class _ChatPageState extends State<ChatPage>
     return _groupForwardConversations(conversations);
   }
 
+  Map<String, dynamic> _forwardMediaPayload(_ChatMessageMedia media) {
+    final isImage = media.mediaType == 'image';
+    return <String, dynamic>{
+      'content': isImage ? 'Photo envoyee' : 'Document envoye',
+      'kind': isImage ? 'IMAGE' : 'DOCUMENT',
+      'mediaType': media.mediaType,
+      'publicUrl': media.publicUrl,
+      'previewUrl': media.previewUrl,
+      'thumbnailUrl': media.thumbnailUrl,
+      'fileName': media.fileName,
+      'mimeType': media.mimeType,
+      'fileSizeBytes': media.fileSizeBytes,
+      'mediaGroupId': media.mediaGroupId,
+      'width': media.width,
+      'height': media.height,
+      'storageProvider': media.storageProvider,
+      'storageKey': media.storageKey,
+    };
+  }
+
   Future<void> _forwardMessageToConversation(
     Map<String, dynamic> conversation,
-    String payload,
+    _ChatDisplayMessage displayMessage,
+    String textPayload,
   ) async {
     final conversationId = _forwardConversationId(conversation);
+    final participantId = _forwardParticipantId(conversation);
+    final mediaItems = displayMessage.mediaItems;
+    final hasText = displayMessage.messageText.trim().isNotEmpty;
+
+    if (!hasText && mediaItems.isNotEmpty) {
+      for (final media in mediaItems) {
+        final mediaPayload = _forwardMediaPayload(media);
+        if (conversationId != null) {
+          await _conversationsApiService.sendMediaMessage(
+            conversationId: conversationId,
+            mediaPayload: mediaPayload,
+          );
+          continue;
+        }
+
+        if (participantId != null) {
+          await _conversationsApiService.sendUserMediaMessage(
+            targetUserId: participantId,
+            mediaPayload: mediaPayload,
+          );
+          continue;
+        }
+
+        throw AppApiException('Conversation introuvable pour ce partage.');
+      }
+      return;
+    }
+
     if (conversationId != null) {
       await _conversationsApiService.sendMessage(
         conversationId: conversationId,
-        content: payload,
+        content: textPayload,
       );
       return;
     }
 
-    final participantId = _forwardParticipantId(conversation);
     if (participantId != null) {
       await _conversationsApiService.sendUserMessage(
         targetUserId: participantId,
-        content: payload,
+        content: textPayload,
       );
       return;
     }
@@ -1938,7 +1986,11 @@ class _ChatPageState extends State<ChatPage>
 
     try {
       for (final conversation in selectedConversations) {
-        await _forwardMessageToConversation(conversation, payload);
+        await _forwardMessageToConversation(
+          conversation,
+          displayMessage,
+          payload,
+        );
       }
     } on AppApiException catch (error) {
       if (!mounted) {

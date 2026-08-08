@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Prisma, ShopRequestStatus, UserRole } from '@prisma/client';
 import { AccessToken, TrackSource } from 'livekit-server-sdk';
+import { randomUUID } from 'node:crypto';
 
 import { CloudinaryService } from '../auth/cloudinary.service';
 import { ConversationsRealtimeGateway } from '../conversations/realtime/conversations-realtime.gateway';
@@ -343,14 +344,31 @@ export class ProfilesService {
           displayName: true,
           phoneE164: true,
           countryDialCode: true,
+          countryName: true,
           avatarUrl: true,
+          coverImageUrl: true,
+          locationLabel: true,
+          preferredLanguage: true,
           role: true,
           isVerified: true,
           isSellerCertified: true,
           shopRequestStatus: true,
+          shopRequestSubmittedAt: true,
+          shopRequestReviewedAt: true,
           sellerVerificationRequestStatus: true,
+          sellerVerificationRequestedAt: true,
+          sellerVerificationReviewedAt: true,
           lastSeenAt: true,
           createdAt: true,
+          updatedAt: true,
+          sellerProfile: {
+            select: {
+              studioName: true,
+              description: true,
+              city: true,
+              country: true,
+            },
+          },
         },
       }),
       this.prisma.user.count({ where }),
@@ -559,6 +577,72 @@ export class ProfilesService {
     const profile = await this.getCurrentUserProfile(userId);
     this.emitProfileUpdated(profile);
     return profile;
+  }
+
+  /**
+   * Self-service account deletion (Google Play Account Deletion policy).
+   *
+   * The User row is kept rather than hard-deleted: Order.buyerUserId and
+   * SellerProfile->Order are onDelete: Restrict on purpose (financial
+   * records), and ChatMessage.sender is onDelete: Cascade, so a hard
+   * delete would either be blocked by any past order or silently punch
+   * holes in the other participant's chat history. Instead we scrub every
+   * personally identifying field and mark the account deletedAt so it can
+   * never authenticate again (see AuthService.issueTokens and
+   * JwtStrategy.validate).
+   */
+  async deleteOwnAccount(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, deletedAt: true, sellerProfile: { select: { id: true } } },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User profile not found');
+    }
+
+    if (user.deletedAt != null) {
+      return { deleted: true };
+    }
+
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.user.update({
+        where: { id: userId },
+        data: {
+          deletedAt: new Date(),
+          phoneE164: `deleted-${randomUUID()}`,
+          displayName: 'Utilisateur supprime',
+          avatarUrl: null,
+          coverImageUrl: null,
+          locationLabel: null,
+          locationLatitude: null,
+          locationLongitude: null,
+          passwordHash: randomUUID(),
+        },
+      });
+
+      if (user.sellerProfile) {
+        await transaction.sellerProfile.update({
+          where: { id: user.sellerProfile.id },
+          data: {
+            studioName: 'Boutique fermee',
+            description: null,
+            city: null,
+            country: null,
+          },
+        });
+
+        await transaction.product.updateMany({
+          where: { sellerProfileId: user.sellerProfile.id },
+          data: { isAvailable: false },
+        });
+      }
+
+      await transaction.userDeviceToken.deleteMany({ where: { userId } });
+      await transaction.refreshToken.deleteMany({ where: { userId } });
+    });
+
+    return { deleted: true };
   }
 
   async getPublicSellerProfile(sellerProfileId: string) {

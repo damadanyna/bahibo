@@ -30,7 +30,7 @@ final ValueNotifier<bool> mainNavigationChatOpenNotifier = ValueNotifier<bool>(
 int get mainNavigationUnreadMessageCount =>
     mainNavigationUnreadMessageCountNotifier.value;
 
-enum _MessagesPanelMenuAction { theme, blockedUsers, logout }
+enum _MessagesPanelMenuAction { theme, blockedUsers, logout, deleteAccount }
 
 class MainNavigationMessagesPanel extends StatefulWidget {
   static final GlobalKey panelKey = GlobalKey();
@@ -884,6 +884,9 @@ class _MainNavigationMessagesPanelState
       case _MessagesPanelMenuAction.logout:
         await _logout();
         return;
+      case _MessagesPanelMenuAction.deleteAccount:
+        await _deleteAccount();
+        return;
     }
   }
 
@@ -919,6 +922,60 @@ class _MainNavigationMessagesPanelState
 
     try {
       await _authService.logout();
+    } on AppApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const PhoneNumberPage()),
+      (route) => false,
+    );
+  }
+
+  Future<bool> _confirmDeleteAccount() async {
+    final decision = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Supprimer mon compte'),
+        content: const Text(
+          'Cette action est definitive. Votre profil, vos photos et vos '
+          'informations personnelles seront supprimes. Vos produits seront '
+          'retires de la vente. Voulez-vous vraiment continuer ?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Supprimer definitivement'),
+          ),
+        ],
+      ),
+    );
+
+    return decision ?? false;
+  }
+
+  Future<void> _deleteAccount() async {
+    final shouldDelete = await _confirmDeleteAccount();
+    if (!shouldDelete || !mounted) {
+      return;
+    }
+
+    try {
+      await _authService.deleteAccount();
     } on AppApiException catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -1174,6 +1231,14 @@ class _MainNavigationMessagesPanelState
                           label: 'Deconnexion',
                         ),
                       ),
+                      PopupMenuItem(
+                        value: _MessagesPanelMenuAction.deleteAccount,
+                        child: _MessagesPanelMenuItem(
+                          icon: Icons.delete_forever_rounded,
+                          label: 'Supprimer mon compte',
+                          color: Colors.red,
+                        ),
+                      ),
                     ],
                     child: SizedBox(
                       width: 32,
@@ -1370,16 +1435,21 @@ class _MainNavigationMessagesPanelState
 class _MessagesPanelMenuItem extends StatelessWidget {
   final IconData icon;
   final String label;
+  final Color? color;
 
-  const _MessagesPanelMenuItem({required this.icon, required this.label});
+  const _MessagesPanelMenuItem({
+    required this.icon,
+    required this.label,
+    this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, size: 18),
+        Icon(icon, size: 18, color: color),
         const SizedBox(width: 10),
-        Expanded(child: Text(label)),
+        Expanded(child: Text(label, style: TextStyle(color: color))),
       ],
     );
   }
