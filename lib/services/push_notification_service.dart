@@ -6,6 +6,7 @@ import 'package:banay/page/chat_page.dart';
 import 'package:banay/page/notifications_page.dart';
 import 'package:banay/page/productDetail.dart';
 import 'package:banay/services/app_api_client.dart';
+import 'package:banay/services/app_event_log_service.dart';
 import 'package:banay/services/conversations_api_service.dart';
 import 'package:banay/services/session_storage.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -23,7 +24,16 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
   await Firebase.initializeApp();
 
-  if (message.data['type'] == 'chat_message') {
+  final type = message.data['type'];
+  unawaited(
+    AppEventLogService.instance.record(
+      name: 'push_background_message_received',
+      source: 'push',
+      parameters: {'type': type ?? ''},
+    ),
+  );
+
+  if (type == 'chat_message' || type == 'chat_message_delivery_ping') {
     await PushNotificationService.acknowledgeChatMessageDeliveryInBackground();
   }
 }
@@ -192,15 +202,38 @@ class PushNotificationService {
   static Future<void> acknowledgeChatMessageDeliveryInBackground() async {
     try {
       await _conversationsApiService.pingDelivery();
-    } catch (_) {
+      unawaited(
+        AppEventLogService.instance.record(
+          name: 'delivery_ping_sent',
+          source: 'push',
+          status: 'success',
+        ),
+      );
+    } catch (error) {
       // A live socket connection or the next foreground open will still
       // mark the message delivered eventually.
+      unawaited(
+        AppEventLogService.instance.record(
+          name: 'delivery_ping_sent',
+          source: 'push',
+          status: 'failure',
+          parameters: {'reason': error.toString()},
+        ),
+      );
     }
   }
 
   static Future<void> _handleForegroundMessage(RemoteMessage message) async {
-    if (message.data['type'] == 'chat_message') {
+    final type = message.data['type'];
+    if (type == 'chat_message' || type == 'chat_message_delivery_ping') {
       unawaited(acknowledgeChatMessageDeliveryInBackground());
+    }
+
+    // The delivery ping carries no title/body: it must never fall through
+    // to the display logic below, or it shows up as a bogus "BANAY - Vous
+    // avez recu un nouveau message" notification with nothing behind it.
+    if (type == 'chat_message_delivery_ping') {
+      return;
     }
 
     if (!_shouldShowForegroundNotification(message)) {

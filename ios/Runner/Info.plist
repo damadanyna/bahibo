@@ -28,6 +28,10 @@
 	<string>$(GOOGLE_MAPS_API_KEY)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Banay utilise la camera pour lancer un live video.</string>
 	<key>NSMicrophoneUsageDescription</key>

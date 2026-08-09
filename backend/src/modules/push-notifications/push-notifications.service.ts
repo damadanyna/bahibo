@@ -200,7 +200,55 @@ export class PushNotificationsService {
         `result=${result}`,
     );
 
+    await this.sendChatMessageDeliveryPing(
+      deviceTokens.map((deviceToken) => deviceToken.token),
+    );
+
     return result;
+  }
+
+  /**
+   * A message carrying both `notification` and `data` is only delivered to
+   * the app's Dart code when the app is in the foreground: while
+   * backgrounded, FCM hands it straight to the OS tray and never invokes
+   * firebaseMessagingBackgroundHandler. Sending this second, data-only
+   * message right after guarantees the background handler still runs (FCM
+   * always delivers data-only messages to it, regardless of app state), so
+   * the recipient's device can flip pending messages to "delivered" the
+   * moment it's reachable — see ConversationsApiService.pingDelivery on the
+   * client and POST /conversations/delivery-ping on this server.
+   */
+  private async sendChatMessageDeliveryPing(tokens: string[]) {
+    if (tokens.length === 0 || !this.firebaseApp) {
+      return;
+    }
+
+    try {
+      await getMessaging(this.firebaseApp).sendEachForMulticast({
+        tokens,
+        data: {
+          type: "chat_message_delivery_ping",
+        },
+        android: {
+          priority: "high",
+        },
+        apns: {
+          headers: {
+            "apns-priority": "5",
+            "apns-push-type": "background",
+          },
+          payload: {
+            aps: {
+              "content-available": 1,
+            },
+          },
+        },
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Failed to send chat message delivery ping: ${(error as Error).message}`,
+      );
+    }
   }
 
   async sendProductPublishedNotification(
