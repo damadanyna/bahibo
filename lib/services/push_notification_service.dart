@@ -283,7 +283,22 @@ class PushNotificationService {
   static bool _shouldShowForegroundNotification(RemoteMessage message) {
     final notificationType =
         message.data['type']?.toString().trim().toLowerCase() ?? '';
-    return notificationType != 'user_feedback';
+    if (notificationType == 'user_feedback') {
+      return false;
+    }
+
+    // The recipient is already looking at this exact conversation (ChatPage
+    // marks it visible via setVisibleConversation): the message shows up
+    // live through the socket, a popup notification would be redundant.
+    final conversationId = message.data['conversationId']?.trim();
+    if (notificationType == 'chat_message' &&
+        conversationId != null &&
+        conversationId.isNotEmpty &&
+        conversationId == _visibleConversationId) {
+      return false;
+    }
+
+    return true;
   }
 
   static void _handleOpenedAppMessage(RemoteMessage message) {
