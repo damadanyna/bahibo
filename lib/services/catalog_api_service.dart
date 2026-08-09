@@ -398,18 +398,7 @@ class CatalogApiService {
     );
 
     final response = await _sendMultipartRequest(request);
-    final decoded = response.body.isEmpty
-        ? <String, dynamic>{}
-        : jsonDecode(response.body) as Map<String, dynamic>;
-
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final message = (decoded['message'] as String?) ?? 'Erreur serveur';
-      throw AppApiException(message, statusCode: response.statusCode);
-    }
-
-    return Map<String, dynamic>.from(
-      (decoded['data'] as Map?) ?? const <String, dynamic>{},
-    );
+    return _parseMultipartResponse(response);
   }
 
   Future<Map<String, dynamic>> updateProduct({
@@ -451,18 +440,7 @@ class CatalogApiService {
     );
 
     final response = await _sendMultipartRequest(request);
-    final decoded = response.body.isEmpty
-        ? <String, dynamic>{}
-        : jsonDecode(response.body) as Map<String, dynamic>;
-
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final message = (decoded['message'] as String?) ?? 'Erreur serveur';
-      throw AppApiException(message, statusCode: response.statusCode);
-    }
-
-    return Map<String, dynamic>.from(
-      (decoded['data'] as Map?) ?? const <String, dynamic>{},
-    );
+    return _parseMultipartResponse(response);
   }
 
   Future<Map<String, dynamic>> deleteProduct(String productId) async {
@@ -482,6 +460,35 @@ class CatalogApiService {
     } catch (_) {
       throw AppApiException('Impossible de joindre le serveur BANAY');
     }
+  }
+
+  /// A non-2xx response isn't always our own JSON error body: a reverse
+  /// proxy in front of the backend (payload too large, gateway timeout...)
+  /// can reject the request first and return its own HTML error page. Treat
+  /// that as a clean server error instead of letting jsonDecode's
+  /// FormatException escape uncaught.
+  Map<String, dynamic> _parseMultipartResponse(http.Response response) {
+    Map<String, dynamic> decoded;
+    try {
+      decoded = response.body.isEmpty
+          ? <String, dynamic>{}
+          : jsonDecode(response.body) as Map<String, dynamic>;
+    } catch (_) {
+      throw AppApiException(
+        'Reponse invalide du serveur (HTTP ${response.statusCode}). '
+        'Reessayez dans quelques instants.',
+        statusCode: response.statusCode,
+      );
+    }
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final message = (decoded['message'] as String?) ?? 'Erreur serveur';
+      throw AppApiException(message, statusCode: response.statusCode);
+    }
+
+    return Map<String, dynamic>.from(
+      (decoded['data'] as Map?) ?? const <String, dynamic>{},
+    );
   }
 
   Future<List<http.MultipartFile>> _buildTrackedMultipartFiles(
