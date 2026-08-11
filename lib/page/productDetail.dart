@@ -929,11 +929,19 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     }
 
     final thumbnail = (product['thumbnail'] as String?)?.trim() ?? '';
-    if (_isDefaultPlaceholderImage(thumbnail)) {
-      return const <String>[];
+    if (!_isDefaultPlaceholderImage(thumbnail)) {
+      return <String>[thumbnail];
     }
 
-    return <String>[thumbnail];
+    // Lightweight product snapshots (e.g. the one attached to a chat
+    // conversation, see ChatPage._productValue) only carry `imageUrl`,
+    // never `images`/`thumbnail`.
+    final imageUrl = (product['imageUrl'] as String?)?.trim() ?? '';
+    if (!_isDefaultPlaceholderImage(imageUrl)) {
+      return <String>[imageUrl];
+    }
+
+    return const <String>[];
   }
 
   @override

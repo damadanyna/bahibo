@@ -248,8 +248,17 @@ class PushNotificationService {
         message.data['body']?.toString() ??
         'Vous avez recu un nouveau message.';
 
+    // Reuse the same notification id for every message of a given
+    // conversation so a new message replaces the previous tile instead of
+    // stacking a separate one (mirrors the `tag`/`thread-id` grouping the
+    // backend sets on the OS-rendered background notification).
+    final conversationId = message.data['conversationId']?.trim();
+    final notificationId = conversationId != null && conversationId.isNotEmpty
+        ? conversationId.hashCode
+        : message.messageId?.hashCode ?? DateTime.now().millisecondsSinceEpoch;
+
     await _localNotifications.show(
-      message.messageId?.hashCode ?? DateTime.now().millisecondsSinceEpoch,
+      notificationId,
       title,
       body,
       NotificationDetails(

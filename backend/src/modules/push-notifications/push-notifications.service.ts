@@ -160,12 +160,18 @@ export class PushNotificationsService {
           channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
           sound: ANDROID_NOTIFICATION_SOUND,
           clickAction: "FLUTTER_NOTIFICATION_CLICK",
+          // Same tag => the OS replaces the previous notification for this
+          // conversation instead of stacking a new tile per message.
+          tag: args.conversationId,
         },
       },
       apns: {
         payload: {
           aps: {
             sound: "default",
+            // iOS-side equivalent of the Android tag: collapses/threads
+            // notifications from the same conversation in Notification Center.
+            "thread-id": args.conversationId,
           },
         },
       },
