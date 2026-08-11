@@ -13,6 +13,12 @@ class ChatRealtimeService {
   static const String connectedEventType = 'realtime:connected';
   static const String disconnectedEventType = 'realtime:disconnected';
 
+  // How long to keep the socket alive after the app leaves the foreground
+  // before treating the user as offline. Transitions through `inactive`
+  // (notification shade, app switcher, system dialogs) or a brief trip to
+  // another app must not flip presence instantly.
+  static const Duration _backgroundDisconnectGrace = Duration(seconds: 20);
+
   static final ChatRealtimeService instance = ChatRealtimeService._();
 
   final SessionStorage _sessionStorage = SessionStorage();
@@ -27,6 +33,7 @@ class ChatRealtimeService {
   bool _isEnsuringConnection = false;
   bool _shouldStayConnected = true;
   Timer? _reconnectTimer;
+  Timer? _backgroundDisconnectTimer;
 
   Stream<Map<String, dynamic>> get events => _eventsController.stream;
 
@@ -35,17 +42,33 @@ class ChatRealtimeService {
   void handleAppLifecycleStateChanged(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
+        _cancelBackgroundDisconnectTimer();
         _shouldStayConnected = true;
         unawaited(ensureConnected());
         break;
       case AppLifecycleState.inactive:
+        // Transient: notification shade, app switcher, system dialogs. The
+        // app is still effectively in use, so keep the socket connected.
+        break;
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
-        _shouldStayConnected = false;
-        disconnect();
+        _scheduleBackgroundDisconnect();
         break;
     }
+  }
+
+  void _scheduleBackgroundDisconnect() {
+    _backgroundDisconnectTimer ??= Timer(_backgroundDisconnectGrace, () {
+      _backgroundDisconnectTimer = null;
+      _shouldStayConnected = false;
+      disconnect();
+    });
+  }
+
+  void _cancelBackgroundDisconnectTimer() {
+    _backgroundDisconnectTimer?.cancel();
+    _backgroundDisconnectTimer = null;
   }
 
   Future<void> ensureConnected() async {
@@ -174,6 +197,7 @@ class ChatRealtimeService {
   }
 
   void disconnect() {
+    _cancelBackgroundDisconnectTimer();
     _cancelReconnectRetry();
     _currentAccessToken = null;
     _disposeSocket(suppressReconnect: true);
