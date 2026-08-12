@@ -1488,6 +1488,12 @@ export class ConversationsService {
   }
 
   private async markConversationAsRead(conversationId: string, userId: string) {
+    // Captured before the query runs so a message inserted by the other
+    // party concurrently (e.g. sent the instant this read ack fires) has a
+    // createdAt strictly after readBoundary and is excluded — otherwise it
+    // could be swept into "read" despite not having existed yet when this
+    // read action happened.
+    const readBoundary = new Date();
     const result = await this.prisma.chatMessage.updateMany({
       where: {
         conversationId,
@@ -1495,9 +1501,12 @@ export class ConversationsService {
           not: userId,
         },
         readAt: null,
+        createdAt: {
+          lte: readBoundary,
+        },
       },
       data: {
-        readAt: new Date(),
+        readAt: readBoundary,
       },
     });
 

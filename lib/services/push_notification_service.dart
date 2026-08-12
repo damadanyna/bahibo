@@ -5,8 +5,10 @@ import 'package:banay/component/main_navigation_shell.dart';
 import 'package:banay/page/chat_page.dart';
 import 'package:banay/page/notifications_page.dart';
 import 'package:banay/page/productDetail.dart';
+import 'package:banay/services/api_config.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/app_event_log_service.dart';
+import 'package:banay/services/banay_tls_override.dart';
 import 'package:banay/services/conversations_api_service.dart';
 import 'package:banay/services/session_storage.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -23,6 +25,14 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   }
 
   await Firebase.initializeApp();
+
+  // This callback runs in a separate background isolate spawned by Firebase
+  // for background/terminated-app pushes: it does not share the main
+  // isolate's state, so the cert pin and dev-host resolution done once in
+  // main() before runApp() must be redone here before any network call, or
+  // every request below fails its TLS handshake silently.
+  await ApiConfig.initialize();
+  configureBanayTlsOverride(ApiConfig.baseUrl);
 
   final type = message.data['type'];
   unawaited(

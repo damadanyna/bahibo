@@ -1616,12 +1616,25 @@ class ChatSessionController extends ChangeNotifier {
     final effectiveReadAt = normalizedReadAt.isNotEmpty
         ? normalizedReadAt
         : DateTime.now().toIso8601String();
+    final readBoundary = DateTime.tryParse(effectiveReadAt);
 
     return source
         .map((message) {
           final nextMessage = Map<String, dynamic>.from(message);
           if (nextMessage['isMine'] == true) {
-            nextMessage['readAt'] ??= effectiveReadAt;
+            // A message created after this read ack fired cannot possibly
+            // be the one it was acknowledging (e.g. sent the instant the
+            // other party's ack was in flight) — never backdate it to seen.
+            final createdAt = DateTime.tryParse(
+              nextMessage['createdAt']?.toString() ?? '',
+            );
+            final existedAtReadTime =
+                readBoundary == null ||
+                createdAt == null ||
+                !createdAt.isAfter(readBoundary);
+            if (existedAtReadTime) {
+              nextMessage['readAt'] ??= effectiveReadAt;
+            }
           }
           return nextMessage;
         })

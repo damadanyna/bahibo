@@ -357,6 +357,11 @@ export class ConversationsRealtimeGateway
       return;
     }
 
+    // readAt is captured before the query runs so a message the other party
+    // inserts concurrently (createdAt strictly after readAt) is excluded —
+    // otherwise it could be swept into "read" despite not existing yet when
+    // this ack fired. See ConversationsService.markConversationAsRead for
+    // the same guard on the REST path.
     const readAt = new Date();
     const result = await this.prisma.chatMessage.updateMany({
       where: {
@@ -365,6 +370,9 @@ export class ConversationsRealtimeGateway
           not: actorUserId,
         },
         readAt: null,
+        createdAt: {
+          lte: readAt,
+        },
       },
       data: {
         deliveredAt: readAt,

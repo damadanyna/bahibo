@@ -35,6 +35,9 @@ class MainHomePanel extends StatefulWidget {
 class _MainHomePanelState extends State<MainHomePanel>
     with AppPageRefreshMixin<MainHomePanel> {
   static const double _offlineBannerBottomOffset = 64;
+  // Temporarily hidden for this release for every user (including sellers).
+  // Flip back to true to bring the "Lancer un live" entry point back.
+  static const bool _isLiveLaunchEnabledForThisVersion = false;
 
   final AppAuthService _authService = AppAuthService();
   final CatalogApiService _catalogApiService = CatalogApiService();
@@ -530,7 +533,7 @@ class _MainHomePanelState extends State<MainHomePanel>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (_isSeller) ...[
+        if (_isSeller && _isLiveLaunchEnabledForThisVersion) ...[
           _buildSellerLiveButton(Theme.of(context)),
           const SizedBox(height: 4),
         ],
