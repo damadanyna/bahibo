@@ -206,7 +206,7 @@ class _MainNavigationMessagesPanelState
 
   void _updateUnreadCountNotifier([List<Map<String, dynamic>>? conversations]) {
     final source = conversations ?? _conversations;
-    final groupedConversations = _sortConversationsByRecency(source);
+    final groupedConversations = _groupConversationsByParticipant(source);
     mainNavigationUnreadMessageCountNotifier.value = groupedConversations
         .where(
           (conversation) =>
@@ -410,26 +410,47 @@ class _MainNavigationMessagesPanelState
     return DateTime.tryParse(value)?.toLocal();
   }
 
-  // One row per conversation (i.e. per product discussed with a seller, plus
-  // any direct conversation) — a buyer messaging a seller about a second
-  // product must not collapse/replace the existing thread about the first
-  // one, since each product has its own conversation record server-side.
-  // Only dedupes by conversation id and sorts by recency.
-  List<Map<String, dynamic>> _sortConversationsByRecency(
+  // One row per seller/buyer pair in the list, even if several separate
+  // per-product conversation records exist with them — keeps the most
+  // recently active one and sums unread counts across the rest.
+  List<Map<String, dynamic>> _groupConversationsByParticipant(
     List<Map<String, dynamic>> conversations,
   ) {
-    final byId = <String, Map<String, dynamic>>{};
+    final grouped = <String, Map<String, dynamic>>{};
 
     for (final conversation in conversations) {
+      final participantId = _participantId(conversation);
       final conversationId = _conversationId(conversation);
-      if (conversationId == null) {
+      final groupKey = participantId ?? conversationId;
+
+      if (groupKey == null) {
         continue;
       }
-      byId[conversationId] = conversation;
+
+      final existing = grouped[groupKey];
+      if (existing == null) {
+        grouped[groupKey] = Map<String, dynamic>.from(conversation);
+        continue;
+      }
+
+      final existingUnread = ((existing['unreadCount'] as num?)?.toInt()) ?? 0;
+      final currentUnread =
+          ((conversation['unreadCount'] as num?)?.toInt()) ?? 0;
+      final existingDate = _conversationLastMessageDate(existing);
+      final currentDate = _conversationLastMessageDate(conversation);
+      final useCurrentConversation =
+          existingDate == null ||
+          (currentDate != null && currentDate.isAfter(existingDate));
+
+      final merged = Map<String, dynamic>.from(
+        useCurrentConversation ? conversation : existing,
+      );
+      merged['unreadCount'] = existingUnread + currentUnread;
+      grouped[groupKey] = merged;
     }
 
-    final sortedList = byId.values.toList();
-    sortedList.sort((first, second) {
+    final groupedList = grouped.values.toList();
+    groupedList.sort((first, second) {
       final secondDate = _conversationLastMessageDate(second);
       final firstDate = _conversationLastMessageDate(first);
       if (firstDate == null && secondDate == null) {
@@ -444,7 +465,7 @@ class _MainNavigationMessagesPanelState
       return secondDate.compareTo(firstDate);
     });
 
-    return sortedList;
+    return groupedList;
   }
 
   bool _conversationIsTyping(Map<String, dynamic> conversation) {
@@ -525,7 +546,7 @@ class _MainNavigationMessagesPanelState
   }
 
   void _warmRecentConversations(List<Map<String, dynamic>> conversations) {
-    final groupedConversations = _sortConversationsByRecency(
+    final groupedConversations = _groupConversationsByParticipant(
       conversations,
     );
     final conversationIds = groupedConversations
@@ -579,7 +600,7 @@ class _MainNavigationMessagesPanelState
   }
 
   void _updateGroupedConversations() {
-    _cachedGroupedConversations = _sortConversationsByRecency(
+    _cachedGroupedConversations = _groupConversationsByParticipant(
       _conversations,
     );
   }
