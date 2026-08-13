@@ -32,6 +32,21 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
+	<key>AppGroupId</key>
+	<string>group.com.example.banay.shared</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>ShareMedia</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>ShareMedia-$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Banay utilise la camera pour lancer un live video.</string>
 	<key>NSMicrophoneUsageDescription</key>

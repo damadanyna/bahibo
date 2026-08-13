@@ -1,8 +1,11 @@
 package com.banay.app
 
 import android.content.ActivityNotFoundException
+import android.content.ComponentName
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
@@ -13,9 +16,38 @@ import java.io.File
 class MainActivity : FlutterActivity() {
 	private val channelName = "banay/notifications"
 	private val fileOpenerChannelName = "banay/file_opener"
+	private val batteryOptimizationChannelName = "banay/battery_optimization"
 	private var pendingNotificationPayload: Map<String, String>? = null
 	private var methodChannel: MethodChannel? = null
 	private var fileOpenerChannel: MethodChannel? = null
+	private var batteryOptimizationChannel: MethodChannel? = null
+
+	// OEM Android skins (ColorOS, MIUI, FuntouchOS, EMUI, ...) run their own
+	// battery/auto-start manager on top of stock Android's battery
+	// optimization system, and can still kill the app or block background
+	// FCM delivery even after the user grants the standard
+	// IGNORE_BATTERY_OPTIMIZATIONS permission. There is no public API for
+	// this — component names are the same ones used across the open-source
+	// Flutter/Android community for this exact purpose. Best-effort: many
+	// OEM firmware forks rename/remove these across versions, hence the
+	// try-each-then-fall-back-to-app-settings approach below.
+	private val manufacturerAutostartActivities = listOf(
+		// OPPO / ColorOS
+		ComponentName("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity"),
+		ComponentName("com.coloros.safecenter", "com.coloros.safecenter.startupapp.StartupAppListActivity"),
+		ComponentName("com.oppo.safe", "com.oppo.safe.permission.startup.StartupAppListActivity"),
+		// Xiaomi / MIUI
+		ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"),
+		// Vivo / FuntouchOS
+		ComponentName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"),
+		ComponentName("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.AddWhiteListActivity"),
+		// Huawei / EMUI
+		ComponentName("com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"),
+		// Samsung
+		ComponentName("com.samsung.android.lool", "com.samsung.android.sm.ui.battery.BatteryActivity"),
+		// Asus
+		ComponentName("com.asus.mobilemanager", "com.asus.mobilemanager.autostart.AutoStartActivity"),
+	)
 
 	override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
 		super.configureFlutterEngine(flutterEngine)
@@ -54,6 +86,18 @@ class MainActivity : FlutterActivity() {
 						}
 					}
 
+					else -> result.notImplemented()
+				}
+			}
+		}
+
+		batteryOptimizationChannel = MethodChannel(
+			flutterEngine.dartExecutor.binaryMessenger,
+			batteryOptimizationChannelName,
+		).apply {
+			setMethodCallHandler { call, result ->
+				when (call.method) {
+					"openManufacturerAutostartSettings" -> result.success(openManufacturerAutostartSettings())
 					else -> result.notImplemented()
 				}
 			}
@@ -133,6 +177,39 @@ class MainActivity : FlutterActivity() {
 
 		return try {
 			startActivity(Intent.createChooser(viewIntent, title ?: "Ouvrir avec"))
+			true
+		} catch (_: ActivityNotFoundException) {
+			false
+		}
+	}
+
+	private fun openManufacturerAutostartSettings(): Boolean {
+		for (component in manufacturerAutostartActivities) {
+			val intent = Intent().apply {
+				setComponent(component)
+				addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+			}
+			if (packageManager.queryIntentActivities(intent, 0).isEmpty()) {
+				continue
+			}
+
+			try {
+				startActivity(intent)
+				return true
+			} catch (_: ActivityNotFoundException) {
+				continue
+			} catch (_: SecurityException) {
+				continue
+			}
+		}
+
+		return try {
+			startActivity(
+				Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+					data = Uri.fromParts("package", packageName, null)
+					addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+				},
+			)
 			true
 		} catch (_: ActivityNotFoundException) {
 			false

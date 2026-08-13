@@ -63,6 +63,7 @@ class ChatPage extends StatefulWidget {
   final bool embedProductContextInInitialMessage;
   final bool showProductContextCard;
   final bool showInlineProductSnapshots;
+  final UiChatAttachment? initialSharedAttachment;
 
   const ChatPage({
     super.key,
@@ -85,6 +86,7 @@ class ChatPage extends StatefulWidget {
     this.embedProductContextInInitialMessage = false,
     this.showProductContextCard = false,
     this.showInlineProductSnapshots = true,
+    this.initialSharedAttachment,
   });
 
   @override
@@ -372,6 +374,16 @@ class _ChatPageState extends State<ChatPage>
             return;
           }
           unawaited(_sendMessage(initialMessage));
+        });
+      }
+
+      final initialSharedAttachment = widget.initialSharedAttachment;
+      if (initialSharedAttachment != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) {
+            return;
+          }
+          unawaited(_handleAttachment(initialSharedAttachment));
         });
       }
     }

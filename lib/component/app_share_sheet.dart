@@ -1,5 +1,6 @@
-import 'package:banay/component/app_network_image.dart';
+﻿import 'package:banay/component/app_network_image.dart';
 import 'package:banay/services/app_api_client.dart';
+import 'package:banay/services/conversation_share_target_utils.dart';
 import 'package:banay/services/conversations_api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
@@ -26,12 +27,12 @@ Future<int> showAppShareSheet(
   }
 
   String conversationSelectionKey(Map<String, dynamic> conversation) {
-    final conversationId = _shareConversationId(conversation);
+    final conversationId = conversationShareId(conversation);
     if (conversationId != null && conversationId.isNotEmpty) {
       return 'id:$conversationId';
     }
 
-    final participantId = _shareParticipantId(conversation);
+    final participantId = conversationShareParticipantId(conversation);
     if (participantId != null && participantId.isNotEmpty) {
       return 'user:$participantId';
     }
@@ -39,7 +40,7 @@ Future<int> showAppShareSheet(
     return conversation.hashCode.toString();
   }
 
-  final conversationsFuture = _loadShareConversations(conversationsApiService);
+  final conversationsFuture = loadConversationsForSharing(conversationsApiService);
   final selectedConversations =
       await showModalBottomSheet<List<Map<String, dynamic>>>(
         context: context,
@@ -143,13 +144,13 @@ Future<int> showAppShareSheet(
                                     ListTileControlAffinity.trailing,
                                 secondary: AppCircleNetworkAvatar(
                                   radius: 22,
-                                  imageUrl: _shareConversationAvatar(
+                                  imageUrl: conversationShareAvatar(
                                     conversation,
                                   ),
-                                  userId: _shareParticipantId(conversation),
+                                  userId: conversationShareParticipantId(conversation),
                                 ),
                                 title: Text(
-                                  _shareConversationName(conversation),
+                                  conversationShareName(conversation),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
@@ -230,7 +231,7 @@ Future<int> showAppShareSheet(
     SnackBar(
       content: Text(
         selectedConversations.length == 1
-            ? '$successLabel partage avec ${_shareConversationName(selectedConversations.first)}.'
+            ? '$successLabel partage avec ${conversationShareName(selectedConversations.first)}.'
             : '$successLabel partage avec ${selectedConversations.length} discussions.',
       ),
     ),
@@ -239,133 +240,13 @@ Future<int> showAppShareSheet(
   return selectedConversations.length;
 }
 
-String? _shareConversationId(Map<String, dynamic> conversation) {
-  final value = conversation['id'];
-  if (value == null) {
-    return null;
-  }
-
-  final normalized = value.toString().trim();
-  return normalized.isEmpty ? null : normalized;
-}
-
-String? _shareParticipantId(Map<String, dynamic> conversation) {
-  final participant = conversation['participant'];
-  if (participant is! Map) {
-    return null;
-  }
-
-  final value = participant['id'];
-  if (value == null) {
-    return null;
-  }
-
-  final normalized = value.toString().trim();
-  return normalized.isEmpty ? null : normalized;
-}
-
-String _shareConversationName(Map<String, dynamic> conversation) {
-  final participant = conversation['participant'];
-  if (participant is Map) {
-    final value = participant['displayName'];
-    if (value is String && value.trim().isNotEmpty) {
-      return value.trim();
-    }
-  }
-
-  return 'Conversation';
-}
-
-String _shareConversationAvatar(Map<String, dynamic> conversation) {
-  final participant = conversation['participant'];
-  if (participant is Map) {
-    final value = participant['avatarUrl'];
-    if (value is String && value.trim().isNotEmpty) {
-      return value.trim();
-    }
-  }
-
-  return 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600';
-}
-
-DateTime? _shareConversationLastMessageDate(Map<String, dynamic> conversation) {
-  final value = conversation['lastMessageAt'];
-  if (value is! String || value.trim().isEmpty) {
-    return null;
-  }
-
-  return DateTime.tryParse(value)?.toLocal();
-}
-
-List<Map<String, dynamic>> _groupShareConversations(
-  List<Map<String, dynamic>> conversations,
-) {
-  final grouped = <String, Map<String, dynamic>>{};
-
-  for (final conversation in conversations) {
-    final participantId = _shareParticipantId(conversation);
-    final conversationId = _shareConversationId(conversation);
-    final groupKey = participantId ?? conversationId;
-
-    if (groupKey == null) {
-      continue;
-    }
-
-    final existing = grouped[groupKey];
-    if (existing == null) {
-      grouped[groupKey] = Map<String, dynamic>.from(conversation);
-      continue;
-    }
-
-    final existingDate = _shareConversationLastMessageDate(existing);
-    final currentDate = _shareConversationLastMessageDate(conversation);
-    final useCurrentConversation =
-        existingDate == null ||
-        (currentDate != null && currentDate.isAfter(existingDate));
-
-    grouped[groupKey] = Map<String, dynamic>.from(
-      useCurrentConversation ? conversation : existing,
-    );
-  }
-
-  final groupedList = grouped.values.toList(growable: false);
-  groupedList.sort((first, second) {
-    final firstDate = _shareConversationLastMessageDate(first);
-    final secondDate = _shareConversationLastMessageDate(second);
-    if (firstDate == null && secondDate == null) {
-      return 0;
-    }
-    if (firstDate == null) {
-      return 1;
-    }
-    if (secondDate == null) {
-      return -1;
-    }
-    return secondDate.compareTo(firstDate);
-  });
-  return groupedList;
-}
-
-Future<List<Map<String, dynamic>>> _loadShareConversations(
-  ConversationsApiService conversationsApiService,
-) async {
-  final cachedConversations = await conversationsApiService
-      .getCachedConversations();
-  if (cachedConversations != null && cachedConversations.isNotEmpty) {
-    return _groupShareConversations(cachedConversations);
-  }
-
-  final conversations = await conversationsApiService.fetchConversations();
-  return _groupShareConversations(conversations);
-}
-
 Future<void> _forwardShareToConversation(
   ConversationsApiService conversationsApiService,
   Map<String, dynamic> conversation, {
   required String content,
   Map<String, dynamic>? productSnapshot,
 }) async {
-  final conversationId = _shareConversationId(conversation);
+  final conversationId = conversationShareId(conversation);
   if (conversationId != null) {
     await conversationsApiService.sendMessage(
       conversationId: conversationId,
@@ -375,7 +256,7 @@ Future<void> _forwardShareToConversation(
     return;
   }
 
-  final participantId = _shareParticipantId(conversation);
+  final participantId = conversationShareParticipantId(conversation);
   if (participantId != null) {
     await conversationsApiService.sendUserMessage(
       targetUserId: participantId,

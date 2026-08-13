@@ -8,11 +8,13 @@ import 'package:banay/services/app_event_log_sync_service.dart';
 import 'package:banay/services/api_config.dart';
 import 'package:banay/services/feature_flags_service.dart';
 import 'package:banay/services/banay_tls_override.dart';
+import 'package:banay/services/battery_optimization_service.dart';
 import 'package:banay/services/chat_realtime_service.dart';
 import 'package:banay/services/location_permission_service.dart';
 import 'package:banay/providers/theme_provider.dart';
 import 'package:banay/services/push_notification_service.dart';
 import 'package:banay/services/session_storage.dart';
+import 'package:banay/services/share_intent_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/cupertino.dart';
@@ -44,6 +46,7 @@ void main() {
       configureBanayTlsOverride(ApiConfig.baseUrl);
       await PushNotificationService.initialize();
       unawaited(FeatureFlagsService.instance.initialize());
+      unawaited(ShareIntentService.instance.initialize());
 
       SystemChrome.setPreferredOrientations([
         DeviceOrientation.portraitUp,
@@ -251,6 +254,37 @@ class _AppLifecycleBootstrapState extends State<_AppLifecycleBootstrap>
   Future<void> _bootstrapLocationFlow() async {
     await _showLocationPermissionPreDialog();
     await _syncCurrentUserLocationOnLaunch();
+    await _showBatteryOptimizationPromptIfNeeded();
+  }
+
+  Future<void> _showBatteryOptimizationPromptIfNeeded() async {
+    if (!await BatteryOptimizationService.shouldShowPrompt()) {
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    final dialogContext = PushNotificationService.navigatorKey.currentContext;
+    if (dialogContext == null || !dialogContext.mounted) {
+      return;
+    }
+
+    await BatteryOptimizationService.markPromptShown();
+
+    final action = await showDialog<_BatteryOptimizationDialogAction>(
+      context: dialogContext,
+      barrierDismissible: false,
+      builder: (context) => const _BatteryOptimizationDialog(),
+    );
+
+    if (action != _BatteryOptimizationDialogAction.continueRequest) {
+      return;
+    }
+
+    await BatteryOptimizationService.requestIgnoreBatteryOptimizations();
+    await BatteryOptimizationService.openManufacturerAutostartSettings();
   }
 
   @override

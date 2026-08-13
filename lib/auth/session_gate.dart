@@ -3,6 +3,7 @@ import 'package:banay/component/main_navigation_shell.dart';
 import 'package:banay/services/app_auth_service.dart';
 import 'package:banay/services/chat_realtime_service.dart';
 import 'package:banay/services/push_notification_service.dart';
+import 'package:banay/services/share_intent_service.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
@@ -50,6 +51,7 @@ class _SessionGatePageState extends State<SessionGatePage> {
               await ChatRealtimeService.instance.ensureConnected();
               await PushNotificationService.syncDeviceTokenIfAuthenticated();
               await PushNotificationService.processPendingNotificationNavigation();
+              await ShareIntentService.instance.processPendingShareNavigation();
             });
           }
           return BANAYNavigationShell(key: BANAYNavigationShell.shellKey);

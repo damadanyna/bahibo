@@ -15,6 +15,7 @@ import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/app_auth_service.dart';
 import 'package:banay/services/chat_realtime_service.dart';
 import 'package:banay/services/push_notification_service.dart';
+import 'package:banay/services/share_intent_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -60,6 +61,7 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
     // (cold-start: app killed → notification tap → session gate resolves → shell builds).
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(PushNotificationService.processPendingNotificationNavigation());
+      unawaited(ShareIntentService.instance.processPendingShareNavigation());
     });
   }
 
