@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:banay/services/api_config.dart';
 import 'package:banay/services/banay_tls_override.dart';
+import 'package:banay/services/foreground_connection_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:banay/services/session_storage.dart';
 import 'package:flutter/widgets.dart';
@@ -61,9 +62,22 @@ class ChatRealtimeService {
   void _scheduleBackgroundDisconnect() {
     _backgroundDisconnectTimer ??= Timer(_backgroundDisconnectGrace, () {
       _backgroundDisconnectTimer = null;
-      _shouldStayConnected = false;
-      disconnect();
+      unawaited(_disconnectAfterBackgroundGraceExpired());
     });
+  }
+
+  Future<void> _disconnectAfterBackgroundGraceExpired() async {
+    // ForegroundConnectionService keeps the app process (and this socket)
+    // alive on Android — no need to disconnect while it's actually running.
+    // Checked here, at the moment the grace period actually expires, rather
+    // than when the timer is scheduled, since resuming the app in between
+    // already cancels this timer outright (see _cancelBackgroundDisconnectTimer).
+    if (await ForegroundConnectionService.instance.isRunning) {
+      return;
+    }
+
+    _shouldStayConnected = false;
+    disconnect();
   }
 
   void _cancelBackgroundDisconnectTimer() {

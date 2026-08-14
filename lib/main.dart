@@ -28,6 +28,8 @@ import 'package:provider/provider.dart';
 
 enum _LocationPermissionDialogAction { later, continueRequest }
 
+enum _BatteryOptimizationDialogAction { later, continueRequest }
+
 void main() {
   runZonedGuarded<Future<void>>(
     () async {
@@ -262,6 +264,8 @@ class _AppLifecycleBootstrapState extends State<_AppLifecycleBootstrap>
       return;
     }
 
+    await BatteryOptimizationService.markPromptShown();
+
     if (!mounted) {
       return;
     }
@@ -270,8 +274,6 @@ class _AppLifecycleBootstrapState extends State<_AppLifecycleBootstrap>
     if (dialogContext == null || !dialogContext.mounted) {
       return;
     }
-
-    await BatteryOptimizationService.markPromptShown();
 
     final action = await showDialog<_BatteryOptimizationDialogAction>(
       context: dialogContext,
@@ -332,6 +334,19 @@ class _AppLifecycleBootstrapState extends State<_AppLifecycleBootstrap>
               const _FallbackCupertinoLocalizationsDelegate(),
             ],
             supportedLocales: BanayLocalizations.supportedLocales,
+            // Layouts across the app assume a fixed text scale — the OS
+            // "large font" accessibility setting can push buttons and other
+            // controls off-screen (e.g. an action button in a bottom sheet
+            // becoming unreachable), blocking the user entirely. Pin it
+            // instead of chasing every screen individually.
+            builder: (context, child) {
+              return MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: const TextScaler.linear(1.0)),
+                child: child!,
+              );
+            },
           );
         },
       ),
@@ -487,6 +502,140 @@ class _LocationPermissionDialog extends StatelessWidget {
                             ? context.tr(BanayLocalizationKeys.openSettings)
                             : context.tr(BanayLocalizationKeys.allow),
                       ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BatteryOptimizationDialog extends StatelessWidget {
+  const _BatteryOptimizationDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 24),
+      backgroundColor: Colors.transparent,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 420),
+        decoration: BoxDecoration(
+          color: theme.cardColor,
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: [
+            BoxShadow(
+              color: colors.shadow.withValues(alpha: 0.18),
+              blurRadius: 30,
+              offset: const Offset(0, 18),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(24),
+                  gradient: LinearGradient(
+                    colors: [
+                      colors.primary.withValues(alpha: 0.18),
+                      colors.surfaceContainerHighest.withValues(alpha: 0.88),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 64,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        color: colors.primary,
+                        borderRadius: BorderRadius.circular(22),
+                      ),
+                      child: Icon(
+                        Icons.battery_charging_full_rounded,
+                        color: colors.onPrimary,
+                        size: 34,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Recevez vos messages de maniere fiable',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Certains telephones limitent Banay en arriere-plan et retardent vos messages et notifications.',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: colors.onSurface.withValues(alpha: 0.76),
+                              height: 1.35,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              _PermissionInfoRow(
+                icon: Icons.mark_chat_read_rounded,
+                label: 'Statuts de messages (distribue/vu) a jour',
+                tint: colors.primary,
+              ),
+              const SizedBox(height: 10),
+              _PermissionInfoRow(
+                icon: Icons.notifications_active_rounded,
+                label: 'Notifications recues sans delai',
+                tint: colors.secondary,
+              ),
+              const SizedBox(height: 10),
+              _PermissionInfoRow(
+                icon: Icons.shield_moon_rounded,
+                label:
+                    'On va ouvrir les reglages batterie, puis ceux du fabricant si besoin',
+                tint: colors.tertiary,
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => Navigator.of(
+                        context,
+                      ).pop(_BatteryOptimizationDialogAction.later),
+                      icon: const Icon(Icons.schedule_rounded),
+                      label: const Text('Plus tard'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => Navigator.of(
+                        context,
+                      ).pop(_BatteryOptimizationDialogAction.continueRequest),
+                      icon: const Icon(Icons.settings_suggest_rounded),
+                      label: const Text('Configurer'),
                     ),
                   ),
                 ],

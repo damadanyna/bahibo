@@ -6,7 +6,7 @@ Checklist technique concrete pour publier une V1 Android exploitable avec son ba
 
 - [ ] Le scope V1 est fige pour cette release: auth numero + OTP, profil, catalogue, vendeur, chat, panier/commandes minimales.
 - [ ] Les blocs explicitement hors V1 restent desactives ou non exposes: paiement, video, live shopping, analytics admin avances.
-- [ ] La version Flutter a ete decidee dans `pubspec.yaml`. Valeur actuelle: `1.0.2+3`.
+- [ ] La version Flutter a ete decidee dans `pubspec.yaml`. Valeur actuelle: `1.1.0+4`.
 - [ ] Le backend cible de production est connu et joignable en HTTPS.
 - [ ] Un test interne sur appareil reel Android a deja ete passe avant soumission Play Store.
 

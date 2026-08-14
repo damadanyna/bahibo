@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'app_api_client.dart';
 import 'api_config.dart';
 import 'chat_realtime_service.dart';
+import 'foreground_connection_service.dart';
 import 'presence_service.dart';
 import 'push_notification_service.dart';
 import 'session_storage.dart';
@@ -226,6 +228,7 @@ class AppAuthService {
 
     if (!hasValidSession) {
       ChatRealtimeService.instance.disconnect();
+      unawaited(ForegroundConnectionService.instance.stop());
       PresenceService.instance.reset();
       return false;
     }
@@ -234,6 +237,7 @@ class AppAuthService {
 
     if (refreshToken == null || refreshToken.isEmpty) {
       ChatRealtimeService.instance.disconnect();
+      unawaited(ForegroundConnectionService.instance.stop());
       PresenceService.instance.reset();
       await _sessionStorage.clear();
       return false;
@@ -249,6 +253,7 @@ class AppAuthService {
       return true;
     } on AppApiException {
       ChatRealtimeService.instance.disconnect();
+      unawaited(ForegroundConnectionService.instance.stop());
       PresenceService.instance.reset();
       await _sessionStorage.clear();
       return false;

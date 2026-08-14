@@ -2,6 +2,7 @@ import 'package:banay/auth/language.dart';
 import 'package:banay/component/main_navigation_shell.dart';
 import 'package:banay/services/app_auth_service.dart';
 import 'package:banay/services/chat_realtime_service.dart';
+import 'package:banay/services/foreground_connection_service.dart';
 import 'package:banay/services/push_notification_service.dart';
 import 'package:banay/services/share_intent_service.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
@@ -49,6 +50,7 @@ class _SessionGatePageState extends State<SessionGatePage> {
             _didBootstrapAuthenticatedSession = true;
             WidgetsBinding.instance.addPostFrameCallback((_) async {
               await ChatRealtimeService.instance.ensureConnected();
+              await ForegroundConnectionService.instance.start();
               await PushNotificationService.syncDeviceTokenIfAuthenticated();
               await PushNotificationService.processPendingNotificationNavigation();
               await ShareIntentService.instance.processPendingShareNavigation();
