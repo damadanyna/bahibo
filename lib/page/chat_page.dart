@@ -8,7 +8,6 @@ import 'package:banay/component/chat_media_cached_image.dart';
 import 'package:banay/component/profile_models.dart';
 import 'package:banay/component/seller_profile_page.dart';
 import 'package:banay/component/ui/chat_message_input.dart';
-import 'package:banay/component/user_profile_page.dart';
 import 'package:banay/formatter/price_formatter.dart';
 import 'package:banay/page/private_image_viewer.dart';
 import 'package:banay/services/app_api_client.dart';
@@ -3779,13 +3778,7 @@ class _ChatPageState extends State<ChatPage>
             }
 
             final profile = buildPublicUserProfileFromApi(snapshot.data!);
-            final sellerProfileId = profile.sellerProfileId?.trim() ?? '';
-
-            if (sellerProfileId.isNotEmpty) {
-              return SellerProfilePage(profile: profile);
-            }
-
-            return UserProfilePage(profile: profile);
+            return SellerProfilePage(profile: profile);
           },
         ),
       ),

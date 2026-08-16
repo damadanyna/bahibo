@@ -410,70 +410,13 @@ export class ConversationsService {
     );
   }
 
-  async getOrCreateConversationForProduct(
-    userId: string,
-    productId: string,
-    pageOptions?: ConversationMessagesPageOptions,
-  ) {
-    const product = await this.prisma.product.findUnique({
-      where: { id: productId },
-      include: {
-        category: true,
-        sellerProfile: {
-          include: {
-            user: true,
-          },
-        },
-      },
-    });
-
-    if (!product) {
-      throw new NotFoundException("Product not found");
-    }
-
-    const sellerUserId = product.sellerProfile.userId;
-
-    if (sellerUserId === userId) {
-      throw new BadRequestException(
-        "You cannot start a conversation with your own product",
-      );
-    }
-
-    const existingConversation = await this.prisma.chatConversation.findUnique({
-      where: {
-        buyerUserId_sellerUserId_productId: {
-          buyerUserId: userId,
-          sellerUserId,
-          productId,
-        },
-      },
-      include: conversationDetailInclude,
-    });
-
-    if (existingConversation) {
-      return this.presentConversationDetail(
-        existingConversation,
-        userId,
-        pageOptions,
-      );
-    }
-
-    await this.assertUsersCanInteract(userId, sellerUserId);
-
-    const conversation = await this.prisma.chatConversation.create({
-      data: {
-        buyerUserId: userId,
-        sellerUserId,
-        productId,
-        kind: "PRODUCT",
-      },
-      include: conversationDetailInclude,
-    });
-
-    return this.presentConversationDetail(conversation, userId, pageOptions);
-  }
-
-  async getOrCreateConversationForUser(
+  /**
+   * Buyer/seller relationships are per-pair, not per-product: every product
+   * a buyer discusses with the same seller must land in the one
+   * conversation for that pair, so `directKey` (symmetric — either user can
+   * initiate) is the sole identity, not `buyerUserId`/`sellerUserId`.
+   */
+  private async getOrCreateDirectConversation(
     userId: string,
     targetUserId: string,
     pageOptions?: ConversationMessagesPageOptions,
@@ -498,34 +441,14 @@ export class ConversationsService {
 
     const directKey = this.buildDirectConversationKey(userId, targetUserId);
 
-    const directConversation = await this.prisma.chatConversation.findFirst({
+    const existingConversation = await this.prisma.chatConversation.findFirst({
       where: { directKey },
       include: conversationDetailInclude,
     });
 
-    const conversations = await this.prisma.chatConversation.findMany({
-      where: {
-        OR: [
-          {
-            buyerUserId: userId,
-            sellerUserId: targetUserId,
-          },
-          {
-            buyerUserId: targetUserId,
-            sellerUserId: userId,
-          },
-        ],
-      },
-      include: conversationDetailInclude,
-      orderBy: {
-        lastMessageAt: "asc",
-      },
-    });
-
-    if (conversations.length > 0) {
-      return this.presentConversationThreadDetail(
-        directConversation ?? conversations[conversations.length - 1],
-        conversations,
+    if (existingConversation) {
+      return this.presentConversationDetail(
+        existingConversation,
         userId,
         pageOptions,
       );
@@ -543,10 +466,66 @@ export class ConversationsService {
       include: conversationDetailInclude,
     });
 
-    return this.presentConversationThreadDetail(
+    return this.presentConversationDetail(
       createdConversation,
-      [createdConversation],
       userId,
+      pageOptions,
+    );
+  }
+
+  private async resolveSellerForProduct(userId: string, productId: string) {
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      include: {
+        category: true,
+        sellerProfile: {
+          include: {
+            user: true,
+          },
+        },
+      },
+    });
+
+    if (!product) {
+      throw new NotFoundException("Product not found");
+    }
+
+    const sellerUserId = product.sellerProfile.userId;
+
+    if (sellerUserId === userId) {
+      throw new BadRequestException(
+        "You cannot start a conversation with your own product",
+      );
+    }
+
+    return { sellerUserId, product };
+  }
+
+  async getOrCreateConversationForProduct(
+    userId: string,
+    productId: string,
+    pageOptions?: ConversationMessagesPageOptions,
+  ) {
+    const { sellerUserId } = await this.resolveSellerForProduct(
+      userId,
+      productId,
+    );
+
+    return this.getOrCreateDirectConversation(
+      userId,
+      sellerUserId,
+      pageOptions,
+    );
+  }
+
+  async getOrCreateConversationForUser(
+    userId: string,
+    targetUserId: string,
+    pageOptions?: ConversationMessagesPageOptions,
+  ) {
+    return this.getOrCreateDirectConversation(
+      userId,
+      targetUserId,
       pageOptions,
     );
   }
@@ -776,6 +755,134 @@ export class ConversationsService {
       deleted,
       failed,
     };
+  }
+
+  /**
+   * One-off cleanup for the pre-migration data model, where every product
+   * discussed with the same seller created its own `ChatConversation` row
+   * (unique on buyer/seller/product). Groups existing conversations by
+   * symmetric pair, merges every group with more than one row into a single
+   * DIRECT conversation, and reassigns their messages accordingly. Dry-run
+   * by default (`apply: false`) — must be explicitly told to apply changes.
+   */
+  async mergeDuplicateConversations(options?: { apply?: boolean }) {
+    const apply = options?.apply === true;
+
+    const conversations = await this.prisma.chatConversation.findMany({
+      select: {
+        id: true,
+        buyerUserId: true,
+        sellerUserId: true,
+        kind: true,
+        directKey: true,
+        createdAt: true,
+        lastMessageAt: true,
+        _count: { select: { messages: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    const groupsByPairKey = new Map<string, typeof conversations>();
+    for (const conversation of conversations) {
+      const pairKey = this.buildDirectConversationKey(
+        conversation.buyerUserId,
+        conversation.sellerUserId,
+      );
+      const group = groupsByPairKey.get(pairKey) ?? [];
+      group.push(conversation);
+      groupsByPairKey.set(pairKey, group);
+    }
+
+    let pairsWithDuplicates = 0;
+    let conversationsMerged = 0;
+    let messagesMoved = 0;
+    let reportsRepointed = 0;
+    const mergedPairs: Array<{
+      pairKey: string;
+      canonicalConversationId: string;
+      mergedConversationIds: string[];
+      messagesMoved: number;
+    }> = [];
+
+    for (const [pairKey, group] of groupsByPairKey) {
+      if (group.length <= 1) {
+        continue;
+      }
+
+      pairsWithDuplicates += 1;
+      const canonical =
+        group.find((conversation) => conversation.kind === "DIRECT") ??
+        group[0]; // group is sorted by createdAt asc, so group[0] is the oldest
+      const duplicates = group.filter(
+        (conversation) => conversation.id !== canonical.id,
+      );
+      const duplicateIds = duplicates.map((conversation) => conversation.id);
+      const groupMessagesMoved = duplicates.reduce(
+        (sum, conversation) => sum + conversation._count.messages,
+        0,
+      );
+      const latestMessageAt = group.reduce(
+        (latest, conversation) =>
+          conversation.lastMessageAt > latest
+            ? conversation.lastMessageAt
+            : latest,
+        canonical.lastMessageAt,
+      );
+
+      mergedPairs.push({
+        pairKey,
+        canonicalConversationId: canonical.id,
+        mergedConversationIds: duplicateIds,
+        messagesMoved: groupMessagesMoved,
+      });
+      conversationsMerged += duplicateIds.length;
+      messagesMoved += groupMessagesMoved;
+
+      if (!apply) {
+        continue;
+      }
+
+      await this.prisma.$transaction(async (transaction) => {
+        await transaction.chatMessage.updateMany({
+          where: { conversationId: { in: duplicateIds } },
+          data: { conversationId: canonical.id },
+        });
+
+        const repointedReports = await transaction.userReport.updateMany({
+          where: { conversationId: { in: duplicateIds } },
+          data: { conversationId: canonical.id },
+        });
+        reportsRepointed += repointedReports.count;
+
+        await transaction.chatConversation.update({
+          where: { id: canonical.id },
+          data: {
+            kind: "DIRECT",
+            directKey: canonical.directKey ?? pairKey,
+            lastMessageAt: latestMessageAt,
+          },
+        });
+
+        await transaction.chatConversation.deleteMany({
+          where: { id: { in: duplicateIds } },
+        });
+      });
+    }
+
+    const summary = {
+      apply,
+      pairsInspected: groupsByPairKey.size,
+      pairsWithDuplicates,
+      conversationsMerged,
+      messagesMoved,
+      reportsRepointed,
+    };
+
+    this.logger.log(
+      `Conversation merge ${apply ? "applied" : "dry-run"}: ${JSON.stringify(summary)}`,
+    );
+
+    return { summary, mergedPairs };
   }
 
   private buildMediaCleanupCandidate(
@@ -1025,9 +1132,13 @@ export class ConversationsService {
     productId: string,
     dto: CreateMessageDto,
   ) {
-    const conversation = await this.getOrCreateConversationForProduct(
+    const { sellerUserId, product } = await this.resolveSellerForProduct(
       userId,
       productId,
+    );
+    const conversation = await this.getOrCreateDirectConversation(
+      userId,
+      sellerUserId,
     );
 
     return this.sendMessage(
@@ -1035,13 +1146,11 @@ export class ConversationsService {
       conversation.id,
       dto,
       this.extractDtoProductSnapshot(dto) ?? {
-        id: conversation.product?.id ?? null,
-        title: conversation.product?.title ?? "",
-        subtitle: conversation.product?.subtitle ?? "",
-        priceLabel: conversation.product
-          ? `${conversation.product.price} ${conversation.product.currency}`
-          : "",
-        imageUrl: conversation.product?.imageUrl ?? "",
+        id: product.id,
+        title: product.title,
+        subtitle: `${product.category.name} • ${product.isAvailable ? "Disponible" : "Indisponible"}`,
+        priceLabel: `${product.priceAmount.toNumber()} ${product.currencyCode}`,
+        imageUrl: product.imageUrl,
       },
     );
   }
@@ -1051,9 +1160,13 @@ export class ConversationsService {
     productId: string,
     dto: CreateMediaMessageDto,
   ) {
-    const conversation = await this.getOrCreateConversationForProduct(
+    const { sellerUserId } = await this.resolveSellerForProduct(
       userId,
       productId,
+    );
+    const conversation = await this.getOrCreateDirectConversation(
+      userId,
+      sellerUserId,
     );
 
     return this.sendMediaMessage(userId, conversation.id, dto);
@@ -1721,50 +1834,6 @@ export class ConversationsService {
     };
   }
 
-  private async loadConversationThreadMessagesPage(
-    userId: string,
-    targetUserId: string,
-    pageOptions?: ConversationMessagesPageOptions,
-  ): Promise<ConversationMessagesPage> {
-    const take = this.normalizeMessagesPageLimit(pageOptions?.limit);
-    const cursor = await this.resolveBeforeMessageCursor(
-      pageOptions?.beforeMessageId,
-    );
-    const beforeWhere = this.buildBeforeMessageWhere(cursor);
-    const records = await this.prisma.chatMessage.findMany({
-      where: {
-        conversation: {
-          OR: [
-            {
-              buyerUserId: userId,
-              sellerUserId: targetUserId,
-            },
-            {
-              buyerUserId: targetUserId,
-              sellerUserId: userId,
-            },
-          ],
-        },
-        ...(this.buildDeletedForMeFilter(userId) ?? {}),
-        ...(beforeWhere == null ? {} : beforeWhere),
-      },
-      include: conversationMessageInclude,
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take: take + 1,
-    });
-    const hasOlderMessages = records.length > take;
-    const pageRecords = (hasOlderMessages ? records.slice(0, take) : records)
-      .slice()
-      .reverse();
-
-    return {
-      messages: pageRecords,
-      limit: take,
-      hasOlderMessages,
-      oldestLoadedMessageId: pageRecords[0]?.id ?? null,
-    };
-  }
-
   private async presentConversationDetail(
     conversation: ConversationDetail,
     userId: string,
@@ -1831,85 +1900,6 @@ export class ConversationsService {
       kind: conversation.kind,
       createdAt: conversation.createdAt.toISOString(),
       lastMessageAt: conversation.lastMessageAt.toISOString(),
-      pagination: {
-        limit: page.limit,
-        hasOlderMessages: page.hasOlderMessages,
-        oldestLoadedMessageId: page.oldestLoadedMessageId,
-      },
-      ...blockState,
-    };
-  }
-
-  private async presentConversationThreadDetail(
-    anchorConversation: ConversationDetail,
-    conversations: ConversationDetail[],
-    userId: string,
-    pageOptions?: ConversationMessagesPageOptions,
-  ) {
-    const anchorIsBuyer = anchorConversation.buyerUserId === userId;
-    const participant = anchorIsBuyer
-      ? anchorConversation.seller
-      : anchorConversation.buyer;
-    const blockState = await this.presentConversationBlockState(
-      userId,
-      participant.id,
-    );
-    const page = await this.loadConversationThreadMessagesPage(
-      userId,
-      participant.id,
-      pageOptions,
-    );
-    const currentProductSnapshots = await this.buildCurrentProductSnapshotMap(
-      page.messages,
-    );
-
-    const messages = page.messages.map<ConversationThreadMessage>(
-      (message) => ({
-        id: message.id,
-        clientMessageId: message.clientMessageId,
-        content: message.content,
-        kind: message.kind,
-        acceptedAt: message.acceptedAt?.toISOString() ?? null,
-        createdAt: message.createdAt.toISOString(),
-        deliveredAt: message.deliveredAt?.toISOString() ?? null,
-        readAt: message.readAt?.toISOString() ?? null,
-        isMine: message.senderUserId === userId,
-        reply: this.presentMessageReply(message, userId),
-        sender: {
-          id: message.sender.id,
-          displayName: message.sender.displayName,
-          avatarUrl: message.sender.avatarUrl,
-        },
-        media: this.presentMessageMedia(message),
-        product: this.presentMessageProductSnapshot(
-          message,
-          currentProductSnapshots,
-        ),
-      }),
-    );
-
-    const createdAt = conversations
-      .map((conversation) => conversation.createdAt)
-      .sort((first, second) => first.getTime() - second.getTime())[0];
-    const lastMessageAt = conversations
-      .map((conversation) => conversation.lastMessageAt)
-      .sort((first, second) => second.getTime() - first.getTime())[0];
-
-    return {
-      id: anchorConversation.id,
-      participant: {
-        id: participant.id,
-        displayName: participant.displayName,
-        avatarUrl: participant.avatarUrl,
-        roleLabel: this.resolveRoleLabel(participant),
-        isOnline: this.isUserOnline(participant),
-        lastSeenAt: participant.lastSeenAt?.toISOString() ?? null,
-      },
-      product: null,
-      messages,
-      kind: "DIRECT",
-      createdAt: createdAt.toISOString(),
-      lastMessageAt: lastMessageAt.toISOString(),
       pagination: {
         limit: page.limit,
         hasOlderMessages: page.hasOlderMessages,

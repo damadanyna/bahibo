@@ -28,31 +28,23 @@ class SellerProfilePage extends StatefulWidget {
 
 class _SellerProfilePageState extends State<SellerProfilePage>
     with AppPageRefreshMixin<SellerProfilePage> {
-  static const String _defaultAvatarUrl =
-      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600';
-  static const String _defaultCoverImageUrl =
-      'https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?w=1600';
-
   final AppAuthService _authService = AppAuthService();
   final CatalogApiService _catalogApiService = CatalogApiService();
 
   bool _showEntrySkeleton = true;
   bool _isSubscribed = false;
   bool _isSubscriptionSubmitting = false;
+  bool _isCurrentViewerAdmin = false;
   String? _currentViewerUserId;
   late UserProfileData _currentProfile;
 
   UserProfileData get profile => _currentProfile;
 
-  String get _profileAvatarUrl {
-    final value = profile.avatarUrl.trim();
-    return value.isNotEmpty ? value : _defaultAvatarUrl;
-  }
+  String get _profileAvatarUrl => profile.avatarUrl.trim();
 
-  String get _profileCoverImageUrl {
-    final value = profile.coverImageUrl.trim();
-    return value.isNotEmpty ? value : _defaultCoverImageUrl;
-  }
+  String get _profileCoverImageUrl => profile.coverImageUrl.trim();
+
+  bool get _hasRealCoverImage => _profileCoverImageUrl.isNotEmpty;
 
   bool get _isOwnSellerProfile {
     final currentViewerUserId = _currentViewerUserId?.trim() ?? '';
@@ -61,6 +53,8 @@ class _SellerProfilePageState extends State<SellerProfilePage>
         sellerUserId.isNotEmpty &&
         currentViewerUserId == sellerUserId;
   }
+
+  bool get _hasSellerProfile => (profile.sellerProfileId?.trim() ?? '').isNotEmpty;
 
   DateTime? get _profileLastSeenAt {
     final rawValue = profile.lastSeenAt?.trim() ?? '';
@@ -150,6 +144,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
     try {
       final user = await _authService.fetchCurrentUser();
       final userId = user['id']?.toString().trim();
+      final role = user['role']?.toString().trim().toUpperCase() ?? '';
       if (!mounted) {
         return;
       }
@@ -157,6 +152,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
         _currentViewerUserId = userId != null && userId.isNotEmpty
             ? userId
             : null;
+        _isCurrentViewerAdmin = role == 'ADMIN';
       });
     } catch (_) {
       // Keep page usable even when viewer cannot be resolved.
@@ -347,6 +343,8 @@ class _SellerProfilePageState extends State<SellerProfilePage>
         ? PresenceService.instance.presenceOf(sellerUserId)
         : null;
     final presenceLabel = _presenceStatusLabel(livePresence == true);
+    final phoneNumber = profile.phoneE164?.trim() ?? '';
+    final showPhoneNumber = _isCurrentViewerAdmin && phoneNumber.isNotEmpty;
 
     await showDialog<void>(
       context: context,
@@ -379,6 +377,10 @@ class _SellerProfilePageState extends State<SellerProfilePage>
               ),
               const SizedBox(height: 10),
               _dialogInfoRow(Icons.schedule_outlined, presenceLabel, context),
+              if (showPhoneNumber) ...[
+                const SizedBox(height: 10),
+                _dialogInfoRow(Icons.phone_outlined, phoneNumber, context),
+              ],
               if (accountCreatedLabel != null) ...[
                 const SizedBox(height: 10),
                 _dialogInfoRow(
@@ -647,17 +649,19 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                       bottomLeft: Radius.circular(32),
                       bottomRight: Radius.circular(32),
                     ),
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => ImageViewerPage(
-                            imageUrls: [_profileCoverImageUrl],
-                            initialIndex: 0,
-                            heroTag: 'profile-cover-${profile.name}',
-                          ),
-                        ),
-                      );
-                    },
+                    onTap: _hasRealCoverImage
+                        ? () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => ImageViewerPage(
+                                  imageUrls: [_profileCoverImageUrl],
+                                  initialIndex: 0,
+                                  heroTag: 'profile-cover-${profile.name}',
+                                ),
+                              ),
+                            );
+                          }
+                        : null,
                     child: Hero(
                       tag: 'profile-cover-${profile.name}',
                       child: ClipRRect(
@@ -670,10 +674,20 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                           child: Stack(
                             fit: StackFit.expand,
                             children: [
-                              AppNetworkImage(
-                                imageUrl: _profileCoverImageUrl,
-                                fit: BoxFit.cover,
-                              ),
+                              _hasRealCoverImage
+                                  ? AppNetworkImage(
+                                      imageUrl: _profileCoverImageUrl,
+                                      fit: BoxFit.cover,
+                                    )
+                                  : AppImagePlaceholder(
+                                      child: Center(
+                                        child: Icon(
+                                          Icons.person,
+                                          size: 64,
+                                          color: theme.appColors.placeholderIcon,
+                                        ),
+                                      ),
+                                    ),
                               DecoratedBox(
                                 decoration: BoxDecoration(
                                   gradient: LinearGradient(
@@ -706,17 +720,19 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                         color: Colors.transparent,
                         child: InkWell(
                           borderRadius: BorderRadius.circular(999),
-                          onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => ImageViewerPage(
-                                  imageUrls: [_profileAvatarUrl],
-                                  initialIndex: 0,
-                                  heroTag: 'profile-avatar-${profile.name}',
-                                ),
-                              ),
-                            );
-                          },
+                          onTap: _profileAvatarUrl.isNotEmpty
+                              ? () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => ImageViewerPage(
+                                        imageUrls: [_profileAvatarUrl],
+                                        initialIndex: 0,
+                                        heroTag: 'profile-avatar-${profile.name}',
+                                      ),
+                                    ),
+                                  );
+                                }
+                              : null,
                           child: Hero(
                             tag: 'profile-avatar-${profile.name}',
                             child: Container(
@@ -892,27 +908,29 @@ class _SellerProfilePageState extends State<SellerProfilePage>
                             ),
                           ),
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: _isSubscriptionSubmitting
-                                ? null
-                                : () => _showSubscribeConfirmation(context),
-                            icon: Icon(
-                              _isSubscribed
-                                  ? Icons.notifications_active_rounded
-                                  : Icons.person_add_alt_1_rounded,
-                              size: 18,
-                            ),
-                            label: Text(_isSubscribed ? 'Abonné' : "S'abonner"),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
+                        if (_hasSellerProfile) ...[
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _isSubscriptionSubmitting
+                                  ? null
+                                  : () => _showSubscribeConfirmation(context),
+                              icon: Icon(
+                                _isSubscribed
+                                    ? Icons.notifications_active_rounded
+                                    : Icons.person_add_alt_1_rounded,
+                                size: 18,
+                              ),
+                              label: Text(_isSubscribed ? 'Abonné' : "S'abonner"),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
                               ),
                             ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   ],

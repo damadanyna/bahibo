@@ -11,6 +11,7 @@ class UserProfileData {
   final String responseLabel;
   final String headline;
   final String about;
+  final String? phoneE164;
   final String followerCount;
   final String visitorCount;
   final String productCount;
@@ -37,6 +38,7 @@ class UserProfileData {
     required this.responseLabel,
     required this.headline,
     required this.about,
+    this.phoneE164,
     required this.followerCount,
     required this.visitorCount,
     this.productCount = '0',
@@ -69,6 +71,8 @@ UserProfileData buildSellerProfileFromApi(Map<String, dynamic> data) {
     city,
     country,
   ].where((value) => value.isNotEmpty).toList();
+  final exactLocationLabel = (owner['locationLabel'] as String?)?.trim() ?? '';
+  final phoneE164 = (owner['phoneE164'] as String?)?.trim() ?? '';
   final isSellerCertified = data['isSellerCertified'] as bool? ?? false;
 
   return UserProfileData(
@@ -86,12 +90,15 @@ UserProfileData buildSellerProfileFromApi(Map<String, dynamic> data) {
     coverImageUrl: (owner['coverImageUrl'] as String?) ?? '',
     roleLabel: isSellerCertified ? 'Vendeur certifie' : 'Vendeur',
     responseLabel: 'Profil actif',
-    headline: headlineParts.isNotEmpty
-        ? headlineParts.join(', ')
-        : 'Boutique BANAY active',
+    headline: exactLocationLabel.isNotEmpty
+        ? exactLocationLabel
+        : (headlineParts.isNotEmpty
+              ? headlineParts.join(', ')
+              : 'Boutique BANAY active'),
     about: (data['description'] as String?)?.trim().isNotEmpty == true
         ? (data['description'] as String).trim()
         : 'Boutique BANAY active sur la plateforme.',
+    phoneE164: phoneE164.isNotEmpty ? phoneE164 : null,
     followerCount: '${sellerStats['followerCount'] ?? 0}',
     visitorCount: '${sellerStats['profileViewCount'] ?? 0}',
     productCount: '${sellerStats['productCount'] ?? products.length}',
@@ -227,6 +234,7 @@ UserProfileData buildPublicUserProfileFromApi(Map<String, dynamic> data) {
   final isVerified = data['isVerified'] as bool? ?? false;
   final isSellerCertified = data['isSellerCertified'] as bool? ?? false;
   final locationLabel = (data['locationLabel'] as String?)?.trim() ?? '';
+  final phoneE164 = (data['phoneE164'] as String?)?.trim() ?? '';
   final sellerDescription = sellerProfile is Map
       ? (sellerProfile['description'] as String?)?.trim() ?? ''
       : '';
@@ -253,6 +261,7 @@ UserProfileData buildPublicUserProfileFromApi(Map<String, dynamic> data) {
     about: sellerDescription.isNotEmpty
         ? sellerDescription
         : 'Membre BANAY actif sur la plateforme.',
+    phoneE164: phoneE164.isNotEmpty ? phoneE164 : null,
     followerCount: '${sellerStats['followerCount'] ?? 0}',
     visitorCount: '${sellerStats['profileViewCount'] ?? 0}',
     productCount: '${sellerStats['productCount'] ?? 0}',

@@ -433,7 +433,6 @@ model ChatConversation {
   product       Product?      @relation(fields: [productId], references: [id], onDelete: Cascade)
   messages      ChatMessage[]
 
-  @@unique([buyerUserId, sellerUserId, productId])
   @@index([buyerUserId, lastMessageAt])
   @@index([sellerUserId, lastMessageAt])
 }

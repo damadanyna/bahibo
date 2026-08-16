@@ -719,7 +719,7 @@ export class ProfilesService {
       throw new NotFoundException('Seller profile not found');
     }
 
-    const [sellerStats, existingFollow] = await Promise.all([
+    const [sellerStats, existingFollow, viewerIsAdmin] = await Promise.all([
       this.buildSellerStats(sellerProfileId),
       this.prisma.sellerFollow.findUnique({
         where: {
@@ -729,6 +729,7 @@ export class ProfilesService {
           },
         },
       }),
+      this.isAdminUser(viewerUserId),
     ]);
 
     return presentPublicSellerProfile(
@@ -736,15 +737,27 @@ export class ProfilesService {
       sellerStats,
       existingFollow != null,
       sellerProfile.userId === viewerUserId,
+      viewerIsAdmin,
     );
   }
 
-  async getPublicUserProfile(userId: string) {
-    const user = await this.findUserProfileById(userId, this.prisma);
+  async getPublicUserProfile(userId: string, viewerUserId?: string) {
+    const [user, viewerIsAdmin] = await Promise.all([
+      this.findUserProfileById(userId, this.prisma),
+      viewerUserId ? this.isAdminUser(viewerUserId) : Promise.resolve(false),
+    ]);
     const sellerStats = user.sellerProfile
       ? await this.buildSellerStats(user.sellerProfile.id)
       : undefined;
-    return presentPublicUserProfile(user, sellerStats);
+    return presentPublicUserProfile(user, sellerStats, viewerIsAdmin);
+  }
+
+  private async isAdminUser(userId: string): Promise<boolean> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+    return user?.role === UserRole.ADMIN;
   }
 
   async getUsersPresence(rawUserIds: string | undefined) {

@@ -288,6 +288,22 @@ export class ProfilesController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('users/:userId/viewer')
+  async getUserProfileForViewer(
+    @Req() req: { user: { userId: string } },
+    @Param('userId') userId: string,
+  ) {
+    return {
+      success: true,
+      message: 'User profile for viewer fetched successfully',
+      data: await this.profilesService.getPublicUserProfile(
+        userId,
+        req.user.userId,
+      ),
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post('users/:userId/report')
   async reportUser(
     @Req() req: { user: { userId: string } },

@@ -166,6 +166,7 @@ export function presentPublicSellerProfile(
   sellerStats?: SellerStats,
   isFollowing = false,
   includeUnavailableProducts = false,
+  viewerIsAdmin = false,
 ) {
   const resolvedSellerStats: SellerStats = sellerStats ?? {
     followerCount: 0,
@@ -213,6 +214,8 @@ export function presentPublicSellerProfile(
       coverImageUrl: profile.user.coverImageUrl,
       lastSeenAt: profile.user.lastSeenAt?.toISOString() ?? null,
       createdAt: profile.user.createdAt.toISOString(),
+      locationLabel: profile.user.locationLabel,
+      phoneE164: viewerIsAdmin ? profile.user.phoneE164 : null,
     },
   };
 }
@@ -220,6 +223,7 @@ export function presentPublicSellerProfile(
 export function presentPublicUserProfile(
   user: UserProfileRecord,
   sellerStats?: SellerStats,
+  viewerIsAdmin = false,
 ) {
   const productCount = user.sellerProfile?._count.products ?? 0;
   const resolvedSellerStats: SellerStats = sellerStats ?? {
@@ -239,6 +243,7 @@ export function presentPublicUserProfile(
     coverImageUrl: user.coverImageUrl,
     locationLabel: user.locationLabel,
     role: user.role,
+    phoneE164: viewerIsAdmin ? user.phoneE164 : null,
     isVerified: user.isVerified,
     isSellerCertified: user.isSellerCertified,
     createdAt: user.createdAt.toISOString(),

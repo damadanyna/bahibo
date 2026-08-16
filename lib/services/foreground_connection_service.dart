@@ -94,10 +94,7 @@ class ForegroundConnectionService {
 
     await FlutterForegroundTask.startService(
       serviceId: _serviceId,
-      serviceTypes: [
-        ForegroundServiceTypes.dataSync,
-        ForegroundServiceTypes.remoteMessaging,
-      ],
+      serviceTypes: [ForegroundServiceTypes.remoteMessaging],
       notificationTitle: 'Banay',
       notificationText: 'Actif en arriere-plan pour recevoir vos messages.',
       callback: _foregroundConnectionTaskCallback,
