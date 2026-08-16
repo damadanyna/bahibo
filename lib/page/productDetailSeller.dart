@@ -6,6 +6,7 @@ import 'package:banay/component/app_page_skeletons.dart';
 import 'package:banay/component/app_page_refresh.dart';
 import 'package:banay/component/app_back_button.dart';
 import 'package:banay/formatter/price_formatter.dart';
+import 'package:banay/formatter/product_detail_formatter.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/catalog_api_service.dart';
 import 'package:flutter/material.dart';
@@ -512,44 +513,9 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                               ),
 
                               // ── Carte détails produit ──
-                              Container(
-                                margin: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                ),
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: detailCardColor,
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Détails du Produit',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: detailPrimaryTextColor,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    _detailRow(
-                                      Icons.star_outline,
-                                      'État',
-                                      'Comme Neuf',
-                                    ),
-                                    _detailRow(
-                                      Icons.verified_outlined,
-                                      'Garantie',
-                                      '3 Mois',
-                                    ),
-                                    _detailRow(
-                                      Icons.check_circle_outline,
-                                      'Contrôle',
-                                      'Testé et Vérifié',
-                                    ),
-                                  ],
-                                ),
+                              _buildProductDetailsCard(
+                                detailCardColor,
+                                detailPrimaryTextColor,
                               ),
 
                               const SizedBox(height: 12),
@@ -876,6 +842,48 @@ class _ProductDetailPageState extends State<ProductDetailPage>
           color: appColors.placeholderIcon,
           size: 50,
         ),
+      ),
+    );
+  }
+
+  Widget _buildProductDetailsCard(
+    Color detailCardColor,
+    Color detailPrimaryTextColor,
+  ) {
+    final conditionLabel = productConditionDisplayValue(product);
+    final warrantyLabel = productWarrantyDisplayValue(product);
+    final detailRows = [
+      if (conditionLabel != null)
+        _detailRow(Icons.star_outline, 'État', conditionLabel),
+      if (warrantyLabel != null)
+        _detailRow(Icons.verified_outlined, 'Garantie', warrantyLabel),
+    ];
+
+    if (detailRows.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: detailCardColor,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Détails du Produit',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: detailPrimaryTextColor,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...detailRows,
+        ],
       ),
     );
   }

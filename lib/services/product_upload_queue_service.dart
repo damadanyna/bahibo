@@ -37,6 +37,9 @@ class ProductUploadTask {
     this.productId,
     this.isAvailable,
     this.condition,
+    this.hasWarranty,
+    this.warrantyDurationValue,
+    this.warrantyDurationUnit,
     this.previewProduct,
     this.resultProduct,
   });
@@ -53,6 +56,9 @@ class ProductUploadTask {
   final bool? isAvailable;
   final String currencyCode;
   final String? condition;
+  final bool? hasWarranty;
+  final int? warrantyDurationValue;
+  final String? warrantyDurationUnit;
   final Map<String, dynamic>? previewProduct;
   final Map<String, dynamic>? resultProduct;
   final DateTime createdAt;
@@ -78,6 +84,9 @@ class ProductUploadTask {
     bool? isAvailable,
     String? currencyCode,
     String? condition,
+    bool? hasWarranty,
+    int? warrantyDurationValue,
+    String? warrantyDurationUnit,
     Map<String, dynamic>? previewProduct,
     Map<String, dynamic>? resultProduct,
     DateTime? createdAt,
@@ -98,6 +107,9 @@ class ProductUploadTask {
       isAvailable: isAvailable ?? this.isAvailable,
       currencyCode: currencyCode ?? this.currencyCode,
       condition: condition ?? this.condition,
+      hasWarranty: hasWarranty ?? this.hasWarranty,
+      warrantyDurationValue: warrantyDurationValue ?? this.warrantyDurationValue,
+      warrantyDurationUnit: warrantyDurationUnit ?? this.warrantyDurationUnit,
       previewProduct: previewProduct ?? this.previewProduct,
       resultProduct: resultProduct ?? this.resultProduct,
       createdAt: createdAt ?? this.createdAt,
@@ -121,6 +133,9 @@ class ProductUploadTask {
       'isAvailable': isAvailable,
       'currencyCode': currencyCode,
       'condition': condition,
+      'hasWarranty': hasWarranty,
+      'warrantyDurationValue': warrantyDurationValue,
+      'warrantyDurationUnit': warrantyDurationUnit,
       'previewProduct': previewProduct,
       'resultProduct': resultProduct,
       'createdAt': createdAt.toIso8601String(),
@@ -165,6 +180,9 @@ class ProductUploadTask {
       isAvailable: json['isAvailable'] as bool?,
       currencyCode: json['currencyCode']?.toString() ?? 'MGA',
       condition: json['condition']?.toString(),
+      hasWarranty: json['hasWarranty'] as bool?,
+      warrantyDurationValue: (json['warrantyDurationValue'] as num?)?.toInt(),
+      warrantyDurationUnit: json['warrantyDurationUnit']?.toString(),
       previewProduct: json['previewProduct'] is Map
           ? Map<String, dynamic>.from(json['previewProduct'] as Map)
           : null,
@@ -240,6 +258,9 @@ class ProductUploadQueueService extends ChangeNotifier {
     required Map<String, dynamic> previewProduct,
     String currencyCode = 'MGA',
     String? condition,
+    bool? hasWarranty,
+    int? warrantyDurationValue,
+    String? warrantyDurationUnit,
   }) async {
     await initialize();
     return _enqueueTask(
@@ -254,6 +275,9 @@ class ProductUploadQueueService extends ChangeNotifier {
         imageOrder: List<String>.from(imageOrder),
         currencyCode: currencyCode,
         condition: condition,
+        hasWarranty: hasWarranty,
+        warrantyDurationValue: warrantyDurationValue,
+        warrantyDurationUnit: warrantyDurationUnit,
         previewProduct: Map<String, dynamic>.from(previewProduct),
         createdAt: DateTime.now(),
         state: _hasInternetConnection
@@ -279,6 +303,9 @@ class ProductUploadQueueService extends ChangeNotifier {
     bool? isAvailable,
     String currencyCode = 'MGA',
     String? condition,
+    bool? hasWarranty,
+    int? warrantyDurationValue,
+    String? warrantyDurationUnit,
   }) async {
     await initialize();
     return _enqueueTask(
@@ -295,6 +322,9 @@ class ProductUploadQueueService extends ChangeNotifier {
         isAvailable: isAvailable,
         currencyCode: currencyCode,
         condition: condition,
+        hasWarranty: hasWarranty,
+        warrantyDurationValue: warrantyDurationValue,
+        warrantyDurationUnit: warrantyDurationUnit,
         previewProduct: Map<String, dynamic>.from(previewProduct),
         createdAt: DateTime.now(),
         state: _hasInternetConnection
@@ -622,6 +652,10 @@ class ProductUploadQueueService extends ChangeNotifier {
               imageOrder: task.imageOrder,
               isAvailable: task.isAvailable,
               currencyCode: task.currencyCode,
+              condition: task.condition,
+              hasWarranty: task.hasWarranty,
+              warrantyDurationValue: task.warrantyDurationValue,
+              warrantyDurationUnit: task.warrantyDurationUnit,
               onUploadProgress: handleUploadProgress,
             )
           : await _catalogApiService.createProduct(
@@ -632,6 +666,10 @@ class ProductUploadQueueService extends ChangeNotifier {
               imageFiles: imageFiles,
               imageOrder: task.imageOrder,
               currencyCode: task.currencyCode,
+              condition: task.condition,
+              hasWarranty: task.hasWarranty,
+              warrantyDurationValue: task.warrantyDurationValue,
+              warrantyDurationUnit: task.warrantyDurationUnit,
               onUploadProgress: handleUploadProgress,
             );
 

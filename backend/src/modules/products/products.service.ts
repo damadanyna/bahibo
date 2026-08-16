@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma, WarrantyDurationUnit } from "@prisma/client";
 
 import { CloudinaryService } from "../auth/cloudinary.service";
 import { ConversationsRealtimeGateway } from "../conversations/realtime/conversations-realtime.gateway";
@@ -308,6 +308,31 @@ export class ProductsService {
     });
   }
 
+  /**
+   * A product can't keep a stale duration/unit once its warranty is turned
+   * off — otherwise re-enabling it later would silently resurrect whatever
+   * values were last entered instead of asking again.
+   */
+  private resolveWarrantyFields(
+    hasWarranty: boolean,
+    durationValue?: number | null,
+    durationUnit?: WarrantyDurationUnit | null,
+  ) {
+    if (!hasWarranty) {
+      return {
+        hasWarranty: false,
+        warrantyDurationValue: null,
+        warrantyDurationUnit: null,
+      };
+    }
+
+    return {
+      hasWarranty: true,
+      warrantyDurationValue: durationValue ?? null,
+      warrantyDurationUnit: durationUnit ?? null,
+    };
+  }
+
   async create(
     currentUser: { userId: string; role: string },
     dto: CreateProductDto,
@@ -339,6 +364,12 @@ export class ProductsService {
         priceAmount: dto.priceAmount,
         currencyCode: dto.currencyCode?.trim().toUpperCase() ?? "MGA",
         isAvailable: dto.isAvailable ?? true,
+        condition: dto.condition ?? null,
+        ...this.resolveWarrantyFields(
+          dto.hasWarranty ?? false,
+          dto.warrantyDurationValue,
+          dto.warrantyDurationUnit,
+        ),
         categoryId: category.id,
         sellerProfileId: sellerProfile.id,
         productImages: {
@@ -478,6 +509,12 @@ export class ProductsService {
           dto.currencyCode?.trim().toUpperCase() ??
           existingProduct.currencyCode,
         isAvailable: dto.isAvailable ?? existingProduct.isAvailable,
+        condition: dto.condition ?? existingProduct.condition,
+        ...this.resolveWarrantyFields(
+          dto.hasWarranty ?? existingProduct.hasWarranty,
+          dto.warrantyDurationValue ?? existingProduct.warrantyDurationValue,
+          dto.warrantyDurationUnit ?? existingProduct.warrantyDurationUnit,
+        ),
         categoryId: category.id,
         productImages: {
           deleteMany: {},
@@ -1431,6 +1468,10 @@ export class ProductsService {
             currencyCode: product.currencyCode,
             category: product.category.name,
             categoryId: product.categoryId,
+            condition: product.condition ?? undefined,
+            hasWarranty: product.hasWarranty,
+            warrantyDurationValue: product.warrantyDurationValue ?? undefined,
+            warrantyDurationUnit: product.warrantyDurationUnit ?? undefined,
             likesCount: product._count.likes,
             commentsCount: product._count.comments,
             sharesCount: product._count.shares,
@@ -1471,6 +1512,10 @@ export class ProductsService {
       images: imageUrls,
       thumbnail: imageUrls[0],
       isAvailable: product.isAvailable,
+      condition: product.condition ?? undefined,
+      hasWarranty: product.hasWarranty,
+      warrantyDurationValue: product.warrantyDurationValue ?? undefined,
+      warrantyDurationUnit: product.warrantyDurationUnit ?? undefined,
       likesCount: product._count.likes,
       commentsCount: product._count.comments,
       sharesCount: product._count.shares,

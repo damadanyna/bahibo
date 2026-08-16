@@ -11,12 +11,14 @@ import 'package:banay/component/profile_models.dart';
 import 'package:banay/component/seller_profile_page.dart';
 import 'package:banay/component/user_profile_page.dart';
 import 'package:banay/component/ui/dinamic_icon_button.dart';
+import 'package:banay/component/ui/dinamic_icon_checkbox.dart';
 import 'package:banay/component/ui/dinamic_icon_combobox.dart';
 import 'package:banay/component/ui/dinamic_icon_input.dart';
 import 'package:banay/component/ui/dinamic_icon_textarea.dart';
 import 'package:banay/component/ui/dinamic_followed_people_h_list.dart';
 import 'package:banay/component/ui/seller_certified_badge.dart';
 import 'package:banay/component/user_list_page.dart';
+import 'package:banay/formatter/product_detail_formatter.dart';
 import 'package:banay/localization/banay_localizations.dart';
 import 'package:banay/page/private_image_viewer.dart';
 import 'package:banay/page/dashboard_page.dart';
@@ -862,6 +864,9 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     required double parsedPrice,
     required String availability,
     required String productCondition,
+    required bool hasWarranty,
+    required int? warrantyDurationValue,
+    required String warrantyDurationUnit,
     required List<File> localImageFiles,
     required List<String> imageOrder,
     Map<String, dynamic>? initialProduct,
@@ -903,8 +908,13 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
       'images': previewImages,
       'thumbnail': previewImages.isNotEmpty ? previewImages.first : '',
       'status': availability,
-      'condition': productCondition,
+      'condition': productConditionApiFromLabel(productCondition),
       'isAvailable': availability == 'Disponible',
+      'hasWarranty': hasWarranty,
+      'warrantyDurationValue': hasWarranty ? warrantyDurationValue : null,
+      'warrantyDurationUnit': hasWarranty
+          ? warrantyDurationUnitApiFromLabel(warrantyDurationUnit)
+          : null,
       'isLocalFile': true,
     };
   }
@@ -1449,7 +1459,19 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     String availability = (initialProduct?['isAvailable'] as bool? ?? true)
         ? 'Disponible'
         : 'Rupture';
-    String productCondition = 'Neuf';
+    String productCondition =
+        productConditionLabelFromApi(initialProduct?['condition']) ?? 'Neuf';
+    bool hasWarranty = initialProduct?['hasWarranty'] as bool? ?? false;
+    final warrantyDurationController = TextEditingController(
+      text: initialProduct?['warrantyDurationValue'] == null
+          ? ''
+          : '${initialProduct?['warrantyDurationValue']}',
+    );
+    String warrantyDurationUnit =
+        warrantyDurationUnitLabelFromApi(
+          initialProduct?['warrantyDurationUnit'],
+        ) ??
+        'Mois';
     var isPublishingProduct = false;
     final productImages = initialImageUrls
         .map(_SelectedProductImage.remote)
@@ -1764,6 +1786,86 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                           ),
                         ),
                         const SizedBox(height: 12),
+                        DynamicIconCheckbox(
+                          value: hasWarranty,
+                          onChanged: (value) {
+                            setModalState(() {
+                              hasWarranty = value;
+                              if (!value) {
+                                warrantyDurationController.clear();
+                              }
+                            });
+                          },
+                          primary: accentColor,
+                          panelColor: panelColor,
+                          borderColor: accentColor.withValues(alpha: 0.12),
+                          label: 'Ce produit a une garantie',
+                          leadingIcon: Icon(
+                            Icons.shield_outlined,
+                            color: accentColor,
+                          ),
+                        ),
+                        if (hasWarranty) ...[
+                          const SizedBox(height: 12),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: DynamicIconInput(
+                                  controller: warrantyDurationController,
+                                  primary: accentColor,
+                                  panelColor: panelColor,
+                                  borderColor: accentColor.withValues(
+                                    alpha: 0.12,
+                                  ),
+                                  hintText: 'Duree',
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(),
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                  ],
+                                  leadingIcon: Icon(
+                                    Icons.timer_outlined,
+                                    color: accentColor,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: DynamicIconComboBox<String>(
+                                  value: warrantyDurationUnit,
+                                  items: const [
+                                    DropdownMenuItem(
+                                      value: 'Jours',
+                                      child: Text('Jours'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'Mois',
+                                      child: Text('Mois'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'Annee',
+                                      child: Text('Annee'),
+                                    ),
+                                  ],
+                                  onChanged: (value) {
+                                    if (value == null) return;
+                                    setModalState(() {
+                                      warrantyDurationUnit = value;
+                                    });
+                                  },
+                                  primary: accentColor,
+                                  panelColor: panelColor,
+                                  borderColor: accentColor.withValues(
+                                    alpha: 0.12,
+                                  ),
+                                  hintText: 'Unite',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                        const SizedBox(height: 12),
                         DynamicIconTextArea(
                           controller: descriptionController,
                           primary: accentColor,
@@ -2001,12 +2103,22 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                                       priceController.text,
                                     );
 
+                                    final parsedWarrantyDuration =
+                                        int.tryParse(
+                                          warrantyDurationController.text
+                                              .trim(),
+                                        );
+
                                     if (productName.isEmpty ||
                                         productCategory.isEmpty ||
                                         parsedPrice == null ||
                                         parsedPrice <= 0 ||
                                         productDescription.isEmpty ||
-                                        productImages.isEmpty) {
+                                        productImages.isEmpty ||
+                                        (hasWarranty &&
+                                            (parsedWarrantyDuration == null ||
+                                                parsedWarrantyDuration <=
+                                                    0))) {
                                       await _showMissingProductFieldsDialog(
                                         sheetContext,
                                       );
@@ -2058,9 +2170,22 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                                             parsedPrice: parsedPrice.toDouble(),
                                             availability: availability,
                                             productCondition: productCondition,
+                                            hasWarranty: hasWarranty,
+                                            warrantyDurationValue:
+                                                parsedWarrantyDuration,
+                                            warrantyDurationUnit:
+                                                warrantyDurationUnit,
                                             localImageFiles: localImageFiles,
                                             imageOrder: imageOrder,
                                             initialProduct: initialProduct,
+                                          );
+                                      final apiCondition =
+                                          productConditionApiFromLabel(
+                                            productCondition,
+                                          );
+                                      final apiWarrantyDurationUnit =
+                                          warrantyDurationUnitApiFromLabel(
+                                            warrantyDurationUnit,
                                           );
 
                                       final taskId = isEditingProduct
@@ -2087,7 +2212,16 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                                                   isAvailable:
                                                       availability ==
                                                       'Disponible',
-                                                  condition: productCondition,
+                                                  condition: apiCondition,
+                                                  hasWarranty: hasWarranty,
+                                                  warrantyDurationValue:
+                                                      hasWarranty
+                                                      ? parsedWarrantyDuration
+                                                      : null,
+                                                  warrantyDurationUnit:
+                                                      hasWarranty
+                                                      ? apiWarrantyDurationUnit
+                                                      : null,
                                                   previewProduct:
                                                       previewProduct,
                                                 )
@@ -2107,7 +2241,16 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                                                             growable: false,
                                                           ),
                                                   imageOrder: imageOrder,
-                                                  condition: productCondition,
+                                                  condition: apiCondition,
+                                                  hasWarranty: hasWarranty,
+                                                  warrantyDurationValue:
+                                                      hasWarranty
+                                                      ? parsedWarrantyDuration
+                                                      : null,
+                                                  warrantyDurationUnit:
+                                                      hasWarranty
+                                                      ? apiWarrantyDurationUnit
+                                                      : null,
                                                   previewProduct:
                                                       previewProduct,
                                                 );

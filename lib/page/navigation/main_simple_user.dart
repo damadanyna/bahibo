@@ -338,29 +338,6 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
       ? _displayName
       : context.tr(BanayLocalizationKeys.accountDefaultDisplayName);
 
-  String get _displayNamePolicyLabel {
-    final nextChangeAt = _nextDisplayNameChangeAt;
-    if (nextChangeAt == null) {
-      return context.tr(
-        BanayLocalizationKeys.accountDisplayNamePolicyFirstChange,
-      );
-    }
-
-    if (_canUpdateDisplayName) {
-      return context.tr(BanayLocalizationKeys.accountDisplayNamePolicyReady);
-    }
-
-    final remainingDays = _displayNameCooldownDaysRemaining ?? 0;
-
-    return context.tr(
-      BanayLocalizationKeys.accountDisplayNamePolicyCooldown,
-      params: {
-        'remainingDays': _formatRemainingDaysLabel(remainingDays),
-        'nextDate': _formatDate(nextChangeAt),
-      },
-    );
-  }
-
   Future<void> _showDisplayNameEditor() async {
     final nextChangeAt = _nextDisplayNameChangeAt;
     if (!_canUpdateDisplayName) {
@@ -1447,15 +1424,6 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
                                     ),
                                   ),
                                 ],
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                _displayNamePolicyLabel,
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: subtitleColor,
-                                  fontWeight: FontWeight.w600,
-                                  height: 1.35,
-                                ),
                               ),
                             ],
                             if (_profileLoadError != null) ...[

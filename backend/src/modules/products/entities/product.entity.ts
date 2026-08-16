@@ -18,6 +18,10 @@ export interface ProductEntity {
   images: string[];
   thumbnail: string;
   isAvailable: boolean;
+  condition?: 'OCCASION' | 'RECONDITIONNE' | 'NEUF';
+  hasWarranty: boolean;
+  warrantyDurationValue?: number;
+  warrantyDurationUnit?: 'DAYS' | 'MONTHS' | 'YEARS';
   likesCount: number;
   commentsCount: number;
   sharesCount: number;

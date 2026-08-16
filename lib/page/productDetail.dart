@@ -9,6 +9,7 @@ import 'package:banay/component/app_back_button.dart';
 import 'package:banay/component/ui/chat_message_input_not_plus.dart';
 import 'package:banay/component/ui/seller_certified_badge.dart';
 import 'package:banay/formatter/price_formatter.dart';
+import 'package:banay/formatter/product_detail_formatter.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/app_auth_service.dart';
 import 'package:banay/services/catalog_api_service.dart';
@@ -1053,7 +1054,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: _socialActionCard(
-                                        icon: Icons.ios_share_rounded,
+                                        icon: Icons.reply_rounded,
                                         label: _formatActionCount(_shareCount),
                                         iconColor: appColors.mutedText,
                                         onTap: _showShareSuggestions,
@@ -1166,44 +1167,9 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                               ),
 
                               // ── Carte détails produit ──
-                              Container(
-                                margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                                padding: const EdgeInsets.all(18),
-                                decoration: BoxDecoration(
-                                  color: detailCardColor,
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(
-                                    color: appColors.borderColor,
-                                  ),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Détails du Produit',
-                                      style: theme.textTheme.titleMedium?.copyWith(
-                                        fontWeight: FontWeight.w800,
-                                        color: detailPrimaryTextColor,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 14),
-                                    _detailRow(
-                                      Icons.star_outline,
-                                      'État',
-                                      'Comme Neuf',
-                                    ),
-                                    _detailRow(
-                                      Icons.verified_outlined,
-                                      'Garantie',
-                                      '3 Mois',
-                                    ),
-                                    _detailRow(
-                                      Icons.check_circle_outline,
-                                      'Contrôle',
-                                      'Testé et Vérifié',
-                                    ),
-                                  ],
-                                ),
+                              _buildProductDetailsCard(
+                                detailCardColor,
+                                detailPrimaryTextColor,
                               ),
 
                               const SizedBox(height: 12),
@@ -1751,6 +1717,50 @@ class _ProductDetailPageState extends State<ProductDetailPage>
           color: appColors.placeholderIcon,
           size: 50,
         ),
+      ),
+    );
+  }
+
+  Widget _buildProductDetailsCard(
+    Color detailCardColor,
+    Color detailPrimaryTextColor,
+  ) {
+    final theme = Theme.of(context);
+    final appColors = theme.appColors;
+    final conditionLabel = productConditionDisplayValue(product);
+    final warrantyLabel = productWarrantyDisplayValue(product);
+    final detailRows = [
+      if (conditionLabel != null)
+        _detailRow(Icons.star_outline, 'État', conditionLabel),
+      if (warrantyLabel != null)
+        _detailRow(Icons.verified_outlined, 'Garantie', warrantyLabel),
+    ];
+
+    if (detailRows.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: detailCardColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: appColors.borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Détails du Produit',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: detailPrimaryTextColor,
+            ),
+          ),
+          const SizedBox(height: 14),
+          ...detailRows,
+        ],
       ),
     );
   }

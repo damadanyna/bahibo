@@ -379,6 +379,10 @@ class CatalogApiService {
     required List<File> imageFiles,
     required List<String> imageOrder,
     String currencyCode = 'MGA',
+    String? condition,
+    bool? hasWarranty,
+    int? warrantyDurationValue,
+    String? warrantyDurationUnit,
     void Function(ProductUploadProgressInfo progress)? onUploadProgress,
   }) async {
     final accessToken = await _sessionStorage.getAccessToken();
@@ -395,6 +399,14 @@ class CatalogApiService {
       ..fields['currencyCode'] = currencyCode
       ..fields['categoryName'] = categoryName
       ..fields['imageOrderJson'] = jsonEncode(imageOrder);
+
+    _applyProductConditionAndWarrantyFields(
+      request,
+      condition: condition,
+      hasWarranty: hasWarranty,
+      warrantyDurationValue: warrantyDurationValue,
+      warrantyDurationUnit: warrantyDurationUnit,
+    );
 
     request.files.addAll(
       await _buildTrackedMultipartFiles(
@@ -417,6 +429,10 @@ class CatalogApiService {
     required List<String> imageOrder,
     bool? isAvailable,
     String currencyCode = 'MGA',
+    String? condition,
+    bool? hasWarranty,
+    int? warrantyDurationValue,
+    String? warrantyDurationUnit,
     void Function(ProductUploadProgressInfo progress)? onUploadProgress,
   }) async {
     final accessToken = await _sessionStorage.getAccessToken();
@@ -438,6 +454,14 @@ class CatalogApiService {
       request.fields['isAvailable'] = '$isAvailable';
     }
 
+    _applyProductConditionAndWarrantyFields(
+      request,
+      condition: condition,
+      hasWarranty: hasWarranty,
+      warrantyDurationValue: warrantyDurationValue,
+      warrantyDurationUnit: warrantyDurationUnit,
+    );
+
     request.files.addAll(
       await _buildTrackedMultipartFiles(
         imageFiles,
@@ -447,6 +471,30 @@ class CatalogApiService {
 
     final response = await _sendMultipartRequest(request);
     return _parseMultipartResponse(response);
+  }
+
+  void _applyProductConditionAndWarrantyFields(
+    http.MultipartRequest request, {
+    String? condition,
+    bool? hasWarranty,
+    int? warrantyDurationValue,
+    String? warrantyDurationUnit,
+  }) {
+    if (condition != null && condition.trim().isNotEmpty) {
+      request.fields['condition'] = condition.trim();
+    }
+    if (hasWarranty != null) {
+      request.fields['hasWarranty'] = '$hasWarranty';
+    }
+    if (hasWarranty == true) {
+      if (warrantyDurationValue != null) {
+        request.fields['warrantyDurationValue'] = '$warrantyDurationValue';
+      }
+      if (warrantyDurationUnit != null &&
+          warrantyDurationUnit.trim().isNotEmpty) {
+        request.fields['warrantyDurationUnit'] = warrantyDurationUnit.trim();
+      }
+    }
   }
 
   Future<Map<String, dynamic>> deleteProduct(String productId) async {

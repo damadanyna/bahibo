@@ -2,8 +2,6 @@ generator client {
   provider = "prisma-client-js"
 }
 
-
-
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -51,60 +49,72 @@ enum ChatMessageKind {
   PRODUCT
 }
 
+enum ProductCondition {
+  OCCASION
+  RECONDITIONNE
+  NEUF
+}
+
+enum WarrantyDurationUnit {
+  DAYS
+  MONTHS
+  YEARS
+}
+
 model User {
-  id              String         @id @default(uuid())
-  phoneE164       String         @unique
-  countryName     String?
-  countryDialCode String?
-  displayName     String
-  displayNameChangedAt DateTime?
-  passwordHash    String
-  avatarUrl       String?
-  coverImageUrl   String?
-  lastSeenAt      DateTime?
-  locationLabel   String?
-  locationLatitude Float?
-  locationLongitude Float?
-  locationUpdatedAt DateTime?
-  preferredLanguage String?
-  role            UserRole       @default(CUSTOMER)
-  shopRequestStatus ShopRequestStatus @default(NONE)
-  shopRequestSubmittedAt DateTime?
-  shopRequestReviewedAt DateTime?
-  isVerified      Boolean        @default(false)
-  isSellerCertified Boolean      @default(false)
-  sellerVerificationRequestStatus ShopRequestStatus @default(NONE)
-  sellerVerificationRequestedAt DateTime?
-  sellerVerificationReviewedAt DateTime?
+  id                              String                  @id @default(uuid())
+  phoneE164                       String                  @unique
+  countryName                     String?
+  countryDialCode                 String?
+  displayName                     String
+  displayNameChangedAt            DateTime?
+  passwordHash                    String
+  avatarUrl                       String?
+  coverImageUrl                   String?
+  lastSeenAt                      DateTime?
+  locationLabel                   String?
+  locationLatitude                Float?
+  locationLongitude               Float?
+  locationUpdatedAt               DateTime?
+  preferredLanguage               String?
+  role                            UserRole                @default(CUSTOMER)
+  shopRequestStatus               ShopRequestStatus       @default(NONE)
+  shopRequestSubmittedAt          DateTime?
+  shopRequestReviewedAt           DateTime?
+  isVerified                      Boolean                 @default(false)
+  isSellerCertified               Boolean                 @default(false)
+  sellerVerificationRequestStatus ShopRequestStatus       @default(NONE)
+  sellerVerificationRequestedAt   DateTime?
+  sellerVerificationReviewedAt    DateTime?
   /// Set when the user deletes their account. The row itself is kept
   /// (order/message history references it), but PII is scrubbed at the
   /// same time this is set — see ProfilesService.deleteOwnAccount.
-  deletedAt       DateTime?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  refreshTokens   RefreshToken[]
-  sellerProfile   SellerProfile?
-  cart            Cart?
-  orders          Order[]
-  boughtConversations ChatConversation[] @relation("ConversationBuyer")
-  soldConversations   ChatConversation[] @relation("ConversationSeller")
-  chatMessages        ChatMessage[]      @relation("MessageSender")
-  deviceTokens        UserDeviceToken[]
-  notificationReadStates NotificationReadState[]
-  feedbacks           UserFeedback[]
-  searchHistories     SearchHistory[]
-  sellerFollows       SellerFollow[]     @relation("SellerFollowFollower")
-  sellerProfileViews  SellerProfileView[] @relation("SellerProfileViewViewer")
-  productLikes        ProductLike[]
-  productComments     ProductComment[]
-  productCommentMentions ProductCommentMention[]
-  productShares       ProductShare[]
-  reportsSent         UserReport[]       @relation("UserReportsSent")
-  reportsReceived     UserReport[]       @relation("UserReportsReceived")
-  blocksSent          UserBlock[]        @relation("UserBlocksSent")
-  blocksReceived      UserBlock[]        @relation("UserBlocksReceived")
-  eventLogs           UserEventLog[]
-  serverLogs          ServerLog[]
+  deletedAt                       DateTime?
+  createdAt                       DateTime                @default(now())
+  updatedAt                       DateTime                @updatedAt
+  refreshTokens                   RefreshToken[]
+  sellerProfile                   SellerProfile?
+  cart                            Cart?
+  orders                          Order[]
+  boughtConversations             ChatConversation[]      @relation("ConversationBuyer")
+  soldConversations               ChatConversation[]      @relation("ConversationSeller")
+  chatMessages                    ChatMessage[]           @relation("MessageSender")
+  deviceTokens                    UserDeviceToken[]
+  notificationReadStates          NotificationReadState[]
+  feedbacks                       UserFeedback[]
+  searchHistories                 SearchHistory[]
+  sellerFollows                   SellerFollow[]          @relation("SellerFollowFollower")
+  sellerProfileViews              SellerProfileView[]     @relation("SellerProfileViewViewer")
+  productLikes                    ProductLike[]
+  productComments                 ProductComment[]
+  productCommentMentions          ProductCommentMention[]
+  productShares                   ProductShare[]
+  reportsSent                     UserReport[]            @relation("UserReportsSent")
+  reportsReceived                 UserReport[]            @relation("UserReportsReceived")
+  blocksSent                      UserBlock[]             @relation("UserBlocksSent")
+  blocksReceived                  UserBlock[]             @relation("UserBlocksReceived")
+  eventLogs                       UserEventLog[]
+  serverLogs                      ServerLog[]
 }
 
 model UserBlock {
@@ -166,12 +176,12 @@ model NotificationReadState {
 }
 
 model UserFeedback {
-  id         String   @id @default(uuid())
-  userId     String
-  message    String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String   @id @default(uuid())
+  userId    String
+  message   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([createdAt])
@@ -239,44 +249,44 @@ model UserDeviceToken {
 }
 
 model PhoneOtpChallenge {
-  id              String   @id @default(uuid())
+  id              String    @id @default(uuid())
   phoneE164       String
   countryName     String?
   countryDialCode String?
   codeHash        String
   expiresAt       DateTime
-  attempts        Int      @default(0)
+  attempts        Int       @default(0)
   verifiedAt      DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@index([phoneE164, createdAt])
 }
 
 model RefreshToken {
-  id         String   @id @default(uuid())
-  tokenHash  String
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String   @id @default(uuid())
+  tokenHash String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model SellerProfile {
-  id          String    @id @default(uuid())
-  studioName  String
-  description String?
-  city        String?
-  country     String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  userId      String    @unique
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  products    Product[]
-  orders      Order[]
-  followers   SellerFollow[]
+  id           String              @id @default(uuid())
+  studioName   String
+  description  String?
+  city         String?
+  country      String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  userId       String              @unique
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  products     Product[]
+  orders       Order[]
+  followers    SellerFollow[]
   profileViews SellerProfileView[]
-  liveSession SellerLiveSession?
+  liveSession  SellerLiveSession?
 }
 
 model SellerLiveSession {
@@ -304,26 +314,30 @@ model Category {
 }
 
 model Product {
-  id              String      @id @default(uuid())
-  title           String
-  description     String
-  imageUrl        String
-  priceAmount     Decimal     @db.Decimal(12, 2)
-  currencyCode    String      @default("MGA")
-  isAvailable     Boolean     @default(true)
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  sellerProfileId String
-  categoryId      String
-  sellerProfile   SellerProfile @relation(fields: [sellerProfileId], references: [id], onDelete: Cascade)
-  category        Category    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  productImages   ProductImage[]
-  likes           ProductLike[]
-  comments        ProductComment[]
-  shares          ProductShare[]
-  cartItems       CartItem[]
-  orderItems      OrderItem[]
-  conversations   ChatConversation[]
+  id                    String                @id @default(uuid())
+  title                 String
+  description           String
+  imageUrl              String
+  priceAmount           Decimal               @db.Decimal(12, 2)
+  currencyCode          String                @default("MGA")
+  isAvailable           Boolean               @default(true)
+  condition             ProductCondition?
+  hasWarranty           Boolean               @default(false)
+  warrantyDurationValue Int?
+  warrantyDurationUnit  WarrantyDurationUnit?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  sellerProfileId       String
+  categoryId            String
+  sellerProfile         SellerProfile         @relation(fields: [sellerProfileId], references: [id], onDelete: Cascade)
+  category              Category              @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  productImages         ProductImage[]
+  likes                 ProductLike[]
+  comments              ProductComment[]
+  shares                ProductShare[]
+  cartItems             CartItem[]
+  orderItems            OrderItem[]
+  conversations         ChatConversation[]
 }
 
 model SellerFollow {
@@ -363,17 +377,17 @@ model ProductLike {
 }
 
 model ProductComment {
-  id              String   @id @default(uuid())
+  id              String                  @id @default(uuid())
   content         String
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
   userId          String
   productId       String
   parentCommentId String?
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  product         Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  parentComment   ProductComment? @relation("ProductCommentReplies", fields: [parentCommentId], references: [id], onDelete: Cascade)
-  replies         ProductComment[] @relation("ProductCommentReplies")
+  user            User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product         Product                 @relation(fields: [productId], references: [id], onDelete: Cascade)
+  parentComment   ProductComment?         @relation("ProductCommentReplies", fields: [parentCommentId], references: [id], onDelete: Cascade)
+  replies         ProductComment[]        @relation("ProductCommentReplies")
   mentions        ProductCommentMention[]
 
   @@index([productId, createdAt])
@@ -383,12 +397,12 @@ model ProductComment {
 }
 
 model ProductCommentMention {
-  id              String   @id @default(uuid())
-  createdAt       DateTime @default(now())
+  id              String         @id @default(uuid())
+  createdAt       DateTime       @default(now())
   commentId       String
   mentionedUserId String
   comment         ProductComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
-  mentionedUser   User     @relation(fields: [mentionedUserId], references: [id], onDelete: Cascade)
+  mentionedUser   User           @relation(fields: [mentionedUserId], references: [id], onDelete: Cascade)
 
   @@unique([commentId, mentionedUserId])
   @@index([mentionedUserId, createdAt])
@@ -419,18 +433,18 @@ model ProductImage {
 }
 
 model ChatConversation {
-  id            String        @id @default(uuid())
+  id            String               @id @default(uuid())
   buyerUserId   String
   sellerUserId  String
   productId     String?
   kind          ChatConversationKind @default(PRODUCT)
-  directKey     String?       @unique
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  lastMessageAt DateTime      @default(now())
-  buyer         User          @relation("ConversationBuyer", fields: [buyerUserId], references: [id], onDelete: Cascade)
-  seller        User          @relation("ConversationSeller", fields: [sellerUserId], references: [id], onDelete: Cascade)
-  product       Product?      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  directKey     String?              @unique
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  lastMessageAt DateTime             @default(now())
+  buyer         User                 @relation("ConversationBuyer", fields: [buyerUserId], references: [id], onDelete: Cascade)
+  seller        User                 @relation("ConversationSeller", fields: [sellerUserId], references: [id], onDelete: Cascade)
+  product       Product?             @relation(fields: [productId], references: [id], onDelete: Cascade)
   messages      ChatMessage[]
 
   @@index([buyerUserId, lastMessageAt])
@@ -438,37 +452,37 @@ model ChatConversation {
 }
 
 model ChatMessage {
-  id             String           @id @default(uuid())
-  conversationId String
-  senderUserId   String
-  content        String
-  kind           ChatMessageKind  @default(TEXT)
-  clientMessageId String?
-  replyToMessageId String?
+  id                  String            @id @default(uuid())
+  conversationId      String
+  senderUserId        String
+  content             String
+  kind                ChatMessageKind   @default(TEXT)
+  clientMessageId     String?
+  replyToMessageId    String?
   replyToSenderUserId String?
-  replyToSenderName String?
-  replyToContent String?
-  productId      String?
-  productTitle   String?
-  productSubtitle String?
-  productPriceLabel String?
-  productImageUrl String?
-  acceptedAt          DateTime         @default(now())
-  createdAt           DateTime         @default(now())
+  replyToSenderName   String?
+  replyToContent      String?
+  productId           String?
+  productTitle        String?
+  productSubtitle     String?
+  productPriceLabel   String?
+  productImageUrl     String?
+  acceptedAt          DateTime          @default(now())
+  createdAt           DateTime          @default(now())
   deliveredAt         DateTime?
   readAt              DateTime?
   deletedForSenderAt  DateTime?
   deletedForBuyerAt   DateTime?
   deletedForSellerAt  DateTime?
   editedAt            DateTime?
-  conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  sender         User             @relation("MessageSender", fields: [senderUserId], references: [id], onDelete: Cascade)
-  media          ChatMessageMedia?
+  conversation        ChatConversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender              User              @relation("MessageSender", fields: [senderUserId], references: [id], onDelete: Cascade)
+  media               ChatMessageMedia?
 
+  @@unique([senderUserId, clientMessageId])
   @@index([conversationId, createdAt])
   @@index([conversationId, deliveredAt])
   @@index([conversationId, readAt])
-  @@unique([senderUserId, clientMessageId])
   @@index([productId])
 }
 
@@ -509,44 +523,44 @@ model Cart {
 }
 
 model CartItem {
-  id          String   @id @default(uuid())
-  quantity    Int      @default(1)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  cartId      String
-  productId   String
-  cart        Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  id        String   @id @default(uuid())
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  cartId    String
+  productId String
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@unique([cartId, productId])
 }
 
 model Order {
-  id               String        @id @default(uuid())
-  orderNumber      String        @unique
-  status           OrderStatus   @default(PENDING)
-  subtotalAmount   Decimal       @db.Decimal(12, 2)
-  deliveryAmount   Decimal       @db.Decimal(12, 2)
-  totalAmount      Decimal       @db.Decimal(12, 2)
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  buyerUserId      String
-  sellerProfileId  String
-  buyer            User          @relation(fields: [buyerUserId], references: [id], onDelete: Restrict)
-  sellerProfile    SellerProfile @relation(fields: [sellerProfileId], references: [id], onDelete: Restrict)
-  items            OrderItem[]
-  shipment         Shipment?
+  id              String        @id @default(uuid())
+  orderNumber     String        @unique
+  status          OrderStatus   @default(PENDING)
+  subtotalAmount  Decimal       @db.Decimal(12, 2)
+  deliveryAmount  Decimal       @db.Decimal(12, 2)
+  totalAmount     Decimal       @db.Decimal(12, 2)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  buyerUserId     String
+  sellerProfileId String
+  buyer           User          @relation(fields: [buyerUserId], references: [id], onDelete: Restrict)
+  sellerProfile   SellerProfile @relation(fields: [sellerProfileId], references: [id], onDelete: Restrict)
+  items           OrderItem[]
+  shipment        Shipment?
 }
 
 model OrderItem {
-  id               String   @id @default(uuid())
+  id               String  @id @default(uuid())
   quantity         Int
-  unitPriceAmount  Decimal  @db.Decimal(12, 2)
-  totalPriceAmount Decimal  @db.Decimal(12, 2)
+  unitPriceAmount  Decimal @db.Decimal(12, 2)
+  totalPriceAmount Decimal @db.Decimal(12, 2)
   orderId          String
   productId        String
-  order            Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product          Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  order            Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product          Product @relation(fields: [productId], references: [id], onDelete: Restrict)
 }
 
 model Shipment {

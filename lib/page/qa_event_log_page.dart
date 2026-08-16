@@ -492,7 +492,7 @@ class _QaEventLogPageState extends State<QaEventLogPage> {
                                 color: Colors.white,
                               ),
                             )
-                          : const Icon(Icons.ios_share_rounded),
+                          : const Icon(Icons.reply_rounded),
                       label: const Text('Exporter'),
                     ),
                     FilledButton.tonalIcon(

@@ -963,7 +963,7 @@ class _ProductCardState extends State<ProductCard> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: _buildActionMetric(
-                          icon: Icons.ios_share_rounded,
+                          icon: Icons.reply_rounded,
                           label: widget.formatMetricCount(
                             _effectiveSharesCount(resolvedProduct),
                           ),

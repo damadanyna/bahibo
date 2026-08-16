@@ -4439,7 +4439,7 @@ class _ChatHeaderState extends State<_ChatHeader> {
                     onPressed: widget.onShareSelection,
                     tooltip: 'Partager',
                     splashRadius: 20,
-                    icon: Icon(Icons.share_outlined, color: headerForeground),
+                    icon: Icon(Icons.reply_rounded, color: headerForeground),
                   ),
                 if (widget.onDeleteSelection != null)
                   IconButton(

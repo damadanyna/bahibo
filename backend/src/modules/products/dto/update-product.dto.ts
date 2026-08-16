@@ -1,6 +1,9 @@
+import { ProductCondition, WarrantyDurationUnit } from '@prisma/client';
 import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsEnum,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
@@ -9,6 +12,22 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
+
+function transformOptionalBoolean({ value }: { value: unknown }) {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized == 'true') {
+      return true;
+    }
+    if (normalized == 'false') {
+      return false;
+    }
+  }
+  return value;
+}
 
 export class UpdateProductDto {
   @IsOptional()
@@ -49,23 +68,28 @@ export class UpdateProductDto {
   categoryName?: string;
 
   @IsOptional()
-  @Transform(({ value }) => {
-    if (typeof value === 'boolean') {
-      return value;
-    }
-    if (typeof value === 'string') {
-      const normalized = value.trim().toLowerCase();
-      if (normalized == 'true') {
-        return true;
-      }
-      if (normalized == 'false') {
-        return false;
-      }
-    }
-    return value;
-  })
+  @Transform(transformOptionalBoolean)
   @IsBoolean()
   isAvailable?: boolean;
+
+  @IsOptional()
+  @IsEnum(ProductCondition)
+  condition?: ProductCondition;
+
+  @IsOptional()
+  @Transform(transformOptionalBoolean)
+  @IsBoolean()
+  hasWarranty?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  warrantyDurationValue?: number;
+
+  @IsOptional()
+  @IsEnum(WarrantyDurationUnit)
+  warrantyDurationUnit?: WarrantyDurationUnit;
 
   @IsOptional()
   @IsUrl({ require_tld: false })
