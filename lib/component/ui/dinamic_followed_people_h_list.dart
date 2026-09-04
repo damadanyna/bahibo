@@ -26,7 +26,11 @@ String resolveFollowedPersonSubtitle(
   Map<String, dynamic> person, {
   required String fallbackSubtitle,
 }) {
-  return person['subtitle']?.toString().trim().isNotEmpty == true
+  // Province name only (e.g. "Antananarivo") when the backend could resolve
+  // one; the full address label stays the fallback for older payloads.
+  return person['locationProvince']?.toString().trim().isNotEmpty == true
+      ? person['locationProvince'].toString().trim()
+      : person['subtitle']?.toString().trim().isNotEmpty == true
       ? person['subtitle'].toString().trim()
       : person['headline']?.toString().trim().isNotEmpty == true
       ? person['headline'].toString().trim()

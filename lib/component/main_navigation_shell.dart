@@ -13,6 +13,7 @@ import 'package:banay/localization/banay_localizations.dart';
 import 'package:banay/services/app_analytics.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/app_auth_service.dart';
+import 'package:banay/services/app_update_service.dart';
 import 'package:banay/services/chat_realtime_service.dart';
 import 'package:banay/services/push_notification_service.dart';
 import 'package:banay/services/share_intent_service.dart';
@@ -62,6 +63,9 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(PushNotificationService.processPendingNotificationNavigation());
       unawaited(ShareIntentService.instance.processPendingShareNavigation());
+      if (mounted) {
+        unawaited(AppUpdateService.instance.checkForUpdate(context));
+      }
     });
   }
 

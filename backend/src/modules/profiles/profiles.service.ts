@@ -10,6 +10,7 @@ import { AccessToken, TrackSource } from 'livekit-server-sdk';
 import { randomUUID } from 'node:crypto';
 
 import { computeDistanceInKm } from '../../utils/geo';
+import { resolveMadagascarProvince } from '../../utils/madagascar-provinces';
 import { CloudinaryService } from '../auth/cloudinary.service';
 import { ConversationsRealtimeGateway } from '../conversations/realtime/conversations-realtime.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -1059,6 +1060,13 @@ export class ProfilesService {
           locationLabel: link.sellerProfile.user.locationLabel,
           sellerProfileDescription: link.sellerProfile.description,
           fallback: 'Boutique suivie',
+        }),
+        // Short place name for compact cards; null outside Madagascar so the
+        // client falls back to the full subtitle.
+        locationProvince: resolveMadagascarProvince({
+          locationLabel: link.sellerProfile.user.locationLabel,
+          latitude: link.sellerProfile.user.locationLatitude,
+          longitude: link.sellerProfile.user.locationLongitude,
         }),
         trailingText: 'Boutique',
         followedAt: link.createdAt,
