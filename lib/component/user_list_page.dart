@@ -216,6 +216,8 @@ class _UserListPageState extends State<UserListPage>
                                     Expanded(
                                       child: TextField(
                                         controller: _searchController,
+                                        textCapitalization:
+                                            TextCapitalization.sentences,
                                         cursorColor: primary,
                                         onChanged: (value) {
                                           setState(() => _searchQuery = value);

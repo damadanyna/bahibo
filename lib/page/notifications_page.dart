@@ -446,6 +446,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                         minLines: 4,
                         maxLines: 6,
                         maxLength: 1000,
+                        textCapitalization: TextCapitalization.sentences,
                         textInputAction: TextInputAction.newline,
                         decoration: const InputDecoration(
                           hintText: 'Ecris ton commentaire ici...',

@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:banay/component/app_link_preview_card.dart';
+import 'package:banay/component/app_linkified_text.dart';
 import 'package:banay/component/app_network_image.dart';
 import 'package:banay/component/app_page_refresh.dart';
 import 'package:banay/component/app_page_skeletons.dart';
@@ -23,6 +25,7 @@ import 'package:banay/services/chat_photo_upload_service.dart';
 import 'package:banay/services/cloudinary_image_url.dart';
 import 'package:banay/services/chat_media_cache_service.dart';
 import 'package:banay/services/conversations_api_service.dart';
+import 'package:banay/services/link_preview_service.dart';
 import 'package:banay/services/local_conversation_store.dart';
 import 'package:banay/services/presence_service.dart';
 import 'package:banay/services/push_notification_service.dart';
@@ -5134,6 +5137,9 @@ class _ChatBubble extends StatelessWidget {
     final normalizedMessage = message.trim();
     final isDeletedPlaceholder =
         normalizedMessage.toLowerCase() == 'message supprime';
+    final messageLinks = isDeletedPlaceholder
+        ? const <String>[]
+        : LinkPreviewService.extractUrls(normalizedMessage);
     final hasCaptionText = normalizedMessage.isNotEmpty;
     final deletedAccent = isMine
         ? const Color(0xFF2E8B57)
@@ -5329,16 +5335,35 @@ class _ChatBubble extends StatelessWidget {
                     ),
                   ],
                 )
-              else if (message.trim().isNotEmpty)
-                Text(
-                  message,
+              else if (message.trim().isNotEmpty) ...[
+                AppLinkifiedText(
+                  text: message,
                   style: TextStyle(
                     color: textColor,
                     fontSize: 15,
                     fontWeight: FontWeight.w500,
                     height: 1.35,
                   ),
+                  linkStyle: TextStyle(
+                    color: isMine && !isDark ? textColor : primary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    height: 1.35,
+                    decoration: TextDecoration.underline,
+                  ),
                 ),
+                if (messageLinks.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  AppLinkPreviewCard(
+                    url: messageLinks.first,
+                    primary: primary,
+                    cardColor: incomingBubbleColor,
+                    textColor: textColor,
+                    subtleText: metaColor,
+                    borderColor: metaColor.withValues(alpha: 0.28),
+                  ),
+                ],
+              ],
               if (!isDeletedPlaceholder) ...[
                 if (message.trim().isNotEmpty) const SizedBox(height: 6),
                 ValueListenableBuilder<int>(

@@ -3610,6 +3610,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
           const SizedBox(height: 14),
           TextField(
             controller: _searchController,
+            textCapitalization: TextCapitalization.sentences,
             decoration: InputDecoration(
               hintText: 'Rechercher un produit ou une categorie',
               prefixIcon: const Icon(Icons.search_rounded),

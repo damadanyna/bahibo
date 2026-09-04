@@ -68,6 +68,7 @@ class AppMessageComposer extends StatelessWidget {
               controller: controller,
               minLines: minLines,
               maxLines: maxLines,
+              textCapitalization: TextCapitalization.sentences,
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => onSend(),
               decoration: appInputDecoration(

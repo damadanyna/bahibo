@@ -60,3 +60,6 @@ build/
 android/.gradle/
 *.apk
 *.aab
+*.gz
+# Database backups (local dumps, never commit)
+backup/

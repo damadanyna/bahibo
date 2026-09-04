@@ -107,6 +107,7 @@ class _DynamicIconTextAreaState extends State<DynamicIconTextArea> {
               focusNode: _focusNode,
               minLines: widget.minLines,
               maxLines: widget.maxLines,
+              textCapitalization: TextCapitalization.sentences,
               textInputAction: TextInputAction.newline,
               style: TextStyle(
                 color: isDark
@@ -138,4 +139,3 @@ class _DynamicIconTextAreaState extends State<DynamicIconTextArea> {
     );
   }
 }
-

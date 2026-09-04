@@ -60,6 +60,7 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
             child: TextField(
               controller: widget.controller,
               maxLines: 1,
+              textCapitalization: TextCapitalization.sentences,
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => _handleSend(),
               style: TextStyle(
@@ -117,4 +118,3 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
     );
   }
 }
-

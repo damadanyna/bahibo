@@ -25,14 +25,6 @@ class LocationPermissionService {
     return Geolocator.requestPermission();
   }
 
-  static Future<bool> openAppSettingsForPermission() async {
-    if (kIsWeb) {
-      return false;
-    }
-
-    return Geolocator.openAppSettings();
-  }
-
   static Future<LocationPermission> ensurePermissionRequestedOnLaunch() async {
     if (kIsWeb) {
       return LocationPermission.unableToDetermine;

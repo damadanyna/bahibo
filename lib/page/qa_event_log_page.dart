@@ -418,6 +418,7 @@ class _QaEventLogPageState extends State<QaEventLogPage> {
                   ),
                 TextField(
                   controller: _testerCodeController,
+                  textCapitalization: TextCapitalization.sentences,
                   textInputAction: TextInputAction.next,
                   decoration: const InputDecoration(
                     labelText: 'Code testeur *',
@@ -428,6 +429,7 @@ class _QaEventLogPageState extends State<QaEventLogPage> {
                 const SizedBox(height: 12),
                 TextField(
                   controller: _scenarioIdController,
+                  textCapitalization: TextCapitalization.sentences,
                   textInputAction: TextInputAction.next,
                   decoration: const InputDecoration(
                     labelText: 'Scenario teste *',
@@ -440,6 +442,7 @@ class _QaEventLogPageState extends State<QaEventLogPage> {
                   controller: _noteController,
                   minLines: 1,
                   maxLines: 3,
+                  textCapitalization: TextCapitalization.sentences,
                   decoration: const InputDecoration(
                     labelText: 'Commentaire testeur',
                     hintText: 'Optionnel: bug observe, contexte, appareil...',

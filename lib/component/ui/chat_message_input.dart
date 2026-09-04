@@ -91,6 +91,8 @@ class UiChatMessageInput extends StatefulWidget {
 }
 
 class _UiChatMessageInputState extends State<UiChatMessageInput> {
+  static const int _maxComposerLines = 6;
+
   final ImagePicker _imagePicker = ImagePicker();
 
   void _showAttachmentError(String message) {
@@ -426,10 +428,16 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
       padding: const EdgeInsets.fromLTRB(7, 3, 5, 3),
       decoration: BoxDecoration(
         color: widget.panelColor,
-        borderRadius: BorderRadius.circular(999),
+        // Half of the single-line height (3 + 50 + 3): a pill on one line,
+        // a rounded rectangle once the field grows, so text never runs into
+        // the curved corners.
+        borderRadius: BorderRadius.circular(28),
         border: Border.all(color: widget.borderColor ?? appColors.inputBorder),
       ),
       child: Row(
+        // Buttons stay anchored to the bottom while the field grows upward,
+        // like WhatsApp / Messenger / Teams composers.
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Material(
             color: Colors.transparent,
@@ -449,30 +457,39 @@ class _UiChatMessageInputState extends State<UiChatMessageInput> {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: TextField(
-              controller: widget.controller,
-              maxLines: 1,
-              textInputAction: TextInputAction.send,
-              onChanged: widget.onTextChanged,
-              onSubmitted: (_) => _handleSend(),
-              style: TextStyle(
-                color: theme.colorScheme.onSurface,
-                fontWeight: FontWeight.w600,
-              ),
-              decoration: InputDecoration(
-                filled: false,
-                fillColor: Colors.transparent,
-                isCollapsed: true,
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                disabledBorder: InputBorder.none,
-                errorBorder: InputBorder.none,
-                focusedErrorBorder: InputBorder.none,
-                hintText: widget.hintText,
-                hintStyle: TextStyle(
-                  color: hintColor,
+            // A single line is centered against the 50px send button; extra
+            // lines expand above it (up to _maxComposerLines).
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 50),
+              alignment: Alignment.centerLeft,
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: TextField(
+                controller: widget.controller,
+                minLines: 1,
+                maxLines: _maxComposerLines,
+                keyboardType: TextInputType.multiline,
+                textCapitalization: TextCapitalization.sentences,
+                textInputAction: TextInputAction.newline,
+                onChanged: widget.onTextChanged,
+                style: TextStyle(
+                  color: theme.colorScheme.onSurface,
                   fontWeight: FontWeight.w600,
+                ),
+                decoration: InputDecoration(
+                  filled: false,
+                  fillColor: Colors.transparent,
+                  isCollapsed: true,
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  disabledBorder: InputBorder.none,
+                  errorBorder: InputBorder.none,
+                  focusedErrorBorder: InputBorder.none,
+                  hintText: widget.hintText,
+                  hintStyle: TextStyle(
+                    color: hintColor,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),

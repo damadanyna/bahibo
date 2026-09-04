@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:banay/component/app_text_input.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
 
 typedef DynamicInputSubmitCallback = FutureOr<void> Function(String text);
@@ -16,6 +17,7 @@ class DynamicIconInput extends StatefulWidget {
   final String hintText;
   final bool autoClearOnSubmit;
   final TextInputType keyboardType;
+  final TextCapitalization? textCapitalization;
   final List<TextInputFormatter>? inputFormatters;
   final TextInputAction textInputAction;
   final Widget? leadingIcon;
@@ -41,6 +43,7 @@ class DynamicIconInput extends StatefulWidget {
     this.hintText = 'Ecrire votre message...',
     this.autoClearOnSubmit = false,
     this.keyboardType = TextInputType.text,
+    this.textCapitalization,
     this.inputFormatters,
     this.textInputAction = TextInputAction.send,
     this.leadingIcon,
@@ -119,6 +122,12 @@ class _DynamicIconInputState extends State<DynamicIconInput> {
               focusNode: widget.focusNode,
               maxLines: 1,
               keyboardType: widget.keyboardType,
+              textCapitalization:
+                  widget.textCapitalization ??
+                  appTextCapitalization(
+                    keyboardType: widget.keyboardType,
+                    obscureText: widget.obscureText,
+                  ),
               obscureText: widget.obscureText,
               inputFormatters: widget.inputFormatters,
               textInputAction: widget.textInputAction,

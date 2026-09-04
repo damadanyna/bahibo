@@ -64,6 +64,27 @@ InputDecoration appInputDecoration(
   );
 }
 
+/// Capitalization applied to every free-text field in the app: the first
+/// letter of each sentence is upper-cased by the keyboard. Disabled for
+/// keyboards where that would be wrong (numbers, phone, email, url, dates)
+/// and for secret fields.
+TextCapitalization appTextCapitalization({
+  TextInputType? keyboardType,
+  bool obscureText = false,
+}) {
+  if (obscureText) {
+    return TextCapitalization.none;
+  }
+  if (keyboardType == null ||
+      keyboardType == TextInputType.text ||
+      keyboardType == TextInputType.multiline ||
+      keyboardType == TextInputType.name ||
+      keyboardType == TextInputType.streetAddress) {
+    return TextCapitalization.sentences;
+  }
+  return TextCapitalization.none;
+}
+
 TextStyle appInputTextStyle(BuildContext context) {
   final theme = Theme.of(context);
   return TextStyle(
@@ -72,4 +93,3 @@ TextStyle appInputTextStyle(BuildContext context) {
     fontSize: 14,
   );
 }
-

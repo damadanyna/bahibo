@@ -26,8 +26,6 @@ import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 
-enum _LocationPermissionDialogAction { later, continueRequest }
-
 void main() {
   runZonedGuarded<Future<void>>(
     () async {
@@ -197,49 +195,11 @@ class _AppLifecycleBootstrapState extends State<_AppLifecycleBootstrap>
     }
   }
 
-  Future<void> _showLocationPermissionPreDialog() async {
-    while (mounted) {
-      final permission =
-          await LocationPermissionService.checkPermissionStatus();
-      if (!mounted) {
-        return;
-      }
-
-      if (!LocationPermissionService.shouldExplainOnLaunch(permission)) {
-        return;
-      }
-
-      final dialogContext = PushNotificationService.navigatorKey.currentContext;
-      if (dialogContext == null || !dialogContext.mounted) {
-        return;
-      }
-      final isDeniedForever = permission == LocationPermission.deniedForever;
-      final action = await showDialog<_LocationPermissionDialogAction>(
-        context: dialogContext,
-        barrierDismissible: false,
-        builder: (context) {
-          return _LocationPermissionDialog(isDeniedForever: isDeniedForever);
-        },
-      );
-      if (!mounted) {
-        return;
-      }
-
-      if (action != _LocationPermissionDialogAction.continueRequest) {
-        await Future<void>.delayed(const Duration(milliseconds: 220));
-        continue;
-      }
-
-      if (isDeniedForever) {
-        await LocationPermissionService.openAppSettingsForPermission();
-      } else {
-        await LocationPermissionService.requestPermissionAfterExplanation();
-      }
-
-      if (!mounted) {
-        return;
-      }
-    }
+  Future<void> _requestLocationPermissionOnLaunch() async {
+    // Ask the OS directly (no custom explanation screen). When the permission
+    // is denied forever the system won't show anything; the user can still
+    // enable it later from the location picker / account settings.
+    await LocationPermissionService.ensurePermissionRequestedOnLaunch();
   }
 
   @override
@@ -252,7 +212,7 @@ class _AppLifecycleBootstrapState extends State<_AppLifecycleBootstrap>
   }
 
   Future<void> _bootstrapLocationFlow() async {
-    await _showLocationPermissionPreDialog();
+    await _requestLocationPermissionOnLaunch();
     await _syncCurrentUserLocationOnLaunch();
     await _showBatteryOptimizationPromptIfNeeded();
   }
@@ -337,166 +297,6 @@ class _AppLifecycleBootstrapState extends State<_AppLifecycleBootstrap>
   }
 }
 
-class _LocationPermissionDialog extends StatelessWidget {
-  final bool isDeniedForever;
-
-  const _LocationPermissionDialog({required this.isDeniedForever});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
-    final blockedTitle = context.tr(
-      BanayLocalizationKeys.locationPermissionBlockedTitle,
-    );
-    final enableTitle = context.tr(BanayLocalizationKeys.enableLocationTitle);
-    final blockedBody = context.tr(
-      BanayLocalizationKeys.locationPermissionBlockedBody,
-    );
-    final enabledBody = context.tr(
-      BanayLocalizationKeys.locationPermissionBody,
-    );
-    final surfaceTint = isDeniedForever
-        ? colors.error.withValues(alpha: 0.18)
-        : colors.primary.withValues(alpha: 0.18);
-
-    return Dialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 24),
-      backgroundColor: Colors.transparent,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 420),
-        decoration: BoxDecoration(
-          color: theme.cardColor,
-          borderRadius: BorderRadius.circular(28),
-          boxShadow: [
-            BoxShadow(
-              color: colors.shadow.withValues(alpha: 0.18),
-              blurRadius: 30,
-              offset: const Offset(0, 18),
-            ),
-          ],
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(24),
-                  gradient: LinearGradient(
-                    colors: [
-                      surfaceTint,
-                      colors.surfaceContainerHighest.withValues(alpha: 0.88),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        color: isDeniedForever ? colors.error : colors.primary,
-                        borderRadius: BorderRadius.circular(22),
-                      ),
-                      child: Icon(
-                        isDeniedForever
-                            ? Icons.settings_suggest_rounded
-                            : Icons.location_searching_rounded,
-                        color: colors.onPrimary,
-                        size: 34,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            isDeniedForever ? blockedTitle : enableTitle,
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            isDeniedForever ? blockedBody : enabledBody,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: colors.onSurface.withValues(alpha: 0.76),
-                              height: 1.35,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 18),
-              _PermissionInfoRow(
-                icon: Icons.storefront_rounded,
-                label: context.tr(BanayLocalizationKeys.locationInfoNearby),
-                tint: colors.primary,
-              ),
-              const SizedBox(height: 10),
-              _PermissionInfoRow(
-                icon: Icons.local_shipping_rounded,
-                label: context.tr(BanayLocalizationKeys.locationInfoDelivery),
-                tint: colors.secondary,
-              ),
-              const SizedBox(height: 10),
-              _PermissionInfoRow(
-                icon: Icons.shield_moon_rounded,
-                label: isDeniedForever
-                    ? context.tr(BanayLocalizationKeys.locationInfoBlocked)
-                    : context.tr(BanayLocalizationKeys.locationInfoUsage),
-                tint: isDeniedForever ? colors.error : colors.tertiary,
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => Navigator.of(
-                        context,
-                      ).pop(_LocationPermissionDialogAction.later),
-                      icon: const Icon(Icons.schedule_rounded),
-                      label: Text(context.tr(BanayLocalizationKeys.later)),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () => Navigator.of(
-                        context,
-                      ).pop(_LocationPermissionDialogAction.continueRequest),
-                      icon: Icon(
-                        isDeniedForever
-                            ? Icons.open_in_new_rounded
-                            : Icons.my_location_rounded,
-                      ),
-                      label: Text(
-                        isDeniedForever
-                            ? context.tr(BanayLocalizationKeys.openSettings)
-                            : context.tr(BanayLocalizationKeys.allow),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _FallbackMaterialLocalizationsDelegate
     extends LocalizationsDelegate<MaterialLocalizations> {
   const _FallbackMaterialLocalizationsDelegate();
@@ -542,55 +342,4 @@ class _FallbackCupertinoLocalizationsDelegate
   bool shouldReload(
     covariant LocalizationsDelegate<CupertinoLocalizations> old,
   ) => false;
-}
-
-class _PermissionInfoRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color tint;
-
-  const _PermissionInfoRow({
-    required this.icon,
-    required this.label,
-    required this.tint,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest.withValues(alpha: 0.52),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: tint.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(icon, color: tint, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              label,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: colors.onSurface.withValues(alpha: 0.84),
-                height: 1.35,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }

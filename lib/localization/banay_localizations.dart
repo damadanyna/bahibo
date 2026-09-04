@@ -9,8 +9,6 @@ import 'package:banay/localization/banay_localization_common.dart';
 import 'package:banay/localization/banay_localization_common_keys.dart';
 import 'package:banay/localization/banay_localization_home.dart';
 import 'package:banay/localization/banay_localization_home_keys.dart';
-import 'package:banay/localization/banay_localization_location.dart';
-import 'package:banay/localization/banay_localization_location_keys.dart';
 import 'package:banay/localization/banay_localization_search.dart';
 import 'package:banay/localization/banay_localization_search_keys.dart';
 
@@ -256,22 +254,6 @@ abstract final class BanayLocalizationKeys {
   static const addNamePicture = BanayAuthLocalizationKeys.addNamePicture;
   static const yourName = BanayAuthLocalizationKeys.yourName;
   static const connecting = BanayAuthLocalizationKeys.connecting;
-  static const locationPermissionBlockedTitle =
-      BanayLocationLocalizationKeys.locationPermissionBlockedTitle;
-  static const enableLocationTitle =
-      BanayLocationLocalizationKeys.enableLocationTitle;
-  static const locationPermissionBlockedBody =
-      BanayLocationLocalizationKeys.locationPermissionBlockedBody;
-  static const locationPermissionBody =
-      BanayLocationLocalizationKeys.locationPermissionBody;
-  static const locationInfoNearby =
-      BanayLocationLocalizationKeys.locationInfoNearby;
-  static const locationInfoDelivery =
-      BanayLocationLocalizationKeys.locationInfoDelivery;
-  static const locationInfoBlocked =
-      BanayLocationLocalizationKeys.locationInfoBlocked;
-  static const locationInfoUsage =
-      BanayLocationLocalizationKeys.locationInfoUsage;
 }
 
 class BanayLocalizations {
@@ -322,7 +304,6 @@ class BanayLocalizations {
       ...banayHomeLocalizedValues.keys,
       ...banaySearchLocalizedValues.keys,
       ...banayAuthLocalizedValues.keys,
-      ...banayLocationLocalizedValues.keys,
     };
 
     return {
@@ -333,7 +314,6 @@ class BanayLocalizations {
           ...?banayHomeLocalizedValues[localeCode],
           ...?banaySearchLocalizedValues[localeCode],
           ...?banayAuthLocalizedValues[localeCode],
-          ...?banayLocationLocalizedValues[localeCode],
         },
     };
   }

@@ -3,12 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'package:banay/component/app_attachment_sheet.dart';
+import 'package:banay/component/app_link_preview_card.dart';
+import 'package:banay/component/app_linkified_text.dart';
 import 'package:banay/component/app_message_composer.dart';
 import 'package:banay/component/app_network_image.dart';
 import 'package:banay/component/profile_models.dart';
 import 'package:banay/component/seller_profile_page.dart';
 import 'package:banay/component/user_profile_page.dart';
 import 'package:banay/services/catalog_api_service.dart';
+import 'package:banay/services/link_preview_service.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
 
 class AppCommentMention {
@@ -553,81 +556,49 @@ class _AppCommentsSheetContentState extends State<_AppCommentsSheetContent> {
   Widget _buildMessageText(BuildContext context, AppCommentItem comment) {
     final theme = Theme.of(context);
     final appColors = theme.appColors;
-    if (comment.mentions.isEmpty) {
-      return Text(
-        comment.message,
-        style: TextStyle(
-          color: appColors.heroForeground,
-          fontSize: 13,
-          height: 1.35,
-        ),
-      );
+    final baseStyle = TextStyle(
+      color: appColors.heroForeground,
+      fontSize: 13,
+      height: 1.35,
+    );
+    final links = LinkPreviewService.extractUrls(comment.message);
+
+    final text = AppLinkifiedText(
+      text: comment.message,
+      style: baseStyle,
+      linkStyle: baseStyle.copyWith(
+        color: theme.colorScheme.primary,
+        decoration: TextDecoration.underline,
+      ),
+      mentionTriggers: [
+        for (final mention in comment.mentions) mention.trigger,
+      ],
+      mentionStyle: baseStyle.copyWith(
+        color: theme.colorScheme.primary,
+        fontWeight: FontWeight.w700,
+      ),
+    );
+    if (links.isEmpty) {
+      return text;
     }
 
-    final spans = <TextSpan>[];
-    final lowerMessage = comment.message.toLowerCase();
-    var cursor = 0;
-
-    while (cursor < comment.message.length) {
-      var nextIndex = -1;
-      AppCommentMention? nextMention;
-      for (final mention in comment.mentions) {
-        final index = lowerMessage.indexOf(
-          mention.trigger.toLowerCase(),
-          cursor,
-        );
-        if (index >= 0 && (nextIndex < 0 || index < nextIndex)) {
-          nextIndex = index;
-          nextMention = mention;
-        }
-      }
-
-      if (nextIndex < 0 || nextMention == null) {
-        spans.add(
-          TextSpan(
-            text: comment.message.substring(cursor),
-            style: TextStyle(
-              color: appColors.heroForeground,
-              fontSize: 13,
-              height: 1.35,
-            ),
-          ),
-        );
-        break;
-      }
-
-      if (nextIndex > cursor) {
-        spans.add(
-          TextSpan(
-            text: comment.message.substring(cursor, nextIndex),
-            style: TextStyle(
-              color: appColors.heroForeground,
-              fontSize: 13,
-              height: 1.35,
-            ),
-          ),
-        );
-      }
-
-      spans.add(
-        TextSpan(
-          text: comment.message.substring(
-            nextIndex,
-            nextIndex + nextMention.trigger.length,
-          ),
-          style: TextStyle(
-            color: theme.colorScheme.primary,
-            fontSize: 13,
-            height: 1.35,
-            fontWeight: FontWeight.w700,
-          ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        text,
+        const SizedBox(height: 8),
+        AppLinkPreviewCard(
+          url: links.first,
+          primary: theme.colorScheme.primary,
+          cardColor: appColors.inputFill,
+          textColor: appColors.heroForeground,
+          subtleText: appColors.mutedText,
+          borderColor: appColors.inputBorder,
+          compact: true,
         ),
-      );
-
-      cursor = nextIndex + nextMention.trigger.length;
-    }
-
-    return RichText(text: TextSpan(children: spans));
+      ],
+    );
   }
 
   Widget _buildCommentThread(
