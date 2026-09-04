@@ -278,8 +278,7 @@ UserProfileData defaultSellerProfileData() {
   return UserProfileData(
     sellerProfileId: null,
     name: 'John Rakoto',
-    avatarUrl:
-        'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600',
+    avatarUrl: '',
     coverImageUrl:
         'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=1600',
     roleLabel: 'Vendeur',

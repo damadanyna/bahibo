@@ -11,6 +11,7 @@ import 'package:banay/services/banay_tls_override.dart';
 import 'package:banay/services/battery_optimization_service.dart';
 import 'package:banay/services/chat_realtime_service.dart';
 import 'package:banay/services/location_permission_service.dart';
+import 'package:banay/services/location_requirement_gate.dart';
 import 'package:banay/providers/theme_provider.dart';
 import 'package:banay/services/push_notification_service.dart';
 import 'package:banay/services/session_storage.dart';
@@ -82,6 +83,9 @@ class _AppLifecycleBootstrapState extends State<_AppLifecycleBootstrap>
   final AppAuthService _authService = AppAuthService();
   final SessionStorage _sessionStorage = SessionStorage();
   bool _isSyncingCurrentLocation = false;
+  final LocationRequirementGate _locationGate = LocationRequirementGate(
+    navigatorKey: PushNotificationService.navigatorKey,
+  );
 
   String _buildLocationLabel(Position position, List<Placemark> placemarks) {
     final placemark = placemarks.isNotEmpty ? placemarks.first : null;
@@ -195,13 +199,6 @@ class _AppLifecycleBootstrapState extends State<_AppLifecycleBootstrap>
     }
   }
 
-  Future<void> _requestLocationPermissionOnLaunch() async {
-    // Ask the OS directly (no custom explanation screen). When the permission
-    // is denied forever the system won't show anything; the user can still
-    // enable it later from the location picker / account settings.
-    await LocationPermissionService.ensurePermissionRequestedOnLaunch();
-  }
-
   @override
   void initState() {
     super.initState();
@@ -212,7 +209,9 @@ class _AppLifecycleBootstrapState extends State<_AppLifecycleBootstrap>
   }
 
   Future<void> _bootstrapLocationFlow() async {
-    await _requestLocationPermissionOnLaunch();
+    // Location is mandatory: the gate keeps prompting (system prompt, then a
+    // blocking dialog) on every launch / resume until it is enabled.
+    await _locationGate.enforce();
     await _syncCurrentUserLocationOnLaunch();
     await _showBatteryOptimizationPromptIfNeeded();
   }
@@ -235,6 +234,7 @@ class _AppLifecycleBootstrapState extends State<_AppLifecycleBootstrap>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _locationGate.dispose();
     super.dispose();
   }
 
@@ -242,6 +242,7 @@ class _AppLifecycleBootstrapState extends State<_AppLifecycleBootstrap>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     ChatRealtimeService.instance.handleAppLifecycleStateChanged(state);
     if (state == AppLifecycleState.resumed) {
+      unawaited(_locationGate.enforce());
       unawaited(_syncCurrentUserLocationOnLaunch());
       unawaited(FeatureFlagsService.instance.refresh());
     } else if (state == AppLifecycleState.paused ||

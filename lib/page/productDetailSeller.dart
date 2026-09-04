@@ -35,8 +35,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       'Cet article est toujours disponible ?';
   static const String _sellerName = 'John Doe';
   static const String _sellerBadge = 'En ligne';
-  static const String _sellerImageUrl =
-      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600';
+  static const String _sellerImageUrl = '';
   final CatalogApiService _catalogApiService = CatalogApiService();
 
   late PageController _pageController;

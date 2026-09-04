@@ -8,6 +8,7 @@
     "clean": "node -e \"const fs=require('fs'); if (fs.existsSync('dist')) fs.rmSync('dist', { recursive: true, force: true });\"",
     "audit:chat-media": "ts-node --project tsconfig.json -r tsconfig-paths/register scripts/audit-chat-media.ts",
     "merge:duplicate-conversations": "ts-node --project tsconfig.json -r tsconfig-paths/register scripts/merge-duplicate-conversations.ts",
+    "avatars:clear-placeholders": "ts-node --project tsconfig.json -r tsconfig-paths/register scripts/clear-placeholder-avatars.ts",
     "build": "nest build",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",

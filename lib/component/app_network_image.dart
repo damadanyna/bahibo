@@ -242,6 +242,23 @@ class _AppNetworkImageState extends State<AppNetworkImage> {
   }
 }
 
+/// Stock portraits (pravatar / Unsplash) that the app and the backend used
+/// to hand out for users without a photo. They must render as "no avatar"
+/// (person icon), never as a real picture, even if a cached response, demo
+/// data or a database row still carries one. Real avatars are Cloudinary
+/// uploads.
+bool isPlaceholderAvatarUrl(String? url) {
+  final normalized = url?.trim().toLowerCase() ?? '';
+  return normalized.contains('i.pravatar.cc/') ||
+      normalized.contains('images.unsplash.com/');
+}
+
+/// Trimmed avatar URL, or '' when absent or a known placeholder portrait.
+String normalizeAvatarUrl(String? url) {
+  final normalized = url?.trim() ?? '';
+  return isPlaceholderAvatarUrl(normalized) ? '' : normalized;
+}
+
 class AppCircleNetworkAvatar extends StatelessWidget {
   final String imageUrl;
   final double radius;
@@ -260,7 +277,7 @@ class AppCircleNetworkAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final diameter = radius * 2;
     final normalizedUserId = userId?.trim() ?? '';
-    final normalizedImageUrl = imageUrl.trim();
+    final normalizedImageUrl = normalizeAvatarUrl(imageUrl);
     final shouldShowBadge = showPresenceBadge && normalizedUserId.isNotEmpty;
 
     if (shouldShowBadge) {

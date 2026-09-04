@@ -75,8 +75,7 @@ class ChatPage extends StatefulWidget {
     this.onCloseRequested,
     this.sellerName = 'Conversation',
     this.sellerRole = 'Utilisateur',
-    this.avatarUrl =
-        'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200',
+    this.avatarUrl = '',
     this.product,
     this.productPageBuilder,
     this.productTitle = '',
@@ -1650,7 +1649,7 @@ class _ChatPageState extends State<ChatPage>
       }
     }
 
-    return 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600';
+    return '';
   }
 
   DateTime? _forwardConversationLastMessageDate(

@@ -49,7 +49,7 @@ String conversationShareAvatar(Map<String, dynamic> conversation) {
     }
   }
 
-  return 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600';
+  return '';
 }
 
 DateTime? _conversationShareLastMessageDate(Map<String, dynamic> conversation) {

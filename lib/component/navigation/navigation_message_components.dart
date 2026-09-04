@@ -180,9 +180,15 @@ class NavigationMessageStoryAvatar extends StatelessWidget {
   }
 }
 
+/// Delivery status of the last message when it was sent by the current user.
+enum NavigationMessageDeliveryStatus { sent, delivered, seen }
+
 class NavigationConversationTile extends StatelessWidget {
   final String name;
   final String preview;
+
+  /// Null when the last message is incoming (no ticks to show).
+  final NavigationMessageDeliveryStatus? lastMessageStatus;
   final String? statusLabel;
   final String time;
   final String avatarUrl;
@@ -201,6 +207,7 @@ class NavigationConversationTile extends StatelessWidget {
     super.key,
     required this.name,
     required this.preview,
+    this.lastMessageStatus,
     this.statusLabel,
     required this.time,
     required this.avatarUrl,
@@ -315,6 +322,14 @@ class NavigationConversationTile extends StatelessWidget {
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
+                        if (!isTyping && lastMessageStatus != null) ...[
+                          _NavigationDeliveryTicks(
+                            status: lastMessageStatus!,
+                            primary: primary,
+                            mutedColor: statusColor,
+                          ),
+                          const SizedBox(width: 4),
+                        ],
                         Expanded(
                           child: isTyping
                               ? _NavigationTypingPreview(
@@ -419,6 +434,32 @@ class NavigationConversationTile extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Same icons as the chat bubbles: one tick sent, two ticks delivered,
+/// two primary-colored ticks seen.
+class _NavigationDeliveryTicks extends StatelessWidget {
+  final NavigationMessageDeliveryStatus status;
+  final Color primary;
+  final Color mutedColor;
+
+  const _NavigationDeliveryTicks({
+    required this.status,
+    required this.primary,
+    required this.mutedColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    switch (status) {
+      case NavigationMessageDeliveryStatus.sent:
+        return Icon(Icons.done_rounded, size: 16, color: mutedColor);
+      case NavigationMessageDeliveryStatus.delivered:
+        return Icon(Icons.done_all_rounded, size: 16, color: mutedColor);
+      case NavigationMessageDeliveryStatus.seen:
+        return Icon(Icons.done_all_rounded, size: 16, color: primary);
+    }
   }
 }
 

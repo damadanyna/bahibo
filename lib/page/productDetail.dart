@@ -56,8 +56,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     with AppPageRefreshMixin<ProductDetailPage> {
   static const String _defaultAvailabilityMessage =
       'Cet article est toujours disponible ?';
-  static const String _defaultSellerAvatarUrl =
-      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600';
+  static const String _defaultSellerAvatarUrl = '';
   final AppAuthService _authService = AppAuthService();
   final CatalogApiService _catalogApiService = CatalogApiService();
   final SearchApiService _searchApiService = SearchApiService();
@@ -1195,6 +1194,14 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                                         children: [
                                           GestureDetector(
                                             onTap: () {
+                                              if (_sellerAvatarUrlValue
+                                                  .trim()
+                                                  .isEmpty) {
+                                                // No real photo: nothing to
+                                                // zoom on, go to the profile.
+                                                _openSellerProfile();
+                                                return;
+                                              }
                                               Navigator.push(
                                                 context,
                                                 MaterialPageRoute(

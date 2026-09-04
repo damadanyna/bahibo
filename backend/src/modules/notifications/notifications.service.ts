@@ -232,8 +232,7 @@ export class NotificationsService {
           id: product.sellerProfile.id,
           name: product.sellerProfile.studioName,
           avatarUrl:
-            product.sellerProfile.user.avatarUrl ??
-            "https://i.pravatar.cc/240?img=12",
+            product.sellerProfile.user.avatarUrl ?? "",
         },
         product: {
           id: product.id,
@@ -260,8 +259,7 @@ export class NotificationsService {
             id: product.sellerProfile.id,
             name: product.sellerProfile.studioName,
             avatarUrl:
-              product.sellerProfile.user.avatarUrl ??
-              "https://i.pravatar.cc/240?img=12",
+              product.sellerProfile.user.avatarUrl ?? "",
           },
           product: {
             id: product.id,
@@ -401,7 +399,7 @@ export class NotificationsService {
           id: follow.follower.id,
           name: follow.follower.displayName,
           avatarUrl:
-            follow.follower.avatarUrl ?? "https://i.pravatar.cc/240?img=12",
+            follow.follower.avatarUrl ?? "",
         },
         product: null,
         actors: [
@@ -409,7 +407,7 @@ export class NotificationsService {
             id: follow.follower.id,
             name: follow.follower.displayName,
             avatarUrl:
-              follow.follower.avatarUrl ?? "https://i.pravatar.cc/240?img=12",
+              follow.follower.avatarUrl ?? "",
             timeLabel: this.buildRelativeTimeLabel(follow.createdAt),
           },
         ],
@@ -693,7 +691,7 @@ export class NotificationsService {
           id: feedback.user.id,
           name: feedback.user.displayName,
           avatarUrl:
-            feedback.user.avatarUrl ?? "https://i.pravatar.cc/240?img=12",
+            feedback.user.avatarUrl ?? "",
         },
         product: null,
         actors: [
@@ -701,7 +699,7 @@ export class NotificationsService {
             id: feedback.user.id,
             name: feedback.user.displayName,
             avatarUrl:
-              feedback.user.avatarUrl ?? "https://i.pravatar.cc/240?img=12",
+              feedback.user.avatarUrl ?? "",
             timeLabel: this.buildRelativeTimeLabel(feedback.createdAt),
           },
         ],
@@ -807,7 +805,7 @@ export class NotificationsService {
           id: currentUser.id,
           name: sellerName,
           avatarUrl:
-            currentUser.avatarUrl ?? "https://i.pravatar.cc/240?img=12",
+            currentUser.avatarUrl ?? "",
         },
         product: null,
       },
@@ -896,7 +894,7 @@ export class NotificationsService {
       const actors = comments.map((comment) => ({
         id: comment.user.id,
         name: comment.user.displayName,
-        avatarUrl: comment.user.avatarUrl ?? "https://i.pravatar.cc/240?img=12",
+        avatarUrl: comment.user.avatarUrl ?? "",
         timeLabel: this.buildRelativeTimeLabel(comment.createdAt),
       }));
 
@@ -919,8 +917,7 @@ export class NotificationsService {
           id: latestComment.product.sellerProfile.id,
           name: latestComment.product.sellerProfile.studioName,
           avatarUrl:
-            latestComment.product.sellerProfile.user.avatarUrl ??
-            "https://i.pravatar.cc/240?img=12",
+            latestComment.product.sellerProfile.user.avatarUrl ?? "",
         },
         product: {
           id: latestComment.product.id,
@@ -976,7 +973,7 @@ export class NotificationsService {
         .map((like) => ({
           id: like.user.id,
           name: like.user.displayName,
-          avatarUrl: like.user.avatarUrl ?? "https://i.pravatar.cc/240?img=12",
+          avatarUrl: like.user.avatarUrl ?? "",
           timeLabel: this.buildRelativeTimeLabel(like.createdAt),
         }));
 
@@ -1003,8 +1000,7 @@ export class NotificationsService {
           id: productLike.product.sellerProfile.id,
           name: productLike.product.sellerProfile.studioName,
           avatarUrl:
-            productLike.product.sellerProfile.user.avatarUrl ??
-            "https://i.pravatar.cc/240?img=12",
+            productLike.product.sellerProfile.user.avatarUrl ?? "",
         },
         product: {
           id: productLike.product.id,
@@ -1062,7 +1058,7 @@ export class NotificationsService {
           id: comment.user.id,
           name: comment.user.displayName,
           avatarUrl:
-            comment.user.avatarUrl ?? "https://i.pravatar.cc/240?img=12",
+            comment.user.avatarUrl ?? "",
           timeLabel: this.buildRelativeTimeLabel(comment.createdAt),
         }));
 
@@ -1089,8 +1085,7 @@ export class NotificationsService {
           id: latestComment.product.sellerProfile.id,
           name: latestComment.product.sellerProfile.studioName,
           avatarUrl:
-            latestComment.product.sellerProfile.user.avatarUrl ??
-            "https://i.pravatar.cc/240?img=12",
+            latestComment.product.sellerProfile.user.avatarUrl ?? "",
         },
         product: {
           id: latestComment.product.id,
@@ -1150,7 +1145,7 @@ export class NotificationsService {
       latestViewsByUser.set(view.viewer.id, {
         id: view.viewer.id,
         name: view.viewer.displayName,
-        avatarUrl: view.viewer.avatarUrl ?? "https://i.pravatar.cc/240?img=12",
+        avatarUrl: view.viewer.avatarUrl ?? "",
         viewedAt: view.createdAt,
       });
     }
@@ -1187,7 +1182,7 @@ export class NotificationsService {
           id: sellerProfile.id,
           name: sellerProfile.studioName,
           avatarUrl:
-            sellerProfile.user.avatarUrl ?? "https://i.pravatar.cc/240?img=12",
+            sellerProfile.user.avatarUrl ?? "",
         },
         product: null,
         actors,

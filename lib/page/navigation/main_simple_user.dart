@@ -677,6 +677,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
       locationLabel: cityName,
       latitude: latitude,
       longitude: longitude,
+      isManualSelection: true,
     );
   }
 
@@ -704,6 +705,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
     required String locationLabel,
     required double latitude,
     required double longitude,
+    bool isManualSelection = false,
   }) async {
     if (_isSavingLocation) {
       return;
@@ -715,6 +717,7 @@ class _MainSimpleUserState extends State<MainSimpleUser> {
         locationLabel: locationLabel,
         latitude: latitude,
         longitude: longitude,
+        isManualSelection: isManualSelection,
       );
 
       if (!mounted) {

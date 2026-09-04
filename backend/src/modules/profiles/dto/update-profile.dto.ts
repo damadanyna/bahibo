@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsIn,
   IsLatitude,
   IsLongitude,
   IsOptional,
@@ -72,6 +73,11 @@ export class UpdateProfileDto {
   @IsNumber()
   @IsLongitude()
   locationLongitude?: number;
+
+  /** How the position was obtained; defaults to GPS. */
+  @IsOptional()
+  @IsIn(['GPS', 'MANUAL'])
+  locationSource?: 'GPS' | 'MANUAL';
 
   @IsOptional()
   @ValidateNested()

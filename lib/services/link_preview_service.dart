@@ -48,11 +48,16 @@ class LinkPreviewService {
   static const Duration _timeout = Duration(seconds: 8);
   static const int _maxHtmlBytes = 256 * 1024;
 
-  /// Browser-like UA: many sites only serve Open Graph tags (and images) to
-  /// clients that look like a browser.
+  /// Browser-like UA, used to download preview pictures (CDNs often reject
+  /// the default Dart client) and as a fallback for pages.
   static const String userAgent =
       'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) '
       'Chrome/124.0 Mobile Safari/537.36';
+
+  /// Messaging-app UA tried first: Facebook, Instagram and similar sites only
+  /// serve their Open Graph tags to link-preview crawlers, and answer a
+  /// login page to anonymous browsers.
+  static const String _previewCrawlerUserAgent = 'WhatsApp/2.23.20.0 A';
 
   static final RegExp _urlPattern = RegExp(
     r'(?:https?://|www\.)[^\s<>"]+',
@@ -153,10 +158,25 @@ class LinkPreviewService {
       return LinkPreviewData(url: url, isReachable: false);
     }
 
+    final asCrawler = await _fetchAs(url, uri, _previewCrawlerUserAgent);
+    if (asCrawler.isReachable && asCrawler.hasMetadata) {
+      return asCrawler;
+    }
+    // Sites that block unknown bots (challenge pages) usually answer a
+    // browser; keep whichever attempt got further.
+    final asBrowser = await _fetchAs(url, uri, userAgent);
+    if (asBrowser.isReachable &&
+        (asBrowser.hasMetadata || !asCrawler.isReachable)) {
+      return asBrowser;
+    }
+    return asCrawler;
+  }
+
+  Future<LinkPreviewData> _fetchAs(String url, Uri uri, String agent) async {
     final client = http.Client();
     try {
       final request = http.Request('GET', uri)
-        ..headers['User-Agent'] = userAgent
+        ..headers['User-Agent'] = agent
         ..headers['Accept'] = 'text/html,application/xhtml+xml,*/*;q=0.8'
         ..followRedirects = true
         ..maxRedirects = 5;

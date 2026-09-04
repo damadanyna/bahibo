@@ -570,9 +570,7 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
       final profile = suggestion.sellerProfile!;
       final avatarUrl = profile.avatarUrl.trim().isNotEmpty
           ? profile.avatarUrl.trim()
-          : ((suggestion.imageUrl ?? '').trim().isNotEmpty
-                ? suggestion.imageUrl!.trim()
-                : 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600');
+          : (suggestion.imageUrl ?? '').trim();
       final coverImageUrl = profile.coverImageUrl.trim().isNotEmpty
           ? profile.coverImageUrl.trim()
           : 'https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?w=1600';
@@ -600,9 +598,7 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
     return buildProfileFromUser(
       userId: suggestion.type == _SuggestionType.user ? suggestion.id : null,
       name: suggestion.sellerName ?? suggestion.label,
-      avatarUrl:
-          suggestion.imageUrl ??
-          'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600',
+      avatarUrl: suggestion.imageUrl ?? '',
       subtitle: suggestion.subtitle,
     );
   }

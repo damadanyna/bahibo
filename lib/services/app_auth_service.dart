@@ -151,6 +151,7 @@ class AppAuthService {
     required String locationLabel,
     required double latitude,
     required double longitude,
+    bool isManualSelection = false,
   }) async {
     final data = await _client.patch(
       '/profiles/me',
@@ -159,6 +160,9 @@ class AppAuthService {
         'locationLabel': locationLabel,
         'locationLatitude': latitude,
         'locationLongitude': longitude,
+        // Lets the backend tell a city picked by hand from a GPS fix in the
+        // location history.
+        'locationSource': isManualSelection ? 'MANUAL' : 'GPS',
       },
     );
 

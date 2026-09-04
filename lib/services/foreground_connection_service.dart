@@ -59,10 +59,18 @@ class ForegroundConnectionService {
 
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
-        channelId: 'banay_background_connection',
+        // Android freezes a channel's importance once created, so lowering it
+        // needs a new channel id; the old 'banay_background_connection' one
+        // stays orphaned in the system settings on existing installs.
+        channelId: 'banay_background_connection_quiet',
         channelName: 'Connexion Banay',
         channelDescription:
             'Maintient Banay actif pour recevoir vos messages en arriere-plan.',
+        // MIN: no status-bar icon, collapsed into the "silent" section of the
+        // shade. The service itself is unchanged; only the notice is quieter.
+        channelImportance: NotificationChannelImportance.MIN,
+        priority: NotificationPriority.MIN,
+        visibility: NotificationVisibility.VISIBILITY_SECRET,
         onlyAlertOnce: true,
       ),
       iosNotificationOptions: const IOSNotificationOptions(
@@ -96,7 +104,7 @@ class ForegroundConnectionService {
       serviceId: _serviceId,
       serviceTypes: [ForegroundServiceTypes.remoteMessaging],
       notificationTitle: 'Banay',
-      notificationText: 'Actif en arriere-plan pour recevoir vos messages.',
+      notificationText: 'Connecte pour vos messages',
       callback: _foregroundConnectionTaskCallback,
     );
   }

@@ -183,8 +183,7 @@ class _AppCommentsSheetContent extends StatefulWidget {
 }
 
 class _AppCommentsSheetContentState extends State<_AppCommentsSheetContent> {
-  static const String _defaultAvatarUrl =
-      'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=600';
+  static const String _defaultAvatarUrl = '';
 
   late final TextEditingController _commentController;
   final ImagePicker _imagePicker = ImagePicker();

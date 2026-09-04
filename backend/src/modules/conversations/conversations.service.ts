@@ -1725,6 +1725,9 @@ export class ConversationsService {
             content: lastMessage.content,
             createdAt: lastMessage.createdAt.toISOString(),
             isMine: lastMessage.senderUserId === userId,
+            kind: lastMessage.kind,
+            deliveredAt: lastMessage.deliveredAt?.toISOString() ?? null,
+            readAt: lastMessage.readAt?.toISOString() ?? null,
           }
         : null,
       unreadCount,

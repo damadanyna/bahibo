@@ -9,6 +9,7 @@ import { Prisma, ShopRequestStatus, UserRole } from '@prisma/client';
 import { AccessToken, TrackSource } from 'livekit-server-sdk';
 import { randomUUID } from 'node:crypto';
 
+import { computeDistanceInKm } from '../../utils/geo';
 import { CloudinaryService } from '../auth/cloudinary.service';
 import { ConversationsRealtimeGateway } from '../conversations/realtime/conversations-realtime.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -17,6 +18,8 @@ import { PushNotificationsService } from '../push-notifications/push-notificatio
 import { UpdateProfileDto, UpdateSellerProfileDto } from './dto/update-profile.dto';
 
 const DISPLAY_NAME_CHANGE_COOLDOWN_DAYS = 7;
+/** Same threshold as the mobile client's re-sync rule (150 m). */
+const LOCATION_HISTORY_MIN_MOVE_KM = 0.15;
 import {
   presentPublicSellerProfile,
   presentPublicUserProfile,
@@ -559,6 +562,8 @@ export class ProfilesService {
         });
       }
 
+      await this.recordLocationChange(transaction, existingUser, dto);
+
       if (sellerProfileData) {
         await transaction.sellerProfile.upsert({
           where: { userId },
@@ -640,9 +645,72 @@ export class ProfilesService {
 
       await transaction.userDeviceToken.deleteMany({ where: { userId } });
       await transaction.refreshToken.deleteMany({ where: { userId } });
+      // Movement history is PII too: scrub it with the rest.
+      await transaction.userLocationHistory.deleteMany({ where: { userId } });
     });
 
     return { deleted: true };
+  }
+
+  /**
+   * Appends a UserLocationHistory row when the profile update carries a
+   * position that is a real move: first known position, a different label,
+   * or more than LOCATION_HISTORY_MIN_MOVE_KM away from the stored one.
+   * Periodic re-syncs of the same spot (app resume) are skipped so the
+   * table stays a log of moves, not of app opens.
+   */
+  private async recordLocationChange(
+    transaction: Prisma.TransactionClient,
+    existingUser: {
+      id: string;
+      locationLabel: string | null;
+      locationLatitude: number | null;
+      locationLongitude: number | null;
+    },
+    dto: UpdateProfileDto,
+  ) {
+    const latitude = dto.locationLatitude ?? existingUser.locationLatitude;
+    const longitude = dto.locationLongitude ?? existingUser.locationLongitude;
+    const hasLocationInput =
+      dto.locationLatitude !== undefined ||
+      dto.locationLongitude !== undefined ||
+      dto.locationLabel !== undefined;
+
+    if (!hasLocationInput || latitude == null || longitude == null) {
+      return;
+    }
+
+    const nextLabel = (dto.locationLabel ?? existingUser.locationLabel)?.trim() || null;
+    const previousLatitude = existingUser.locationLatitude;
+    const previousLongitude = existingUser.locationLongitude;
+    const distanceFromPreviousKm =
+      previousLatitude != null && previousLongitude != null
+        ? computeDistanceInKm(previousLatitude, previousLongitude, latitude, longitude)
+        : null;
+    const labelChanged =
+      (existingUser.locationLabel?.trim().toLowerCase() ?? '') !==
+      (nextLabel?.toLowerCase() ?? '');
+
+    if (
+      distanceFromPreviousKm != null &&
+      distanceFromPreviousKm <= LOCATION_HISTORY_MIN_MOVE_KM &&
+      !labelChanged
+    ) {
+      return;
+    }
+
+    await transaction.userLocationHistory.create({
+      data: {
+        userId: existingUser.id,
+        locationLabel: nextLabel,
+        latitude,
+        longitude,
+        previousLatitude,
+        previousLongitude,
+        distanceFromPreviousKm,
+        source: dto.locationSource === 'MANUAL' ? 'MANUAL' : 'GPS',
+      },
+    });
   }
 
   async getPublicSellerProfile(sellerProfileId: string) {

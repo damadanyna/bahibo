@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:banay/component/app_network_image.dart';
 import 'package:banay/auth/phoneNumber.dart';
 import 'package:banay/component/app_comments_sheet.dart';
 import 'package:banay/component/app_likes_sheet.dart';
@@ -1150,7 +1151,7 @@ class _NotificationAvatar extends StatelessWidget {
     final fallback = label.trim().isEmpty
         ? 'N'
         : label.trim().substring(0, 1).toUpperCase();
-    final hasImage = imageUrl.trim().isNotEmpty;
+    final hasImage = normalizeAvatarUrl(imageUrl).isNotEmpty;
 
     return Container(
       width: 52,

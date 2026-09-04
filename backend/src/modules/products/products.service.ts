@@ -5,6 +5,7 @@ import {
 } from "@nestjs/common";
 import { Prisma, WarrantyDurationUnit } from "@prisma/client";
 
+import { computeDistanceInKm } from "../../utils/geo";
 import { CloudinaryService } from "../auth/cloudinary.service";
 import { ConversationsRealtimeGateway } from "../conversations/realtime/conversations-realtime.gateway";
 import { NotificationsService } from "../notifications/notifications.service";
@@ -134,23 +135,11 @@ export class ProductsService {
     secondLatitude: number,
     secondLongitude: number,
   ) {
-    const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
-    const earthRadiusKm = 6371;
-    const latitudeDelta = toRadians(secondLatitude - firstLatitude);
-    const longitudeDelta = toRadians(secondLongitude - firstLongitude);
-    const normalizedFirstLatitude = toRadians(firstLatitude);
-    const normalizedSecondLatitude = toRadians(secondLatitude);
-    const haversine =
-      Math.sin(latitudeDelta / 2) * Math.sin(latitudeDelta / 2) +
-      Math.cos(normalizedFirstLatitude) *
-        Math.cos(normalizedSecondLatitude) *
-        Math.sin(longitudeDelta / 2) *
-        Math.sin(longitudeDelta / 2);
-
-    return (
-      earthRadiusKm *
-      2 *
-      Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine))
+    return computeDistanceInKm(
+      firstLatitude,
+      firstLongitude,
+      secondLatitude,
+      secondLongitude,
     );
   }
 
@@ -1504,9 +1493,7 @@ export class ProductsService {
         id: product.sellerProfile.id,
         userId: product.sellerProfile.userId,
         name: product.sellerProfile.studioName,
-        avatarUrl:
-          product.sellerProfile.user.avatarUrl ??
-          "https://i.pravatar.cc/240?img=12",
+        avatarUrl: product.sellerProfile.user.avatarUrl ?? "",
         isSellerCertified: product.sellerProfile.user.isSellerCertified,
       },
       images: imageUrls,

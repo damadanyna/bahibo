@@ -263,7 +263,35 @@ class _MainNavigationMessagesPanelState
         final nextConversation = Map<String, dynamic>.from(currentConversation);
         if (participantId.isNotEmpty && actorUserId != participantId) {
           nextConversation['unreadCount'] = 0;
+        } else if (participantId.isNotEmpty && actorUserId == participantId) {
+          // The other party read the thread: my last message is now seen.
+          final lastMessage = nextConversation['lastMessage'];
+          if (lastMessage is Map && lastMessage['isMine'] == true) {
+            nextConversation['lastMessage'] =
+                Map<String, dynamic>.from(lastMessage)
+                  ..['readAt'] =
+                      event['readAt']?.toString() ??
+                      DateTime.now().toIso8601String();
+          }
         }
+        _replaceConversationInList(nextConversation, preserveOrdering: true);
+        return true;
+      case 'conversation:delivered':
+        final currentConversation = _conversations[conversationIndex];
+        final lastMessage = currentConversation['lastMessage'];
+        final messageId = event['messageId']?.toString().trim() ?? '';
+        if (lastMessage is! Map ||
+            lastMessage['isMine'] != true ||
+            messageId.isEmpty ||
+            lastMessage['id']?.toString().trim() != messageId) {
+          // Not about the visible last message: nothing to update.
+          return true;
+        }
+        final nextConversation = Map<String, dynamic>.from(currentConversation)
+          ..['lastMessage'] = Map<String, dynamic>.from(lastMessage)
+          ..['deliveredAt'] =
+              event['deliveredAt']?.toString() ??
+              DateTime.now().toIso8601String();
         _replaceConversationInList(nextConversation, preserveOrdering: true);
         return true;
       default:
@@ -583,7 +611,7 @@ class _MainNavigationMessagesPanelState
         return value.trim();
       }
     }
-    return 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600';
+    return '';
   }
 
   void _watchConversationParticipants(
@@ -711,6 +739,24 @@ class _MainNavigationMessagesPanelState
 
   int _conversationUnreadCount(Map<String, dynamic> conversation) {
     return ((conversation['unreadCount'] as num?)?.toInt()) ?? 0;
+  }
+
+  /// Ticks for the last message, only when it was sent by the current user.
+  /// Mirrors the chat bubble rule: readAt wins over deliveredAt, else sent.
+  NavigationMessageDeliveryStatus? _conversationLastMessageStatus(
+    Map<String, dynamic> conversation,
+  ) {
+    final lastMessage = conversation['lastMessage'];
+    if (lastMessage is! Map || lastMessage['isMine'] != true) {
+      return null;
+    }
+    if ((lastMessage['readAt']?.toString().trim() ?? '').isNotEmpty) {
+      return NavigationMessageDeliveryStatus.seen;
+    }
+    if ((lastMessage['deliveredAt']?.toString().trim() ?? '').isNotEmpty) {
+      return NavigationMessageDeliveryStatus.delivered;
+    }
+    return NavigationMessageDeliveryStatus.sent;
   }
 
   bool _conversationIsMuted(Map<String, dynamic> conversation) {
@@ -1361,6 +1407,9 @@ class _MainNavigationMessagesPanelState
                     child: NavigationConversationTile(
                       name: _conversationName(conversation),
                       preview: _conversationPreview(conversation),
+                      lastMessageStatus: _conversationLastMessageStatus(
+                        conversation,
+                      ),
                       statusLabel: _conversationStatusLabel(conversation),
                       time: _conversationTime(conversation),
                       avatarUrl: _conversationAvatar(conversation),
@@ -1452,7 +1501,9 @@ class _MessagesPanelMenuItem extends StatelessWidget {
       children: [
         Icon(icon, size: 18, color: color),
         const SizedBox(width: 10),
-        Expanded(child: Text(label, style: TextStyle(color: color))),
+        Expanded(
+          child: Text(label, style: TextStyle(color: color)),
+        ),
       ],
     );
   }

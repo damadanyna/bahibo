@@ -55,6 +55,11 @@ enum ProductCondition {
   NEUF
 }
 
+enum UserLocationSource {
+  GPS
+  MANUAL
+}
+
 enum WarrantyDurationUnit {
   DAYS
   MONTHS
@@ -115,6 +120,7 @@ model User {
   blocksReceived                  UserBlock[]             @relation("UserBlocksReceived")
   eventLogs                       UserEventLog[]
   serverLogs                      ServerLog[]
+  locationHistories               UserLocationHistory[]
 }
 
 model UserBlock {
@@ -146,6 +152,27 @@ model UserReport {
   @@index([reporterUserId, createdAt])
   @@index([reportedUserId, createdAt])
   @@index([conversationId, createdAt])
+}
+
+/// Append-only log of where an account has been. `User.location*` only keeps
+/// the latest position; this keeps every meaningful move (new label or more
+/// than 150 m away) so seller suggestions can favour the areas a user really
+/// lives in. See ProfilesService.recordLocationChange.
+model UserLocationHistory {
+  id                     String             @id @default(uuid())
+  userId                 String
+  locationLabel          String?
+  latitude               Float
+  longitude              Float
+  previousLatitude       Float?
+  previousLongitude      Float?
+  distanceFromPreviousKm Float?
+  source                 UserLocationSource @default(GPS)
+  createdAt              DateTime           @default(now())
+  user                   User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([latitude, longitude])
 }
 
 model SearchHistory {
