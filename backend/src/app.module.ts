@@ -1,8 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule } from '@nestjs/throttler';
 
 import { LoggingModule } from './common/logging/logging.module';
+import { AuthThrottlerGuard } from './common/security/auth-throttler.guard';
 import { HealthModule } from './modules/health/health.module';
 import { CategoriesModule } from './modules/categories/categories.module';
 import { ProductsModule } from './modules/products/products.module';
@@ -25,6 +28,13 @@ import { ShipmentsModule } from './modules/shipments/shipments.module';
       isGlobal: true,
     }),
     ScheduleModule.forRoot(),
+    // Generous global ceiling per client IP; auth routes override it with
+    // much tighter limits (see AuthController). Requires nginx to forward
+    // X-Forwarded-For and `trust proxy` in main.ts, otherwise every client
+    // is seen as 127.0.0.1.
+    ThrottlerModule.forRoot({
+      throttlers: [{ name: 'default', ttl: 60_000, limit: 300 }],
+    }),
     LoggingModule,
     HealthModule,
     PrismaModule,
@@ -42,5 +52,6 @@ import { ShipmentsModule } from './modules/shipments/shipments.module';
     OrdersModule,
     ShipmentsModule,
   ],
+  providers: [{ provide: APP_GUARD, useClass: AuthThrottlerGuard }],
 })
 export class AppModule {}

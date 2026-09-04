@@ -12,7 +12,8 @@ class AppEventLogSyncService {
 
   static final AppEventLogSyncService instance = AppEventLogSyncService._();
 
-  static const int _batchLimit = 200;
+  // Keep each batch well under the backend's 1 MB JSON limit (~700 B/event).
+  static const int _batchLimit = 100;
 
   final SessionStorage _sessionStorage = SessionStorage();
   final NotificationsApiService _notificationsApiService =
