@@ -56,6 +56,7 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
+    _publishSelectedTab();
     _loadAccountPanelKind();
     _bindRealtimeProfileUpdates();
     // Consume any notification that fired while the shell was not yet mounted
@@ -98,6 +99,13 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
       }
       _currentIndex = index;
     });
+    _publishSelectedTab();
+  }
+
+  /// Kept outside setState on purpose: listeners (embedded chats) react
+  /// synchronously and must not run inside another widget's build callback.
+  void _publishSelectedTab() {
+    mainNavigationSelectedTabNotifier.value = _currentIndex;
   }
 
   Future<void> _loadAccountPanelKind() async {
@@ -196,7 +204,7 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
   }
 
   Future<void> _handleBackNavigation() async {
-    if (_currentIndex == 2 &&
+    if (_currentIndex == mainNavigationMessagesTabIndex &&
         MainNavigationMessagesPanel.closeEmbeddedConversationIfOpen()) {
       return;
     }
@@ -205,6 +213,7 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
       final previousIndex = _navigationHistory.removeLast();
       if (mounted) {
         setState(() => _currentIndex = previousIndex);
+        _publishSelectedTab();
       }
       return;
     }
@@ -212,6 +221,7 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
     if (_currentIndex != 0) {
       if (mounted) {
         setState(() => _currentIndex = 0);
+        _publishSelectedTab();
       }
       return;
     }
@@ -290,7 +300,8 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
                 valueListenable: mainNavigationChatOpenNotifier,
                 builder: (context, isChatOpen, _) {
                   final shouldHideNavigationBar =
-                      _currentIndex == 2 && isChatOpen;
+                      _currentIndex == mainNavigationMessagesTabIndex &&
+                      isChatOpen;
                   if (shouldHideNavigationBar) {
                     return const SizedBox.shrink();
                   }

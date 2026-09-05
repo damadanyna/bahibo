@@ -88,3 +88,78 @@ futurs diagnostics.
   plus restrictif si l'app a ete fermee manuellement (force-quit) par
   l'utilisateur — l'execution en arriere-plan peut alors etre retardee ou
   bloquee par le systeme.
+
+## 2026-09-05
+
+### 1. Notification permanente "Connecte pour vos messages" impossible a retirer
+
+- **Symptome** : la notification du service de premier plan Android restait
+  fixe dans le volet et ne pouvait pas etre glissee (capture sur OPPO R17 /
+  ColorOS). Le passage en canal silencieux du 2026-09-04 ne suffisait pas.
+- **Cause** : un service de premier plan Android exige une notification
+  permanente ; sur Android 12 et anterieur le systeme la rend
+  non-glissable, quel que soit le reglage du canal. Aucune solution cote
+  code tant que le service tourne pour tout le monde.
+- **Decision produit** : modele Telegram / Signal retenu. Le push FCM haute
+  priorite (deja en place cote backend) devient le mecanisme principal en
+  arriere-plan ; le service de premier plan passe en option **desactivee par
+  defaut**, reservee aux telephones qui retardent les messages. WhatsApp /
+  Messenger n'ont pas ce probleme grace a la liste blanche constructeur,
+  non reproductible pour une app independante.
+- **Correctif** :
+  - `lib/services/foreground_connection_service.dart` — preference
+    `banay_reinforced_connection_enabled`, `isEnabledByUser`,
+    `setEnabledByUser()` (persiste + demarre/arrete), `startIfEnabled()`
+    qui arrete aussi un service laisse actif par une version precedente.
+  - `lib/auth/session_gate.dart` — `startIfEnabled()` remplace le demarrage
+    systematique apres login. Les arrets au logout sont inchanges.
+  - `lib/component/background_connection_sheet.dart` (nouveau) — feuille de
+    reglage avec interrupteur "Garder Banay actif en arriere-plan", meme
+    style que la feuille Theme.
+  - `lib/page/navigation/main_navigation_messages_panel.dart` — entree
+    "Connexion renforcee" dans le menu du panneau Messages, Android
+    uniquement.
+- **A tester** : quelques jours en push seul sur OPPO avec exemption
+  batterie accordee. Si retards frequents, etape suivante envisagee : une
+  banniere unique sur OPPO / Xiaomi / Vivo / Realme / Tecno proposant
+  d'activer l'option.
+
+### 2. Message marque "vu" alors que le destinataire ne l'a pas regarde
+
+- **Symptome** : A envoie un message a B ; B est simplement dans l'app (liste
+  Messages ou autre onglet) sans ouvrir la conversation, et A voit
+  immediatement "vu". Effet secondaire : B ne recevait ni notification ni
+  badge non lu pour ce message, et un appui sur la notification ne faisait
+  rien.
+- **Cause** : le panneau Messages garde jusqu'a cinq `ChatPage` integrees
+  montees hors ecran (`Offstage`) pour une reouverture instantanee, et le
+  shell garde le panneau monte sur les autres onglets (`IndexedStack`).
+  Ces pages cachees ecoutent toujours le socket. Leur marquage automatique
+  `_markConversationReadIfVisible` ne verifiait que `_route.isCurrent`
+  (route du shell, toujours courante pour une page integree) et "liste en
+  bas" (vrai aussi hors ecran). La meme page cachee se reenregistrait comme
+  "conversation visible" dans `PushNotificationService`, ce qui coupait la
+  notification de B.
+- **Correctif** (client uniquement, aucun changement backend) :
+  - `lib/page/chat_page.dart` — nouveau parametre optionnel
+    `visibilityListenable` (null pour les routes classiques). Le marquage
+    "lu" et l'enregistrement "conversation visible" sont conditionnes a la
+    visibilite reelle ; au retour a l'ecran, les messages arrives entre-temps
+    sont marques lus a ce moment-la ; `dispose` ne libere que
+    l'enregistrement que la page possede.
+  - `lib/page/navigation/main_navigation_messages_panel.dart` — un
+    `ValueNotifier<bool>` par page en cache (vrai seulement pour la
+    conversation active pendant que l'onglet Messages est selectionne),
+    synchronise a l'ouverture, a la fermeture et au changement d'onglet.
+  - `lib/component/main_navigation_shell.dart` — publie l'onglet courant via
+    `mainNavigationSelectedTabNotifier` ; l'index `2` code en dur devient
+    `mainNavigationMessagesTabIndex`.
+- **Preserve volontairement** : cache de reouverture instantanee,
+  suppression de la notification quand la conversation est vraiment a
+  l'ecran, garde anti-course sur `createdAt` des accuses de lecture, routes
+  ouvertes depuis une notification.
+- **Point remarque, non corrige** : dans le shell,
+  `openConversationFromNotification` fait un `pushReplacement` des qu'une
+  conversation est visible ; si cette conversation visible est une page
+  integree, c'est la route du shell qui serait remplacee. Correctif separe a
+  prevoir.

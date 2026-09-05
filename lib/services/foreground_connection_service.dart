@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 @pragma('vm:entry-point')
 void _foregroundConnectionTaskCallback() {
@@ -35,6 +36,12 @@ class ForegroundConnectionService {
       ForegroundConnectionService._();
 
   static const int _serviceId = 4001;
+
+  /// Opt-in, off by default (Telegram / Signal model): FCM high-priority push
+  /// is the primary background mechanism for everyone, and the always-on
+  /// notification that Android forces on a foreground service is only shown
+  /// to users who explicitly enabled the "reinforced connection" toggle.
+  static const String _enabledPrefsKey = 'banay_reinforced_connection_enabled';
   bool _isInitialized = false;
 
   static bool get isSupportedPlatform {
@@ -114,5 +121,40 @@ class ForegroundConnectionService {
       return;
     }
     await FlutterForegroundTask.stopService();
+  }
+
+  Future<bool> get isEnabledByUser async {
+    if (!isSupportedPlatform) {
+      return false;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_enabledPrefsKey) == true;
+  }
+
+  /// Post-login entry point: only holds the process open when the user asked
+  /// for it. Logout paths keep calling [stop] unconditionally, which is a no-op
+  /// when the service was never started.
+  Future<void> startIfEnabled() async {
+    if (await isEnabledByUser) {
+      await start();
+    } else {
+      // Defensive: a service left running by a previous build (before the
+      // opt-in existed) must not survive the first launch of this one.
+      await stop();
+    }
+  }
+
+  /// Persists the choice and applies it immediately.
+  Future<void> setEnabledByUser(bool enabled) async {
+    if (!isSupportedPlatform) {
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_enabledPrefsKey, enabled);
+    if (enabled) {
+      await start();
+    } else {
+      await stop();
+    }
   }
 }

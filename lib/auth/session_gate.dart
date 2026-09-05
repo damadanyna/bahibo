@@ -50,7 +50,7 @@ class _SessionGatePageState extends State<SessionGatePage> {
             _didBootstrapAuthenticatedSession = true;
             WidgetsBinding.instance.addPostFrameCallback((_) async {
               await ChatRealtimeService.instance.ensureConnected();
-              await ForegroundConnectionService.instance.start();
+              await ForegroundConnectionService.instance.startIfEnabled();
               await PushNotificationService.syncDeviceTokenIfAuthenticated();
               await PushNotificationService.processPendingNotificationNavigation();
               await ShareIntentService.instance.processPendingShareNavigation();

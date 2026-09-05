@@ -31,6 +31,7 @@ import 'package:banay/services/presence_service.dart';
 import 'package:banay/services/push_notification_service.dart';
 import 'package:banay/services/session_storage.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
@@ -51,6 +52,11 @@ class ChatPage extends StatefulWidget {
   final String? conversationProductId;
   final String? conversationUserId;
   final VoidCallback? onCloseRequested;
+
+  /// Embedded pages only (the Messages panel keeps closed conversations
+  /// mounted offstage): true while this page is actually on screen. Null for
+  /// pushed routes, whose visibility is fully described by the route itself.
+  final ValueListenable<bool>? visibilityListenable;
   final String sellerName;
   final String sellerRole;
   final String avatarUrl;
@@ -73,6 +79,7 @@ class ChatPage extends StatefulWidget {
     this.conversationProductId,
     this.conversationUserId,
     this.onCloseRequested,
+    this.visibilityListenable,
     this.sellerName = 'Conversation',
     this.sellerRole = 'Utilisateur',
     this.avatarUrl = '',
@@ -185,6 +192,7 @@ class _ChatPageState extends State<ChatPage>
       _chatViewportController.scheduleScrollToBottom();
     }
     _scrollController.addListener(_handleScroll);
+    widget.visibilityListenable?.addListener(_handleEmbeddedVisibilityChanged);
     unawaited(_loadDraft());
     ChatPhotoUploadService.instance.addListener(_handlePhotoUploadsChanged);
     ChatDocumentUploadService.instance.addListener(
@@ -214,12 +222,30 @@ class _ChatPageState extends State<ChatPage>
   }
 
   @override
+  void didUpdateWidget(covariant ChatPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(
+      oldWidget.visibilityListenable,
+      widget.visibilityListenable,
+    )) {
+      oldWidget.visibilityListenable?.removeListener(
+        _handleEmbeddedVisibilityChanged,
+      );
+      widget.visibilityListenable?.addListener(
+        _handleEmbeddedVisibilityChanged,
+      );
+    }
+  }
+
+  @override
   void dispose() {
     _cacheConversationViewState();
-    final currentConversationId = _conversationId?.trim();
-    if (currentConversationId != null && currentConversationId.isNotEmpty) {
-      PushNotificationService.setVisibleConversation(null);
-    }
+    widget.visibilityListenable?.removeListener(
+      _handleEmbeddedVisibilityChanged,
+    );
+    // Only release the slot this page owns: an evicted offstage page must not
+    // clear the registration of the conversation currently on screen.
+    _releaseVisibleConversationRegistration();
     PushNotificationService.routeObserver.unsubscribe(this);
     _messageHighlightTimer?.cancel();
     _typingStopTimer?.cancel();
@@ -310,8 +336,44 @@ class _ChatPageState extends State<ChatPage>
     }
   }
 
+  /// True unless this is an embedded page currently hidden by the Messages
+  /// panel (closed conversation kept mounted, or another tab selected).
+  bool get _isEmbeddedPageOnScreen =>
+      widget.visibilityListenable?.value ?? true;
+
   void _syncVisibleConversationRegistration() {
+    if (!_isEmbeddedPageOnScreen) {
+      // A cached offstage page must never claim the "visible conversation"
+      // slot: that would silence this conversation's notifications and make
+      // a notification tap a no-op while the user is not looking at it.
+      return;
+    }
     PushNotificationService.setVisibleConversation(_conversationId);
+  }
+
+  void _releaseVisibleConversationRegistration() {
+    final conversationId = _conversationId?.trim() ?? '';
+    if (conversationId.isNotEmpty &&
+        PushNotificationService.visibleConversationId == conversationId) {
+      PushNotificationService.setVisibleConversation(null);
+    }
+  }
+
+  void _handleEmbeddedVisibilityChanged() {
+    if (!mounted) {
+      return;
+    }
+    if (!_isEmbeddedPageOnScreen) {
+      _releaseVisibleConversationRegistration();
+      return;
+    }
+    // Back on screen: same sequence as a route becoming current again, so the
+    // unread messages that arrived while hidden are acked now, when actually
+    // seen.
+    if (_route?.isCurrent ?? false) {
+      _syncVisibleConversationRegistration();
+    }
+    unawaited(_markConversationReadIfVisible());
   }
 
   void _handleChatSessionControllerChanged() {
@@ -457,6 +519,7 @@ class _ChatPageState extends State<ChatPage>
         !_usesLiveConversation ||
         conversationId.isEmpty ||
         !(_route?.isCurrent ?? false) ||
+        !_isEmbeddedPageOnScreen ||
         !_isUnreadMessageSectionVisible() ||
         _isMarkingConversationRead ||
         !_hasUnreadIncomingMessages()) {
@@ -5168,7 +5231,12 @@ class _ChatBubble extends StatelessWidget {
                   colors: [
                     outgoingBubbleLight,
                     outgoingBubbleAccent.withValues(alpha: 0.60),
-                    const Color.fromARGB(255, 67, 67, 67).withValues(alpha: 0.9),
+                    const Color.fromARGB(
+                      255,
+                      67,
+                      67,
+                      67,
+                    ).withValues(alpha: 0.9),
                   ],
                   stops: const [0.0, 0.58, 1.0],
                 )
@@ -5191,7 +5259,9 @@ class _ChatBubble extends StatelessWidget {
     final metaColor = isDeletedPlaceholder
         ? deletedAccent.withValues(alpha: 0.88)
         : isMine
-        ? (isDark ? primary.withValues(alpha: 0.74) : subtleText.withValues(alpha: 0.92))
+        ? (isDark
+              ? primary.withValues(alpha: 0.74)
+              : subtleText.withValues(alpha: 0.92))
         : subtleText.withValues(alpha: 0.92);
     final normalizedParticipantUserId = participantUserId?.trim() ?? '';
     if (isMine && normalizedParticipantUserId.isNotEmpty) {
@@ -5214,7 +5284,9 @@ class _ChatBubble extends StatelessWidget {
                   : isDeletedPlaceholder
                   ? deletedAccent.withValues(alpha: 0.45)
                   : isMine
-                  ? (isDark ? outgoingBubbleBorder : Colors.black.withValues(alpha: 0.10))
+                  ? (isDark
+                        ? outgoingBubbleBorder
+                        : Colors.black.withValues(alpha: 0.10))
                   : (isDark
                         ? const Color.fromARGB(0, 111, 111, 111)
                         : appColors.borderColor),

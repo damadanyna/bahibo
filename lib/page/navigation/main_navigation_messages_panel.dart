@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:banay/auth/phoneNumber.dart';
 import 'package:banay/component/app_page_skeletons.dart';
+import 'package:banay/component/background_connection_sheet.dart';
 import 'package:banay/component/profile_models.dart';
 import 'package:banay/component/navigation/navigation_message_components.dart';
 import 'package:banay/component/theme_menu_button.dart';
@@ -16,6 +17,7 @@ import 'package:banay/services/catalog_api_service.dart';
 import 'package:banay/services/chat/chat_participant_profile_update.dart';
 import 'package:banay/services/chat_realtime_service.dart';
 import 'package:banay/services/conversations_api_service.dart';
+import 'package:banay/services/foreground_connection_service.dart';
 import 'package:banay/services/presence_service.dart';
 import 'package:banay/services/app_performance.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
@@ -27,10 +29,24 @@ final ValueNotifier<bool> mainNavigationChatOpenNotifier = ValueNotifier<bool>(
   false,
 );
 
+/// Position of this panel in the shell's IndexedStack. The shell publishes the
+/// selected tab in [mainNavigationSelectedTabNotifier] so embedded chats (kept
+/// mounted offstage for instant reopen) can tell whether they are on screen.
+const int mainNavigationMessagesTabIndex = 2;
+final ValueNotifier<int> mainNavigationSelectedTabNotifier = ValueNotifier<int>(
+  0,
+);
+
 int get mainNavigationUnreadMessageCount =>
     mainNavigationUnreadMessageCountNotifier.value;
 
-enum _MessagesPanelMenuAction { theme, blockedUsers, logout, deleteAccount }
+enum _MessagesPanelMenuAction {
+  theme,
+  backgroundConnection,
+  blockedUsers,
+  logout,
+  deleteAccount,
+}
 
 class MainNavigationMessagesPanel extends StatefulWidget {
   static final GlobalKey panelKey = GlobalKey();
@@ -79,6 +95,12 @@ class _MainNavigationMessagesPanelState
   List<Map<String, dynamic>> _cachedGroupedConversations = const [];
   final Map<String, bool> _typingConversationStates = {};
   final Map<String, Widget> _embeddedConversationPages = <String, Widget>{};
+  // One flag per cached page: true only for the active conversation while the
+  // Messages tab is selected. Offstage pages keep receiving socket events, and
+  // without this they would ack reads (and silence notifications) for
+  // messages the user never saw.
+  final Map<String, ValueNotifier<bool>> _embeddedConversationVisibility =
+      <String, ValueNotifier<bool>>{};
   String? _activeEmbeddedConversationKey;
   bool _isRealtimeConnected = false;
   bool _isLoading = true;
@@ -90,6 +112,9 @@ class _MainNavigationMessagesPanelState
   void initState() {
     super.initState();
     _searchController.addListener(_handleSearchQueryChanged);
+    mainNavigationSelectedTabNotifier.addListener(
+      _syncEmbeddedConversationVisibility,
+    );
     _bindRealtimeUpdates();
     _startConversationsPolling();
     _loadConversations();
@@ -97,11 +122,27 @@ class _MainNavigationMessagesPanelState
 
   @override
   void dispose() {
+    mainNavigationSelectedTabNotifier.removeListener(
+      _syncEmbeddedConversationVisibility,
+    );
+    for (final notifier in _embeddedConversationVisibility.values) {
+      notifier.dispose();
+    }
     _realtimeEventsSubscription?.cancel();
     _conversationsPollTimer?.cancel();
     _searchController.removeListener(_handleSearchQueryChanged);
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _syncEmbeddedConversationVisibility() {
+    final isPanelOnScreen =
+        mainNavigationSelectedTabNotifier.value ==
+        mainNavigationMessagesTabIndex;
+    for (final entry in _embeddedConversationVisibility.entries) {
+      entry.value.value =
+          isPanelOnScreen && entry.key == _activeEmbeddedConversationKey;
+    }
   }
 
   void _handleSearchQueryChanged() {
@@ -123,6 +164,7 @@ class _MainNavigationMessagesPanelState
     } else {
       _activeEmbeddedConversationKey = null;
     }
+    _syncEmbeddedConversationVisibility();
     mainNavigationChatOpenNotifier.value = false;
     return true;
   }
@@ -927,6 +969,9 @@ class _MainNavigationMessagesPanelState
       case _MessagesPanelMenuAction.theme:
         await showThemeSelectionSheet(context);
         return;
+      case _MessagesPanelMenuAction.backgroundConnection:
+        await showBackgroundConnectionSheet(context);
+        return;
       case _MessagesPanelMenuAction.blockedUsers:
         await _openBlockedUsers();
         return;
@@ -1130,11 +1175,18 @@ class _MainNavigationMessagesPanelState
           orElse: () => _embeddedConversationPages.keys.first,
         );
         _embeddedConversationPages.remove(evictKey);
+        // Safe even though the evicted ChatPage is still mounted until the
+        // next build: ChangeNotifier.removeListener tolerates disposed
+        // instances by design.
+        _embeddedConversationVisibility.remove(evictKey)?.dispose();
       }
 
+      final visibilityNotifier = ValueNotifier<bool>(false);
+      _embeddedConversationVisibility[conversationKey] = visibilityNotifier;
       _embeddedConversationPages[conversationKey] = ChatPage(
         key: ValueKey<String>('messages-panel:$conversationKey'),
         conversationId: conversationId,
+        visibilityListenable: visibilityNotifier,
         onCloseRequested: _closeEmbeddedConversationIfOpen,
         productPageBuilder: (product, {openedFromChat = false}) =>
             ProductDetailPage(product: product, openedFromChat: openedFromChat),
@@ -1148,11 +1200,13 @@ class _MainNavigationMessagesPanelState
 
     if (!mounted) {
       _activeEmbeddedConversationKey = conversationKey;
+      _syncEmbeddedConversationVisibility();
       mainNavigationChatOpenNotifier.value = true;
       return;
     }
 
     setState(() => _activeEmbeddedConversationKey = conversationKey);
+    _syncEmbeddedConversationVisibility();
     mainNavigationChatOpenNotifier.value = true;
   }
 
@@ -1258,29 +1312,39 @@ class _MainNavigationMessagesPanelState
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    itemBuilder: (context) => const [
-                      PopupMenuItem(
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
                         value: _MessagesPanelMenuAction.theme,
                         child: _MessagesPanelMenuItem(
                           icon: Icons.palette_outlined,
                           label: 'Theme',
                         ),
                       ),
-                      PopupMenuItem(
+                      // Android-only: the foreground service behind this
+                      // toggle has no iOS / web equivalent.
+                      if (ForegroundConnectionService.isSupportedPlatform)
+                        const PopupMenuItem(
+                          value: _MessagesPanelMenuAction.backgroundConnection,
+                          child: _MessagesPanelMenuItem(
+                            icon: Icons.wifi_tethering_rounded,
+                            label: 'Connexion renforcee',
+                          ),
+                        ),
+                      const PopupMenuItem(
                         value: _MessagesPanelMenuAction.blockedUsers,
                         child: _MessagesPanelMenuItem(
                           icon: Icons.block_rounded,
                           label: 'Personnes bloquees',
                         ),
                       ),
-                      PopupMenuItem(
+                      const PopupMenuItem(
                         value: _MessagesPanelMenuAction.logout,
                         child: _MessagesPanelMenuItem(
                           icon: Icons.logout_rounded,
                           label: 'Deconnexion',
                         ),
                       ),
-                      PopupMenuItem(
+                      const PopupMenuItem(
                         value: _MessagesPanelMenuAction.deleteAccount,
                         child: _MessagesPanelMenuItem(
                           icon: Icons.delete_forever_rounded,
