@@ -1327,7 +1327,7 @@ class _MainNavigationMessagesPanelState
                           value: _MessagesPanelMenuAction.backgroundConnection,
                           child: _MessagesPanelMenuItem(
                             icon: Icons.wifi_tethering_rounded,
-                            label: 'Connexion renforcee',
+                            label: 'Connexion renforcée',
                           ),
                         ),
                       const PopupMenuItem(

@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:banay/component/live/live_overlay_widgets.dart';
 import 'package:banay/component/ui/dinamic_icon_input.dart';
+import 'package:banay/services/live/live_room_channel.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:livekit_client/livekit_client.dart';
@@ -14,6 +16,8 @@ class LivePreviewPage extends StatefulWidget {
     required this.liveUrl,
     required this.liveToken,
     required this.roomName,
+    this.sellerName,
+    this.sellerAvatarUrl,
   });
 
   final String title;
@@ -21,6 +25,11 @@ class LivePreviewPage extends StatefulWidget {
   final String liveUrl;
   final String liveToken;
   final String roomName;
+
+  /// Host identity shown in the top-left card; falls back to [title] / a
+  /// storefront icon when the caller has no profile at hand.
+  final String? sellerName;
+  final String? sellerAvatarUrl;
 
   @override
   State<LivePreviewPage> createState() => _LivePreviewPageState();
@@ -43,48 +52,48 @@ class _LivePreviewPageState extends State<LivePreviewPage>
     '💯',
   ];
 
-  static const List<({String author, String initials, String message})>
-  _sampleComments = [
-    (
-      author: 'Miora',
-      initials: 'MI',
-      message: 'Montre le produit de plus pres stp',
-    ),
-    (
-      author: 'Tahina',
-      initials: 'TA',
-      message: 'Le son est propre, on te voit bien',
-    ),
-    (
-      author: 'Aina',
-      initials: 'AI',
-      message: 'C\'est disponible a Tana aujourd\'hui ?',
-    ),
-    (
-      author: 'Kanto',
-      initials: 'KA',
-      message: 'Le prix final avec livraison ?',
-    ),
-  ];
+  static const int _maxKeptComments = 200;
 
   late final Room _room;
   late final TextEditingController _commentController;
-  late List<({String author, String initials, String message})> _liveComments;
+  final List<LiveCommentEntry> _liveComments = <LiveCommentEntry>[];
   late final AnimationController _livePulseController;
+  LiveRoomChannel? _channel;
+  StreamSubscription<LiveCommentEntry>? _commentsSubscription;
+  StreamSubscription<int>? _likesSubscription;
+  int _likeCount = 0;
 
   bool _isConnecting = true;
   bool _isLive = false;
   bool _isPaused = false;
   bool _isMuted = false;
   bool _isCameraEnabled = true;
-  bool _showControlMenu = false;
   CameraPosition _cameraPosition = CameraPosition.front;
   String? _errorMessage;
 
+  // 720p stays the ceiling: a 1080p ladder needs ~3.6 Mb/s of stable uplink,
+  // which mobile data rarely gives here. Quality is won by spending more
+  // bitrate on that 720p layer and by refusing to drop resolution first.
   CameraCaptureOptions get _cameraCaptureOptions => CameraCaptureOptions(
     cameraPosition: _cameraPosition,
     params: VideoParametersPresets.h720_169,
-    maxFrameRate: 24,
+    maxFrameRate: 30,
+  );
+
+  static const VideoPublishOptions _videoPublishOptions = VideoPublishOptions(
+    // SDK default for 720p is 1.7 Mb/s; product close-ups block up at that
+    // rate, so give the top layer more room.
+    videoEncoding: VideoEncoding(maxBitrate: 2500 * 1000, maxFramerate: 30),
+    // Explicit ladder: viewers on weak links get 360p/180p from the SFU, the
+    // top layer is left untouched for everyone else.
+    simulcast: true,
+    videoSimulcastLayers: [
+      VideoParametersPresets.h360_169,
+      VideoParametersPresets.h180_169,
+    ],
+    // Under congestion, keep the image sharp and lower the frame rate — a
+    // shopping live is about seeing the product, not smooth motion.
+    degradationPreference: DegradationPreference.maintainResolution,
   );
 
   @override
@@ -95,10 +104,10 @@ class _LivePreviewPageState extends State<LivePreviewPage>
         adaptiveStream: true,
         dynacast: true,
         defaultCameraCaptureOptions: _cameraCaptureOptions,
+        defaultVideoPublishOptions: _videoPublishOptions,
       ),
     );
     _commentController = TextEditingController();
-    _liveComments = List.of(_sampleComments);
     _livePulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
@@ -111,10 +120,49 @@ class _LivePreviewPageState extends State<LivePreviewPage>
   void dispose() {
     _commentController.dispose();
     _livePulseController.dispose();
+    unawaited(_commentsSubscription?.cancel());
+    unawaited(_likesSubscription?.cancel());
+    unawaited(_channel?.dispose());
     _room.removeListener(_handleRoomChanged);
     unawaited(_room.disconnect());
     _room.dispose();
     super.dispose();
+  }
+
+  /// Opens the comments / likes channel once the room is connected. Not
+  /// awaited by the caller: resolving the identity must not delay going live.
+  Future<void> _startChannel() async {
+    if (_channel != null) {
+      return;
+    }
+
+    final sellerName = widget.sellerName?.trim() ?? '';
+    final channel = LiveRoomChannel(
+      room: _room,
+      isHost: true,
+      authorName: sellerName.isNotEmpty ? sellerName : widget.title,
+      authorAvatarUrl: widget.sellerAvatarUrl,
+    );
+    _channel = channel;
+    _commentsSubscription = channel.comments.listen(_appendComment);
+    _likesSubscription = channel.likes.listen((count) {
+      if (mounted) {
+        setState(() => _likeCount += count);
+      }
+    });
+    await channel.start();
+  }
+
+  void _appendComment(LiveCommentEntry entry) {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _liveComments.insert(0, entry);
+      if (_liveComments.length > _maxKeptComments) {
+        _liveComments.removeRange(_maxKeptComments, _liveComments.length);
+      }
+    });
   }
 
   Future<void> _connectAndPublish({bool initialLaunch = false}) async {
@@ -156,6 +204,7 @@ class _LivePreviewPageState extends State<LivePreviewPage>
         return;
       }
 
+      unawaited(_startChannel());
       _livePulseController.repeat(reverse: true);
       setState(() {
         _isConnecting = false;
@@ -353,23 +402,17 @@ class _LivePreviewPageState extends State<LivePreviewPage>
     Navigator.of(context).pop(true);
   }
 
-  void _toggleControlMenu() {
-    setState(() {
-      _showControlMenu = !_showControlMenu;
-    });
-  }
-
   Future<void> _submitComment(String text) async {
-    if (text.trim().isEmpty) {
+    final channel = _channel;
+    if (text.trim().isEmpty || channel == null) {
       return;
     }
 
-    setState(() {
-      _liveComments = [
-        (author: 'Vous', initials: 'VO', message: text.trim()),
-        ..._liveComments,
-      ];
-    });
+    // Own messages are not echoed back by the room: append what was sent.
+    final entry = await channel.sendComment(text);
+    if (entry != null) {
+      _appendComment(entry);
+    }
   }
 
   Future<void> _showEmojiPicker() async {
@@ -461,6 +504,7 @@ class _LivePreviewPageState extends State<LivePreviewPage>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isKeyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     final localTrack = _localVideoTrack();
     final previewReady =
         localTrack != null &&
@@ -544,20 +588,41 @@ class _LivePreviewPageState extends State<LivePreviewPage>
                   ),
                 ),
               ),
-            Positioned(
-              top: 6,
-              left: 16,
-              child: SafeArea(child: _buildCloseButton(theme)),
-            ),
             SafeArea(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(children: [const Spacer(), _buildTopRightControls()]),
-                    const Spacer(),
-                    _buildCommentsSpace(),
+                    // Header: host identity + live state on the left, close
+                    // on the right — mirrors what viewers see, from the host
+                    // side.
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: _buildHostCard(theme)),
+                        const SizedBox(width: 10),
+                        _buildCloseButton(theme),
+                      ],
+                    ),
+                    if (!isKeyboardOpen) ...[
+                      const SizedBox(height: 14),
+                      // Broadcast tools stay one tap away on a vertical rail
+                      // instead of behind a settings toggle. Hidden while
+                      // typing: the keyboard needs that height.
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: _buildToolRail(theme),
+                      ),
+                    ],
+                    // Takes whatever height is left and shrinks under the
+                    // keyboard instead of overflowing the column.
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.bottomLeft,
+                        child: _buildCommentsSpace(),
+                      ),
+                    ),
                     const SizedBox(height: 12),
                     DynamicIconInput(
                       controller: _commentController,
@@ -643,24 +708,59 @@ class _LivePreviewPageState extends State<LivePreviewPage>
     );
   }
 
-  Widget _buildFloatingControlIcon({
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(999),
-        child: Padding(
-          padding: const EdgeInsets.all(6),
-          child: Icon(
-            icon,
-            color: Theme.of(context).appColors.heroForeground,
-            size: 28,
-          ),
+  Widget _buildHostCard(ThemeData theme) {
+    final sellerName = widget.sellerName?.trim() ?? '';
+
+    return LiveHostCard(
+      name: sellerName.isNotEmpty ? sellerName : widget.title,
+      title: sellerName.isNotEmpty ? widget.title : null,
+      avatarUrl: widget.sellerAvatarUrl,
+      isLive: _isLive,
+      viewerCount: _isLive ? _room.remoteParticipants.length : null,
+      likeCount: _isLive ? _likeCount : null,
+      pulse: _livePulseController,
+    );
+  }
+
+  Widget _buildToolRail(ThemeData theme) {
+    const gap = SizedBox(height: 10);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        LiveRoundButton(
+          icon: Icons.flip_camera_ios_outlined,
+          tooltip: 'Changer de caméra',
+          onTap: _switchCamera,
         ),
-      ),
+        if (_isLive) ...[
+          gap,
+          LiveRoundButton(
+            icon: _isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+            tooltip: _isMuted ? 'Réactiver le micro' : 'Couper le micro',
+            onTap: _toggleMuteLive,
+            isOff: _isMuted,
+          ),
+          gap,
+          LiveRoundButton(
+            icon: _isCameraEnabled
+                ? Icons.videocam_rounded
+                : Icons.videocam_off_rounded,
+            tooltip: _isCameraEnabled
+                ? 'Couper la caméra'
+                : 'Réactiver la caméra',
+            onTap: _toggleCamera,
+            isOff: !_isCameraEnabled,
+          ),
+          gap,
+          LiveRoundButton(
+            icon: _isPaused ? Icons.play_arrow_rounded : Icons.pause_rounded,
+            tooltip: _isPaused ? 'Reprendre le live' : 'Mettre en pause',
+            onTap: _togglePauseLive,
+            isOff: _isPaused,
+          ),
+        ],
+      ],
     );
   }
 
@@ -707,236 +807,10 @@ class _LivePreviewPageState extends State<LivePreviewPage>
     );
   }
 
-  Widget _buildTopRightControls() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (_isLive) ...[_buildBlinkingLiveDot(), const SizedBox(width: 8)],
-            _buildTopLiveStats(),
-          ],
-        ),
-        const SizedBox(height: 10),
-        _buildFloatingControlIcon(
-          icon: _showControlMenu
-              ? Icons.settings_applications_rounded
-              : Icons.settings_outlined,
-          onTap: _toggleControlMenu,
-        ),
-        if (_showControlMenu) ...[
-          const SizedBox(height: 10),
-          _buildFloatingControlIcon(
-            icon: Icons.flip_camera_ios_outlined,
-            onTap: _switchCamera,
-          ),
-        ],
-        if (_showControlMenu && _isLive) ...[
-          const SizedBox(height: 10),
-          _buildFloatingControlIcon(
-            icon: _isPaused ? Icons.play_arrow_rounded : Icons.pause_rounded,
-            onTap: _togglePauseLive,
-          ),
-          const SizedBox(height: 10),
-          _buildFloatingControlIcon(
-            icon: _isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
-            onTap: _toggleMuteLive,
-          ),
-          const SizedBox(height: 10),
-          _buildFloatingControlIcon(
-            icon: _isCameraEnabled
-                ? Icons.videocam_rounded
-                : Icons.videocam_off_rounded,
-            onTap: _toggleCamera,
-          ),
-        ],
-      ],
-    );
-  }
-
   Widget _buildCommentsSpace() {
-    final comments = _isLive
-        ? _liveComments
-        : const <({String author, String initials, String message})>[];
-
-    return SizedBox(
-      height: 192,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: comments.isEmpty
-                        ? Align(
-                            alignment: Alignment.topLeft,
-                            child: Text(
-                              'Les commentaires apparaitront ici des que le live commence. L\'espace est reserve pour garder la lecture claire.',
-                              style: TextStyle(
-                                color: Theme.of(context)
-                                    .appColors
-                                    .heroForegroundMuted
-                                    .withValues(alpha: 0.86),
-                                height: 1.35,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          )
-                        : ListView.separated(
-                            padding: EdgeInsets.zero,
-                            physics: const BouncingScrollPhysics(),
-                            itemCount: comments.length,
-                            separatorBuilder: (context, index) =>
-                                const SizedBox(height: 10),
-                            itemBuilder: (context, index) {
-                              final comment = comments[index];
-                              return Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  CircleAvatar(
-                                    radius: 17,
-                                    backgroundColor: Theme.of(
-                                      context,
-                                    ).appColors.heroSurface,
-                                    child: Text(
-                                      comment.initials,
-                                      style: TextStyle(
-                                        color: Theme.of(
-                                          context,
-                                        ).appColors.heroForeground,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          comment.author,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            color: Theme.of(
-                                              context,
-                                            ).colorScheme.primary,
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          comment.message,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            color: Theme.of(context)
-                                                .appColors
-                                                .heroForeground
-                                                .withValues(alpha: 0.92),
-                                            fontWeight: FontWeight.w500,
-                                            height: 1.25,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              );
-                            },
-                          ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTopLiveStats() {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _buildTopStatChip(
-          icon: Icons.remove_red_eye_rounded,
-          value: _isLive ? '2.4k' : '--',
-        ),
-        const SizedBox(width: 8),
-        _buildTopStatChip(
-          icon: Icons.favorite_rounded,
-          value: _isLive ? '2.4k' : '--',
-        ),
-        const SizedBox(width: 8),
-        _buildTopStatChip(
-          icon: Icons.chat_bubble_rounded,
-          value: _isLive ? '128' : '--',
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTopStatChip({required IconData icon, required String value}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: Theme.of(context).appColors.overlaySurface,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Theme.of(context).appColors.overlayBorder),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            color: Theme.of(context).appColors.heroForeground,
-            size: 15,
-          ),
-          const SizedBox(width: 6),
-          Text(
-            value,
-            style: TextStyle(
-              color: Theme.of(context).appColors.heroForeground,
-              fontWeight: FontWeight.w800,
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBlinkingLiveDot() {
-    return FadeTransition(
-      opacity: Tween<double>(begin: 0.35, end: 1).animate(
-        CurvedAnimation(parent: _livePulseController, curve: Curves.easeInOut),
-      ),
-      child: Container(
-        width: 14,
-        height: 14,
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.secondary,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: Theme.of(
-                context,
-              ).colorScheme.secondary.withValues(alpha: 0.56),
-              blurRadius: 12,
-              spreadRadius: 1,
-            ),
-          ],
-        ),
-      ),
+    return LiveCommentsFeed(
+      comments: _isLive ? _liveComments : const <LiveCommentEntry>[],
+      emptyText: 'Les commentaires apparaîtront ici dès que le live commence.',
     );
   }
 
@@ -998,4 +872,3 @@ class _LivePreviewPageState extends State<LivePreviewPage>
     );
   }
 }
-

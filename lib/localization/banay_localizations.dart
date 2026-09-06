@@ -210,6 +210,7 @@ abstract final class BanayLocalizationKeys {
       BanaySearchLocalizationKeys.resultsSummary;
   static const searchTypeProduct = BanaySearchLocalizationKeys.typeProduct;
   static const searchTypeUser = BanaySearchLocalizationKeys.typeUser;
+  static const searchTypeShop = BanaySearchLocalizationKeys.typeShop;
   static const searchTypeCategory = BanaySearchLocalizationKeys.typeCategory;
   static const searchTypeLocation = BanaySearchLocalizationKeys.typeLocation;
   static const phonePageTitle = BanayAuthLocalizationKeys.phonePageTitle;
@@ -261,8 +262,8 @@ class BanayLocalizations {
 
   final Locale locale;
 
-    static const LocalizationsDelegate<BanayLocalizations> delegate =
-            _BanayLocalizationsDelegate();
+  static const LocalizationsDelegate<BanayLocalizations> delegate =
+      _BanayLocalizationsDelegate();
 
   static const List<Locale> supportedLocales = [
     Locale('mg'),
@@ -320,25 +321,25 @@ class BanayLocalizations {
 }
 
 class _BanayLocalizationsDelegate
-        extends LocalizationsDelegate<BanayLocalizations> {
-    const _BanayLocalizationsDelegate();
+    extends LocalizationsDelegate<BanayLocalizations> {
+  const _BanayLocalizationsDelegate();
 
-    @override
-    bool isSupported(Locale locale) {
-        return BanayLocalizations.supportedLocales.any(
-            (supportedLocale) => supportedLocale.languageCode == locale.languageCode,
-        );
-    }
+  @override
+  bool isSupported(Locale locale) {
+    return BanayLocalizations.supportedLocales.any(
+      (supportedLocale) => supportedLocale.languageCode == locale.languageCode,
+    );
+  }
 
-    @override
-    Future<BanayLocalizations> load(Locale locale) {
-        return SynchronousFuture<BanayLocalizations>(BanayLocalizations(locale));
-    }
+  @override
+  Future<BanayLocalizations> load(Locale locale) {
+    return SynchronousFuture<BanayLocalizations>(BanayLocalizations(locale));
+  }
 
-    @override
-    bool shouldReload(covariant LocalizationsDelegate<BanayLocalizations> old) {
-        return false;
-    }
+  @override
+  bool shouldReload(covariant LocalizationsDelegate<BanayLocalizations> old) {
+    return false;
+  }
 }
 
 extension BanayLocalizationContext on BuildContext {

@@ -137,14 +137,14 @@ class _BackgroundConnectionSheetBodyState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Connexion renforcee',
+                      'Connexion renforcée',
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Pour les telephones qui retardent les messages.',
+                      'Pour les téléphones qui retardent les messages.',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: colorScheme.onSurface.withValues(alpha: 0.72),
                       ),
@@ -161,7 +161,7 @@ class _BackgroundConnectionSheetBodyState
           value: isEnabled ?? false,
           onChanged: isEnabled == null || _isBusy ? null : _toggle,
           title: Text(
-            'Garder Banay actif en arriere-plan',
+            'Garder Banay actif en arrière-plan',
             style: theme.textTheme.bodyLarge?.copyWith(
               fontWeight: FontWeight.w700,
             ),
@@ -170,9 +170,9 @@ class _BackgroundConnectionSheetBodyState
             padding: const EdgeInsets.only(top: 4),
             child: Text(
               'Affiche une notification permanente, mais garantit la '
-              'reception des messages meme quand le telephone limite les '
-              'applications en arriere-plan. Laissez desactive si vos '
-              'messages arrivent deja correctement.',
+              'réception des messages même quand le téléphone limite les '
+              'applications en arrière-plan. Laissez désactivé si vos '
+              'messages arrivent déjà correctement.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurface.withValues(alpha: 0.64),
                 height: 1.4,

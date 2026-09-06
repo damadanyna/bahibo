@@ -163,3 +163,209 @@ futurs diagnostics.
   conversation est visible ; si cette conversation visible est une page
   integree, c'est la route du shell qui serait remplacee. Correctif separe a
   prevoir.
+
+### 3. Courbes d'activite visibles dans l'onglet "Statistique" du vendeur
+
+- **Demande** : les courbes d'activite (likes, vues, ajouts produit,
+  abonnes) n'etaient visibles que dans la page "Tableau de bord complet",
+  ouverte en tapant sur la carte de l'onglet Statistique. Le vendeur doit
+  les voir directement dans l'onglet.
+- **Changement** :
+  - `lib/component/seller_activity_curves_card.dart` (nouveau) — extraction
+    de `dashboard_page.dart` : `SellerActivityRange` (periodes),
+    `SellerActivitySnapshot.build()` (calcul des series a partir du catalogue
+    et des compteurs profil), `SellerActivityRangeFilters` (chips de
+    periode) et `SellerActivityCurvesCard` (les deux graphes, legende,
+    info-bulle au tap). L'etat de selection vit dans la carte ; il est
+    reinitialise uniquement quand la periode change, pas a chaque rebuild
+    de l'hote.
+  - `lib/page/dashboard_page.dart` — supprime (demande utilisateur, meme
+    session) : la page "Tableau de bord complet" et son graphe a barres
+    "Evolution des performances" n'existent plus. `SellerActivitySnapshot`
+    ne calcule donc plus `growth` / `bars` (serie revenus).
+  - `lib/page/navigation/main_navigation_account_panel.dart` — onglet
+    Statistique : grille de metriques, puis filtres de periode + carte des
+    courbes (style `_surfaceDecoration` du panneau). La carte "Tableau de
+    bord" (valeurs de demonstration +18 %, barres fixes) qui servait de
+    lien vers la page complete est retiree, ainsi que `_openFullDashboard`
+    et `_accentSurfaceColor` devenus orphelins.
+
+### 4. Nouvel onglet "Mes abonnes" dans le panneau vendeur
+
+- **Demande** : lister les personnes abonnees a la boutique dans un onglet
+  dedie, a cote de "Mes produits", "Statistique" et "Abonnement".
+- **Changement** (`lib/page/navigation/main_navigation_account_panel.dart`) :
+  - `_AccountPanelTab.followers` + onglet "Mes abonnes" (icone
+    `people_alt_rounded`), place entre Statistique et Abonnement.
+  - Chargement via `CatalogApiService.fetchSellerFollowers` (endpoint
+    existant `GET /profiles/sellers/:id/followers`, deja utilise par la
+    tuile "Abonnes" de la grille de metriques), au demarrage et au
+    rafraichissement (en parallele de la liste des abonnements).
+  - La section "Mes abonnements" est generalisee en
+    `_buildPeopleListSection(...)` (titre, compteur, etat vide, liste)
+    et sert aux deux onglets : meme payload (`displayName`, `avatarUrl`,
+    `subtitle`, `role`, `sellerProfileId`, `userId`), meme tuile
+    `_buildFollowedPersonTile`, meme navigation vers le profil.
+- **Non modifie** : la tuile "Abonnes" de la grille de metriques ouvre
+  toujours la page `UserListPage` plein ecran.
+
+### 5. Bouton "Lancer un live" dans l'onglet Abonnés
+
+- **Demande** : pouvoir demarrer un live depuis l'onglet Abonnés du panneau
+  vendeur.
+- **Changement** (`lib/page/navigation/main_navigation_account_panel.dart`) :
+  carte `_buildLaunchLiveCard` en tete de l'onglet (icone live, texte
+  "Vos abonnés sont prévenus et peuvent vous rejoindre en direct.", bouton
+  "Démarrer"). Elle rebranche `_showLaunchLiveSheet` (feuille titre /
+  categorie, deja presente mais sans point d'entree — l'analyseur la
+  signalait comme inutilisee) qui enchaine sur `_openLivePreview` →
+  `startCurrentUserLive` → `LivePreviewPage`. Aucun nouveau flux, aucun
+  changement backend.
+- **Note** : les onglets sont renommes "Produits" / "Statistique" /
+  "Abonnés" / "Abonnement" et perdent leur marge interieure horizontale
+  pour tenir a quatre ; les textes ajoutes ce jour portent les accents
+  (regle demandee par l'utilisateur), les textes anciens restent tels quels.
+
+## 2026-09-06
+
+### 1. Carte de résultat "utilisateur" dans la recherche : nom répété 4 fois
+
+- **Symptome** : pour un vendeur dont le nom de boutique = nom d'affichage,
+  la carte affichait le meme texte en titre, sous-titre et dans deux puces,
+  plus une ligne generique "Utilisateur BANAY de Madagascar.".
+- **Causes** :
+  - client `_SearchSuggestion.fromApi` copiait `label` dans `productName`
+    pour tous les types → puce "produit" = titre (aussi vrai pour les
+    cartes produit) ;
+  - backend `search.service.ts` renvoyait `sellerName = displayName` pour un
+    utilisateur → puce "boutique" = titre ; `subtitle = studioName` ;
+    `description` = phrase generique de remplissage.
+- **Changement** (decision utilisateur : pas de refonte, juste ces points) :
+  - backend : helper `buildUserSearchPresentation` partage par
+    l'autocompletion et la recherche. `subtitle` = province de Madagascar
+    (`resolveMadagascarProvince`, repli sur le libelle de lieu),
+    `sellerName` = nom de boutique seulement s'il differe du nom affiche,
+    `description` = description de la boutique ou vide (plus de phrase
+    generique ; le champ `about` du profil garde son repli), nouveau champ
+    `isShop`. Le select de l'autocompletion inclut `description`.
+  - client : `productName` seulement pour les produits ; puce produit
+    supprimee (elle repetait toujours le titre) ; sous-titre et puce
+    boutique masques s'ils repetent le titre ; badge "Boutique" (nouvelle cle
+    `search_type_shop`, 7 langues) vs "Personne" selon `isShop`, icone
+    boutique pour les vendeurs ; le titre d'un utilisateur est `label`
+    (avant : `sellerName ?? label`).
+
+### 2. Écran du live côté vendeur : refonte de l'interface
+
+- **Demande** : reproduire, côté hôte, la lecture d'un écran de live grand
+  public (identité en haut à gauche, fermeture en haut à droite,
+  commentaires en bas, saisie en pied de page).
+- **Changement** (`lib/page/live/live_preview_page.dart`) :
+  - carte hôte en haut à gauche : avatar de la boutique avec pastille
+    « LIVE » clignotante chevauchant le bas de l'avatar, nom de la
+    boutique, compteur de spectateurs **réel** (`Room.remoteParticipants`)
+    et titre du live ; nouveaux paramètres optionnels `sellerName` /
+    `sellerAvatarUrl` (passés par le panneau vendeur, repli sur le titre +
+    icône boutique sinon) ;
+  - bouton fermer déplacé en haut à droite (confirmation inchangée) ;
+  - rail vertical d'outils toujours visible sous l'en-tête : changer de
+    caméra, micro, caméra, pause. Un outil désactivé passe en rouge
+    (`liveIndicator`). Remplace le menu « engrenage » à deux taps ;
+  - suppression des compteurs factices « 2.4k likes / 128 commentaires » ;
+  - commentaires : nom en petit atténué, message en blanc plus lisible ;
+  - libellés avec accents (« Changer de caméra », « Couper le micro »…).
+- **Inchangé / à savoir** : les commentaires affichés côté hôte sont
+  toujours les exemples locaux `_sampleComments` (aucun chat live n'existe
+  encore côté backend ni côté spectateur) ; la page spectateur
+  `live_watch_page.dart` n'est pas touchée.
+
+### 3. Écran du live côté spectateur : refonte + composants partagés
+
+- **Demande** : même lecture que la référence grand public pour celui qui
+  regarde : vidéo plein écran, hôte en haut à gauche, Suivre + quitter en
+  haut à droite, commentaires en bas, saisie + like en pied de page.
+- **Changement** :
+  - `lib/component/live/live_overlay_widgets.dart` (nouveau) — briques
+    partagées hôte/spectateur : `LiveHostCard` (avatar + pastille LIVE
+    chevauchante, nom, compteur spectateurs, titre), `LiveBadge`,
+    `LiveBlinkingDot`, `LiveRoundButton` (46 px, état « coupé » rouge ou
+    remplissage forcé), `LiveCommentsFeed` (ancré en bas, plus récent près
+    de la saisie), `formatLiveCount`, `typedef LiveCommentEntry`.
+  - `lib/page/live/live_preview_page.dart` — utilise ces briques à la place
+    de ses helpers privés (introduits la veille dans ce même fichier).
+  - `lib/page/live/live_watch_page.dart` — réécrit : vidéo `VideoViewFit.cover`
+    plein écran + dégradés, carte hôte alimentée par la réponse `live/join`
+    (nom/avatar/titre), compteur de spectateurs réel
+    (`Room.remoteParticipants`), bouton **Suivre / Abonné** fonctionnel
+    (`followSeller` / `unfollowSeller`, même flux que la page profil),
+    bouton quitter, fil de commentaires (82 % de largeur), champ de saisie,
+    bouton cœur avec retour haptique et compteur local.
+  - backend `profiles.service.ts` — `getSellerLiveJoinInfo` renvoie
+    `isFollowing` pour afficher le bon état du bouton sans second appel.
+- **Limites connues** : commentaires et likes du spectateur sont locaux à
+  son appareil (aucun canal temps réel live côté backend pour l'instant) ;
+  c'est le prochain chantier si ces écrans doivent servir en production.
+
+### 4. Qualité vidéo du live
+
+- **Symptôme** : image du live jugée mauvaise côté spectateur.
+- **Causes identifiées** :
+  - la page spectateur affichait la vidéo dans un cadre réduit : le flux
+    adaptatif (`adaptiveStream`) demandait donc une couche simulcast basse
+    (360p ou moins) ; la refonte plein écran (entrée 3) corrige déjà ce point ;
+  - côté hôte, l'encodage suivait le préréglage 720p par défaut du SDK
+    (1,7 Mb/s, capture plafonnée à 24 i/s) sans préférence de dégradation,
+    donc WebRTC baissait la résolution en premier sous contrainte réseau.
+- **Changement** (`lib/page/live/live_preview_page.dart`) :
+  `defaultVideoPublishOptions` explicite — 720p à 2,5 Mb/s / 30 i/s, échelle
+  simulcast 360p + 180p, `DegradationPreference.maintainResolution` ; capture
+  à 30 i/s. Résolution volontairement gardée à 720p : une échelle 1080p
+  demande ~3,6 Mb/s d'envoi stable, rarement disponible en data mobile.
+- **Hors code** : un live émis depuis l'émulateur utilise une caméra
+  factice de basse qualité ; le débit montant de l'hôte reste le facteur
+  dominant.
+
+### 5. Live : commentaires et likes en temps réel entre spectateurs et hôte
+
+- **Demande** : que les messages et les likes circulent réellement entre
+  ceux qui regardent et celui qui diffuse (jusqu'ici, tout restait local).
+- **Choix technique** : canal de données LiveKit (`publishData` /
+  `DataReceivedEvent`) sur le salon déjà ouvert pour la vidéo — aucun
+  nouveau gateway ni table, latence minimale, et la permission est portée
+  par le jeton (`canPublishData`). Pas de persistance : un live chat n'en a
+  pas besoin ; à ajouter si une modération a posteriori devient nécessaire.
+- **Changement** :
+  - `lib/services/live/live_room_channel.dart` (nouveau) — `LiveRoomChannel`
+    : `sendComment` (fiable, 300 caractères max), `sendLike` (lossy),
+    flux `comments` / `likes`, sujet `banay.live`, identité résolue depuis
+    `/auth/me` pour les spectateurs (nom + avatar), fournie par l'hôte pour
+    lui-même ; l'émetteur ré-affiche localement son propre message (LiveKit
+    ne renvoie pas ses données à l'expéditeur).
+  - `lib/component/live/live_overlay_widgets.dart` — `LiveCommentEntry`
+    devient une classe sérialisable (`id`, `author`, `message`, `avatarUrl`,
+    `isHost`, `userId`) ; la tuile affiche l'avatar réel et un tag
+    « Vendeur » sur les messages de l'hôte ; `LiveHostCard` affiche le total
+    de cœurs reçus.
+  - `live_preview_page.dart` — suppression des commentaires factices
+    `_sampleComments` ; canal démarré dès la connexion ; les cœurs des
+    spectateurs incrémentent le compteur de l'hôte.
+  - `live_watch_page.dart` — envoi des commentaires et des likes ; réception
+    de ceux des autres spectateurs et des réponses de l'hôte.
+  - backend `profiles.service.ts` — `buildLivekitToken` accepte
+    `canPublishData` ; le jeton spectateur l'active (il valait `false`,
+    calqué sur `canPublish`).
+- **Limites** : liste plafonnée à 200 messages en mémoire ; compteur de likes
+  local à chaque participant (chacun additionne ce qu'il reçoit), donc un
+  spectateur arrivé en cours de live repart de zéro.
+
+### 6. Live : débordement de 97 px quand le clavier est ouvert
+
+- **Symptôme** : bande d'erreur « BOTTOM OVERFLOWED » sur l'écran hôte dès
+  qu'on tape un commentaire.
+- **Cause** : le fil de commentaires avait une hauteur fixe (192) dans une
+  colonne qui, une fois le clavier ouvert, n'avait plus la place pour
+  l'en-tête + le rail d'outils + le fil + la saisie.
+- **Correctif** : dans les deux pages, le fil est placé dans un `Expanded`
+  ancré en bas (il prend la place restante et se comprime sous le clavier) ;
+  côté hôte, le rail d'outils est masqué pendant la saisie
+  (`MediaQuery.viewInsetsOf(context).bottom > 0`).

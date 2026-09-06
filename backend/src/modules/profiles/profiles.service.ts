@@ -527,8 +527,21 @@ export class ProfilesService {
       throw new NotFoundException('Live session not found');
     }
 
+    // Lets the viewer screen render its Follow button in the right state
+    // without a second round-trip.
+    const followLink = await this.prisma.sellerFollow.findUnique({
+      where: {
+        followerUserId_sellerProfileId: {
+          followerUserId: currentUserId,
+          sellerProfileId: sellerProfile.id,
+        },
+      },
+      select: { id: true },
+    });
+
     return {
       sellerProfileId: sellerProfile.id,
+      isFollowing: followLink != null,
       roomName: this.buildLiveRoomName(sellerProfile.id),
       url: this.requireLivekitUrl(),
       token: await this.buildLivekitToken({
@@ -537,6 +550,8 @@ export class ProfilesService {
         name: `viewer-${currentUserId}`,
         canPublish: false,
         canSubscribe: true,
+        // Viewers never publish media, but they do send comments and likes.
+        canPublishData: true,
       }),
       title: liveSession.title,
       category: liveSession.category,
@@ -1599,6 +1614,8 @@ export class ProfilesService {
     name: string;
     canPublish: boolean;
     canSubscribe: boolean;
+    /** Data channel (live comments / likes). Defaults to `canPublish`. */
+    canPublishData?: boolean;
   }) {
     const apiKey = this.configService.get<string>('LIVEKIT_API_KEY')?.trim() ?? '';
     const apiSecret = this.configService.get<string>('LIVEKIT_API_SECRET')?.trim() ?? '';
@@ -1618,7 +1635,7 @@ export class ProfilesService {
       room: params.roomName,
       canPublish: params.canPublish,
       canSubscribe: params.canSubscribe,
-      canPublishData: params.canPublish,
+      canPublishData: params.canPublishData ?? params.canPublish,
       canPublishSources: params.canPublish
         ? [TrackSource.CAMERA, TrackSource.MICROPHONE]
         : undefined,

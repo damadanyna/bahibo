@@ -72,7 +72,7 @@ class ForegroundConnectionService {
         channelId: 'banay_background_connection_quiet',
         channelName: 'Connexion Banay',
         channelDescription:
-            'Maintient Banay actif pour recevoir vos messages en arriere-plan.',
+            'Maintient Banay actif pour recevoir vos messages en arrière-plan.',
         // MIN: no status-bar icon, collapsed into the "silent" section of the
         // shade. The service itself is unchanged; only the notice is quieter.
         channelImportance: NotificationChannelImportance.MIN,
@@ -111,7 +111,7 @@ class ForegroundConnectionService {
       serviceId: _serviceId,
       serviceTypes: [ForegroundServiceTypes.remoteMessaging],
       notificationTitle: 'Banay',
-      notificationText: 'Connecte pour vos messages',
+      notificationText: 'Connecté pour vos messages',
       callback: _foregroundConnectionTaskCallback,
     );
   }

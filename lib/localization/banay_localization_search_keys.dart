@@ -16,6 +16,7 @@ abstract final class BanaySearchLocalizationKeys {
   static const resultsSummary = 'search_results_summary';
   static const typeProduct = 'search_type_product';
   static const typeUser = 'search_type_user';
+  static const typeShop = 'search_type_shop';
   static const typeCategory = 'search_type_category';
   static const typeLocation = 'search_type_location';
 }

@@ -392,115 +392,123 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
       );
     }
 
+    // The parent gives this section the whole remaining height (Expanded);
+    // anchor the boxes at the top so they hug their content instead of
+    // painting a screen-tall panel.
     if (suggestions.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
-        decoration: BoxDecoration(
-          color: theme.cardColor,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: theme.appColors.inputBorder),
-        ),
-        child: Text(
-          context.tr(
-            BanayLocalizationKeys.searchNoSuggestions,
-            params: {'query': query},
+      return Align(
+        alignment: Alignment.topCenter,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(18),
           ),
-          style: TextStyle(
-            color: theme.appColors.mutedText,
-            fontWeight: FontWeight.w600,
+          child: Text(
+            context.tr(
+              BanayLocalizationKeys.searchNoSuggestions,
+              params: {'query': query},
+            ),
+            style: TextStyle(
+              color: theme.appColors.mutedText,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       );
     }
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: theme.brightness == Brightness.dark
-            ? theme.appColors.inputFill
-            : theme.cardColor,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: theme.appColors.inputBorder),
-      ),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxHeight: 280),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.people_alt_outlined,
-                    size: 18,
-                    color: theme.colorScheme.primary,
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    context.tr(BanayLocalizationKeys.searchSuggestionsTitle),
-                    style: TextStyle(
+    return Align(
+      alignment: Alignment.topCenter,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: theme.brightness == Brightness.dark
+              ? theme.appColors.inputFill
+              : theme.cardColor,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 280),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.people_alt_outlined,
+                      size: 18,
                       color: theme.colorScheme.primary,
-                      fontWeight: FontWeight.w800,
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              ...suggestions.map(
-                (suggestion) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: InkWell(
-                    onTap: () => _selectAutocompleteSuggestion(suggestion),
-                    borderRadius: BorderRadius.circular(14),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 2,
-                        vertical: 4,
+                    const SizedBox(width: 10),
+                    Text(
+                      context.tr(BanayLocalizationKeys.searchSuggestionsTitle),
+                      style: TextStyle(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w800,
                       ),
-                      child: Row(
-                        children: [
-                          _buildAutocompleteLeading(theme, suggestion),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  suggestion.label,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                ...suggestions.map(
+                  (suggestion) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: InkWell(
+                      onTap: () => _selectAutocompleteSuggestion(suggestion),
+                      borderRadius: BorderRadius.circular(14),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 2,
+                          vertical: 4,
+                        ),
+                        child: Row(
+                          children: [
+                            _buildAutocompleteLeading(theme, suggestion),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    suggestion.label,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  suggestion.subtitle.isEmpty
-                                      ? context.tr(suggestion.typeLabel)
-                                      : '${context.tr(suggestion.typeLabel)} · ${suggestion.subtitle}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: theme.appColors.mutedText,
-                                    fontWeight: FontWeight.w600,
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    suggestion.subtitle.isEmpty
+                                        ? context.tr(suggestion.typeLabel)
+                                        : '${context.tr(suggestion.typeLabel)} · ${suggestion.subtitle}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: theme.appColors.mutedText,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Icon(
-                            Icons.arrow_forward_rounded,
-                            color: theme.colorScheme.primary,
-                            size: 20,
-                          ),
-                        ],
+                            const SizedBox(width: 8),
+                            Icon(
+                              Icons.arrow_forward_rounded,
+                              color: theme.colorScheme.primary,
+                              size: 20,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -597,7 +605,11 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
 
     return buildProfileFromUser(
       userId: suggestion.type == _SuggestionType.user ? suggestion.id : null,
-      name: suggestion.sellerName ?? suggestion.label,
+      // For a user hit, sellerName is now the shop name (or null); the
+      // person's own name is the label.
+      name: suggestion.type == _SuggestionType.user
+          ? suggestion.label
+          : (suggestion.sellerName ?? suggestion.label),
       avatarUrl: suggestion.imageUrl ?? '',
       subtitle: suggestion.subtitle,
     );
@@ -775,7 +787,6 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
                 decoration: BoxDecoration(
                   color: theme.cardColor,
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: theme.appColors.inputBorder),
                 ),
                 child: Row(
                   children: [
@@ -920,7 +931,6 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
                   decoration: BoxDecoration(
                     color: theme.cardColor,
                     borderRadius: BorderRadius.circular(22),
-                    border: Border.all(color: theme.appColors.inputBorder),
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -965,14 +975,16 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 6),
-                            Text(
-                              suggestion.subtitle,
-                              style: TextStyle(
-                                color: theme.appColors.mutedText,
-                                fontWeight: FontWeight.w700,
+                            if (suggestion.displaySubtitle.isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                suggestion.displaySubtitle,
+                                style: TextStyle(
+                                  color: theme.appColors.mutedText,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
-                            ),
+                            ],
                             if ((suggestion.description ?? '').isNotEmpty) ...[
                               const SizedBox(height: 6),
                               Text(
@@ -985,24 +997,19 @@ class _MainNavigationSearchPanelState extends State<MainNavigationSearchPanel> {
                                 ),
                               ),
                             ],
-                            if (suggestion.productName != null ||
-                                suggestion.sellerName != null) ...[
+                            if (suggestion.displaySellerName != null ||
+                                (suggestion.categoryName?.isNotEmpty ??
+                                    false)) ...[
                               const SizedBox(height: 10),
                               Wrap(
                                 spacing: 8,
                                 runSpacing: 6,
                                 children: [
-                                  if (suggestion.productName != null)
-                                    _buildMetaChip(
-                                      theme,
-                                      icon: Icons.inventory_2_outlined,
-                                      text: suggestion.productName!,
-                                    ),
-                                  if (suggestion.sellerName != null)
+                                  if (suggestion.displaySellerName != null)
                                     _buildMetaChip(
                                       theme,
                                       icon: Icons.storefront_rounded,
-                                      text: suggestion.sellerName!,
+                                      text: suggestion.displaySellerName!,
                                     ),
                                   if (suggestion.categoryName != null &&
                                       suggestion.categoryName!.isNotEmpty)
@@ -1119,11 +1126,15 @@ class _SearchSuggestion {
   final Map<String, dynamic>? productData;
   final UserProfileData? sellerProfile;
 
+  /// User hits only: true when the person runs a shop (badge "Boutique").
+  final bool isShop;
+
   const _SearchSuggestion({
     required this.id,
     required this.label,
     required this.subtitle,
     required this.type,
+    this.isShop = false,
     this.keywords,
     this.productName,
     this.sellerName,
@@ -1184,8 +1195,13 @@ class _SearchSuggestion {
       label: (item['label'] as String?) ?? '',
       subtitle: (item['subtitle'] as String?) ?? '',
       type: type,
+      isShop: item['isShop'] == true,
       keywords: (item['description'] as String?) ?? '',
-      productName: (item['label'] as String?) ?? '',
+      // Only a product has a product name; copying the label for every type
+      // used to render the title a second time as a chip.
+      productName: type == _SuggestionType.product
+          ? item['label'] as String?
+          : null,
       sellerName: item['sellerName'] as String?,
       categoryName: item['categoryName'] as String?,
       locationLabel: item['locationLabel'] as String?,
@@ -1200,9 +1216,26 @@ class _SearchSuggestion {
     return (value ?? '').toLowerCase();
   }
 
-  String get displayTitle => type == _SuggestionType.product
-      ? (productName ?? label)
-      : (sellerName ?? label);
+  String get displayTitle =>
+      type == _SuggestionType.product ? (productName ?? label) : label;
+
+  static bool _sameText(String? left, String? right) =>
+      normalize(left).trim() == normalize(right).trim();
+
+  /// Subtitle for the card, or empty when it would repeat the title.
+  String get displaySubtitle =>
+      _sameText(subtitle, displayTitle) ? '' : subtitle.trim();
+
+  /// Shop / seller chip text, or null when it repeats the title or subtitle.
+  String? get displaySellerName {
+    final value = sellerName?.trim() ?? '';
+    if (value.isEmpty ||
+        _sameText(value, displayTitle) ||
+        _sameText(value, displaySubtitle)) {
+      return null;
+    }
+    return value;
+  }
 
   String get searchableText =>
       '${normalize(label)} ${normalize(subtitle)} ${normalize(typeLabel)} ${normalize(keywords)} ${normalize(description)} ${normalize(productName)} ${normalize(sellerName)} ${normalize(categoryName)} ${normalize(locationLabel)}';
@@ -1212,7 +1245,9 @@ class _SearchSuggestion {
       case _SuggestionType.product:
         return BanayLocalizationKeys.searchTypeProduct;
       case _SuggestionType.user:
-        return BanayLocalizationKeys.searchTypeUser;
+        return isShop
+            ? BanayLocalizationKeys.searchTypeShop
+            : BanayLocalizationKeys.searchTypeUser;
       case _SuggestionType.category:
         return BanayLocalizationKeys.searchTypeCategory;
       case _SuggestionType.location:
@@ -1225,7 +1260,7 @@ class _SearchSuggestion {
       case _SuggestionType.product:
         return Icons.inventory_2_outlined;
       case _SuggestionType.user:
-        return Icons.person_outline_rounded;
+        return isShop ? Icons.storefront_rounded : Icons.person_outline_rounded;
       case _SuggestionType.category:
         return Icons.sell_outlined;
       case _SuggestionType.location:

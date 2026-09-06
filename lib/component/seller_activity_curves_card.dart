@@ -1,52 +1,99 @@
+import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
-import 'package:banay/component/app_back_button.dart';
-import 'package:banay/theme/app_theme_extensions.dart';
+/// Seller activity analytics for the account panel's "Statistique" tab
+/// (formerly the standalone "Tableau de bord complet" page).
 
-class StudioDashboardPage extends StatefulWidget {
-  final String studioName;
-  final List<Map<String, dynamic>> products;
-  final String followerCount;
-  final String visitorCount;
-  final String totalLikesCount;
+const String _allCurvesLabel = 'Tout';
 
-  const StudioDashboardPage({
-    super.key,
-    required this.studioName,
-    required this.products,
-    required this.followerCount,
-    required this.visitorCount,
-    required this.totalLikesCount,
-  });
+enum SellerActivityRange {
+  last5Days('Ces 5 derniers jours'),
+  lastWeek('Cette dernière semaine'),
+  lastMonth('Ce dernier mois'),
+  last3Months('Ces 3 derniers mois'),
+  lastYear('Cette année');
 
-  @override
-  State<StudioDashboardPage> createState() => _StudioDashboardPageState();
+  final String label;
+
+  const SellerActivityRange(this.label);
 }
 
-class _StudioDashboardPageState extends State<StudioDashboardPage> {
-  static const String _allCurvesLabel = 'Tout';
+/// Bucketed series derived from the seller's catalog and profile counters.
+/// Product adds are the only exactly dated signal; likes, views and followers
+/// are totals spread across buckets proportionally to catalog activity.
+class SellerActivitySnapshot {
+  final SellerActivityRange range;
+  final List<String> labels;
+  final List<double> followersCurve;
+  final List<int> followersActual;
+  final List<double> likesCurve;
+  final List<int> likesActual;
+  final List<double> viewsCurve;
+  final List<int> viewsActual;
+  final List<double> productAddsCurve;
+  final List<int> productAddsActual;
 
-  _DashboardRange _selectedRange = _DashboardRange.lastWeek;
-  _DashboardPointSelection? _selectedMainPoint;
-  _DashboardPointSelection? _selectedFollowerPoint;
-  String _activeMainCurveLabel = _allCurvesLabel;
+  const SellerActivitySnapshot({
+    required this.range,
+    required this.labels,
+    required this.followersCurve,
+    required this.followersActual,
+    required this.likesCurve,
+    required this.likesActual,
+    required this.viewsCurve,
+    required this.viewsActual,
+    required this.productAddsCurve,
+    required this.productAddsActual,
+  });
 
-  String get _displayStudioName {
-    final sanitized = widget.studioName
-        .trim()
-        .replaceAll('"', '')
-        .replaceAll("'", '')
-        .trim();
-    return sanitized.isEmpty ? 'Boutique' : sanitized;
+  factory SellerActivitySnapshot.build({
+    required List<Map<String, dynamic>> products,
+    required String followerCount,
+    required String visitorCount,
+    required String totalLikesCount,
+    required SellerActivityRange range,
+  }) {
+    final followersTotal = _parseCompactCount(followerCount);
+    final viewsTotal = _parseCompactCount(visitorCount);
+    final likesTotal = _parseCompactCount(totalLikesCount);
+
+    final labels = _labelsForRange(range);
+    final productAddsActual = _buildBucketSeriesFromProducts(
+      products,
+      range,
+      (_) => 1,
+    );
+    final rawLikesActual = _buildBucketSeriesFromProducts(
+      products,
+      range,
+      _parseProductLikes,
+    );
+    final likesActual = rawLikesActual.any((value) => value > 0)
+        ? _distributeTotalAcrossBuckets(likesTotal, rawLikesActual)
+        : _distributeTotalAcrossBuckets(likesTotal, productAddsActual);
+    final viewsActual = _distributeTotalAcrossBuckets(
+      viewsTotal,
+      productAddsActual,
+    );
+    final followersActual = _distributeTotalAcrossBuckets(
+      followersTotal,
+      productAddsActual,
+    );
+    return SellerActivitySnapshot(
+      range: range,
+      labels: labels,
+      followersCurve: _normalizeSeries(followersActual),
+      followersActual: followersActual,
+      likesCurve: _normalizeSeries(likesActual),
+      likesActual: likesActual,
+      viewsCurve: _normalizeSeries(viewsActual),
+      viewsActual: viewsActual,
+      productAddsCurve: _normalizeSeries(productAddsActual),
+      productAddsActual: productAddsActual,
+    );
   }
 
-  int get _followersTotal => _parseCompactCount(widget.followerCount);
-  int get _viewsTotal => _parseCompactCount(widget.visitorCount);
-  int get _likesTotal => _parseCompactCount(widget.totalLikesCount);
-
-  _DashboardSnapshot get _snapshot => _buildSnapshot();
-
-  int _parseCompactCount(String value) {
+  static int _parseCompactCount(String value) {
     final normalizedValue = value.trim().toLowerCase();
     if (normalizedValue.isEmpty) {
       return 0;
@@ -66,7 +113,7 @@ class _StudioDashboardPageState extends State<StudioDashboardPage> {
     return (parsedValue * multiplier).round();
   }
 
-  int _parseProductLikes(Map<String, dynamic> product) {
+  static int _parseProductLikes(Map<String, dynamic> product) {
     final rawLikes = product['likesCount'];
     if (rawLikes is num) {
       return rawLikes.toInt();
@@ -75,18 +122,7 @@ class _StudioDashboardPageState extends State<StudioDashboardPage> {
     return int.tryParse('${rawLikes ?? 0}') ?? 0;
   }
 
-  int _parseProductPrice(Map<String, dynamic> product) {
-    final rawPrice = product['price'] ?? product['priceAmount'];
-    if (rawPrice is num) {
-      return rawPrice.round();
-    }
-
-    final normalized = '${rawPrice ?? ''}'.replaceAll(RegExp(r'[^0-9\.]'), '');
-    final parsed = double.tryParse(normalized);
-    return parsed?.round() ?? 0;
-  }
-
-  DateTime? _parseProductCreatedAt(Map<String, dynamic> product) {
+  static DateTime? _parseProductCreatedAt(Map<String, dynamic> product) {
     final rawCreatedAt = product['createdAt'];
     if (rawCreatedAt is! String || rawCreatedAt.trim().isEmpty) {
       return null;
@@ -95,38 +131,72 @@ class _StudioDashboardPageState extends State<StudioDashboardPage> {
     return DateTime.tryParse(rawCreatedAt)?.toLocal();
   }
 
-  int _bucketCountForRange(_DashboardRange range) {
+  static int _bucketCountForRange(SellerActivityRange range) {
     return switch (range) {
-      _DashboardRange.last5Days => 5,
-      _DashboardRange.lastWeek => 7,
-      _DashboardRange.lastMonth => 8,
-      _DashboardRange.last3Months => 6,
-      _DashboardRange.lastYear => 10,
+      SellerActivityRange.last5Days => 5,
+      SellerActivityRange.lastWeek => 7,
+      SellerActivityRange.lastMonth => 8,
+      SellerActivityRange.last3Months => 6,
+      SellerActivityRange.lastYear => 10,
     };
   }
 
-  Duration _windowForRange(_DashboardRange range) {
+  static Duration _windowForRange(SellerActivityRange range) {
     return switch (range) {
-      _DashboardRange.last5Days => const Duration(days: 5),
-      _DashboardRange.lastWeek => const Duration(days: 7),
-      _DashboardRange.lastMonth => const Duration(days: 56),
-      _DashboardRange.last3Months => const Duration(days: 180),
-      _DashboardRange.lastYear => const Duration(days: 300),
+      SellerActivityRange.last5Days => const Duration(days: 5),
+      SellerActivityRange.lastWeek => const Duration(days: 7),
+      SellerActivityRange.lastMonth => const Duration(days: 56),
+      SellerActivityRange.last3Months => const Duration(days: 180),
+      SellerActivityRange.lastYear => const Duration(days: 300),
     };
   }
 
-  List<String> _labelsForRange(_DashboardRange range) {
+  static List<String> _labelsForRange(SellerActivityRange range) {
     return switch (range) {
-      _DashboardRange.last5Days => const ['J-4', 'J-3', 'J-2', 'J-1', 'Auj'],
-      _DashboardRange.lastWeek => const ['L', 'M', 'M', 'J', 'V', 'S', 'D'],
-      _DashboardRange.lastMonth => const ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8'],
-      _DashboardRange.last3Months => const ['M-5', 'M-4', 'M-3', 'M-2', 'M-1', 'Act'],
-      _DashboardRange.lastYear => const ['M-9', 'M-8', 'M-7', 'M-6', 'M-5', 'M-4', 'M-3', 'M-2', 'M-1', 'Act'],
+      SellerActivityRange.last5Days => const [
+        'J-4',
+        'J-3',
+        'J-2',
+        'J-1',
+        'Auj',
+      ],
+      SellerActivityRange.lastWeek => const ['L', 'M', 'M', 'J', 'V', 'S', 'D'],
+      SellerActivityRange.lastMonth => const [
+        'S1',
+        'S2',
+        'S3',
+        'S4',
+        'S5',
+        'S6',
+        'S7',
+        'S8',
+      ],
+      SellerActivityRange.last3Months => const [
+        'M-5',
+        'M-4',
+        'M-3',
+        'M-2',
+        'M-1',
+        'Act',
+      ],
+      SellerActivityRange.lastYear => const [
+        'M-9',
+        'M-8',
+        'M-7',
+        'M-6',
+        'M-5',
+        'M-4',
+        'M-3',
+        'M-2',
+        'M-1',
+        'Act',
+      ],
     };
   }
 
-  List<int> _buildBucketSeriesFromProducts(
-    _DashboardRange range,
+  static List<int> _buildBucketSeriesFromProducts(
+    List<Map<String, dynamic>> products,
+    SellerActivityRange range,
     int Function(Map<String, dynamic>) valueOf,
   ) {
     final bucketCount = _bucketCountForRange(range);
@@ -136,9 +206,11 @@ class _StudioDashboardPageState extends State<StudioDashboardPage> {
     final bucketSizeInMs = window.inMilliseconds / bucketCount;
     final values = List<int>.filled(bucketCount, 0);
 
-    for (final product in widget.products) {
+    for (final product in products) {
       final createdAt = _parseProductCreatedAt(product);
-      if (createdAt == null || createdAt.isBefore(start) || createdAt.isAfter(now)) {
+      if (createdAt == null ||
+          createdAt.isBefore(start) ||
+          createdAt.isAfter(now)) {
         continue;
       }
 
@@ -157,7 +229,7 @@ class _StudioDashboardPageState extends State<StudioDashboardPage> {
     return values;
   }
 
-  List<int> _distributeTotalAcrossBuckets(int total, List<int> weights) {
+  static List<int> _distributeTotalAcrossBuckets(int total, List<int> weights) {
     if (total <= 0 || weights.isEmpty) {
       return List<int>.filled(weights.length, 0);
     }
@@ -165,12 +237,16 @@ class _StudioDashboardPageState extends State<StudioDashboardPage> {
     final normalizedWeights = weights.any((weight) => weight > 0)
         ? weights.map((weight) => weight + 1).toList()
         : List<int>.generate(weights.length, (index) => index + 1);
-    final totalWeight = normalizedWeights.fold<int>(0, (sum, weight) => sum + weight);
+    final totalWeight = normalizedWeights.fold<int>(
+      0,
+      (sum, weight) => sum + weight,
+    );
     final rawShares = normalizedWeights
         .map((weight) => total * weight / totalWeight)
         .toList();
     final distributed = rawShares.map((value) => value.floor()).toList();
-    var remaining = total - distributed.fold<int>(0, (sum, value) => sum + value);
+    var remaining =
+        total - distributed.fold<int>(0, (sum, value) => sum + value);
 
     final fractions = List.generate(rawShares.length, (index) => index)
       ..sort((left, right) {
@@ -187,227 +263,67 @@ class _StudioDashboardPageState extends State<StudioDashboardPage> {
     return distributed;
   }
 
-  List<double> _normalizeSeries(List<int> values) {
+  static List<double> _normalizeSeries(List<int> values) {
     if (values.isEmpty) {
       return const [];
     }
 
-    final maxValue = values.reduce((left, right) => left > right ? left : right);
+    final maxValue = values.reduce(
+      (left, right) => left > right ? left : right,
+    );
     if (maxValue <= 0) {
       return List<double>.filled(values.length, 0);
     }
 
     return values.map((value) => value / maxValue).toList();
   }
+}
 
-  String _formatGrowth(List<int> values) {
-    if (values.isEmpty) {
-      return '0%';
-    }
+/// Horizontal range chips ("Ces 5 derniers jours" ... "Cette annee").
+class SellerActivityRangeFilters extends StatelessWidget {
+  final SellerActivityRange selected;
+  final ValueChanged<SellerActivityRange> onSelected;
 
-    final midpoint = values.length ~/ 2;
-    final before = values.take(midpoint).fold<int>(0, (sum, value) => sum + value);
-    final after = values.skip(midpoint).fold<int>(0, (sum, value) => sum + value);
-    if (before == 0 && after == 0) {
-      return '0%';
-    }
-    if (before == 0) {
-      return '+100%';
-    }
+  /// Unselected chip surface / outline. Pass the host surface colors so the
+  /// chips read as part of the same panel as the curves card.
+  final Color? backgroundColor;
+  final Color? borderColor;
 
-    final growth = (((after - before) / before) * 100).round();
-    return growth > 0 ? '+$growth%' : '$growth%';
-  }
+  const SellerActivityRangeFilters({
+    super.key,
+    required this.selected,
+    required this.onSelected,
+    this.backgroundColor,
+    this.borderColor,
+  });
 
-  _DashboardSnapshot _buildSnapshot() {
-    final labels = _labelsForRange(_selectedRange);
-    final productAddsActual = _buildBucketSeriesFromProducts(
-      _selectedRange,
-      (_) => 1,
-    );
-    final revenueActual = _buildBucketSeriesFromProducts(
-      _selectedRange,
-      _parseProductPrice,
-    );
-    final rawLikesActual = _buildBucketSeriesFromProducts(
-      _selectedRange,
-      _parseProductLikes,
-    );
-    final likesActual = rawLikesActual.any((value) => value > 0)
-        ? _distributeTotalAcrossBuckets(_likesTotal, rawLikesActual)
-        : _distributeTotalAcrossBuckets(_likesTotal, productAddsActual);
-    final viewsActual = _distributeTotalAcrossBuckets(_viewsTotal, productAddsActual);
-    final followersActual = _distributeTotalAcrossBuckets(_followersTotal, productAddsActual);
-    final barsSource = revenueActual.any((value) => value > 0)
-        ? revenueActual
-        : productAddsActual;
-
-    return _DashboardSnapshot(
-      growth: _formatGrowth(productAddsActual),
-      labels: labels,
-      bars: _normalizeSeries(barsSource),
-      followersCurve: _normalizeSeries(followersActual),
-      followersActual: followersActual,
-      likesCurve: _normalizeSeries(likesActual),
-      likesActual: likesActual,
-      viewsCurve: _normalizeSeries(viewsActual),
-      viewsActual: viewsActual,
-      productAddsCurve: _normalizeSeries(productAddsActual),
-      productAddsActual: productAddsActual,
-    );
-  }
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final appColors = theme.appColors;
     final primary = theme.colorScheme.primary;
-    final support = theme.colorScheme.tertiary;
-
-    return Scaffold(
-      backgroundColor: appColors.backgroundBase,
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      primary.withValues(
-                        alpha: theme.brightness == Brightness.dark
-                            ? 0.12
-                            : 0.08,
-                      ),
-                      appColors.backgroundBase,
-                      appColors.backgroundBase,
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          SafeArea(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(18, 24, 18, 28),
-              children: [
-                const SizedBox(height: 54),
-                _buildHeroCard(theme),
-                const SizedBox(height: 18),
-                _buildRangeFilters(theme),
-                const SizedBox(height: 18),
-                _buildActivityCurvesCard(theme),
-                const SizedBox(height: 18),
-                _buildChartCard(theme, primary, support),
-              ],
-            ),
-          ),
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 16,
-            left: 24,
-            child: const AppBackButton(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeroCard(ThemeData theme) {
-    final appColors = theme.appColors;
-    final primary = theme.colorScheme.primary;
-
-    return Container(
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(30),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [primary.withValues(alpha: 0.94), appColors.heroAccent],
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Tableau de bord complet',
-            style: theme.textTheme.headlineSmall?.copyWith(
-              color: appColors.heroForeground,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '$_displayStudioName · pilotage des performances sur la periode selectionnee.',
-            style: TextStyle(
-              color: appColors.heroForegroundMuted,
-              height: 1.45,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 18),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              color: appColors.heroSurface,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: appColors.heroBorder),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.trending_up_rounded,
-                  color: appColors.heroForeground,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Croissance globale ${_snapshot.growth} sur ${_selectedRange.label.toLowerCase()}.',
-                    style: TextStyle(
-                      color: appColors.heroForeground,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRangeFilters(ThemeData theme) {
-    final primary = theme.colorScheme.primary;
+    final chipBackground = backgroundColor ?? theme.appColors.panelBackground;
+    final chipBorder = borderColor ?? theme.appColors.inputBorder;
 
     return SizedBox(
       height: 42,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        itemCount: _DashboardRange.values.length,
+        itemCount: SellerActivityRange.values.length,
         separatorBuilder: (_, _) => const SizedBox(width: 10),
         itemBuilder: (context, index) {
-          final range = _DashboardRange.values[index];
-          final isSelected = range == _selectedRange;
+          final range = SellerActivityRange.values[index];
+          final isSelected = range == selected;
           return ChoiceChip(
             label: Text(range.label),
             selected: isSelected,
-            onSelected: (_) {
-              setState(() {
-                _selectedRange = range;
-                _selectedMainPoint = null;
-                _selectedFollowerPoint = null;
-                _activeMainCurveLabel = _allCurvesLabel;
-              });
-            },
+            onSelected: (_) => onSelected(range),
             labelStyle: TextStyle(
               color: isSelected ? Colors.white : primary,
               fontWeight: FontWeight.w700,
             ),
             selectedColor: primary,
-            backgroundColor: theme.appColors.panelBackground,
-            side: BorderSide(color: theme.appColors.inputBorder),
+            backgroundColor: chipBackground,
+            side: BorderSide(color: chipBorder),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(999),
             ),
@@ -417,136 +333,127 @@ class _StudioDashboardPageState extends State<StudioDashboardPage> {
       ),
     );
   }
+}
 
-  Widget _buildChartCard(ThemeData theme, Color primary, Color support) {
-    final chartBaseColor = theme.brightness == Brightness.dark
-        ? support.withValues(alpha: 0.34)
-        : primary.withValues(alpha: 0.24);
+/// "Courbes d activite" card: likes / views / product adds on one plot, with a
+/// legend to isolate a curve, plus a separate followers plot. Tapping a point
+/// shows its value. Selection state lives here so the host only rebuilds on
+/// range changes.
+class SellerActivityCurvesCard extends StatefulWidget {
+  final SellerActivitySnapshot snapshot;
 
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: theme.appColors.panelBackground,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: theme.appColors.inputBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Evolution des performances',
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Lecture rapide des resultats sur ${_selectedRange.label.toLowerCase()}.',
-            style: TextStyle(color: theme.appColors.mutedText),
-          ),
-          const SizedBox(height: 18),
-          SizedBox(
-            height: 180,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: List.generate(_snapshot.bars.length, (index) {
-                return Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 5),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.bottomCenter,
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 240),
-                              height: 142 * _snapshot.bars[index],
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    primary.withValues(alpha: 0.92),
-                                    chartBaseColor,
-                                  ],
-                                ),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          _snapshot.labels[index],
-                          style: TextStyle(
-                            color: theme.appColors.mutedText,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }),
-            ),
-          ),
-        ],
-      ),
-    );
+  /// When provided, the period chips are rendered inside the card (under the
+  /// subtitle) and report the new period here; the host rebuilds the snapshot.
+  final ValueChanged<SellerActivityRange>? onRangeSelected;
+
+  /// Host surface style; defaults to a plain panel look.
+  final BoxDecoration? decoration;
+
+  const SellerActivityCurvesCard({
+    super.key,
+    required this.snapshot,
+    this.onRangeSelected,
+    this.decoration,
+  });
+
+  @override
+  State<SellerActivityCurvesCard> createState() =>
+      _SellerActivityCurvesCardState();
+}
+
+class _SellerActivityCurvesCardState extends State<SellerActivityCurvesCard> {
+  _ActivityPointSelection? _selectedMainPoint;
+  _ActivityPointSelection? _selectedFollowerPoint;
+  String _activeMainCurveLabel = _allCurvesLabel;
+
+  SellerActivitySnapshot get _snapshot => widget.snapshot;
+
+  @override
+  void didUpdateWidget(covariant SellerActivityCurvesCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Bucket count changes with the range, so a kept selection would point at
+    // a stale position. Other host rebuilds keep the user's selection.
+    if (oldWidget.snapshot.range != widget.snapshot.range) {
+      _selectedMainPoint = null;
+      _selectedFollowerPoint = null;
+      _activeMainCurveLabel = _allCurvesLabel;
+    }
   }
 
-  Widget _buildActivityCurvesCard(ThemeData theme) {
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final primary = theme.colorScheme.primary;
     final viewsColor = theme.colorScheme.tertiary;
     final productsColor = theme.colorScheme.secondary;
     final followersColor = theme.colorScheme.error;
     final mainChartLines = [
-      _DashboardLineData(
+      _ActivityLineData(
         label: 'Likes',
         color: primary,
         values: _snapshot.likesCurve,
         actualValues: _snapshot.likesActual,
       ),
-      _DashboardLineData(
+      _ActivityLineData(
         label: 'Vues',
         color: viewsColor,
         values: _snapshot.viewsCurve,
         actualValues: _snapshot.viewsActual,
       ),
-      _DashboardLineData(
+      _ActivityLineData(
         label: 'Ajouts produit',
         color: productsColor,
         values: _snapshot.productAddsCurve,
         actualValues: _snapshot.productAddsActual,
       ),
     ];
-    final followerLine = _DashboardLineData(
-      label: 'Abonnes',
+    final followerLine = _ActivityLineData(
+      label: 'Abonnés',
       color: followersColor,
       values: _snapshot.followersCurve,
       actualValues: _snapshot.followersActual,
     );
 
+    final outlineColor = theme.appColors.inputBorder;
+    final decoration =
+        widget.decoration ??
+        BoxDecoration(
+          color: theme.appColors.panelBackground,
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: outlineColor),
+        );
+    // Chips sit directly on the card: transparent fill so they take the
+    // card's own tone, outlined with the card's border color.
+    final chipBorderColor = switch (decoration.border) {
+      final Border border => border.top.color,
+      _ => outlineColor,
+    };
+    final onRangeSelected = widget.onRangeSelected;
+
     return Container(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: theme.appColors.panelBackground,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: theme.appColors.inputBorder),
-      ),
+      decoration: decoration,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (onRangeSelected != null) ...[
+            SellerActivityRangeFilters(
+              selected: _snapshot.range,
+              onSelected: onRangeSelected,
+              backgroundColor: Colors.transparent,
+              borderColor: chipBorderColor,
+            ),
+            const SizedBox(height: 16),
+          ],
           Text(
-            'Courbes d activite',
+            'Courbes d\'activité',
             style: theme.textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.w800,
             ),
           ),
           const SizedBox(height: 6),
           Text(
-            'Suivi des abonnes, des likes, des vues et des ajouts de produit.',
+            'Suivi des abonnés, des likes, des vues et des ajouts de produit.',
             style: TextStyle(color: theme.appColors.mutedText),
           ),
           const SizedBox(height: 14),
@@ -600,21 +507,7 @@ class _StudioDashboardPageState extends State<StudioDashboardPage> {
             },
           ),
           const SizedBox(height: 12),
-          Row(
-            children: List.generate(_snapshot.labels.length, (index) {
-              return Expanded(
-                child: Text(
-                  _snapshot.labels[index],
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: theme.appColors.mutedText,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
-                  ),
-                ),
-              );
-            }),
-          ),
+          _buildAxisLabels(theme),
           const SizedBox(height: 20),
           _buildLegendChip(
             theme,
@@ -636,32 +529,36 @@ class _StudioDashboardPageState extends State<StudioDashboardPage> {
             },
           ),
           const SizedBox(height: 12),
-          Row(
-            children: List.generate(_snapshot.labels.length, (index) {
-              return Expanded(
-                child: Text(
-                  _snapshot.labels[index],
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: theme.appColors.mutedText,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
-                  ),
-                ),
-              );
-            }),
-          ),
+          _buildAxisLabels(theme),
         ],
       ),
     );
   }
 
+  Widget _buildAxisLabels(ThemeData theme) {
+    return Row(
+      children: List.generate(_snapshot.labels.length, (index) {
+        return Expanded(
+          child: Text(
+            _snapshot.labels[index],
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: theme.appColors.mutedText,
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
   Widget _buildCurvePlot(
     ThemeData theme, {
-    required List<_DashboardLineData> lines,
+    required List<_ActivityLineData> lines,
     required double height,
-    required _DashboardPointSelection? selection,
-    required ValueChanged<_DashboardPointSelection?> onPointSelected,
+    required _ActivityPointSelection? selection,
+    required ValueChanged<_ActivityPointSelection?> onPointSelected,
   }) {
     return SizedBox(
       height: height,
@@ -684,7 +581,7 @@ class _StudioDashboardPageState extends State<StudioDashboardPage> {
               children: [
                 Positioned.fill(
                   child: CustomPaint(
-                    painter: _DashboardMultiLinePainter(
+                    painter: _ActivityMultiLinePainter(
                       lines: lines,
                       gridColor: theme.dividerColor.withValues(alpha: 0.14),
                       selectedPoint: selection,
@@ -697,7 +594,10 @@ class _StudioDashboardPageState extends State<StudioDashboardPage> {
                 ),
                 if (selection != null)
                   Positioned(
-                    left: _tooltipLeft(selection.position.dx, constraints.maxWidth),
+                    left: _tooltipLeft(
+                      selection.position.dx,
+                      constraints.maxWidth,
+                    ),
                     top: _tooltipTop(selection.position.dy),
                     child: _buildCurveValueTooltip(theme, selection),
                   ),
@@ -723,7 +623,7 @@ class _StudioDashboardPageState extends State<StudioDashboardPage> {
 
   Widget _buildCurveValueTooltip(
     ThemeData theme,
-    _DashboardPointSelection selection,
+    _ActivityPointSelection selection,
   ) {
     return Material(
       color: Colors.transparent,
@@ -759,10 +659,7 @@ class _StudioDashboardPageState extends State<StudioDashboardPage> {
             const SizedBox(height: 4),
             Text(
               selection.valueText,
-              style: const TextStyle(
-                fontWeight: FontWeight.w900,
-                fontSize: 15,
-              ),
+              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
             ),
           ],
         ),
@@ -770,27 +667,27 @@ class _StudioDashboardPageState extends State<StudioDashboardPage> {
     );
   }
 
-  _DashboardPointSelection? _findNearestPoint({
+  _ActivityPointSelection? _findNearestPoint({
     required Offset localPosition,
     required Size size,
-    required List<_DashboardLineData> lines,
+    required List<_ActivityLineData> lines,
   }) {
-    final chartRect = _DashboardChartGeometry.chartRectForSize(size);
+    final chartRect = _ActivityChartGeometry.chartRectForSize(size);
     if (!chartRect.inflate(18).contains(localPosition)) {
       return null;
     }
 
-    _DashboardPointSelection? bestMatch;
+    _ActivityPointSelection? bestMatch;
     var minDistance = double.infinity;
 
     for (final line in lines) {
-      final points = _DashboardChartGeometry.pointsForLine(line.values, size);
+      final points = _ActivityChartGeometry.pointsForLine(line.values, size);
       for (var index = 0; index < points.length; index++) {
         final point = points[index];
         final distance = (point - localPosition).distance;
         if (distance < minDistance) {
           minDistance = distance;
-          bestMatch = _DashboardPointSelection(
+          bestMatch = _ActivityPointSelection(
             label: line.label,
             valueText: _formatCurveValue(line.label, line.actualValues[index]),
             position: point,
@@ -818,9 +715,7 @@ class _StudioDashboardPageState extends State<StudioDashboardPage> {
       return '${compact}M';
     }
     if (value >= 1000) {
-      final compact = (value / 1000).toStringAsFixed(
-        value % 1000 == 0 ? 0 : 1,
-      );
+      final compact = (value / 1000).toStringAsFixed(value % 1000 == 0 ? 0 : 1);
       return '${compact}k';
     }
     return '$value';
@@ -883,53 +778,13 @@ class _StudioDashboardPageState extends State<StudioDashboardPage> {
   }
 }
 
-enum _DashboardRange {
-  last5Days('Ces 5 derniers jours'),
-  lastWeek('Cette derniere semaine'),
-  lastMonth('Ce dernier mois'),
-  last3Months('Ces 3 derniers mois'),
-  lastYear('Cette annee');
-
-  final String label;
-
-  const _DashboardRange(this.label);
-}
-
-class _DashboardSnapshot {
-  final String growth;
-  final List<double> bars;
-  final List<String> labels;
-  final List<double> followersCurve;
-  final List<int> followersActual;
-  final List<double> likesCurve;
-  final List<int> likesActual;
-  final List<double> viewsCurve;
-  final List<int> viewsActual;
-  final List<double> productAddsCurve;
-  final List<int> productAddsActual;
-
-  const _DashboardSnapshot({
-    required this.growth,
-    required this.bars,
-    required this.labels,
-    required this.followersCurve,
-    required this.followersActual,
-    required this.likesCurve,
-    required this.likesActual,
-    required this.viewsCurve,
-    required this.viewsActual,
-    required this.productAddsCurve,
-    required this.productAddsActual,
-  });
-}
-
-class _DashboardLineData {
+class _ActivityLineData {
   final String label;
   final Color color;
   final List<double> values;
   final List<int> actualValues;
 
-  const _DashboardLineData({
+  const _ActivityLineData({
     required this.label,
     required this.color,
     required this.values,
@@ -937,13 +792,13 @@ class _DashboardLineData {
   });
 }
 
-class _DashboardPointSelection {
+class _ActivityPointSelection {
   final String label;
   final String valueText;
   final Offset position;
   final Color color;
 
-  const _DashboardPointSelection({
+  const _ActivityPointSelection({
     required this.label,
     required this.valueText,
     required this.position,
@@ -951,7 +806,7 @@ class _DashboardPointSelection {
   });
 }
 
-class _DashboardChartGeometry {
+class _ActivityChartGeometry {
   static const padding = EdgeInsets.fromLTRB(8, 16, 8, 18);
 
   static Rect chartRectForSize(Size size) {
@@ -979,13 +834,13 @@ class _DashboardChartGeometry {
   }
 }
 
-class _DashboardMultiLinePainter extends CustomPainter {
-  final List<_DashboardLineData> lines;
+class _ActivityMultiLinePainter extends CustomPainter {
+  final List<_ActivityLineData> lines;
   final Color gridColor;
-  final _DashboardPointSelection? selectedPoint;
+  final _ActivityPointSelection? selectedPoint;
   final String? activeLineLabel;
 
-  const _DashboardMultiLinePainter({
+  const _ActivityMultiLinePainter({
     required this.lines,
     required this.gridColor,
     this.selectedPoint,
@@ -998,7 +853,7 @@ class _DashboardMultiLinePainter extends CustomPainter {
       return;
     }
 
-    final chartRect = _DashboardChartGeometry.chartRectForSize(size);
+    final chartRect = _ActivityChartGeometry.chartRectForSize(size);
 
     final gridPaint = Paint()
       ..color = gridColor
@@ -1018,12 +873,13 @@ class _DashboardMultiLinePainter extends CustomPainter {
         continue;
       }
 
-      final isDimmed = activeLineLabel != null &&
-          activeLineLabel != _StudioDashboardPageState._allCurvesLabel &&
+      final isDimmed =
+          activeLineLabel != null &&
+          activeLineLabel != _allCurvesLabel &&
           activeLineLabel != line.label;
       final effectiveColor = line.color.withValues(alpha: isDimmed ? 0.18 : 1);
 
-      final points = _DashboardChartGeometry.pointsForLine(line.values, size);
+      final points = _ActivityChartGeometry.pointsForLine(line.values, size);
 
       final fillPath = Path()..moveTo(points.first.dx, chartRect.bottom);
       for (var index = 0; index < points.length; index++) {
@@ -1033,7 +889,14 @@ class _DashboardMultiLinePainter extends CustomPainter {
         } else {
           final previous = points[index - 1];
           final controlX = (previous.dx + point.dx) / 2;
-          fillPath.cubicTo(controlX, previous.dy, controlX, point.dy, point.dx, point.dy);
+          fillPath.cubicTo(
+            controlX,
+            previous.dy,
+            controlX,
+            point.dy,
+            point.dx,
+            point.dy,
+          );
         }
       }
       fillPath.lineTo(points.last.dx, chartRect.bottom);
@@ -1055,7 +918,14 @@ class _DashboardMultiLinePainter extends CustomPainter {
         final previous = points[index - 1];
         final point = points[index];
         final controlX = (previous.dx + point.dx) / 2;
-        strokePath.cubicTo(controlX, previous.dy, controlX, point.dy, point.dx, point.dy);
+        strokePath.cubicTo(
+          controlX,
+          previous.dy,
+          controlX,
+          point.dy,
+          point.dx,
+          point.dy,
+        );
       }
 
       final strokePaint = Paint()
@@ -1087,12 +957,10 @@ class _DashboardMultiLinePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _DashboardMultiLinePainter oldDelegate) {
+  bool shouldRepaint(covariant _ActivityMultiLinePainter oldDelegate) {
     return oldDelegate.lines != lines ||
         oldDelegate.gridColor != gridColor ||
         oldDelegate.selectedPoint != selectedPoint ||
         oldDelegate.activeLineLabel != activeLineLabel;
   }
 }
-
-

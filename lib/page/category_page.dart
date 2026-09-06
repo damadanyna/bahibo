@@ -118,12 +118,19 @@ class _CategoryPageState extends State<CategoryPage>
           ),
         ),
         title: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(widget.categoryIcon),
             const SizedBox(width: 8),
-            Text(
-              widget.categoryLabel ?? widget.categoryName,
-              style: const TextStyle(fontWeight: FontWeight.bold),
+            // Long category names (e.g. a product title used as a category
+            // from search) must truncate instead of overflowing the app bar.
+            Flexible(
+              child: Text(
+                widget.categoryLabel ?? widget.categoryName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
             ),
           ],
         ),

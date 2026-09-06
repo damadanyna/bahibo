@@ -8,6 +8,7 @@ import 'package:banay/component/app_page_refresh.dart';
 import 'package:banay/component/app_page_skeletons.dart';
 import 'package:banay/component/product_list_page.dart';
 import 'package:banay/component/profile_models.dart';
+import 'package:banay/component/seller_activity_curves_card.dart';
 import 'package:banay/component/seller_profile_page.dart';
 import 'package:banay/component/user_profile_page.dart';
 import 'package:banay/component/ui/dinamic_icon_button.dart';
@@ -21,7 +22,6 @@ import 'package:banay/component/user_list_page.dart';
 import 'package:banay/formatter/product_detail_formatter.dart';
 import 'package:banay/localization/banay_localizations.dart';
 import 'package:banay/page/private_image_viewer.dart';
-import 'package:banay/page/dashboard_page.dart';
 import 'package:banay/page/live/live_watch_page.dart';
 import 'package:banay/page/live/live_preview_page.dart';
 import 'package:banay/page/qa_event_log_page.dart';
@@ -37,7 +37,7 @@ import 'package:image_picker/image_picker.dart';
 
 enum _EditableProfileImageTarget { avatar, cover }
 
-enum _AccountPanelTab { products, statistics, following }
+enum _AccountPanelTab { products, statistics, followers, following }
 
 class _SelectedProductImage {
   const _SelectedProductImage.local(this.file) : url = null;
@@ -67,11 +67,21 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   final TextEditingController _searchController = TextEditingController();
 
   _AccountPanelTab _selectedTab = _AccountPanelTab.products;
+  SellerActivityRange _selectedActivityRange = SellerActivityRange.lastWeek;
+
+  /// The shell's MainNavigationBar overlays this panel: its visible bar is 48
+  /// tall above the system inset (the active-tab cradle pokes ~23 further up
+  /// and is meant to float over content). Add only a small margin so the last
+  /// card ends right above the bar instead of leaving an empty band.
+  static const double _navigationBarClearance = 48 + 8;
   List<Map<String, dynamic>> _sellerPublishedProducts =
       <Map<String, dynamic>>[];
   final List<Map<String, dynamic>> _customStudioProducts =
       <Map<String, dynamic>>[];
   final List<Map<String, dynamic>> _followedPeople = <Map<String, dynamic>>[];
+  // People following this shop (same payload shape as _followedPeople, so
+  // the same tile / resolvers apply).
+  final List<Map<String, dynamic>> _followers = <Map<String, dynamic>>[];
   final Map<String, Map<String, dynamic>> _productOverrides =
       <String, Map<String, dynamic>>{};
   final Set<String> _productAvailabilityBusy = <String>{};
@@ -82,6 +92,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   String _studioDescription = '';
   bool _showEntrySkeleton = true;
   bool _isLoadingFollowedPeople = true;
+  bool _isLoadingFollowers = true;
   bool _isSavingIdentity = false;
   bool _isSellerCertified = false;
   bool _isSubmittingSellerCertificationRequest = false;
@@ -343,20 +354,6 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     }
   }
 
-  Future<void> _openFullDashboard() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => StudioDashboardPage(
-          studioName: _resolvedStudioName,
-          products: _catalogProducts,
-          followerCount: profile.followerCount,
-          visitorCount: profile.visitorCount,
-          totalLikesCount: profile.totalLikesCount,
-        ),
-      ),
-    );
-  }
-
   Future<void> _showMissingProductFieldsDialog(BuildContext dialogContext) {
     final theme = Theme.of(dialogContext);
 
@@ -551,6 +548,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     _syncSellerVerificationState();
     _loadSellerPublishedProducts();
     _loadFollowedPeople();
+    _loadFollowers();
     _searchController.addListener(_handleSearchChanged);
     Future.delayed(const Duration(milliseconds: 240), () {
       if (!mounted) return;
@@ -669,6 +667,42 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     }
   }
 
+  Future<void> _loadFollowers() async {
+    final sellerProfileId = profile.sellerProfileId?.trim() ?? '';
+    if (sellerProfileId.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _followers.clear();
+          _isLoadingFollowers = false;
+        });
+      }
+      return;
+    }
+
+    try {
+      final followers = await _catalogApiService.fetchSellerFollowers(
+        sellerProfileId,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _followers
+          ..clear()
+          ..addAll(followers);
+        _isLoadingFollowers = false;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _followers.clear();
+        _isLoadingFollowers = false;
+      });
+    }
+  }
+
   Future<void> _openFollowedPerson(Map<String, dynamic> person) async {
     final role = person['role']?.toString().trim().toUpperCase() ?? '';
     final sellerProfileId = person['sellerProfileId']?.toString().trim() ?? '';
@@ -765,11 +799,12 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
       setState(() {
         _showEntrySkeleton = true;
         _isLoadingFollowedPeople = true;
+        _isLoadingFollowers = true;
       });
     }
     await Future.delayed(const Duration(milliseconds: 450));
     await _loadSellerPublishedProducts();
-    await _loadFollowedPeople();
+    await Future.wait([_loadFollowedPeople(), _loadFollowers()]);
     if (!mounted) return;
     setState(() {
       _syncPendingProductTasks();
@@ -2103,11 +2138,9 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                                       priceController.text,
                                     );
 
-                                    final parsedWarrantyDuration =
-                                        int.tryParse(
-                                          warrantyDurationController.text
-                                              .trim(),
-                                        );
+                                    final parsedWarrantyDuration = int.tryParse(
+                                      warrantyDurationController.text.trim(),
+                                    );
 
                                     if (productName.isEmpty ||
                                         productCategory.isEmpty ||
@@ -2117,8 +2150,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                                         productImages.isEmpty ||
                                         (hasWarranty &&
                                             (parsedWarrantyDuration == null ||
-                                                parsedWarrantyDuration <=
-                                                    0))) {
+                                                parsedWarrantyDuration <= 0))) {
                                       await _showMissingProductFieldsDialog(
                                         sheetContext,
                                       );
@@ -2360,6 +2392,8 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
             liveUrl: liveUrl,
             liveToken: liveToken,
             roomName: roomName,
+            sellerName: _resolvedStudioName,
+            sellerAvatarUrl: profile.avatarUrl,
           ),
         ),
       );
@@ -2961,14 +2995,6 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     return theme.colorScheme.primary;
   }
 
-  Color _accentSurfaceColor(ThemeData theme) {
-    if (theme.brightness == Brightness.dark) {
-      return theme.colorScheme.primary.withValues(alpha: 0.14);
-    }
-
-    return theme.appColors.panelMuted;
-  }
-
   Color _supportAccentColor(ThemeData theme) {
     return theme.colorScheme.secondary;
   }
@@ -3000,6 +3026,16 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     ];
   }
 
+  /// Top color of a tinted surface: the panel color nudged toward the accent.
+  /// Shared with flat widgets (chips) that must sit on the same surface tone.
+  Color _tintedSurfaceColor(ThemeData theme) {
+    return Color.lerp(
+      _panelColor(theme),
+      _accentColor(theme),
+      theme.brightness == Brightness.dark ? 0.08 : 0.05,
+    )!;
+  }
+
   BoxDecoration _surfaceDecoration(
     ThemeData theme, {
     double radius = 24,
@@ -3007,13 +3043,8 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
   }) {
     final panelColor = _panelColor(theme);
     final backgroundColor = _backgroundColor(theme);
-    final accentColor = _accentColor(theme);
     final topColor = tinted
-        ? Color.lerp(
-            panelColor,
-            accentColor,
-            theme.brightness == Brightness.dark ? 0.08 : 0.05,
-          )!
+        ? _tintedSurfaceColor(theme)
         : Color.lerp(panelColor, backgroundColor, 0.18)!;
 
     return BoxDecoration(
@@ -3088,7 +3119,11 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                   )
                 : ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.only(bottom: 120),
+                    padding: EdgeInsets.only(
+                      bottom:
+                          MediaQuery.paddingOf(context).bottom +
+                          _navigationBarClearance,
+                    ),
                     children: [
                       _buildStudioHero(theme),
                       const SizedBox(height: 18),
@@ -3382,8 +3417,9 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     Color mutedColor,
   ) {
     final tabs = [
-      (_AccountPanelTab.products, 'Mes produits', Icons.storefront_rounded),
+      (_AccountPanelTab.products, 'Produits', Icons.storefront_rounded),
       (_AccountPanelTab.statistics, 'Statistique', Icons.bar_chart_rounded),
+      (_AccountPanelTab.followers, 'Abonnés', Icons.people_alt_rounded),
       (_AccountPanelTab.following, 'Abonnement', Icons.groups_rounded),
     ];
 
@@ -3396,7 +3432,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
           final isSelected = _selectedTab == tab.$1;
           return Expanded(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 2),
               child: Material(
                 color: Colors.transparent,
                 borderRadius: BorderRadius.circular(12),
@@ -3406,10 +3442,9 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
                     curve: Curves.easeOut,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 10,
-                    ),
+                    // No horizontal inset: four tabs share the row, the label
+                    // needs the full slot width.
+                    padding: const EdgeInsets.symmetric(vertical: 10),
                     decoration: BoxDecoration(
                       color: isSelected
                           ? accentColor.withValues(alpha: 0.10)
@@ -3489,6 +3524,7 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
               accentColor,
               supportAccentColor,
             ),
+            _AccountPanelTab.followers => _buildFollowersTab(theme, mutedColor),
             _AccountPanelTab.following => _buildFollowingTab(theme, mutedColor),
           },
         ),
@@ -3526,18 +3562,58 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     return [
       _buildMetricsGrid(theme, panelColor, mutedColor, accentColor),
       const SizedBox(height: 18),
-      _buildDashboardCard(
+      SellerActivityCurvesCard(
+        snapshot: SellerActivitySnapshot.build(
+          products: _catalogProducts,
+          followerCount: profile.followerCount,
+          visitorCount: profile.visitorCount,
+          totalLikesCount: profile.totalLikesCount,
+          range: _selectedActivityRange,
+        ),
+        // Period chips are rendered inside the card, under its subtitle.
+        onRangeSelected: (range) {
+          setState(() {
+            _selectedActivityRange = range;
+          });
+        },
+        decoration: _surfaceDecoration(theme, tinted: true),
+      ),
+    ];
+  }
+
+  List<Widget> _buildFollowersTab(ThemeData theme, Color mutedColor) {
+    final count = _followers.length;
+    return [
+      _buildLaunchLiveCard(theme, mutedColor),
+      const SizedBox(height: 18),
+      _buildPeopleListSection(
         theme,
-        panelColor,
         mutedColor,
-        accentColor,
-        supportAccentColor,
+        title: 'Mes abonnés',
+        countLabel: '$count abonné${count > 1 ? 's' : ''}',
+        isLoading: _isLoadingFollowers,
+        people: _followers,
+        emptyTitle: 'Aucun abonné pour le moment',
+        emptyBody:
+            'Les personnes qui s\'abonnent à votre boutique apparaîtront ici.',
       ),
     ];
   }
 
   List<Widget> _buildFollowingTab(ThemeData theme, Color mutedColor) {
-    return [_buildFollowingSection(theme, mutedColor)];
+    final count = _followedPeople.length;
+    return [
+      _buildPeopleListSection(
+        theme,
+        mutedColor,
+        title: 'Mes abonnements',
+        countLabel: '$count profil${count > 1 ? 's' : ''}',
+        isLoading: _isLoadingFollowedPeople,
+        people: _followedPeople,
+        emptyTitle: 'Aucun abonnement pour le moment',
+        emptyBody: 'Abonnez-vous à des boutiques pour les retrouver ici.',
+      ),
+    ];
   }
 
   Widget _buildProductActionsSection(
@@ -3633,7 +3709,79 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
     );
   }
 
-  Widget _buildFollowingSection(ThemeData theme, Color mutedColor) {
+  /// Entry point to the existing live flow (_showLaunchLiveSheet →
+  /// _openLivePreview), placed with the followers since they are the audience.
+  Widget _buildLaunchLiveCard(ThemeData theme, Color mutedColor) {
+    final liveColor = theme.colorScheme.secondary;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: _surfaceDecoration(theme, tinted: true),
+      child: Row(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: liveColor.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(Icons.live_tv_rounded, color: liveColor),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Lancer un live',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Vos abonnés sont prévenus et peuvent vous rejoindre en direct.',
+                  style: TextStyle(
+                    color: mutedColor,
+                    height: 1.35,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          ElevatedButton.icon(
+            onPressed: _showLaunchLiveSheet,
+            icon: const Icon(Icons.wifi_tethering_rounded, size: 18),
+            label: const Text('Démarrer'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: liveColor,
+              foregroundColor: theme.colorScheme.onSecondary,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Shared by the "Mes abonnés" (followers) and "Abonnement" (following)
+  /// tabs: both lists carry the same person payload and use the same tile.
+  Widget _buildPeopleListSection(
+    ThemeData theme,
+    Color mutedColor, {
+    required String title,
+    required String countLabel,
+    required bool isLoading,
+    required List<Map<String, dynamic>> people,
+    required String emptyTitle,
+    required String emptyBody,
+  }) {
     final panelColor = _panelColor(theme);
 
     return Container(
@@ -3642,20 +3790,16 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildSectionHeader(
-            theme,
-            'Mes abonnements',
-            '${_followedPeople.length} profil${_followedPeople.length > 1 ? 's' : ''}',
-          ),
+          _buildSectionHeader(theme, title, countLabel),
           const SizedBox(height: 14),
-          if (_isLoadingFollowedPeople)
+          if (isLoading)
             const Center(
               child: Padding(
                 padding: EdgeInsets.symmetric(vertical: 32),
                 child: CircularProgressIndicator(),
               ),
             )
-          else if (_followedPeople.isEmpty)
+          else if (people.isEmpty)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(18),
@@ -3668,14 +3812,14 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Aucun abonnement pour le moment',
+                    emptyTitle,
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w800,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Abonnez-vous a des boutiques pour les retrouver ici.',
+                    emptyBody,
                     style: TextStyle(
                       color: mutedColor,
                       height: 1.35,
@@ -3690,10 +3834,10 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
               shrinkWrap: true,
               primary: false,
               physics: const NeverScrollableScrollPhysics(),
-              itemCount: _followedPeople.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
+              itemCount: people.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 12),
               itemBuilder: (context, index) {
-                final person = _followedPeople[index];
+                final person = people[index];
                 return _buildFollowedPersonTile(theme, mutedColor, person);
               },
             ),
@@ -3950,131 +4094,6 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
           ),
         );
       },
-    );
-  }
-
-  Widget _buildDashboardCard(
-    ThemeData theme,
-    Color panelColor,
-    Color mutedColor,
-    Color accentColor,
-    Color supportAccentColor,
-  ) {
-    final bars = const [0.35, 0.58, 0.47, 0.74, 0.62, 0.85, 0.68];
-
-    final accentSurfaceColor = _accentSurfaceColor(theme);
-    final chartBaseColor = theme.brightness == Brightness.dark
-        ? supportAccentColor.withValues(alpha: 0.34)
-        : accentColor.withValues(alpha: 0.24);
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: _openFullDashboard,
-        borderRadius: BorderRadius.circular(24),
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: _surfaceDecoration(theme, tinted: true),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Tableau de bord',
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Cette semaine, la boutique est en hausse de 18%.',
-                          style: TextStyle(color: mutedColor),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          accentSurfaceColor,
-                          supportAccentColor.withValues(alpha: 0.18),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      '+18%',
-                      style: TextStyle(
-                        color: accentColor,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              SizedBox(
-                height: 128,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: List.generate(bars.length, (index) {
-                    return Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 5),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            Expanded(
-                              child: Align(
-                                alignment: Alignment.bottomCenter,
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 320),
-                                  curve: Curves.easeOutCubic,
-                                  width: double.infinity,
-                                  height: 90 * bars[index],
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      begin: Alignment.topCenter,
-                                      end: Alignment.bottomCenter,
-                                      colors: [
-                                        accentColor.withValues(alpha: 0.92),
-                                        chartBaseColor,
-                                      ],
-                                    ),
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              ['L', 'M', 'M', 'J', 'V', 'S', 'D'][index],
-                              style: TextStyle(
-                                color: mutedColor,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 

@@ -1,6 +1,22 @@
 import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { resolveMadagascarProvince } from '../../utils/madagascar-provinces';
+
+/** Minimal user shape needed to present a user hit as a search card. */
+type UserSearchSource = {
+  displayName: string;
+  locationLabel?: string | null;
+  locationLatitude?: unknown;
+  locationLongitude?: unknown;
+  countryName?: string | null;
+  sellerProfile?: {
+    studioName?: string | null;
+    city?: string | null;
+    country?: string | null;
+    description?: string | null;
+  } | null;
+};
 
 type ViewerSearchContext = {
   normalizedLocationLabel: string;
@@ -56,6 +72,46 @@ export class SearchService {
     }
 
     return value;
+  }
+
+  /**
+   * Card fields for a user hit, shared by autocomplete and full search.
+   * - subtitle: the Madagascar province when resolvable, else the raw
+   *   location label — never the shop name, which duplicated the title;
+   * - sellerName: the shop name only when it differs from the display name;
+   * - description: the shop's own description, or empty (no generic filler);
+   * - isShop: lets the client label the badge "Boutique" vs "Personne".
+   */
+  private buildUserSearchPresentation(user: UserSearchSource) {
+    const displayName = user.displayName.trim();
+    const studioName = user.sellerProfile?.studioName?.trim() ?? '';
+    const locationLabel = this.joinNonEmpty([
+      user.locationLabel,
+      user.sellerProfile?.city,
+      user.sellerProfile?.country,
+      user.countryName,
+    ]);
+    const locationLatitude = this.toNullableNumber(user.locationLatitude);
+    const locationLongitude = this.toNullableNumber(user.locationLongitude);
+    const province = resolveMadagascarProvince({
+      locationLabel: user.locationLabel,
+      latitude: locationLatitude,
+      longitude: locationLongitude,
+    });
+
+    return {
+      label: displayName,
+      subtitle: province ?? locationLabel,
+      sellerName:
+        studioName !== '' && studioName.toLowerCase() !== displayName.toLowerCase()
+          ? studioName
+          : null,
+      isShop: user.sellerProfile != null,
+      locationLabel,
+      locationLatitude,
+      locationLongitude,
+      description: user.sellerProfile?.description?.trim() ?? '',
+    };
   }
 
   private computeDistanceInKm(
@@ -530,6 +586,7 @@ export class SearchService {
             studioName: true,
             city: true,
             country: true,
+            description: true,
           },
         },
       },
@@ -540,19 +597,8 @@ export class SearchService {
     return this.rankItems(
       users.map((user) => ({
         id: user.id,
-        label: user.displayName,
-        subtitle: user.sellerProfile?.studioName ?? 'Utilisateur BANAY',
-        sellerName: user.displayName,
-        locationLabel: this.joinNonEmpty([
-          user.locationLabel,
-          user.sellerProfile?.city,
-          user.sellerProfile?.country,
-          user.countryName,
-        ]),
-        locationLatitude: this.toNullableNumber(user.locationLatitude),
-        locationLongitude: this.toNullableNumber(user.locationLongitude),
         imageUrl: user.avatarUrl,
-        description: user.sellerProfile?.studioName ?? user.countryName ?? 'Utilisateur BANAY',
+        ...this.buildUserSearchPresentation(user),
       })),
       query,
       viewerContext,
@@ -640,7 +686,11 @@ export class SearchService {
           : [user.countryName, user.phoneE164]
               .filter((value) => Boolean(value && value.trim().length > 0))
               .join(' · ');
-        const description = user.sellerProfile?.description ??
+        const presentation = this.buildUserSearchPresentation(user);
+        // The profile page's "about" keeps its generic fallback; the search
+        // card (presentation.description) only shows a real shop description.
+        const about =
+          presentation.description ||
           (user.countryName != null && user.countryName.trim().length > 0
             ? `Utilisateur BANAY de ${user.countryName}.`
             : 'Utilisateur BANAY.');
@@ -651,15 +701,9 @@ export class SearchService {
 
         return {
           id: user.id,
-          label: user.displayName,
-          subtitle: user.sellerProfile?.studioName ?? 'Utilisateur BANAY',
-          sellerName: user.displayName,
+          ...presentation,
           categoryName: sellerProducts[0]?.title,
-          locationLabel,
-          locationLatitude: this.toNullableNumber(user.locationLatitude),
-          locationLongitude: this.toNullableNumber(user.locationLongitude),
           imageUrl: user.avatarUrl,
-          description,
           sellerProfile: {
             userId: user.id,
             name: user.displayName,
@@ -674,7 +718,7 @@ export class SearchService {
                 : (user.isVerified ? 'Utilisateur verifie' : 'Utilisateur'),
             responseLabel: 'Profil actif',
             headline,
-            about: description,
+            about,
             followerCount: `${user.sellerProfile?.followers.length ?? 0}`,
             visitorCount: `${user.sellerProfile?.profileViews.length ?? 0}`,
             rating: '4.8',

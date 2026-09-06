@@ -594,6 +594,8 @@ class _MainHomePanelState extends State<MainHomePanel>
             liveUrl: liveUrl,
             liveToken: liveToken,
             roomName: roomName,
+            sellerName: _currentDisplayName,
+            sellerAvatarUrl: _avatarUrl,
           ),
         ),
       );
