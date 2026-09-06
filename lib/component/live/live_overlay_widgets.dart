@@ -83,6 +83,36 @@ String formatLiveCount(int value) {
   return '$value';
 }
 
+/// Light darkening limited to the bands where overlay text sits (top card,
+/// bottom comments + input). The middle of the picture is left untouched:
+/// the earlier 76 % / 88 % scrim read as a black vignette over the video.
+class LiveOverlayScrim extends StatelessWidget {
+  const LiveOverlayScrim({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final scrim = Theme.of(context).appColors.scrimStrong;
+
+    return IgnorePointer(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              scrim.withValues(alpha: 0.24),
+              Colors.transparent,
+              Colors.transparent,
+              scrim.withValues(alpha: 0.4),
+            ],
+            stops: const [0, 0.16, 0.7, 1],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Pulsing dot driven by the page's live animation controller.
 class LiveBlinkingDot extends StatelessWidget {
   const LiveBlinkingDot({

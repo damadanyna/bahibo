@@ -7,6 +7,7 @@ import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:livekit_client/livekit_client.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 class LivePreviewPage extends StatefulWidget {
   const LivePreviewPage({
@@ -71,25 +72,24 @@ class _LivePreviewPageState extends State<LivePreviewPage>
   CameraPosition _cameraPosition = CameraPosition.front;
   String? _errorMessage;
 
-  // 720p stays the ceiling: a 1080p ladder needs ~3.6 Mb/s of stable uplink,
-  // which mobile data rarely gives here. Quality is won by spending more
-  // bitrate on that 720p layer and by refusing to drop resolution first.
+  // Full HD capture (1920x1080, portrait 1080x1920 on a phone). The viewer
+  // page requests the top layer explicitly, so this is what good links get.
   CameraCaptureOptions get _cameraCaptureOptions => CameraCaptureOptions(
     cameraPosition: _cameraPosition,
-    params: VideoParametersPresets.h720_169,
+    params: VideoParametersPresets.h1080_169,
     maxFrameRate: 30,
   );
 
   static const VideoPublishOptions _videoPublishOptions = VideoPublishOptions(
-    // SDK default for 720p is 1.7 Mb/s; product close-ups block up at that
-    // rate, so give the top layer more room.
-    videoEncoding: VideoEncoding(maxBitrate: 2500 * 1000, maxFramerate: 30),
-    // Explicit ladder: viewers on weak links get 360p/180p from the SFU, the
-    // top layer is left untouched for everyone else.
+    // 3.5 Mb/s at 1080p: enough for sharp product close-ups, above the SDK's
+    // 3 Mb/s preset. Needs ~4 Mb/s of stable uplink with the ladder below.
+    videoEncoding: VideoEncoding(maxBitrate: 3500 * 1000, maxFramerate: 30),
+    // Two fallback layers only (540p / 216p): a third one would add a full
+    // 720p encode on the host's phone for little visible gain.
     simulcast: true,
     videoSimulcastLayers: [
-      VideoParametersPresets.h360_169,
-      VideoParametersPresets.h180_169,
+      VideoParametersPresets.h540_169,
+      VideoParametersPresets.h216_169,
     ],
     // Under congestion, keep the image sharp and lower the frame rate — a
     // shopping live is about seeing the product, not smooth motion.
@@ -99,6 +99,9 @@ class _LivePreviewPageState extends State<LivePreviewPage>
   @override
   void initState() {
     super.initState();
+    // A host does not touch the screen for minutes at a time: never let the
+    // system dim or lock it mid-broadcast.
+    unawaited(WakelockPlus.enable());
     _room = Room(
       roomOptions: RoomOptions(
         adaptiveStream: true,
@@ -118,6 +121,7 @@ class _LivePreviewPageState extends State<LivePreviewPage>
 
   @override
   void dispose() {
+    unawaited(WakelockPlus.disable());
     _commentController.dispose();
     _livePulseController.dispose();
     unawaited(_commentsSubscription?.cancel());
@@ -533,22 +537,7 @@ class _LivePreviewPageState extends State<LivePreviewPage>
                       child: _buildFallback(),
                     ),
             ),
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      theme.appColors.scrimStrong.withValues(alpha: 0.76),
-                      Colors.transparent,
-                      theme.appColors.scrimStrong.withValues(alpha: 0.88),
-                    ],
-                    stops: const [0, 0.34, 1],
-                  ),
-                ),
-              ),
-            ),
+            const Positioned.fill(child: LiveOverlayScrim()),
             if (_isLive && _isPaused)
               Positioned.fill(
                 child: IgnorePointer(
@@ -679,8 +668,12 @@ class _LivePreviewPageState extends State<LivePreviewPage>
       return const SizedBox.shrink();
     }
 
+    // Same fill as the viewer page: the default `contain` fit left black
+    // bands around the camera preview, which read as a dark frame.
     return ClipRect(
-      child: SizedBox.expand(child: VideoTrackRenderer(localTrack)),
+      child: SizedBox.expand(
+        child: VideoTrackRenderer(localTrack, fit: VideoViewFit.cover),
+      ),
     );
   }
 

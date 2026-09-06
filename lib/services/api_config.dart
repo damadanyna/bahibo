@@ -25,7 +25,8 @@ class ApiConfig {
   );
 
   // static const String _knownDevHost = '192.168.245.62'; // old LAN IP
-  static const String _knownDevHost = '192.168.21.62'; // new LAN IP
+  // static const String _knownDevHost = '192.168.21.62'; // old LAN IP
+  static const String _knownDevHost = '10.128.119.62'; // hotspot "TOUCH"
 
   static String _resolvedDevUrl = 'http://$_knownDevHost:$_devPort$_apiPath';
 
@@ -143,24 +144,37 @@ class ApiConfig {
     }
   }
 
-  /// Scanne les 253 hôtes du subnet en parallèle, retourne le premier
-  /// qui accepte une connexion sur [_devPort].
+  /// Scanne les 253 hôtes du subnet par lots, retourne le premier qui
+  /// accepte une connexion sur [_devPort].
+  ///
+  /// Par lots de 32 et avec 700 ms : 253 connexions simultanées à 300 ms
+  /// échouaient sur certains téléphones (sockets épuisés, résolution ARP
+  /// via le point d'accès plus lente), ce qui renvoyait l'app vers un
+  /// [_knownDevHost] périmé alors que le PC était bien joignable.
   static Future<String?> _scanSubnet(String subnet) async {
-    const timeout = Duration(milliseconds: 300);
-    final futures = List.generate(253, (i) async {
-      final host = '$subnet.${i + 1}';
-      try {
-        final socket = await Socket.connect(host, _devPort, timeout: timeout);
-        socket.destroy();
-        return host;
-      } catch (_) {
-        return null;
+    const timeout = Duration(milliseconds: 700);
+    const batchSize = 32;
+
+    for (var start = 1; start <= 254; start += batchSize) {
+      final end = (start + batchSize - 1).clamp(1, 254);
+      final futures = [
+        for (var i = start; i <= end; i++) _probeHost('$subnet.$i', timeout),
+      ];
+      final results = await Future.wait(futures);
+      for (final host in results) {
+        if (host != null) return host;
       }
-    });
-    final results = await Future.wait(futures);
-    for (final host in results) {
-      if (host != null) return host;
     }
     return null;
+  }
+
+  static Future<String?> _probeHost(String host, Duration timeout) async {
+    try {
+      final socket = await Socket.connect(host, _devPort, timeout: timeout);
+      socket.destroy();
+      return host;
+    } catch (_) {
+      return null;
+    }
   }
 }

@@ -3611,7 +3611,9 @@ class _MainNavigationAccountPanelState extends State<MainNavigationAccountPanel>
         isLoading: _isLoadingFollowedPeople,
         people: _followedPeople,
         emptyTitle: 'Aucun abonnement pour le moment',
-        emptyBody: 'Abonnez-vous à des boutiques pour les retrouver ici.',
+        emptyBody:
+            'Abonnez-vous à des boutiques ou à des personnes pour les '
+            'retrouver ici.',
       ),
     ];
   }

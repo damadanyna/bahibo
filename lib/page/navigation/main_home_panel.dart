@@ -537,12 +537,14 @@ class _MainHomePanelState extends State<MainHomePanel>
           _buildSellerLiveButton(Theme.of(context)),
           const SizedBox(height: 4),
         ],
+        // No section title on the home feed: the cards speak for themselves
+        // and the header sits right above.
         if (_isLoadingFollowedPeople)
-          const FollowedPeopleHListSkeleton()
+          const FollowedPeopleHListSkeleton(showTitle: false)
         else
           DinamicFollowedPeopleHList(
             people: followedPeople,
-            title: context.tr(BanayLocalizationKeys.homeFollowedTitle),
+            showTitle: false,
             emptyTitle: context.tr(
               BanayLocalizationKeys.homeFollowedEmptyTitle,
             ),

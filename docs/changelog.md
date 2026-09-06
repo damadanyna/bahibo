@@ -369,3 +369,39 @@ futurs diagnostics.
   ancré en bas (il prend la place restante et se comprime sous le clavier) ;
   côté hôte, le rail d'outils est masqué pendant la saisie
   (`MediaQuery.viewInsetsOf(context).bottom > 0`).
+
+### 7. Live : voile sombre trop présent et écran qui se met en veille
+
+- **Symptôme** (hôte et spectateur) : « dégradé noir aux alentours de
+  l'écran » sur la vidéo ; l'écran s'assombrit puis se verrouille pendant
+  un live.
+- **Changement** :
+  - `lib/component/live/live_overlay_widgets.dart` — `LiveOverlayScrim`
+    partagé : assombrissement limité aux bandes de texte (34 % en haut sur
+    20 % de la hauteur, 50 % en bas sur le dernier tiers), le centre de
+    l'image n'est plus voilé. Remplace le dégradé 76 % / 88 % dupliqué dans
+    les deux pages.
+  - `wakelock_plus ^1.5.2` ajouté (`flutter pub add`) ;
+    `WakelockPlus.enable()` à l'ouverture des deux pages de live,
+    `disable()` à leur fermeture. Aucune permission supplémentaire à
+    déclarer côté Android.
+
+### 8. Live en 1080p et couche haute demandée explicitement par le spectateur
+
+- **Demande** : « je veux que la vidéo soit de la bonne résolution ».
+- **Constat décisif** : en mode `adaptiveStream`, le SDK Flutter LiveKit
+  envoie au serveur la taille du lecteur en pixels **logiques** (~412×915
+  sur un téléphone), et le serveur sert la plus petite couche qui couvre
+  cette taille. Un téléphone ne recevait donc jamais mieux que 720p, quelle
+  que soit la capture de l'hôte.
+- **Changement** :
+  - hôte (`live_preview_page.dart`) : capture `h1080_169`, encodage 3,5 Mb/s
+    / 30 i/s, échelle simulcast 540p + 216p (une couche 720p en plus
+    coûterait un encodage de trop sur le téléphone de l'hôte),
+    `maintainResolution` conservé ;
+  - spectateur (`live_watch_page.dart`) : `adaptiveStream: false` et
+    `setVideoQuality(VideoQuality.HIGH)` sur chaque piste vidéo souscrite →
+    la couche 1080p est demandée ; le serveur descend seul en 540p/216p si
+    le lien du spectateur ne suit pas.
+- **Coût** : ~4 Mb/s d'envoi stable requis côté hôte ; en dessous, WebRTC
+  baisse la fluidité avant la résolution.

@@ -7,7 +7,7 @@ const Map<String, Map<String, String>> banayHomeLocalizedValues = {
     BanayHomeLocalizationKeys.followedTitle: 'Ireo arahinao',
     BanayHomeLocalizationKeys.followedEmptyTitle: 'Tsy mbola misy arahina',
     BanayHomeLocalizationKeys.followedEmptyMessage:
-        'Araho ireo boutique mba hahitanao azy ireo eto.',
+        'Araho ireo boutique na olona mba hahitanao azy ireo eto.',
     BanayHomeLocalizationKeys.notificationsTooltip: 'Sokafy ny notifications',
     BanayHomeLocalizationKeys.livekitConfigIncomplete:
         'Tsy feno ny fikirakirana LiveKit ao amin\'ny serveur.',
@@ -42,7 +42,7 @@ const Map<String, Map<String, String>> banayHomeLocalizedValues = {
     BanayHomeLocalizationKeys.followedTitle: 'Following',
     BanayHomeLocalizationKeys.followedEmptyTitle: 'No subscriptions yet',
     BanayHomeLocalizationKeys.followedEmptyMessage:
-        'Follow shops to find them here.',
+        'Follow shops or people to find them here.',
     BanayHomeLocalizationKeys.notificationsTooltip: 'Open notifications',
     BanayHomeLocalizationKeys.livekitConfigIncomplete:
         'The server LiveKit configuration is incomplete.',
@@ -74,11 +74,11 @@ const Map<String, Map<String, String>> banayHomeLocalizedValues = {
     BanayHomeLocalizationKeys.defaultStoreName: 'Boutique BANAY',
     BanayHomeLocalizationKeys.liveUnavailable:
         'Ce live n\'est plus disponible.',
-    BanayHomeLocalizationKeys.followedTitle: 'Vos abonnements',
+    BanayHomeLocalizationKeys.followedTitle: 'Abonnements',
     BanayHomeLocalizationKeys.followedEmptyTitle:
         'Aucun abonnement pour le moment',
     BanayHomeLocalizationKeys.followedEmptyMessage:
-        'Abonnez-vous a des boutiques pour les retrouver ici.',
+        'Abonnez-vous à des boutiques ou à des personnes pour les retrouver ici.',
     BanayHomeLocalizationKeys.notificationsTooltip: 'Ouvrir les notifications',
     BanayHomeLocalizationKeys.livekitConfigIncomplete:
         'La configuration LiveKit du serveur est incomplete.',
@@ -111,7 +111,7 @@ const Map<String, Map<String, String>> banayHomeLocalizedValues = {
     BanayHomeLocalizationKeys.liveUnavailable: '该直播已不可用。',
     BanayHomeLocalizationKeys.followedTitle: '你的关注',
     BanayHomeLocalizationKeys.followedEmptyTitle: '暂时没有关注',
-    BanayHomeLocalizationKeys.followedEmptyMessage: '关注店铺后会显示在这里。',
+    BanayHomeLocalizationKeys.followedEmptyMessage: '关注店铺或用户后会显示在这里。',
     BanayHomeLocalizationKeys.notificationsTooltip: '打开通知',
     BanayHomeLocalizationKeys.livekitConfigIncomplete: '服务器的 LiveKit 配置不完整。',
     BanayHomeLocalizationKeys.cannotStartLive: '暂时无法开始直播。',
@@ -140,7 +140,7 @@ const Map<String, Map<String, String>> banayHomeLocalizedValues = {
     BanayHomeLocalizationKeys.followedTitle: 'आपकी फॉलोइंग',
     BanayHomeLocalizationKeys.followedEmptyTitle: 'अभी कोई सदस्यता नहीं',
     BanayHomeLocalizationKeys.followedEmptyMessage:
-        'दुकानों को फॉलो करें ताकि वे यहां दिखें।',
+        'दुकानों या लोगों को फॉलो करें ताकि वे यहां दिखें।',
     BanayHomeLocalizationKeys.notificationsTooltip: 'सूचनाएं खोलें',
     BanayHomeLocalizationKeys.livekitConfigIncomplete:
         'सर्वर की LiveKit कॉन्फ़िगरेशन अधूरी है।',
@@ -175,7 +175,7 @@ const Map<String, Map<String, String>> banayHomeLocalizedValues = {
     BanayHomeLocalizationKeys.followedTitle: 'Tus suscripciones',
     BanayHomeLocalizationKeys.followedEmptyTitle: 'Aun no hay suscripciones',
     BanayHomeLocalizationKeys.followedEmptyMessage:
-        'Sigue tiendas para encontrarlas aqui.',
+        'Sigue tiendas o personas para encontrarlas aquí.',
     BanayHomeLocalizationKeys.notificationsTooltip: 'Abrir notificaciones',
     BanayHomeLocalizationKeys.livekitConfigIncomplete:
         'La configuracion LiveKit del servidor esta incompleta.',
@@ -208,7 +208,8 @@ const Map<String, Map<String, String>> banayHomeLocalizedValues = {
     BanayHomeLocalizationKeys.liveUnavailable: 'هذا البث لم يعد متاحا.',
     BanayHomeLocalizationKeys.followedTitle: 'متابعاتك',
     BanayHomeLocalizationKeys.followedEmptyTitle: 'لا توجد متابعات حاليا',
-    BanayHomeLocalizationKeys.followedEmptyMessage: 'تابع المتاجر لتجدها هنا.',
+    BanayHomeLocalizationKeys.followedEmptyMessage:
+        'تابع المتاجر أو الأشخاص لتجدهم هنا.',
     BanayHomeLocalizationKeys.notificationsTooltip: 'افتح الإشعارات',
     BanayHomeLocalizationKeys.livekitConfigIncomplete:
         'إعداد LiveKit على الخادم غير مكتمل.',

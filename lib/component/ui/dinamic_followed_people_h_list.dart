@@ -99,7 +99,7 @@ class DinamicFollowedPeopleHList extends StatelessWidget {
     required this.people,
     this.title = 'Abonnements',
     this.emptyTitle = 'Aucun abonnement pour le moment',
-    this.emptyMessage = 'Les profils suivis apparaitront ici.',
+    this.emptyMessage = 'Les profils suivis apparaîtront ici.',
     this.showTitle = true,
     this.onPersonTap,
     this.onLiveTap,
@@ -135,17 +135,15 @@ class DinamicFollowedPeopleHList extends StatelessWidget {
     final viewLiveLabel = context.tr(
       BanayLocalizationKeys.homeFollowedViewLive,
     );
-    final viewProfileLabel = context.tr(
-      BanayLocalizationKeys.homeFollowedViewProfile,
-    );
+    // Cards only need the extra height when a "Voir le live" button shows.
+    final hasLivePerson = people.any(isFollowedPersonLive);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (showTitle) ...[
-          const SizedBox(height: 20),
+        if (showTitle)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
             child: Text(
               title,
               style: theme.textTheme.titleMedium?.copyWith(
@@ -153,9 +151,10 @@ class DinamicFollowedPeopleHList extends StatelessWidget {
               ),
             ),
           ),
-        ],
+        // Single-line name and place: the card hugs its content instead of
+        // reserving room for three-line subtitles nobody had.
         SizedBox(
-          height: 214,
+          height: hasLivePerson ? 188 : 144,
           child: people.isEmpty
               ? _FollowedPeopleEmptyState(
                   emptyTitle: emptyTitle,
@@ -164,7 +163,8 @@ class DinamicFollowedPeopleHList extends StatelessWidget {
                 )
               : ListView.builder(
                   scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  // Flush with the screen edges; cards only space each other.
+                  padding: EdgeInsets.zero,
                   physics: const ClampingScrollPhysics(),
                   itemCount: people.length,
                   itemBuilder: (context, index) {
@@ -199,8 +199,10 @@ class DinamicFollowedPeopleHList extends StatelessWidget {
                         borderRadius: BorderRadius.circular(18),
                         child: Container(
                           width: 172,
-                          margin: const EdgeInsets.symmetric(horizontal: 6),
-                          padding: const EdgeInsets.fromLTRB(14, 16, 14, 14),
+                          margin: EdgeInsets.only(
+                            right: index == people.length - 1 ? 0 : 10,
+                          ),
+                          padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
                             color: theme.cardColor,
                             borderRadius: BorderRadius.circular(18),
@@ -241,7 +243,7 @@ class DinamicFollowedPeopleHList extends StatelessWidget {
                               const SizedBox(height: 14),
                               Text(
                                 name,
-                                maxLines: 2,
+                                maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   fontSize: 15,
@@ -251,7 +253,7 @@ class DinamicFollowedPeopleHList extends StatelessWidget {
                               const SizedBox(height: 8),
                               Text(
                                 isLive ? liveTitle : subtitle,
-                                maxLines: isLive ? 2 : 3,
+                                maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontSize: 12,
@@ -294,26 +296,9 @@ class DinamicFollowedPeopleHList extends StatelessWidget {
                                       ),
                                     ),
                                   ),
-                                )
-                              else
-                                Row(
-                                  children: [
-                                    Icon(
-                                      Icons.arrow_outward_rounded,
-                                      size: 18,
-                                      color: appColors.mutedText,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      viewProfileLabel,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: appColors.mutedText,
-                                      ),
-                                    ),
-                                  ],
                                 ),
+                              // No "Voir le profil" footer: the whole card
+                              // is the tap target.
                             ],
                           ),
                         ),
@@ -322,7 +307,7 @@ class DinamicFollowedPeopleHList extends StatelessWidget {
                   },
                 ),
         ),
-        if (showTitle) const SizedBox(height: 28),
+        if (showTitle) const SizedBox(height: 8),
       ],
     );
   }
@@ -345,16 +330,16 @@ class FollowedPeopleHListSkeleton extends StatelessWidget {
           ),
         ],
         SizedBox(
-          height: 214,
+          height: 144,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: EdgeInsets.zero,
             itemCount: 4,
-            separatorBuilder: (context, index) => const SizedBox(width: 12),
+            separatorBuilder: (context, index) => const SizedBox(width: 10),
             itemBuilder: (context, index) {
               return Container(
                 width: 172,
-                padding: const EdgeInsets.fromLTRB(14, 16, 14, 14),
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(18),
                   color: Theme.of(context).cardColor,
@@ -376,11 +361,7 @@ class FollowedPeopleHListSkeleton extends StatelessWidget {
                     SizedBox(height: 14),
                     SkeletonBox(width: 120, height: 16),
                     SizedBox(height: 8),
-                    SkeletonBox(width: 136, height: 12),
-                    SizedBox(height: 6),
                     SkeletonBox(width: 98, height: 12),
-                    Spacer(),
-                    SkeletonBox(width: 92, height: 12),
                   ],
                 ),
               );
@@ -408,53 +389,61 @@ class _FollowedPeopleEmptyState extends StatelessWidget {
     final theme = Theme.of(context);
     final appColors = theme.appColors;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: theme.cardColor,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: borderColor),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primary.withValues(alpha: 0.10),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.people_outline_rounded,
-                color: theme.colorScheme.primary,
-                size: 28,
-              ),
+    // Horizontal layout: the section is now 144 px tall (cards hug their
+    // content), the old stacked icon + two texts no longer fit.
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: borderColor),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primary.withValues(alpha: 0.10),
+              shape: BoxShape.circle,
             ),
-            const SizedBox(height: 14),
-            Text(
-              emptyTitle,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+            child: Icon(
+              Icons.people_outline_rounded,
+              color: theme.colorScheme.primary,
+              size: 26,
             ),
-            const SizedBox(height: 8),
-            Text(
-              emptyMessage,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 12,
-                height: 1.35,
-                color: appColors.mutedText,
-                fontWeight: FontWeight.w500,
-              ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  emptyTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  emptyMessage,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.35,
+                    color: appColors.mutedText,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
