@@ -405,3 +405,127 @@ futurs diagnostics.
     le lien du spectateur ne suit pas.
 - **Coût** : ~4 Mb/s d'envoi stable requis côté hôte ; en dessous, WebRTC
   baisse la fluidité avant la résolution.
+
+### 9. Stories 24 h (photo) pour les boutiques, avec notification des abonnés
+
+- **Demande** : un système de story « style TikTok » : une boutique publie
+  une photo visible 24 h ; les abonnés sont notifiés ; un appui sur une story
+  ouvre un lecteur plein écran qui enchaîne automatiquement les stories
+  (barre de durée) puis passe à la boutique suivante jusqu'à la dernière
+  boutique suivie ayant une story ; une carte « Créer une story » façon
+  Facebook pour publier.
+- **Décisions** :
+  - photo uniquement (pas de vidéo : aucune dépendance lecteur vidéo dans
+    l'app, et l'upload vidéo Cloudinary est un chantier à part) ;
+  - seules les boutiques (profil vendeur) publient : ce sont elles qui ont
+    des abonnés (`SellerFollow`), un client n'aurait aucune audience ;
+  - 8 s par story (5 s jugées trop rapides à l'usage le 2026-09-07), plus
+    environ 1 s par 30 caractères de légende, plafonné à 12 s ; 30 stories
+    actives max par boutique ; image limitée à 1080×1920 sans recadrage
+    (dossier Cloudinary `BANAY/stories`) ;
+  - une story est « vue » dès son affichage dans le lecteur ; l'anneau de
+    la boutique reste coloré tant qu'il reste une story non vue.
+- **Backend** :
+  - `prisma/schema.prisma` + migration `20260906_add_seller_stories` :
+    tables `SellerStory` (`expiresAt`, `imagePublicId`, `caption`) et
+    `SellerStoryView` (unique par story × spectateur). Lancer
+    `npx prisma migrate deploy` (ou `prisma db push`) puis redémarrer le
+    serveur (le `prisma generate` a régénéré les types, le moteur était
+    verrouillé par le serveur de dev).
+  - nouveau module `src/modules/stories` : `GET /stories/feed` (groupes par
+    boutique : la sienne d'abord, puis non vues, puis vues), `POST /stories`
+    (multipart `image` + `caption`), `POST /stories/:id/view`,
+    `GET /stories/:id/viewers` (propriétaire), `DELETE /stories/:id`
+    (propriétaire). Cron horaire `purgeExpiredSellerStories` : purge des
+    lignes expirées depuis plus d'un jour + suppression de l'asset.
+  - `cloudinary.service.ts` — variante `story` (`uploadStoryImage`).
+  - `push-notifications.service.ts` — `sendStoryPublishedNotification`
+    (type `story_published`, `tag`/`thread-id` `story-<sellerProfileId>` :
+    plusieurs stories d'affilée remplacent la tuile au lieu de s'empiler).
+    L'échec du push est journalisé, il ne fait pas échouer la publication.
+  - `conversations-realtime.gateway.ts` — événement `stories:updated`
+    (`created` / `deleted`) émis au vendeur et à ses abonnés.
+  - `notifications.service.ts` — entrée `story_published` dans la liste des
+    notifications (une par boutique, portée par sa story la plus récente,
+    limitée aux stories encore actives).
+- **Client** :
+  - `lib/services/stories_api_service.dart` (nouveau) — modèles
+    `StoryItem` / `StoryGroup` + appels API.
+  - `lib/component/ui/following_stories_row.dart` (nouveau, révision du
+    2026-09-07 : la première version en cartes 104×160 « trop Facebook »
+    a été retirée) — une seule rangée façon TikTok qui fusionne stories et
+    abonnements : cercles d'avatar, anneau dégradé (primaire → secondaire)
+    quand une story n'est pas vue, anneau gris une fois vue, pastille rouge
+    « LIVE » sous l'avatar en direct, cercle personnel avec bouton « + » en
+    tête pour les boutiques (appui sur l'avatar : lit sa propre story si
+    elle existe, sinon crée). Ordre : soi, lives, stories non vues, stories
+    vues, autres abonnements. Un appui ouvre le live, sinon la story, sinon
+    le profil. `DinamicFollowedPeopleHList` n'est plus utilisée sur
+    l'accueil (ses helpers restent partagés avec les panneaux compte et
+    profil) ; son état vide `FollowedPeopleEmptyState` devient public et
+    est réutilisé.
+  - `lib/page/story/story_viewer_page.dart` (nouveau) — lecteur plein
+    écran : `PageView` par boutique, barres segmentées, timer par story
+    démarré une fois l'image chargée (borne 8 s), appui gauche/droite, appui long
+    pour figer, glisser vers le bas pour fermer, pause automatique en
+    arrière-plan. Propriétaire : compteur de vues (liste en feuille) et
+    suppression.
+  - `lib/page/story/story_create_page.dart` (nouveau) — composeur :
+    galerie ou appareil photo, aperçu plein écran, légende (300 car.),
+    « Publier la story ».
+  - `main_home_panel.dart` — rangée stories au-dessus des abonnements,
+    rechargée sur `stories:updated` ; `notifications_page.dart` — un appui
+    sur « Nouvelle story » ouvre directement le lecteur sur la boutique ;
+    `chat_realtime_service.dart` — abonnement à `stories:updated`.
+  - localisation : 24 nouvelles clés `home_story*` dans les 7 langues.
+- **Correctif du 2026-09-07** : « Only images are supported for stories »
+  à la publication. `MultipartFile.fromPath` sans `contentType` envoie la
+  partie en `application/octet-stream` (les autres uploads du projet ne
+  vérifient pas le MIME, d'où l'absence du symptôme ailleurs). Le client
+  envoie désormais le vrai type (`http_parser`), et le backend accepte
+  aussi un fichier reconnu par son extension quand le MIME est absent ou
+  générique.
+- **Extension du 2026-09-07 : stories pour tous les comptes, photo ou vidéo**
+  - **Demande** : « tout le monde capable de créer des story (photo ou
+    vidéo) ; si vidéo, utiliser notre barre de progression pour l'upload ».
+  - **Audience d'une story** (nouvelle règle, un client n'ayant pas
+    d'abonnés) : ses contacts = boutiques qu'il suit, ses abonnés s'il est
+    une boutique, et toute personne avec qui il a une conversation ; les
+    comptes bloqués dans un sens ou l'autre sont exclus. Le push reste
+    réservé aux abonnés d'une boutique (un client ne déclenche pas de push).
+  - **Vidéo** : 60 s max (limite de la caméra via `maxDuration`, vérifiée
+    sur l'aperçu pour la galerie, puis côté serveur avec la durée renvoyée
+    par Cloudinary), 60 Mo max (multer). Le fichier est stocké tel quel,
+    sans transcodage serveur (un transcodage synchrone dépasserait les
+    délais du reverse proxy) ; Cloudinary fournit l'image de couverture
+    (première image en JPEG) et la durée.
+  - **Backend** : migration `20260907_user_stories_video` (renomme
+    `SellerStory`/`SellerStoryView` en `UserStory`/`UserStoryView`, auteur
+    = `userId` rempli depuis le profil vendeur, colonnes `mediaType`,
+    `mediaUrl`, `mediaPublicId`, `thumbnailUrl`, `durationSeconds`) ;
+    `stories.service.ts` réécrit (feed par contacts, `resolveMediaType`,
+    audience temps réel élargie) ; `POST /stories` accepte la partie
+    `media` (ou `image`) + `mediaType` + `durationSeconds` ;
+    `cloudinary.service.ts` — `uploadStoryVideo`, suppression d'assets
+    `video` ; `notifications.service.ts` — dérivation adaptée à `UserStory`.
+    À lancer : `npx prisma migrate deploy` (ou `prisma db push`, qui
+    recrée la table en dev) puis redémarrer le serveur.
+  - **Client** : `video_player ^2.11.1` ajouté ;
+    `lib/component/upload_water_fill_progress.dart` (nouveau) — la barre
+    « liquide » du chat (`WaterFillProgressLayer`, `WaterFillVisualState`)
+    extraite de `chat_page.dart`, qui l'importe désormais au lieu de la
+    définir ; page de création : quatre choix (photo galerie / appareil,
+    vidéo galerie / caméra), aperçu vidéo en boucle, badge de durée,
+    envoi avec le remplissage liquide et le pourcentage (progression
+    réelle des octets envoyés, comme les produits) ; lecteur : la vidéo
+    pilote la barre de progression et passe à la suivante à sa fin, image
+    de couverture pendant le chargement, pause/reprise vidéo sur appui
+    long, arrière-plan et glissement ; rangée : cercle personnel pour tout
+    le monde, correspondance par identifiant utilisateur, cercles pour les
+    contacts non boutiques ayant une story.
+  - localisation : 5 nouvelles clés (`home_story_pick_video_*`,
+    `home_story_video_too_long`, `home_story_video_preview_failed`,
+    `home_story_uploading`) et sous-titre de création mis à jour, 7 langues.
+- **Non couvert (suite possible)** : transcodage vidéo côté serveur
+  (poids des vidéos), réponse à une story par message, entrée « story »
+  sur la page profil.

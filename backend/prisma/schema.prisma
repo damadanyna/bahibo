@@ -66,6 +66,11 @@ enum WarrantyDurationUnit {
   YEARS
 }
 
+enum StoryMediaType {
+  IMAGE
+  VIDEO
+}
+
 model User {
   id                              String                  @id @default(uuid())
   phoneE164                       String                  @unique
@@ -121,6 +126,8 @@ model User {
   eventLogs                       UserEventLog[]
   serverLogs                      ServerLog[]
   locationHistories               UserLocationHistory[]
+  stories                         UserStory[]             @relation("UserStoryAuthor")
+  storyViews                      UserStoryView[]         @relation("UserStoryViewViewer")
 }
 
 model UserBlock {
@@ -328,6 +335,40 @@ model SellerLiveSession {
 
   @@index([startedAt])
   @@index([endedAt])
+}
+
+/// A photo or a short video any account shares for 24 h with its contacts
+/// (followers, followed shops, chat counterparts). Rows are purged one day
+/// after `expiresAt` by StoriesService.purgeExpiredStories.
+model UserStory {
+  id              String          @id @default(uuid())
+  userId          String
+  mediaType       StoryMediaType  @default(IMAGE)
+  mediaUrl        String
+  mediaPublicId   String?
+  /// Poster frame for videos, same URL as `mediaUrl` for images.
+  thumbnailUrl    String?
+  durationSeconds Int?
+  caption         String?
+  createdAt       DateTime        @default(now())
+  expiresAt       DateTime
+  user            User            @relation("UserStoryAuthor", fields: [userId], references: [id], onDelete: Cascade)
+  views           UserStoryView[]
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
+}
+
+model UserStoryView {
+  id           String    @id @default(uuid())
+  storyId      String
+  viewerUserId String
+  viewedAt     DateTime  @default(now())
+  story        UserStory @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  viewer       User      @relation("UserStoryViewViewer", fields: [viewerUserId], references: [id], onDelete: Cascade)
+
+  @@unique([storyId, viewerUserId])
+  @@index([viewerUserId, viewedAt])
 }
 
 model Category {

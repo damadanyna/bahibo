@@ -102,6 +102,46 @@ export class NotificationsService {
       },
     });
 
+    // Stories still visible (< 24 h) from followed shops; one entry per
+    // shop is built below so a burst of stories stays a single line.
+    const activeFollowedStories =
+      sellerFollows.length === 0
+        ? []
+        : await this.prisma.userStory.findMany({
+            where: {
+              expiresAt: {
+                gt: new Date(),
+              },
+              userId: {
+                not: userId,
+              },
+              OR: sellerFollows.map((sellerFollow) => ({
+                user: {
+                  sellerProfile: {
+                    id: sellerFollow.sellerProfileId,
+                  },
+                },
+                createdAt: {
+                  gte: sellerFollow.createdAt,
+                },
+              })),
+            },
+            include: {
+              user: {
+                include: {
+                  sellerProfile: true,
+                },
+              },
+            },
+            orderBy: {
+              createdAt: "desc",
+            },
+            take: 60,
+          });
+    const storyNotifications = this.buildStoryNotifications(
+      activeFollowedStories,
+    );
+
     const latestProducts =
       sellerFollows.length === 0
         ? []
@@ -283,6 +323,7 @@ export class NotificationsService {
         userId,
         [
           ...shopRequestApprovalNotifications,
+          ...storyNotifications,
           ...followerCommentNotifications,
           ...productUpdateNotifications,
           ...productNotifications,
@@ -431,6 +472,7 @@ export class NotificationsService {
       userId,
       [
         ...shopRequestApprovalNotifications,
+        ...storyNotifications,
         ...sellerFollowNotifications,
         ...productCommentNotifications,
         ...productLikeNotifications,
@@ -1188,6 +1230,53 @@ export class NotificationsService {
         actors,
       },
     ];
+  }
+
+  /**
+   * One notification per shop (its newest story carries the id, so the
+   * read state naturally resets when the shop posts again).
+   */
+  private buildStoryNotifications(
+    stories: Prisma.UserStoryGetPayload<{
+      include: { user: { include: { sellerProfile: true } } };
+    }>[],
+  ): NotificationEntity[] {
+    const storiesByAuthor = new Map<string, typeof stories>();
+    for (const story of stories) {
+      const bucket = storiesByAuthor.get(story.userId) ?? [];
+      bucket.push(story);
+      storiesByAuthor.set(story.userId, bucket);
+    }
+
+    return [...storiesByAuthor.values()].map((authorStories) => {
+      // Query is ordered createdAt desc: first item is the newest.
+      const latestStory = authorStories[0];
+      const sellerProfile = latestStory.user.sellerProfile;
+      const sellerName =
+        sellerProfile?.studioName?.trim() || latestStory.user.displayName;
+      const storyCount = authorStories.length;
+
+      return {
+        id: `notif-story-${latestStory.id}`,
+        type: "story_published",
+        title: "Nouvelle story",
+        body:
+          storyCount > 1
+            ? `${sellerName} a publié ${storyCount} nouvelles stories.`
+            : `${sellerName} a publié une nouvelle story.`,
+        isRead: false,
+        createdAt: latestStory.createdAt.toISOString(),
+        sellerProfile: sellerProfile
+          ? { id: sellerProfile.id, studioName: sellerProfile.studioName }
+          : null,
+        seller: {
+          id: sellerProfile?.id ?? latestStory.user.id,
+          name: sellerName,
+          avatarUrl: latestStory.user.avatarUrl ?? "",
+        },
+        product: null,
+      } satisfies NotificationEntity;
+    });
   }
 
   private buildRelativeTimeLabel(date: Date) {

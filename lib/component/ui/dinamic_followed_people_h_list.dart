@@ -156,7 +156,7 @@ class DinamicFollowedPeopleHList extends StatelessWidget {
         SizedBox(
           height: hasLivePerson ? 188 : 144,
           child: people.isEmpty
-              ? _FollowedPeopleEmptyState(
+              ? FollowedPeopleEmptyState(
                   emptyTitle: emptyTitle,
                   emptyMessage: emptyMessage,
                   borderColor: appColors.borderColor,
@@ -373,8 +373,9 @@ class FollowedPeopleHListSkeleton extends StatelessWidget {
   }
 }
 
-class _FollowedPeopleEmptyState extends StatelessWidget {
-  const _FollowedPeopleEmptyState({
+class FollowedPeopleEmptyState extends StatelessWidget {
+  const FollowedPeopleEmptyState({
+    super.key,
     required this.emptyTitle,
     required this.emptyMessage,
     required this.borderColor,

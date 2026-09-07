@@ -5,11 +5,13 @@ import 'package:banay/component/app_page_skeletons.dart';
 import 'package:banay/component/profile_models.dart';
 import 'package:banay/component/seller_profile_page.dart';
 import 'package:banay/component/ui/dinamic_icon_input.dart';
-import 'package:banay/component/ui/dinamic_followed_people_h_list.dart';
+import 'package:banay/component/ui/following_stories_row.dart';
 import 'package:banay/component/user_profile_page.dart';
 import 'package:banay/page/live/live_preview_page.dart';
 import 'package:banay/page/notifications_page.dart';
 import 'package:banay/page/live/live_watch_page.dart';
+import 'package:banay/page/story/story_create_page.dart';
+import 'package:banay/page/story/story_viewer_page.dart';
 import 'package:banay/localization/banay_localizations.dart';
 import 'package:banay/services/app_analytics.dart';
 import 'package:banay/services/app_api_client.dart';
@@ -17,6 +19,7 @@ import 'package:banay/services/app_auth_service.dart';
 import 'package:banay/services/catalog_api_service.dart';
 import 'package:banay/services/chat_realtime_service.dart';
 import 'package:banay/services/notifications_api_service.dart';
+import 'package:banay/services/stories_api_service.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -43,6 +46,7 @@ class _MainHomePanelState extends State<MainHomePanel>
   final CatalogApiService _catalogApiService = CatalogApiService();
   final NotificationsApiService _notificationsApiService =
       NotificationsApiService();
+  final StoriesApiService _storiesApiService = StoriesApiService();
   final List<Map<String, dynamic>> _notifications = [];
   StreamSubscription<Map<String, dynamic>>? _realtimeEventsSubscription;
 
@@ -50,6 +54,7 @@ class _MainHomePanelState extends State<MainHomePanel>
 
   List<dynamic> products = [];
   List<Map<String, dynamic>> followedPeople = [];
+  List<StoryGroup> _storyGroups = [];
 
   int skip = 0;
   final int limit = 6;
@@ -124,6 +129,7 @@ class _MainHomePanelState extends State<MainHomePanel>
   Future<void> _bootstrapHomePanel() async {
     await _loadCurrentUserRole();
     await Future.wait([
+      fetchStories(),
       fetchFollowedPeople(),
       fetchProducts(),
       fetchNotifications(),
@@ -156,6 +162,11 @@ class _MainHomePanelState extends State<MainHomePanel>
 
       if (type == 'live:updated') {
         unawaited(fetchFollowedPeople());
+      }
+
+      // A followed shop posted or removed a story (or we did).
+      if (type == 'stories:updated') {
+        unawaited(fetchStories());
       }
 
       if (type == 'profile:public-updated') {
@@ -301,12 +312,14 @@ class _MainHomePanelState extends State<MainHomePanel>
     setState(() {
       products = [];
       followedPeople = [];
+      _storyGroups = [];
       skip = 0;
       hasMore = true;
       isLoading = false;
       _isLoadingFollowedPeople = true;
     });
 
+    await fetchStories();
     await fetchFollowedPeople();
     await fetchProducts();
     await fetchNotifications();
@@ -388,6 +401,92 @@ class _MainHomePanelState extends State<MainHomePanel>
       if (!mounted) return;
       setState(() => isLoading = false);
     }
+  }
+
+  Future<void> fetchStories() async {
+    try {
+      final groups = await _storiesApiService.fetchStoryFeed();
+      if (!mounted) return;
+      setState(() => _storyGroups = groups);
+    } catch (_) {
+      // Keep whatever was already on screen: the row still renders the
+      // followed shops, only the story rings are missing.
+    }
+  }
+
+  void _markStoryViewedLocally(String storyId) {
+    if (!mounted) return;
+    setState(() {
+      _storyGroups = _storyGroups
+          .map(
+            (group) => group.copyWith(
+              stories: group.stories
+                  .map(
+                    (story) => story.id == storyId
+                        ? story.copyWith(isViewed: true)
+                        : story,
+                  )
+                  .toList(),
+            ),
+          )
+          .toList();
+    });
+  }
+
+  void _removeStoryLocally(String storyId) {
+    if (!mounted) return;
+    setState(() {
+      _storyGroups = _storyGroups
+          .map(
+            (group) => group.copyWith(
+              stories: group.stories
+                  .where((story) => story.id != storyId)
+                  .toList(),
+            ),
+          )
+          .where((group) => group.stories.isNotEmpty)
+          .toList();
+    });
+  }
+
+  Future<void> _openStoryGroup(int groupIndex) async {
+    if (groupIndex < 0 || groupIndex >= _storyGroups.length) return;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => StoryViewerPage(
+          groups: _storyGroups,
+          initialGroupIndex: groupIndex,
+          onStoryViewed: _markStoryViewedLocally,
+          onStoryDeleted: _removeStoryLocally,
+        ),
+      ),
+    );
+
+    // Re-sort (seen shops move last) with the server's view of things.
+    if (!mounted) return;
+    unawaited(fetchStories());
+  }
+
+  Future<void> _openStoryCreator() async {
+    final published = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => StoryCreatePage(
+          currentUserName: _currentDisplayName,
+          currentUserAvatarUrl: _avatarUrl,
+        ),
+      ),
+    );
+
+    if (!mounted || published != true) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(context.tr(BanayLocalizationKeys.homeStoryPublished)),
+      ),
+    );
+    await fetchStories();
   }
 
   Future<void> fetchFollowedPeople() async {
@@ -537,22 +636,27 @@ class _MainHomePanelState extends State<MainHomePanel>
           _buildSellerLiveButton(Theme.of(context)),
           const SizedBox(height: 4),
         ],
-        // No section title on the home feed: the cards speak for themselves
-        // and the header sits right above.
+        // One TikTok-style row: followed shops as circles, story rings and
+        // LIVE badges merged in, own circle with "+" first for shops. The
+        // skeleton only waits for the followed list; story rings appear
+        // whenever their fetch lands.
         if (_isLoadingFollowedPeople)
-          const FollowedPeopleHListSkeleton(showTitle: false)
+          const FollowingStoriesRowSkeleton()
         else
-          DinamicFollowedPeopleHList(
+          FollowingStoriesRow(
             people: followedPeople,
-            showTitle: false,
+            storyGroups: _storyGroups,
+            currentUserAvatarUrl: _avatarUrl,
+            onCreateStoryTap: _openStoryCreator,
+            onStoryTap: _openStoryGroup,
+            onPersonTap: _openFollowedPerson,
+            onLiveTap: _openFollowedPersonLive,
             emptyTitle: context.tr(
               BanayLocalizationKeys.homeFollowedEmptyTitle,
             ),
             emptyMessage: context.tr(
               BanayLocalizationKeys.homeFollowedEmptyMessage,
             ),
-            onPersonTap: _openFollowedPerson,
-            onLiveTap: _openFollowedPersonLive,
           ),
       ],
     );

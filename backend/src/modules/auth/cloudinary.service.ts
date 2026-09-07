@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
 
 type DeleteCloudinaryAssetInput = {
-  mediaType: 'image' | 'document';
+  mediaType: 'image' | 'document' | 'video';
   publicId?: string | null;
   storageKey?: string | null;
   publicUrl?: string | null;
@@ -33,7 +33,8 @@ type UploadImageVariant =
   | 'cover'
   | 'product'
   | 'chat-image'
-  | 'chat-document';
+  | 'chat-document'
+  | 'story';
 
 @Injectable()
 export class CloudinaryService {
@@ -201,6 +202,72 @@ export class CloudinaryService {
     return this.uploadUserImage(file, identifier, 'product');
   }
 
+  async uploadStoryImage(file: Express.Multer.File, identifier: string) {
+    return this.uploadUserImage(file, identifier, 'story');
+  }
+
+  /**
+   * Story videos are stored as recorded: a server-side transcode would
+   * stretch the upload request past reverse-proxy timeouts. Only a JPEG
+   * poster frame is derived (cheap), plus the duration for the client timer.
+   */
+  async uploadStoryVideo(file: Express.Multer.File, identifier: string) {
+    if (!this.isConfigured()) {
+      throw new BadRequestException('Cloudinary is not configured');
+    }
+
+    const sanitizedIdentifier = identifier.replace(/[^a-zA-Z0-9]/g, '');
+    const uploadResult = await new Promise<UploadApiResponse>((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: 'BANAY/stories',
+          public_id: `${sanitizedIdentifier}-story-video-${Date.now()}`,
+          resource_type: 'video',
+          overwrite: true,
+        },
+        (error, result) => {
+          if (error || !result) {
+            reject(error ?? new Error('Cloudinary upload failed'));
+            return;
+          }
+
+          resolve(result);
+        },
+      );
+
+      stream.end(file.buffer);
+    });
+
+    const thumbnailUrl = cloudinary.url(uploadResult.public_id, {
+      secure: true,
+      resource_type: 'video',
+      version: uploadResult.version,
+      format: 'jpg',
+      transformation: [
+        {
+          width: 720,
+          height: 1280,
+          crop: 'limit',
+          start_offset: '0',
+          quality: 'auto:eco',
+        },
+      ],
+    });
+
+    const rawDuration = (uploadResult as Record<string, unknown>).duration;
+
+    return {
+      originalUrl: uploadResult.secure_url,
+      videoUrl: uploadResult.secure_url,
+      thumbnailUrl,
+      publicId: uploadResult.public_id,
+      durationSeconds:
+        typeof rawDuration === 'number' && Number.isFinite(rawDuration)
+          ? Math.round(rawDuration)
+          : null,
+    };
+  }
+
   async uploadChatImage(file: Express.Multer.File, identifier: string) {
     const uploadResult = await this.uploadUserImage(file, identifier, 'chat-image');
 
@@ -261,7 +328,12 @@ export class CloudinaryService {
     }
 
     const result = await cloudinary.uploader.destroy(publicId, {
-      resource_type: input.mediaType === 'document' ? 'raw' : 'image',
+      resource_type:
+        input.mediaType === 'document'
+          ? 'raw'
+          : input.mediaType === 'video'
+            ? 'video'
+            : 'image',
       invalidate: true,
     });
 
@@ -313,6 +385,10 @@ export class CloudinaryService {
 
     if (variant === 'chat-image') {
       return 'BANAY/chat-images';
+    }
+
+    if (variant === 'story') {
+      return 'BANAY/stories';
     }
 
     if (variant === 'chat-document') {
@@ -468,6 +544,20 @@ export class CloudinaryService {
 
     if (variant === 'chat-image') {
       return [...CloudinaryService.chatImagePreviewTransformation];
+    }
+
+    if (variant === 'story') {
+      // Full-screen portrait viewer: cap the size but keep the aspect
+      // ratio (no crop), the client letterboxes on a dark background.
+      return [
+        {
+          width: 1080,
+          height: 1920,
+          crop: 'limit',
+          fetch_format: 'auto',
+          quality: 'auto:good',
+        },
+      ];
     }
 
     return [

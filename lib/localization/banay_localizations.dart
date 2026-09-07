@@ -186,6 +186,57 @@ abstract final class BanayLocalizationKeys {
       BanayHomeLocalizationKeys.followedViewLive;
   static const homeFollowedViewProfile =
       BanayHomeLocalizationKeys.followedViewProfile;
+  static const homeStoriesCreateLabel =
+      BanayHomeLocalizationKeys.storiesCreateLabel;
+  static const homeStoriesYourStory =
+      BanayHomeLocalizationKeys.storiesYourStory;
+  static const homeStoryCreateTitle =
+      BanayHomeLocalizationKeys.storyCreateTitle;
+  static const homeStoryCreateSubtitle =
+      BanayHomeLocalizationKeys.storyCreateSubtitle;
+  static const homeStoryPickGallery =
+      BanayHomeLocalizationKeys.storyPickGallery;
+  static const homeStoryPickGallerySubtitle =
+      BanayHomeLocalizationKeys.storyPickGallerySubtitle;
+  static const homeStoryPickCamera = BanayHomeLocalizationKeys.storyPickCamera;
+  static const homeStoryPickCameraSubtitle =
+      BanayHomeLocalizationKeys.storyPickCameraSubtitle;
+  static const homeStoryCaptionHint =
+      BanayHomeLocalizationKeys.storyCaptionHint;
+  static const homeStoryPublishAction =
+      BanayHomeLocalizationKeys.storyPublishAction;
+  static const homeStoryPublished = BanayHomeLocalizationKeys.storyPublished;
+  static const homeStoryPublishFailed =
+      BanayHomeLocalizationKeys.storyPublishFailed;
+  static const homeStoryImagePickFailed =
+      BanayHomeLocalizationKeys.storyImagePickFailed;
+  static const homeStoryDeleteAction =
+      BanayHomeLocalizationKeys.storyDeleteAction;
+  static const homeStoryDeleteConfirmTitle =
+      BanayHomeLocalizationKeys.storyDeleteConfirmTitle;
+  static const homeStoryDeleteConfirmBody =
+      BanayHomeLocalizationKeys.storyDeleteConfirmBody;
+  static const homeStoryDeleted = BanayHomeLocalizationKeys.storyDeleted;
+  static const homeStoryDeleteFailed =
+      BanayHomeLocalizationKeys.storyDeleteFailed;
+  static const homeStoryViewersTitle =
+      BanayHomeLocalizationKeys.storyViewersTitle;
+  static const homeStoryNoViewersYet =
+      BanayHomeLocalizationKeys.storyNoViewersYet;
+  static const homeStoryUnavailable =
+      BanayHomeLocalizationKeys.storyUnavailable;
+  static const homeStoryJustNow = BanayHomeLocalizationKeys.storyJustNow;
+  static const homeStoryMinutesAgo = BanayHomeLocalizationKeys.storyMinutesAgo;
+  static const homeStoryHoursAgo = BanayHomeLocalizationKeys.storyHoursAgo;
+  static const homeStoryPickVideoGallery =
+      BanayHomeLocalizationKeys.storyPickVideoGallery;
+  static const homeStoryPickVideoCamera =
+      BanayHomeLocalizationKeys.storyPickVideoCamera;
+  static const homeStoryVideoTooLong =
+      BanayHomeLocalizationKeys.storyVideoTooLong;
+  static const homeStoryVideoPreviewFailed =
+      BanayHomeLocalizationKeys.storyVideoPreviewFailed;
+  static const homeStoryUploading = BanayHomeLocalizationKeys.storyUploading;
   static const searchTitle = BanaySearchLocalizationKeys.searchTitle;
   static const searchHint = BanaySearchLocalizationKeys.searchHint;
   static const searchHideHistoryDialogTitle =

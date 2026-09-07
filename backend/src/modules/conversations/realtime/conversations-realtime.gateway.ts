@@ -125,6 +125,13 @@ type LiveRealtimePayload = {
   startedAt: string | null;
 };
 
+type StoriesRealtimePayload = {
+  type: "stories:updated";
+  action: "created" | "deleted";
+  authorUserId: string;
+  storyId: string;
+};
+
 type ProductRealtimePayload = {
   type: "product:updated";
   productId: string;
@@ -501,6 +508,18 @@ export class ConversationsRealtimeGateway
     const uniqueUserIds = [...new Set(userIds)];
     for (const userId of uniqueUserIds) {
       this.server.to(this.userRoom(userId)).emit("live:updated", payload);
+    }
+  }
+
+  /** Story published/deleted: the seller and their followers refresh the row. */
+  emitStoriesEvent(userIds: string[], payload: StoriesRealtimePayload) {
+    if (!this.server) {
+      return;
+    }
+
+    const uniqueUserIds = [...new Set(userIds)];
+    for (const userId of uniqueUserIds) {
+      this.server.to(this.userRoom(userId)).emit("stories:updated", payload);
     }
   }
 

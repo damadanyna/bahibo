@@ -21,6 +21,7 @@ import { ProfilesModule } from './modules/profiles/profiles.module';
 import { PushNotificationsModule } from './modules/push-notifications/push-notifications.module';
 import { SearchModule } from './modules/search/search.module';
 import { ShipmentsModule } from './modules/shipments/shipments.module';
+import { StoriesModule } from './modules/stories/stories.module';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { ShipmentsModule } from './modules/shipments/shipments.module';
     CartModule,
     OrdersModule,
     ShipmentsModule,
+    StoriesModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: AuthThrottlerGuard }],
 })

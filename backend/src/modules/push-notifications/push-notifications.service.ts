@@ -84,6 +84,15 @@ type SendShopRequestApprovedNotificationArgs = {
   sellerAvatarUrl?: string;
 };
 
+type SendStoryPublishedNotificationArgs = {
+  sellerProfileId: string;
+  sellerUserId: string;
+  sellerDisplayName: string;
+  sellerAvatarUrl?: string;
+  storyId: string;
+  storyImageUrl?: string;
+};
+
 @Injectable()
 export class PushNotificationsService {
   private readonly logger = new Logger(PushNotificationsService.name);
@@ -680,6 +689,112 @@ export class PushNotificationsService {
         payload: {
           aps: {
             sound: "default",
+          },
+        },
+      },
+    });
+
+    const invalidTokens = response.responses
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => {
+        const code = item.error?.code;
+        return (
+          code === "messaging/invalid-registration-token" ||
+          code === "messaging/registration-token-not-registered"
+        );
+      })
+      .map(({ index }) => deviceTokens[index].token);
+
+    if (invalidTokens.length > 0) {
+      await this.prisma.userDeviceToken.deleteMany({
+        where: {
+          token: {
+            in: invalidTokens,
+          },
+        },
+      });
+    }
+  }
+
+  /** Every follower of the shop gets one tile per seller (same tag). */
+  async sendStoryPublishedNotification(
+    args: SendStoryPublishedNotificationArgs,
+  ) {
+    const followerLinks = await this.prisma.sellerFollow.findMany({
+      where: {
+        sellerProfileId: args.sellerProfileId,
+        followerUserId: {
+          not: args.sellerUserId,
+        },
+      },
+      select: {
+        followerUserId: true,
+      },
+    });
+
+    const recipientUserIds = Array.from(
+      new Set(followerLinks.map((link) => link.followerUserId)),
+    );
+
+    if (recipientUserIds.length === 0) {
+      return;
+    }
+
+    const deviceTokens = await this.prisma.userDeviceToken.findMany({
+      where: {
+        userId: {
+          in: recipientUserIds,
+        },
+      },
+      select: {
+        token: true,
+      },
+    });
+
+    if (deviceTokens.length === 0) {
+      return;
+    }
+
+    if (!this.firebaseApp) {
+      this.logger.warn(
+        `Skipping story notification for ${args.storyId} because Firebase Admin is not configured.`,
+      );
+      return;
+    }
+
+    // Several stories posted in a row by the same shop replace each other
+    // instead of stacking (same mechanism as chat conversations).
+    const groupKey = `story-${args.sellerProfileId}`;
+
+    const response = await getMessaging(this.firebaseApp).sendEachForMulticast({
+      tokens: deviceTokens.map((deviceToken) => deviceToken.token),
+      notification: {
+        title: args.sellerDisplayName,
+        body: "a publié une nouvelle story.",
+      },
+      data: {
+        type: "story_published",
+        sellerProfileId: args.sellerProfileId,
+        sellerUserId: args.sellerUserId,
+        sellerName: args.sellerDisplayName,
+        sellerAvatarUrl: args.sellerAvatarUrl ?? "",
+        storyId: args.storyId,
+        storyImageUrl: args.storyImageUrl ?? "",
+      },
+      android: {
+        priority: "high",
+        notification: {
+          channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
+          sound: ANDROID_NOTIFICATION_SOUND,
+          clickAction: "FLUTTER_NOTIFICATION_CLICK",
+          tag: groupKey,
+        },
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: "default",
+            "thread-id": groupKey,
           },
         },
       },
