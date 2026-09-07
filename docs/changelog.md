@@ -529,3 +529,173 @@ futurs diagnostics.
 - **Non couvert (suite possible)** : transcodage vidéo côté serveur
   (poids des vidéos), réponse à une story par message, entrée « story »
   sur la page profil.
+
+## 2026-09-07
+
+### 1. Stories vidéo : lecture trop lourde, puis « Finalisation en cours » à 100 %
+
+- **Symptôme** : « ça charge trop lors de la lecture » d'une story vidéo ;
+  et pendant la publication, le pourcentage restait figé à 100 % le temps
+  que le serveur transfère le fichier vers Cloudinary.
+- **Cause** : la vidéo était servie telle qu'enregistrée par le téléphone
+  (1080p-4K, débit élevé, souvent 30-60 Mo pour 60 s). De plus, les MP4 de
+  caméra placent l'atome `moov` en fin de fichier : le lecteur doit alors
+  télécharger tout le fichier avant la première image. Le transcodage
+  serveur avait été laissé de côté (voir « Non couvert » de l'entrée 9 du
+  2026-09-06) car un transcodage synchrone dépasse les délais du reverse
+  proxy.
+- **Changement backend** :
+  - `cloudinary.service.ts` — `uploadStoryVideo` demande deux
+    transformations `eager` générées **en arrière-plan** (`eager_async`,
+    la requête d'upload ne s'allonge pas) : rendu de lecture 720p H.264/AAC
+    MP4 (`storyVideoTransformation`, `q_auto:good`, faststart) et l'image
+    de couverture JPEG. Nouveau `buildStoryVideoPlaybackUrl` : reconstruit
+    l'URL du rendu avec le **même objet de transformation** (chaîne
+    identique `ac_aac,c_limit,h_1280,q_auto:good,vc_h264,w_720/mp4`, donc
+    même asset dérivé).
+  - `stories.service.ts` — la ligne garde l'URL d'origine ; `presentStory`
+    renvoie dans `mediaUrl` l'URL du rendu optimisé (dérivée du
+    `mediaPublicId`, ou de l'URL pour les anciennes lignes : les stories
+    déjà publiées en profitent aussi, Cloudinary génère le rendu à la
+    première demande) et l'original dans le nouveau champ
+    `originalMediaUrl` (vidéo seulement). Aucune migration ; redémarrer le
+    serveur.
+- **Changement client** :
+  - `stories_api_service.dart` — `StoryItem.originalMediaUrl` +
+    `fallbackMediaUrl`.
+  - `story_viewer_page.dart` — ouverture vidéo réécrite (`_openVideo`) :
+    rendu optimisé d'abord, **3 essais espacés de 2,5 s** (Cloudinary
+    refuse l'URL tant que le rendu d'une vidéo toute fraîche n'est pas
+    prêt), puis repli sur l'original ; un dépassement de délai (lien lent)
+    n'est pas réessayé. **Pré-chargement de la story suivante** : son
+    lecteur est initialisé pendant la lecture en cours et adopté au
+    passage (`_preloadedController`, un seul en avance, jeté dès que la
+    suivante change) ; le poster est toujours préchauffé. Le lecteur en
+    cours d'initialisation est suivi (`_pendingController`) pour être
+    libéré immédiatement à un changement de story, comme avant.
+  - `story_create_page.dart` — à 100 % d'octets envoyés, le remplissage
+    liquide et le pourcentage disparaissent au profit d'un simple spinner
+    et du texte « Finalisation en cours… » (nouvelle clé
+    `home_story_finalizing`, 7 langues).
+- **À savoir** : le rendu utilise le quota de transformations vidéo
+  Cloudinary (une fois par story, puis mis en cache CDN). Si ce quota est
+  épuisé, l'URL optimisée échoue et le lecteur retombe sur l'original.
+
+### 2. Stories : « Finalisation en cours » très longue → upload direct vers Cloudinary
+
+- **Symptôme** : après l'entrée 1, la barre atteignait 100 % vite mais la
+  « finalisation » durait parfois plusieurs minutes pour une vidéo.
+- **Cause** : le média transitait par le serveur BANAY, qui le renvoyait
+  ensuite **intégralement** à Cloudinary une fois la requête reçue (multer
+  en mémoire, aucun chevauchement). Deux transferts complets, le second
+  limité par le débit montant de la machine qui héberge le backend. En
+  dev (backend sur le PC), le trajet téléphone → PC passe par le Wi-Fi
+  local et va vite ; le trajet PC → Cloudinary passe par la connexion
+  internet, d'où l'asymétrie observée. S'y ajoutaient l'analyse du
+  fichier par Cloudinary et l'attente des push avant la réponse.
+- **Changement** : le média part **directement du téléphone vers
+  Cloudinary**, sur le modèle déjà en place pour les photos et documents
+  du chat (`createDirectChatImageUploadSignature`). Un seul transfert ;
+  100 % signifie que Cloudinary a tout reçu ; la « finalisation » se
+  réduit à un appel de confirmation.
+  - backend `cloudinary.service.ts` — `createDirectStoryUploadSignature`
+    (paramètres signés renvoyés tels quels dans `fields` ; pour une vidéo,
+    `eager` + `eager_async` inclus dans la signature, chaîne construite
+    via `generate_transformation_string` à l'identique du `build_eager`
+    du SDK), `verifyUploadResponseSignature` (signature SHA-1
+    `public_id` + `version` + secret renvoyée par Cloudinary : prouve que
+    l'asset a bien été envoyé sur ce compte), `describeAsset` (Admin API :
+    poids, durée, format), `buildStoryImageUrl` / `buildStoryVideoUrls`,
+    `isDirectStoryPublicIdOf` (l'identifiant doit avoir été émis pour cet
+    utilisateur : préfixe `BANAY/stories/<userId>-story-<type>-`).
+  - backend `stories.service.ts` — `createDirectUploadSignature` (compte
+    et quota vérifiés avant l'upload) et `createStoryFromDirectUpload`
+    (préfixe + signature, identifiant pas déjà publié, quota, poids
+    ≤ 60 Mo et durée ≤ 60 s relus depuis Cloudinary, asset supprimé si
+    refusé) ; `createStory` (multipart) conservé pour les anciens builds,
+    tronc commun extrait dans `finalizeStory` / `loadAuthorOrThrow` /
+    `assertStoryQuota`. `STORY_UPLOAD_MAX_BYTES` déplacé du contrôleur au
+    service. Nouvelles routes `POST /stories/direct-signature` et
+    `POST /stories/direct` (DTO `create-direct-story.dto.ts`).
+  - client `stories_api_service.dart` — `publishStory` : signature →
+    upload multipart vers `api.cloudinary.com` (champs signés transmis
+    verbatim, progression réelle) → confirmation. Repli automatique sur
+    `createStory` si le backend n'a pas encore la route (404/501, cas d'un
+    serveur non redémarré) ou si Cloudinary est injoignable depuis le
+    téléphone. Flux de fichier suivi factorisé (`_trackedMultipartFile`).
+  - client `story_create_page.dart` — vidéo > 60 Mo refusée au choix du
+    fichier (nouvelle clé `home_story_video_too_large`, 7 langues), la
+    limite multer ne s'appliquant plus.
+- **À savoir** : `describeAsset` consomme un appel Admin API par
+  publication (quota horaire large) ; en cas d'échec de cet appel, les
+  valeurs du client (durée, format) servent de repli, la signature
+  restant obligatoire. Redémarrer le serveur.
+
+### 3. Stories : l'écran ne doit jamais se mettre en veille
+
+- **Demande** : pendant l'envoi d'une story (et sa lecture), l'écran ne
+  doit pas s'éteindre. Un écran verrouillé met l'app en pause et peut
+  freiner le transfert vers Cloudinary ; en lecture, les stories
+  s'enchaînent sans aucun appui, donc la temporisation système finit par
+  couper l'écran.
+- **Changement** : même mécanisme que les pages de live (`wakelock_plus`).
+  - `story_create_page.dart` — `WakelockPlus.enable()` au début de
+    `_publish`, `disable()` en cas d'échec (`_endPublishing`) et dans
+    `dispose` (un envoi réussi ferme la page avec le verrou actif).
+  - `story_viewer_page.dart` — `enable()` à l'ouverture, `disable()` à la
+    fermeture.
+
+### 4. Session : déconnexions intempestives (retour à l'écran de connexion)
+
+- **Symptôme** : des utilisateurs se retrouvent « parfois » sur l'écran de
+  connexion, alors que l'app doit rester connectée comme WhatsApp ou
+  TikTok, avec ou sans internet.
+- **Causes** (client uniquement, le backend n'est pas en cause) :
+  1. `AppAuthService.restoreSession` exigeait un `POST /auth/refresh`
+     réussi **à chaque lancement** et effaçait la session sur n'importe
+     quel échec : hors ligne, délai dépassé (20 s sur data lente), serveur
+     en redémarrage, 502 du proxy. Lancer l'app sans réseau suffisait.
+  2. Rafraîchissements concurrents : 11 instances d'`AppApiClient`, chacune
+     avec son propre verrou `_refreshSessionFuture`. Le jeton d'accès
+     expire après 15 min ; au retour dans l'app, plusieurs écrans reçoivent
+     un 401 en même temps et lancent chacun `/auth/refresh` avec le
+     **même** jeton de rafraîchissement. Le backend fait tourner ce jeton
+     (l'ancien est supprimé à la première utilisation) : le premier appel
+     gagne, les suivants reçoivent « Refresh token not found » et
+     `_invalidateSession` effaçait tout, **y compris les nouveaux jetons**
+     que le gagnant venait de sauver. Même course possible avec l'isolat de
+     push en arrière-plan (`pingDelivery` est un appel authentifié).
+  3. `_performRefreshSession` effaçait aussi la session sur un 5xx ou une
+     réponse illisible, alors que seul un 401/403 du refresh est définitif.
+- **Correctif** :
+  - `app_api_client.dart` — verrou de rafraîchissement **statique** (un
+    seul refresh à la fois pour tout l'isolat) ; avant de rafraîchir après
+    un 401, relecture du jeton d'accès en stockage : s'il a déjà changé
+    (autre instance ou autre isolat), on réessaie sans rafraîchir ; sur un
+    401/403 du refresh, relecture du jeton de rafraîchissement (deux fois,
+    1,5 s d'écart) : s'il a été tourné entre-temps, la session est gardée.
+    Seul un rejet définitif d'un jeton que personne n'a tourné efface la
+    session ; hors ligne, timeout, 5xx et réponse illisible sont
+    transitoires (la requête échoue, l'utilisateur reste connecté).
+    Nouveau `refreshAccessTokenIfExpired` (lit `exp` du JWT localement,
+    rafraîchit si expiré ou à moins de 60 s) et `sessionInvalidated`
+    (`ValueNotifier` statique, émis uniquement sur rejet définitif).
+  - `app_auth_service.dart` — `restoreSession` devient hors-ligne d'abord :
+    une session locale valide ouvre l'app immédiatement ; le jeton d'accès
+    est renouvelé en arrière-plan s'il a expiré ; plus aucun refresh
+    bloquant ni effacement au lancement.
+  - `main_navigation_shell.dart` — écoute `sessionInvalidated` et renvoie
+    à `PhoneNumberPage` (même chemin que la déconnexion volontaire) :
+    auparavant une session réellement révoquée laissait l'app en erreur
+    jusqu'au prochain lancement.
+  - `chat_realtime_service.dart` — sur `connect_error`, demande un
+    `refreshAccessTokenIfExpired` (sans appel HTTP en cours, rien ne
+    renouvelait le jeton refusé au handshake et la reconnexion bouclait).
+- **Reste vrai** : l'utilisateur doit se reconnecter si le jeton de
+  rafraîchissement expire (30 jours sans ouvrir l'app,
+  `JWT_REFRESH_EXPIRES_IN`), après une déconnexion depuis les menus ou une
+  suppression de compte.
+- **Durcissement possible côté backend (non fait)** : fenêtre de grâce sur
+  la rotation (accepter un jeton tout juste utilisé pendant ~60 s, colonne
+  `usedAt` à ajouter) pour couvrir l'app tuée par l'OS entre la réponse du
+  refresh et sa sauvegarde locale.

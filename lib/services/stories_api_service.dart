@@ -7,6 +7,7 @@ import 'package:http_parser/http_parser.dart';
 
 import 'api_config.dart';
 import 'app_api_client.dart';
+import 'app_logger.dart';
 import 'session_storage.dart';
 
 enum StoryMediaType { image, video }
@@ -22,6 +23,7 @@ class StoryItem {
     required this.authorUserId,
     required this.mediaType,
     required this.mediaUrl,
+    this.originalMediaUrl,
     required this.thumbnailUrl,
     required this.durationSeconds,
     required this.caption,
@@ -35,7 +37,13 @@ class StoryItem {
   final String id;
   final String authorUserId;
   final StoryMediaType mediaType;
+
+  /// Videos: the optimized playback rendition served by the backend.
   final String mediaUrl;
+
+  /// Videos: the file as uploaded, only used when the rendition cannot be
+  /// played yet (see [fallbackMediaUrl]). Null for photos.
+  final String? originalMediaUrl;
 
   /// Poster frame for videos; the image itself for photos.
   final String? thumbnailUrl;
@@ -54,6 +62,13 @@ class StoryItem {
   String get posterUrl =>
       thumbnailUrl?.trim().isNotEmpty == true ? thumbnailUrl!.trim() : mediaUrl;
 
+  /// Heavier source to try when [mediaUrl] fails; null when there is none
+  /// worth trying.
+  String? get fallbackMediaUrl {
+    final original = originalMediaUrl?.trim() ?? '';
+    return original.isEmpty || original == mediaUrl ? null : original;
+  }
+
   bool get isExpired => DateTime.now().isAfter(expiresAt);
 
   factory StoryItem.fromMap(Map<String, dynamic> map) {
@@ -67,6 +82,7 @@ class StoryItem {
       // `imageUrl` was the field name of the photo-only backend.
       mediaUrl:
           map['mediaUrl']?.toString() ?? map['imageUrl']?.toString() ?? '',
+      originalMediaUrl: map['originalMediaUrl']?.toString(),
       thumbnailUrl: map['thumbnailUrl']?.toString(),
       durationSeconds: (map['durationSeconds'] as num?)?.toInt(),
       caption: map['caption']?.toString().trim().isNotEmpty == true
@@ -90,6 +106,7 @@ class StoryItem {
       authorUserId: authorUserId,
       mediaType: mediaType,
       mediaUrl: mediaUrl,
+      originalMediaUrl: originalMediaUrl,
       thumbnailUrl: thumbnailUrl,
       durationSeconds: durationSeconds,
       caption: caption,
@@ -169,8 +186,190 @@ class StoriesApiService {
     : _client = client ?? AppApiClient(),
       _sessionStorage = sessionStorage ?? SessionStorage();
 
+  static const String _tag = 'StoriesApiService';
+
   final AppApiClient _client;
   final SessionStorage _sessionStorage;
+
+  /// Publishes a story with the media sent **straight from the phone to
+  /// Cloudinary** (signature from the backend, upload, then a small confirm
+  /// call), so the file no longer transits through the BANAY server and
+  /// 100 % really means the transfer is over. Falls back to the
+  /// server-relayed [createStory] on a backend without the direct route
+  /// yet, or when Cloudinary cannot be reached from the phone.
+  Future<StoryItem> publishStory({
+    required File mediaFile,
+    required StoryMediaType mediaType,
+    String? caption,
+    int? durationSeconds,
+    StoryUploadProgressCallback? onUploadProgress,
+  }) async {
+    Map<String, dynamic> signature;
+    try {
+      final data = await _client.post(
+        '/stories/direct-signature',
+        body: {
+          'mediaType': mediaType == StoryMediaType.video ? 'VIDEO' : 'IMAGE',
+        },
+        authenticated: true,
+      );
+      signature = Map<String, dynamic>.from((data as Map?) ?? const {});
+    } on AppApiException catch (error) {
+      if (error.statusCode == 404 || error.statusCode == 501) {
+        AppLogger.warning(_tag, 'Direct story upload unavailable, relaying');
+        return createStory(
+          mediaFile: mediaFile,
+          mediaType: mediaType,
+          caption: caption,
+          durationSeconds: durationSeconds,
+          onUploadProgress: onUploadProgress,
+        );
+      }
+      rethrow;
+    }
+
+    Map<String, dynamic> upload;
+    try {
+      upload = await _uploadToCloudinary(
+        mediaFile: mediaFile,
+        mediaType: mediaType,
+        signature: signature,
+        onUploadProgress: onUploadProgress,
+      );
+    } on AppApiException catch (error) {
+      if (error.statusCode != null) {
+        rethrow;
+      }
+      // No route to Cloudinary from here (blocked or offline): the server
+      // may still reach it.
+      AppLogger.warning(_tag, 'Cloudinary unreachable, relaying', error);
+      return createStory(
+        mediaFile: mediaFile,
+        mediaType: mediaType,
+        caption: caption,
+        durationSeconds: durationSeconds,
+        onUploadProgress: onUploadProgress,
+      );
+    }
+
+    final normalizedCaption = caption?.trim() ?? '';
+    final data = await _client.post(
+      '/stories/direct',
+      body: {
+        'mediaType': mediaType == StoryMediaType.video ? 'VIDEO' : 'IMAGE',
+        'publicId': upload['public_id']?.toString() ?? '',
+        'version': upload['version'],
+        'signature': upload['signature']?.toString() ?? '',
+        if (upload['format'] is String) 'format': upload['format'],
+        if (durationSeconds != null && durationSeconds > 0)
+          'durationSeconds': durationSeconds,
+        if (normalizedCaption.isNotEmpty) 'caption': normalizedCaption,
+      },
+      authenticated: true,
+    );
+    return StoryItem.fromMap(
+      Map<String, dynamic>.from((data as Map?) ?? const <String, dynamic>{}),
+    );
+  }
+
+  /// Multipart POST to Cloudinary's upload API with the signed fields
+  /// forwarded verbatim. Progress is the file's bytes handed to the socket.
+  Future<Map<String, dynamic>> _uploadToCloudinary({
+    required File mediaFile,
+    required StoryMediaType mediaType,
+    required Map<String, dynamic> signature,
+    StoryUploadProgressCallback? onUploadProgress,
+  }) async {
+    final cloudName = signature['cloudName']?.toString().trim() ?? '';
+    final resourceType = signature['resourceType']?.toString().trim() ?? '';
+    final rawFields = signature['fields'];
+    if (cloudName.isEmpty || resourceType.isEmpty || rawFields is! Map) {
+      throw AppApiException('Signature Cloudinary invalide', statusCode: 500);
+    }
+
+    final uri = Uri.parse(
+      'https://api.cloudinary.com/v1_1/$cloudName/$resourceType/upload',
+    );
+    final request = http.MultipartRequest('POST', uri);
+    rawFields.forEach((key, value) {
+      request.fields[key.toString()] = value.toString();
+    });
+    request.files.add(
+      await _trackedMultipartFile(
+        'file',
+        mediaFile,
+        mediaType,
+        onUploadProgress,
+      ),
+    );
+
+    http.Response response;
+    try {
+      final streamedResponse = await request.send();
+      response = await http.Response.fromStream(streamedResponse);
+    } catch (_) {
+      throw AppApiException('Impossible de joindre Cloudinary');
+    }
+
+    Map<String, dynamic> decoded;
+    try {
+      decoded = response.body.isEmpty
+          ? <String, dynamic>{}
+          : jsonDecode(response.body) as Map<String, dynamic>;
+    } catch (_) {
+      throw AppApiException(
+        'Réponse invalide de Cloudinary (HTTP ${response.statusCode}).',
+        statusCode: response.statusCode,
+      );
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final error = decoded['error'];
+      final message = error is Map ? error['message']?.toString() : null;
+      throw AppApiException(
+        message == null || message.trim().isEmpty
+            ? 'Envoi vers Cloudinary refusé (HTTP ${response.statusCode}).'
+            : message.trim(),
+        statusCode: response.statusCode,
+      );
+    }
+    if (decoded['public_id'] is! String || decoded['signature'] is! String) {
+      throw AppApiException('Upload Cloudinary incomplet', statusCode: 500);
+    }
+    return decoded;
+  }
+
+  /// The file stream wrapped to report progress the same way product
+  /// uploads do, typed so the receiver does not have to guess from the
+  /// extension.
+  Future<http.MultipartFile> _trackedMultipartFile(
+    String field,
+    File mediaFile,
+    StoryMediaType mediaType,
+    StoryUploadProgressCallback? onUploadProgress,
+  ) async {
+    final totalBytes = await mediaFile.length();
+    var sentBytes = 0;
+    final trackedStream = mediaFile.openRead().transform(
+      StreamTransformer<List<int>, List<int>>.fromHandlers(
+        handleData: (chunk, sink) {
+          sentBytes += chunk.length;
+          onUploadProgress?.call(sentBytes, totalBytes);
+          sink.add(chunk);
+        },
+      ),
+    );
+    final fileName = mediaFile.uri.pathSegments.isNotEmpty
+        ? mediaFile.uri.pathSegments.last
+        : (mediaType == StoryMediaType.video ? 'story.mp4' : 'story.jpg');
+
+    return http.MultipartFile(
+      field,
+      http.ByteStream(trackedStream),
+      totalBytes,
+      filename: fileName,
+      contentType: _mediaTypeForPath(mediaFile.path, mediaType),
+    );
+  }
 
   Future<List<StoryGroup>> fetchStoryFeed() async {
     final data = await _client.get('/stories/feed', authenticated: true);
@@ -211,30 +410,12 @@ class StoriesApiService {
       request.fields['durationSeconds'] = '$durationSeconds';
     }
 
-    final totalBytes = await mediaFile.length();
-    var sentBytes = 0;
-    final trackedStream = mediaFile.openRead().transform(
-      StreamTransformer<List<int>, List<int>>.fromHandlers(
-        handleData: (chunk, sink) {
-          sentBytes += chunk.length;
-          onUploadProgress?.call(sentBytes, totalBytes);
-          sink.add(chunk);
-        },
-      ),
-    );
-    final fileName = mediaFile.uri.pathSegments.isNotEmpty
-        ? mediaFile.uri.pathSegments.last
-        : (mediaType == StoryMediaType.video ? 'story.mp4' : 'story.jpg');
-
-    // Without an explicit type the part is sent as application/octet-stream
-    // and the backend has to guess from the extension.
     request.files.add(
-      http.MultipartFile(
+      await _trackedMultipartFile(
         'media',
-        http.ByteStream(trackedStream),
-        totalBytes,
-        filename: fileName,
-        contentType: _mediaTypeForPath(mediaFile.path, mediaType),
+        mediaFile,
+        mediaType,
+        onUploadProgress,
       ),
     );
 

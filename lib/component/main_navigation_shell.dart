@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:banay/auth/phoneNumber.dart';
 import 'package:banay/component/profile_models.dart';
 import 'package:banay/page/chat_page.dart';
 import 'package:banay/page/navigation/main_home_panel.dart';
@@ -51,6 +52,7 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
   UserProfileData? _sellerAccountProfile;
   StreamSubscription<Map<String, dynamic>>? _profileEventsSubscription;
   DateTime? _lastExitAttemptAt;
+  bool _sessionInvalidationHandled = false;
 
   @override
   void initState() {
@@ -59,6 +61,7 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
     _publishSelectedTab();
     _loadAccountPanelKind();
     _bindRealtimeProfileUpdates();
+    AppApiClient.sessionInvalidated.addListener(_onSessionInvalidated);
     // Consume any notification that fired while the shell was not yet mounted
     // (cold-start: app killed → notification tap → session gate resolves → shell builds).
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -72,8 +75,23 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
 
   @override
   void dispose() {
+    AppApiClient.sessionInvalidated.removeListener(_onSessionInvalidated);
     _profileEventsSubscription?.cancel();
     super.dispose();
+  }
+
+  /// The backend definitively rejected our refresh token (logged out
+  /// elsewhere, account removed, 30 days unused): back to login, the same
+  /// way the explicit logout goes. Network trouble never lands here.
+  void _onSessionInvalidated() {
+    if (!mounted || _sessionInvalidationHandled) {
+      return;
+    }
+    _sessionInvalidationHandled = true;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const PhoneNumberPage()),
+      (route) => false,
+    );
   }
 
   void _handleNavigationSelection(int index) {

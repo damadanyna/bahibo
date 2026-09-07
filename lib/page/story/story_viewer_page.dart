@@ -10,6 +10,7 @@ import 'package:banay/services/stories_api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 /// Full-screen story player.
 ///
@@ -49,6 +50,12 @@ class _StoryViewerPageState extends State<StoryViewerPage>
   static const int _captionCharsPerSecond = 30;
   static const Duration _imageLoadTimeout = Duration(seconds: 8);
   static const Duration _videoLoadTimeout = Duration(seconds: 20);
+
+  /// Cloudinary rejects the optimized rendition of a freshly published
+  /// video while it is still being generated (a few seconds): try again
+  /// before falling back to the file as uploaded.
+  static const int _videoOpenAttempts = 3;
+  static const Duration _videoRetryDelay = Duration(milliseconds: 2500);
   static const Duration _pageTransition = Duration(milliseconds: 280);
   static const String _tag = 'StoryViewerPage';
 
@@ -80,6 +87,16 @@ class _StoryViewerPageState extends State<StoryViewerPage>
   bool _videoLoadFailed = false;
   bool _videoAdvanced = false;
 
+  /// Player being initialized for the story on screen, so a story change
+  /// can dispose it before it is adopted as [_videoController].
+  VideoPlayerController? _pendingController;
+
+  /// Next story's player, opened while the current one plays so the
+  /// switch does not start on a spinner (see [_preloadNextStory]).
+  VideoPlayerController? _preloadedController;
+  String? _preloadedStoryId;
+  Future<bool>? _preloadedReady;
+
   int get _storyIndex => _storyIndexByGroup[_groupIndex] ?? 0;
 
   StoryGroup? get _currentGroup =>
@@ -99,6 +116,8 @@ class _StoryViewerPageState extends State<StoryViewerPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Stories chain without any touch: the screen must not time out.
+    unawaited(WakelockPlus.enable());
 
     // Own mutable copy: deletions and "seen" flags are applied locally.
     _groups = widget.groups
@@ -131,8 +150,15 @@ class _StoryViewerPageState extends State<StoryViewerPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    unawaited(WakelockPlus.disable());
     _progress.dispose();
     _pageController.dispose();
+    _dropPreloaded();
+    final pending = _pendingController;
+    _pendingController = null;
+    if (pending != null) {
+      unawaited(_disposeQuietly(pending));
+    }
     final controller = _videoController;
     _videoController = null;
     if (controller != null) {
@@ -194,61 +220,200 @@ class _StoryViewerPageState extends State<StoryViewerPage>
     }
 
     _isLoadingMedia = false;
-    final nextStory = _peekNextStory();
-    if (nextStory != null) {
-      unawaited(_warmImage(nextStory.posterUrl));
-    }
+    _preloadNextStory();
     _resumeIfAllowed();
   }
 
   Future<void> _prepareVideo(StoryItem story, int token) async {
-    final controller = VideoPlayerController.networkUrl(
-      Uri.parse(story.mediaUrl),
-    );
-    _videoController = controller;
     _videoStoryId = story.id;
     _videoLoadFailed = false;
     _videoAdvanced = false;
 
-    var initialized = false;
-    try {
-      await controller.initialize().timeout(_videoLoadTimeout);
-      initialized = true;
-    } catch (error) {
-      initialized = false;
-      // MissingPluginException here means the app was hot-reloaded after
-      // adding video_player: a full rebuild is needed.
-      AppLogger.warning(
-        _tag,
-        'Story video failed to initialize: ${story.mediaUrl}',
-        error,
-      );
-    }
+    final controller = await _openVideo(story, token);
     if (!mounted || token != _loadToken) {
-      // Superseded while loading: the new story already disposed us, or
-      // will never use this controller.
-      if (identical(_videoController, controller)) {
-        await _disposeVideoController();
+      // Superseded while opening: the new story never uses this player.
+      if (controller != null) {
+        await _disposeQuietly(controller);
       }
       return;
     }
 
-    if (!initialized || controller.value.duration <= Duration.zero) {
+    if (controller == null) {
       // Show the poster for the usual photo time so the flow continues.
-      await _disposeVideoController();
       _videoLoadFailed = true;
       _progress.duration = _storyDuration;
-      _isLoadingMedia = false;
-      setState(() {});
-      _resumeIfAllowed();
-      return;
+    } else {
+      _videoController = controller;
+      _progress.duration = controller.value.duration;
+      controller.addListener(_onVideoTick);
     }
-
-    _progress.duration = controller.value.duration;
-    controller.addListener(_onVideoTick);
     _isLoadingMedia = false;
     setState(() {});
     _resumeIfAllowed();
+    _preloadNextStory();
+  }
+
+  /// Opens [story]'s player: the preloaded one when it is this story, else
+  /// the optimized rendition (retried, see [_videoOpenAttempts]), then the
+  /// file as uploaded. Null when nothing could be played or the story was
+  /// superseded meanwhile.
+  Future<VideoPlayerController?> _openVideo(StoryItem story, int token) async {
+    final preloaded = _takePreloaded(story.id);
+    if (preloaded != null) {
+      _pendingController = preloaded.controller;
+      final ready = await preloaded.ready;
+      // Not identical: a story change disposed it through
+      // _disposeVideoController while we were waiting.
+      final owned = identical(_pendingController, preloaded.controller);
+      if (owned) {
+        _pendingController = null;
+      }
+      if (ready && owned && mounted && token == _loadToken) {
+        return preloaded.controller;
+      }
+      if (owned) {
+        await _disposeQuietly(preloaded.controller);
+      }
+      if (!mounted || token != _loadToken) {
+        return null;
+      }
+    }
+
+    final fallbackUrl = story.fallbackMediaUrl;
+    final sources = <({String url, int attempts})>[
+      (url: story.mediaUrl, attempts: _videoOpenAttempts),
+      if (fallbackUrl != null) (url: fallbackUrl, attempts: 1),
+    ];
+    for (final source in sources) {
+      for (var attempt = 0; attempt < source.attempts; attempt++) {
+        if (attempt > 0) {
+          await Future<void>.delayed(_videoRetryDelay);
+          if (!mounted || token != _loadToken) {
+            return null;
+          }
+        }
+        final result = await _initializeQuietly(
+          VideoPlayerController.networkUrl(Uri.parse(source.url)),
+          source.url,
+        );
+        final opened = result.controller;
+        if (!mounted || token != _loadToken) {
+          if (opened != null) {
+            await _disposeQuietly(opened);
+          }
+          return null;
+        }
+        if (opened != null) {
+          return opened;
+        }
+        if (result.timedOut) {
+          // Slow link, not a missing rendition: another try or a heavier
+          // source would only add to the wait.
+          return null;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Initializes [controller] as [_pendingController], disposing it on
+  /// failure. `timedOut` tells a slow link apart from a rejected URL.
+  Future<({VideoPlayerController? controller, bool timedOut})>
+  _initializeQuietly(VideoPlayerController controller, String url) async {
+    _pendingController = controller;
+    var initialized = false;
+    var timedOut = false;
+    try {
+      await controller.initialize().timeout(_videoLoadTimeout);
+      initialized =
+          controller.value.isInitialized &&
+          controller.value.duration > Duration.zero;
+    } on TimeoutException {
+      timedOut = true;
+      AppLogger.warning(_tag, 'Story video timed out: $url');
+    } catch (error) {
+      // MissingPluginException here means the app was hot-reloaded after
+      // adding video_player: a full rebuild is needed.
+      AppLogger.warning(_tag, 'Story video failed to initialize: $url', error);
+    }
+
+    if (!identical(_pendingController, controller)) {
+      // Already disposed by a story change.
+      return (controller: null, timedOut: timedOut);
+    }
+    _pendingController = null;
+    if (initialized) {
+      return (controller: controller, timedOut: false);
+    }
+    await _disposeQuietly(controller);
+    return (controller: null, timedOut: timedOut);
+  }
+
+  /// Warms the next story's poster and, for a video, opens its player while
+  /// the current story plays. One player ahead at most: the previous
+  /// preload is dropped when the next story changes.
+  void _preloadNextStory() {
+    final next = _peekNextStory();
+    if (next == null) {
+      _dropPreloaded();
+      return;
+    }
+    if (_preloadedStoryId == next.id) {
+      return;
+    }
+    _dropPreloaded();
+    unawaited(_warmImage(next.posterUrl));
+    if (!next.isVideo) {
+      return;
+    }
+    final controller = VideoPlayerController.networkUrl(
+      Uri.parse(next.mediaUrl),
+    );
+    _preloadedController = controller;
+    _preloadedStoryId = next.id;
+    _preloadedReady = _initializePreloaded(controller, next.mediaUrl);
+  }
+
+  Future<bool> _initializePreloaded(
+    VideoPlayerController controller,
+    String url,
+  ) async {
+    try {
+      await controller.initialize().timeout(_videoLoadTimeout);
+      return controller.value.isInitialized &&
+          controller.value.duration > Duration.zero;
+    } catch (error) {
+      // Not fatal: the story retries (and falls back) when it comes up.
+      // Silent when the preload was dropped meanwhile (dispose mid-init).
+      if (identical(_preloadedController, controller)) {
+        AppLogger.warning(_tag, 'Story video preload failed: $url', error);
+      }
+      return false;
+    }
+  }
+
+  ({VideoPlayerController controller, Future<bool> ready})? _takePreloaded(
+    String storyId,
+  ) {
+    final controller = _preloadedController;
+    final ready = _preloadedReady;
+    if (controller == null || ready == null || _preloadedStoryId != storyId) {
+      return null;
+    }
+    _preloadedController = null;
+    _preloadedStoryId = null;
+    _preloadedReady = null;
+    return (controller: controller, ready: ready);
+  }
+
+  void _dropPreloaded() {
+    final controller = _preloadedController;
+    _preloadedController = null;
+    _preloadedStoryId = null;
+    _preloadedReady = null;
+    if (controller != null) {
+      unawaited(_disposeQuietly(controller));
+    }
   }
 
   void _onVideoTick() {
@@ -279,6 +444,13 @@ class _StoryViewerPageState extends State<StoryViewerPage>
   }
 
   Future<void> _disposeVideoController() async {
+    final pending = _pendingController;
+    _pendingController = null;
+    if (pending != null) {
+      // Still initializing for a story that is no longer on screen; its
+      // opener sees the field change and does not dispose it again.
+      unawaited(_disposeQuietly(pending));
+    }
     final controller = _videoController;
     _videoController = null;
     _videoStoryId = null;
@@ -331,9 +503,15 @@ class _StoryViewerPageState extends State<StoryViewerPage>
     }
     if (_groupIndex + 1 < _groups.length) {
       final nextGroup = _groups[_groupIndex + 1];
-      return nextGroup.stories.isEmpty
-          ? null
-          : nextGroup.stories[nextGroup.firstUnviewedIndex];
+      if (nextGroup.stories.isEmpty) {
+        return null;
+      }
+      // Same resolution as _onPageChanged, so the preload matches what
+      // will actually play (a group visited before resumes its index).
+      final nextIndex =
+          (_storyIndexByGroup[_groupIndex + 1] ?? nextGroup.firstUnviewedIndex)
+              .clamp(0, nextGroup.stories.length - 1);
+      return nextGroup.stories[nextIndex];
     }
     return null;
   }

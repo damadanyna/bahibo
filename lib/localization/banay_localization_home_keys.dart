@@ -52,6 +52,8 @@ abstract final class BanayHomeLocalizationKeys {
   static const storyPickVideoGallery = 'home_story_pick_video_gallery';
   static const storyPickVideoCamera = 'home_story_pick_video_camera';
   static const storyVideoTooLong = 'home_story_video_too_long';
+  static const storyVideoTooLarge = 'home_story_video_too_large';
   static const storyVideoPreviewFailed = 'home_story_video_preview_failed';
   static const storyUploading = 'home_story_uploading';
+  static const storyFinalizing = 'home_story_finalizing';
 }

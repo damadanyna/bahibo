@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 /// Story composer: pick a photo or a short video (gallery or camera),
 /// preview it full-screen with an optional caption, publish. The upload
@@ -32,8 +33,11 @@ class StoryCreatePage extends StatefulWidget {
 class _StoryCreatePageState extends State<StoryCreatePage> {
   static const int _captionMaxLength = 300;
 
-  /// Same cap as the backend (`STORY_VIDEO_MAX_SECONDS`).
+  /// Same caps as the backend (`STORY_VIDEO_MAX_SECONDS`,
+  /// `STORY_UPLOAD_MAX_BYTES`). The weight is checked here because the
+  /// media goes straight to Cloudinary, which no longer enforces it.
   static const int _videoMaxSeconds = 60;
+  static const int _videoMaxMegabytes = 60;
   static const String _tag = 'StoryCreatePage';
 
   final ImagePicker _imagePicker = ImagePicker();
@@ -49,6 +53,8 @@ class _StoryCreatePageState extends State<StoryCreatePage> {
 
   @override
   void dispose() {
+    // Safety net: a successful publish pops the page while the lock is on.
+    unawaited(WakelockPlus.disable());
     _captionController.dispose();
     final controller = _previewController;
     _previewController = null;
@@ -151,6 +157,21 @@ class _StoryCreatePageState extends State<StoryCreatePage> {
       return;
     }
 
+    final fileBytes = await file.length();
+    if (fileBytes > _videoMaxMegabytes * 1024 * 1024) {
+      await _disposeQuietly(controller);
+      if (!mounted) {
+        return;
+      }
+      _showSnackBar(
+        context.tr(
+          BanayLocalizationKeys.homeStoryVideoTooLarge,
+          params: {'size': '$_videoMaxMegabytes'},
+        ),
+      );
+      return;
+    }
+
     await _disposePreview();
     if (!mounted) {
       await _disposeQuietly(controller);
@@ -211,11 +232,13 @@ class _StoryCreatePageState extends State<StoryCreatePage> {
       _isPublishing = true;
       _uploadProgress = 0;
     });
+    // A locked screen would pause the app and stall the transfer.
+    unawaited(WakelockPlus.enable());
     // Keep the preview still while the file is streamed out.
     await _previewController?.pause();
 
     try {
-      await _storiesApiService.createStory(
+      await _storiesApiService.publishStory(
         mediaFile: mediaFile,
         mediaType: _mediaType,
         caption: _captionController.text,
@@ -239,17 +262,22 @@ class _StoryCreatePageState extends State<StoryCreatePage> {
       if (!mounted) {
         return;
       }
-      setState(() => _isPublishing = false);
+      _endPublishing();
       _showSnackBar(error.message);
       await _previewController?.play();
     } catch (_) {
       if (!mounted) {
         return;
       }
-      setState(() => _isPublishing = false);
+      _endPublishing();
       _showSnackBar(context.tr(BanayLocalizationKeys.homeStoryPublishFailed));
       await _previewController?.play();
     }
+  }
+
+  void _endPublishing() {
+    unawaited(WakelockPlus.disable());
+    setState(() => _isPublishing = false);
   }
 
   void _showSnackBar(String message) {
@@ -589,6 +617,9 @@ class _StoryCreatePageState extends State<StoryCreatePage> {
             progress: _uploadProgress,
             primary: primary,
             label: context.tr(BanayLocalizationKeys.homeStoryUploading),
+            finalizingLabel: context.tr(
+              BanayLocalizationKeys.homeStoryFinalizing,
+            ),
           ),
       ],
     );
@@ -629,83 +660,119 @@ class _StoryCreatePageState extends State<StoryCreatePage> {
   }
 }
 
-/// The chat's liquid upload fill, centered over the dimmed preview.
+/// The chat's liquid upload fill, centered over the dimmed preview. Once
+/// every byte is out the fill is replaced by a plain spinner and
+/// [finalizingLabel]: the server is then pushing the file to Cloudinary,
+/// and a percentage stuck at 100 would look frozen.
 class _UploadProgressOverlay extends StatelessWidget {
   const _UploadProgressOverlay({
     required this.progress,
     required this.primary,
     required this.label,
+    required this.finalizingLabel,
   });
+
+  static const TextStyle _labelStyle = TextStyle(
+    color: Colors.white,
+    fontSize: 14,
+    fontWeight: FontWeight.w700,
+  );
 
   final double progress;
   final Color primary;
   final String label;
+  final String finalizingLabel;
 
   @override
   Widget build(BuildContext context) {
-    final percent = (progress.clamp(0.0, 1.0) * 100).round().clamp(1, 100);
+    final clampedProgress = progress.clamp(0.0, 1.0);
+    final isFinalizing = clampedProgress >= 1;
 
     return Positioned.fill(
       child: AbsorbPointer(
         child: ColoredBox(
           color: Colors.black54,
           child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              child: isFinalizing
+                  ? _buildFinalizing()
+                  : _buildUploading(clampedProgress),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFinalizing() {
+    return Column(
+      key: const ValueKey('story-upload-finalizing'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const SizedBox(
+          width: 34,
+          height: 34,
+          child: CircularProgressIndicator(
+            strokeWidth: 2.6,
+            color: Colors.white,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Text(finalizingLabel, style: _labelStyle),
+      ],
+    );
+  }
+
+  Widget _buildUploading(double clampedProgress) {
+    final percent = (clampedProgress * 100).round().clamp(1, 100);
+
+    return Column(
+      key: const ValueKey('story-upload-progress'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(26),
+          child: SizedBox(
+            width: 132,
+            height: 132,
+            child: Stack(
+              fit: StackFit.expand,
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(26),
-                  child: SizedBox(
-                    width: 132,
-                    height: 132,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        ColoredBox(color: Colors.white.withValues(alpha: 0.1)),
-                        WaterFillProgressLayer(
-                          progress: progress,
-                          primary: primary,
-                          visualState: WaterFillVisualState.uploading,
-                        ),
-                        Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                Icons.cloud_upload_outlined,
-                                color: Colors.white,
-                                size: 30,
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                '$percent%',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                ColoredBox(color: Colors.white.withValues(alpha: 0.1)),
+                WaterFillProgressLayer(
+                  progress: clampedProgress,
+                  primary: primary,
+                  visualState: WaterFillVisualState.uploading,
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
+                Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.cloud_upload_outlined,
+                        color: Colors.white,
+                        size: 30,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        '$percent%',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
         ),
-      ),
+        const SizedBox(height: 16),
+        Text(label, style: _labelStyle),
+      ],
     );
   }
 }

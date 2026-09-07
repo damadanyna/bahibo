@@ -68,9 +68,12 @@ const Map<String, Map<String, String>> banayHomeLocalizedValues = {
     BanayHomeLocalizationKeys.storyPickVideoCamera: 'Haka video',
     BanayHomeLocalizationKeys.storyVideoTooLong:
         'Tsy tokony hihoatra ny {seconds} segondra ny video.',
+    BanayHomeLocalizationKeys.storyVideoTooLarge:
+        'Tsy tokony hihoatra ny {size} Mo ny video.',
     BanayHomeLocalizationKeys.storyVideoPreviewFailed:
         'Tsy afaka mamaky ity video ity.',
     BanayHomeLocalizationKeys.storyUploading: 'Mandefa ny story…',
+    BanayHomeLocalizationKeys.storyFinalizing: 'Eo am-pamaranana…',
   },
   'en': {
     BanayHomeLocalizationKeys.defaultStoreName: 'BANAY Shop',
@@ -138,9 +141,12 @@ const Map<String, Map<String, String>> banayHomeLocalizedValues = {
     BanayHomeLocalizationKeys.storyPickVideoCamera: 'Record a video',
     BanayHomeLocalizationKeys.storyVideoTooLong:
         'The video must not exceed {seconds} s.',
+    BanayHomeLocalizationKeys.storyVideoTooLarge:
+        'The video must not exceed {size} MB.',
     BanayHomeLocalizationKeys.storyVideoPreviewFailed:
         'Unable to play this video.',
     BanayHomeLocalizationKeys.storyUploading: 'Sending your story…',
+    BanayHomeLocalizationKeys.storyFinalizing: 'Finalizing…',
   },
   'fr': {
     BanayHomeLocalizationKeys.defaultStoreName: 'Boutique BANAY',
@@ -213,9 +219,12 @@ const Map<String, Map<String, String>> banayHomeLocalizedValues = {
     BanayHomeLocalizationKeys.storyPickVideoCamera: 'Filmer une vidéo',
     BanayHomeLocalizationKeys.storyVideoTooLong:
         'La vidéo ne doit pas dépasser {seconds} s.',
+    BanayHomeLocalizationKeys.storyVideoTooLarge:
+        'La vidéo ne doit pas dépasser {size} Mo.',
     BanayHomeLocalizationKeys.storyVideoPreviewFailed:
         'Impossible de lire cette vidéo.',
     BanayHomeLocalizationKeys.storyUploading: 'Envoi de la story…',
+    BanayHomeLocalizationKeys.storyFinalizing: 'Finalisation en cours…',
   },
   'zh': {
     BanayHomeLocalizationKeys.defaultStoreName: 'BANAY 店铺',
@@ -271,8 +280,10 @@ const Map<String, Map<String, String>> banayHomeLocalizedValues = {
     BanayHomeLocalizationKeys.storyPickVideoGallery: '选择视频',
     BanayHomeLocalizationKeys.storyPickVideoCamera: '拍摄视频',
     BanayHomeLocalizationKeys.storyVideoTooLong: '视频不能超过 {seconds} 秒。',
+    BanayHomeLocalizationKeys.storyVideoTooLarge: '视频不能超过 {size} MB。',
     BanayHomeLocalizationKeys.storyVideoPreviewFailed: '无法播放该视频。',
     BanayHomeLocalizationKeys.storyUploading: '正在发送动态…',
+    BanayHomeLocalizationKeys.storyFinalizing: '正在完成…',
   },
   'hi': {
     BanayHomeLocalizationKeys.defaultStoreName: 'BANAY दुकान',
@@ -338,9 +349,12 @@ const Map<String, Map<String, String>> banayHomeLocalizedValues = {
     BanayHomeLocalizationKeys.storyPickVideoCamera: 'वीडियो रिकॉर्ड करें',
     BanayHomeLocalizationKeys.storyVideoTooLong:
         'वीडियो {seconds} सेकंड से अधिक नहीं होना चाहिए।',
+    BanayHomeLocalizationKeys.storyVideoTooLarge:
+        'वीडियो {size} MB से अधिक नहीं होना चाहिए।',
     BanayHomeLocalizationKeys.storyVideoPreviewFailed:
         'यह वीडियो चलाया नहीं जा सका।',
     BanayHomeLocalizationKeys.storyUploading: 'स्टोरी भेजी जा रही है…',
+    BanayHomeLocalizationKeys.storyFinalizing: 'अंतिम रूप दिया जा रहा है…',
   },
   'es': {
     BanayHomeLocalizationKeys.defaultStoreName: 'Tienda BANAY',
@@ -412,9 +426,12 @@ const Map<String, Map<String, String>> banayHomeLocalizedValues = {
     BanayHomeLocalizationKeys.storyPickVideoCamera: 'Grabar un vídeo',
     BanayHomeLocalizationKeys.storyVideoTooLong:
         'El vídeo no debe superar {seconds} s.',
+    BanayHomeLocalizationKeys.storyVideoTooLarge:
+        'El vídeo no debe superar {size} MB.',
     BanayHomeLocalizationKeys.storyVideoPreviewFailed:
         'No se pudo reproducir este vídeo.',
     BanayHomeLocalizationKeys.storyUploading: 'Enviando tu historia…',
+    BanayHomeLocalizationKeys.storyFinalizing: 'Finalizando…',
   },
   'ar': {
     BanayHomeLocalizationKeys.defaultStoreName: 'متجر BANAY',
@@ -476,8 +493,11 @@ const Map<String, Map<String, String>> banayHomeLocalizedValues = {
     BanayHomeLocalizationKeys.storyPickVideoCamera: 'تصوير فيديو',
     BanayHomeLocalizationKeys.storyVideoTooLong:
         'يجب ألا يتجاوز الفيديو {seconds} ثانية.',
+    BanayHomeLocalizationKeys.storyVideoTooLarge:
+        'يجب ألا يتجاوز الفيديو {size} ميغابايت.',
     BanayHomeLocalizationKeys.storyVideoPreviewFailed:
         'تعذر تشغيل هذا الفيديو.',
     BanayHomeLocalizationKeys.storyUploading: 'جارٍ إرسال قصتك…',
+    BanayHomeLocalizationKeys.storyFinalizing: 'جارٍ الإنهاء…',
   },
 };

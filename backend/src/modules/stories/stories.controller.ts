@@ -13,11 +13,12 @@ import {
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import {
+  CreateDirectStoryDto,
+  CreateStoryUploadSignatureDto,
+} from './dto/create-direct-story.dto';
 import { CreateStoryDto } from './dto/create-story.dto';
-import { StoriesService } from './stories.service';
-
-/** Videos are kept as recorded (no transcoding), so cap what one story can weigh. */
-const STORY_UPLOAD_MAX_BYTES = 60 * 1024 * 1024;
+import { STORY_UPLOAD_MAX_BYTES, StoriesService } from './stories.service';
 
 type StoryUploadFiles = {
   media?: Express.Multer.File[];
@@ -61,6 +62,44 @@ export class StoriesController {
       success: true,
       message: 'Story published successfully',
       data: await this.storiesService.createStory(req.user.userId, file, dto),
+    };
+  }
+
+  /**
+   * Direct upload, step 1: signed Cloudinary parameters so the phone sends
+   * the media itself (`POST /stories` above keeps the server-relayed path
+   * for older builds).
+   */
+  @UseGuards(JwtAuthGuard)
+  @Post('direct-signature')
+  async createDirectUploadSignature(
+    @Req() req: { user: { userId: string } },
+    @Body() dto: CreateStoryUploadSignatureDto,
+  ) {
+    return {
+      success: true,
+      message: 'Direct story upload signature created successfully',
+      data: await this.storiesService.createDirectUploadSignature(
+        req.user.userId,
+        dto.mediaType,
+      ),
+    };
+  }
+
+  /** Direct upload, step 2: confirm the uploaded asset as a story. */
+  @UseGuards(JwtAuthGuard)
+  @Post('direct')
+  async createFromDirectUpload(
+    @Req() req: { user: { userId: string } },
+    @Body() dto: CreateDirectStoryDto,
+  ) {
+    return {
+      success: true,
+      message: 'Story published successfully',
+      data: await this.storiesService.createStoryFromDirectUpload(
+        req.user.userId,
+        dto,
+      ),
     };
   }
 

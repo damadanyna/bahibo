@@ -227,6 +227,12 @@ class AppAuthService {
     return Map<String, dynamic>.from(data as Map);
   }
 
+  /// Offline-first, the way a messaging app behaves: a stored session is
+  /// trusted as is, the access token is renewed in the background when it
+  /// has expired, and only a refresh token the backend definitively rejects
+  /// sends the user back to login (see [AppApiClient.sessionInvalidated]).
+  /// This used to require a successful `/auth/refresh` at every launch and
+  /// logged the user out on any failure, offline or server hiccup included.
   Future<bool> restoreSession() async {
     final hasValidSession = await _sessionStorage.hasValidSession();
 
@@ -237,31 +243,8 @@ class AppAuthService {
       return false;
     }
 
-    final refreshToken = await _sessionStorage.getRefreshToken();
-
-    if (refreshToken == null || refreshToken.isEmpty) {
-      ChatRealtimeService.instance.disconnect();
-      unawaited(ForegroundConnectionService.instance.stop());
-      PresenceService.instance.reset();
-      await _sessionStorage.clear();
-      return false;
-    }
-
-    try {
-      final data = await _client.post(
-        '/auth/refresh',
-        body: {'refreshToken': refreshToken},
-      );
-
-      await _persistSession(Map<String, dynamic>.from(data as Map));
-      return true;
-    } on AppApiException {
-      ChatRealtimeService.instance.disconnect();
-      unawaited(ForegroundConnectionService.instance.stop());
-      PresenceService.instance.reset();
-      await _sessionStorage.clear();
-      return false;
-    }
+    unawaited(_client.refreshAccessTokenIfExpired());
+    return true;
   }
 
   Future<void> logout() async {

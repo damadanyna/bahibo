@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:banay/services/api_config.dart';
+import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/banay_tls_override.dart';
 import 'package:banay/services/foreground_connection_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -165,6 +166,10 @@ class ChatRealtimeService {
         })
         ..on('connect_error', (error) {
           debugPrint('Chat realtime connection error: $error');
+          // An expired access token is refused at handshake; without any
+          // HTTP call in flight nothing else would renew it, and the
+          // retry below would loop on the same token. No-op otherwise.
+          unawaited(AppApiClient().refreshAccessTokenIfExpired());
           _scheduleReconnectRetry();
         })
         ..on('conversations:updated', (payload) {

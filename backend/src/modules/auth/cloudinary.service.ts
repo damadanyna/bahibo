@@ -60,6 +60,60 @@ export class CloudinaryService {
     },
   ] as const;
 
+  /**
+   * Playback rendition of a story video: 720p H.264/AAC MP4. Phones record
+   * 1080p-4K at bitrates that make the viewer buffer, and their `moov`
+   * atom often sits at the end of the file, which forces a full download
+   * before the first frame; Cloudinary's MP4 output is faststart.
+   * Requested eagerly (in the background) at upload time and rebuilt with
+   * the exact same object by [buildStoryVideoPlaybackUrl], so both URLs
+   * resolve to the same derived asset.
+   */
+  private static readonly storyVideoTransformation = [
+    {
+      width: 720,
+      height: 1280,
+      crop: 'limit',
+      quality: 'auto:good',
+      video_codec: 'h264',
+      audio_codec: 'aac',
+    },
+  ] as const;
+
+  private static readonly storyVideoPosterTransformation = [
+    {
+      width: 720,
+      height: 1280,
+      crop: 'limit',
+      start_offset: '0',
+      quality: 'auto:eco',
+    },
+  ] as const;
+
+  /** Renditions generated in the background right after a video upload. */
+  private static readonly storyVideoEagerTransformations = [
+    { ...CloudinaryService.storyVideoTransformation[0], format: 'mp4' },
+    { ...CloudinaryService.storyVideoPosterTransformation[0], format: 'jpg' },
+  ] as const;
+
+  /**
+   * Same encoding as the SDK's `build_eager` (not exposed to TypeScript):
+   * one transformation string per rendition, `/format` appended, joined
+   * by `|`. Used to sign a direct upload with exactly the `eager` value
+   * the phone will send.
+   */
+  private static buildEagerParam(
+    transformations: ReadonlyArray<Record<string, string | number>>,
+  ) {
+    return transformations
+      .map((transformation) => {
+        const { format, ...options } = transformation;
+        const value = cloudinary.utils.generate_transformation_string({ ...options });
+        return format ? `${value}/${format}` : value;
+      })
+      .join('|');
+  }
+
   constructor(private readonly configService: ConfigService) {
     const cloudName = this.configService.get<string>('CLOUDINARY_CLOUD_NAME');
     const apiKey = this.configService.get<string>('CLOUDINARY_API_KEY');
@@ -207,9 +261,12 @@ export class CloudinaryService {
   }
 
   /**
-   * Story videos are stored as recorded: a server-side transcode would
-   * stretch the upload request past reverse-proxy timeouts. Only a JPEG
-   * poster frame is derived (cheap), plus the duration for the client timer.
+   * Story videos are stored as recorded: a synchronous transcode would
+   * stretch the upload request past reverse-proxy timeouts. The playback
+   * rendition and the JPEG poster are instead requested as eager
+   * transformations generated in the background once the upload is done
+   * (`eager_async`), so they are usually ready before the first viewer.
+   * Also returns the duration for the client timer.
    */
   async uploadStoryVideo(file: Express.Multer.File, identifier: string) {
     if (!this.isConfigured()) {
@@ -224,6 +281,8 @@ export class CloudinaryService {
           public_id: `${sanitizedIdentifier}-story-video-${Date.now()}`,
           resource_type: 'video',
           overwrite: true,
+          eager: [...CloudinaryService.storyVideoEagerTransformations],
+          eager_async: true,
         },
         (error, result) => {
           if (error || !result) {
@@ -238,34 +297,189 @@ export class CloudinaryService {
       stream.end(file.buffer);
     });
 
-    const thumbnailUrl = cloudinary.url(uploadResult.public_id, {
-      secure: true,
-      resource_type: 'video',
-      version: uploadResult.version,
-      format: 'jpg',
-      transformation: [
-        {
-          width: 720,
-          height: 1280,
-          crop: 'limit',
-          start_offset: '0',
-          quality: 'auto:eco',
-        },
-      ],
-    });
-
-    const rawDuration = (uploadResult as Record<string, unknown>).duration;
-
     return {
       originalUrl: uploadResult.secure_url,
       videoUrl: uploadResult.secure_url,
-      thumbnailUrl,
+      thumbnailUrl: this.buildStoryVideoPosterUrl(
+        uploadResult.public_id,
+        uploadResult.version,
+      ),
       publicId: uploadResult.public_id,
-      durationSeconds:
-        typeof rawDuration === 'number' && Number.isFinite(rawDuration)
-          ? Math.round(rawDuration)
-          : null,
+      durationSeconds: CloudinaryService.normalizeDuration(
+        (uploadResult as Record<string, unknown>).duration,
+      ),
     };
+  }
+
+  // ---------------------------------------------------------------------
+  // Direct (phone → Cloudinary) story uploads
+  // ---------------------------------------------------------------------
+
+  /**
+   * Signed parameters for a story media uploaded straight from the phone,
+   * so the file no longer transits through this server (twice the
+   * transfer time on a slow uplink). Every signed value is returned
+   * verbatim in `fields`: the phone forwards them as-is next to `file`.
+   * A video also carries the eager renditions of [uploadStoryVideo].
+   */
+  createDirectStoryUploadSignature(
+    identifier: string,
+    resourceType: 'image' | 'video',
+  ) {
+    if (!this.isConfigured()) {
+      throw new BadRequestException('Cloudinary is not configured');
+    }
+
+    const cloudName = this.configService.get<string>('CLOUDINARY_CLOUD_NAME')!;
+    const apiKey = this.configService.get<string>('CLOUDINARY_API_KEY')!;
+    const apiSecret = this.configService.get<string>('CLOUDINARY_API_SECRET')!;
+    const folder = this.resolveFolder('story');
+    const publicId = `${this.storyPublicIdPrefix(identifier, resourceType)}${Date.now()}`;
+    const timestamp = Math.floor(Date.now() / 1000);
+    const paramsToSign: Record<string, string> = {
+      folder,
+      overwrite: 'true',
+      public_id: publicId,
+      timestamp: `${timestamp}`,
+    };
+    if (resourceType === 'video') {
+      paramsToSign.eager = CloudinaryService.buildEagerParam(
+        CloudinaryService.storyVideoEagerTransformations,
+      );
+      paramsToSign.eager_async = 'true';
+    }
+    const signature = cloudinary.utils.api_sign_request(paramsToSign, apiSecret);
+
+    return {
+      cloudName,
+      resourceType,
+      /** Public id as Cloudinary will report it (folder included). */
+      publicId: `${folder}/${publicId}`,
+      fields: { ...paramsToSign, api_key: apiKey, signature },
+    };
+  }
+
+  /** Whether [publicId] was issued by [createDirectStoryUploadSignature] for this user. */
+  isDirectStoryPublicIdOf(
+    publicId: string,
+    identifier: string,
+    resourceType: 'image' | 'video',
+  ) {
+    const prefix = `${this.resolveFolder('story')}/${this.storyPublicIdPrefix(
+      identifier,
+      resourceType,
+    )}`;
+    return publicId.startsWith(prefix) && /^\d+$/.test(publicId.slice(prefix.length));
+  }
+
+  /**
+   * Checks the `signature` Cloudinary returns in an upload response
+   * (SHA-1 of `public_id` + `version` + the account secret): proves the
+   * asset was uploaded to this account, whoever hands the id back.
+   */
+  verifyUploadResponseSignature(
+    publicId: string,
+    version: number | string,
+    signature: string,
+  ) {
+    if (!this.isConfigured()) {
+      return false;
+    }
+    const apiSecret = this.configService.get<string>('CLOUDINARY_API_SECRET')!;
+    const expected = cloudinary.utils.api_sign_request(
+      { public_id: publicId, version: `${version}` },
+      apiSecret,
+    );
+    return expected === signature.trim();
+  }
+
+  /** Metadata of an uploaded asset, read back from Cloudinary (Admin API). */
+  async describeAsset(publicId: string, resourceType: 'image' | 'video') {
+    if (!this.isConfigured()) {
+      throw new BadRequestException('Cloudinary is not configured');
+    }
+
+    const resource: Record<string, unknown> = await cloudinary.api.resource(publicId, {
+      resource_type: resourceType,
+    });
+
+    return {
+      version: typeof resource.version === 'number' ? resource.version : null,
+      format: typeof resource.format === 'string' ? resource.format : null,
+      bytes: typeof resource.bytes === 'number' ? resource.bytes : null,
+      durationSeconds: CloudinaryService.normalizeDuration(resource.duration),
+    };
+  }
+
+  /** Delivery URL of a story photo, same sizing as [uploadStoryImage]. */
+  buildStoryImageUrl(publicId: string, version: number) {
+    return cloudinary.url(publicId, {
+      secure: true,
+      version,
+      transformation: this.buildTransformation('story'),
+    });
+  }
+
+  /** Source (as uploaded) and poster URLs of a story video. */
+  buildStoryVideoUrls(publicId: string, version: number, format: string | null) {
+    return {
+      videoUrl: cloudinary.url(publicId, {
+        secure: true,
+        resource_type: 'video',
+        version,
+        format: format ?? 'mp4',
+      }),
+      thumbnailUrl: this.buildStoryVideoPosterUrl(publicId, version),
+    };
+  }
+
+  private buildStoryVideoPosterUrl(publicId: string, version: number) {
+    return cloudinary.url(publicId, {
+      secure: true,
+      resource_type: 'video',
+      version,
+      format: 'jpg',
+      transformation: [...CloudinaryService.storyVideoPosterTransformation],
+    });
+  }
+
+  private storyPublicIdPrefix(identifier: string, resourceType: 'image' | 'video') {
+    const sanitizedIdentifier = identifier.replace(/[^a-zA-Z0-9]/g, '');
+    return `${sanitizedIdentifier}-story-${resourceType}-`;
+  }
+
+  private static normalizeDuration(rawDuration: unknown) {
+    return typeof rawDuration === 'number' && Number.isFinite(rawDuration)
+      ? Math.round(rawDuration)
+      : null;
+  }
+
+  /**
+   * Delivery URL of the optimized story rendition (see
+   * `storyVideoTransformation`). Stories published before the rendition
+   * existed get it generated by Cloudinary on first request. Falls back to
+   * the stored URL when the public id cannot be resolved.
+   */
+  buildStoryVideoPlaybackUrl(input: {
+    publicId?: string | null;
+    publicUrl?: string | null;
+  }) {
+    const fallbackUrl = input.publicUrl?.trim() ?? '';
+    if (!this.isConfigured()) {
+      return fallbackUrl;
+    }
+
+    const publicId = this.resolvePublicId(input.publicId, null, input.publicUrl);
+    if (!publicId) {
+      return fallbackUrl;
+    }
+
+    return cloudinary.url(publicId, {
+      secure: true,
+      resource_type: 'video',
+      format: 'mp4',
+      transformation: [...CloudinaryService.storyVideoTransformation],
+    });
   }
 
   async uploadChatImage(file: Express.Multer.File, identifier: string) {

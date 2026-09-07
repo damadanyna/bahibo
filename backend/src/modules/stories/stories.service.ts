@@ -12,10 +12,13 @@ import { CloudinaryService } from '../auth/cloudinary.service';
 import { ConversationsRealtimeGateway } from '../conversations/realtime/conversations-realtime.gateway';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushNotificationsService } from '../push-notifications/push-notifications.service';
+import { CreateDirectStoryDto } from './dto/create-direct-story.dto';
 import { CreateStoryDto } from './dto/create-story.dto';
 
 /** A story is visible for 24 h after publication. */
 const STORY_LIFETIME_MS = 24 * 60 * 60 * 1000;
+/** Videos are kept as recorded (no synchronous transcoding), so cap what one story can weigh. */
+export const STORY_UPLOAD_MAX_BYTES = 60 * 1024 * 1024;
 /** Expired rows are kept one more day (viewer counters, debugging) then purged. */
 const STORY_PURGE_GRACE_MS = 24 * 60 * 60 * 1000;
 const MAX_ACTIVE_STORIES_PER_USER = 30;
@@ -51,7 +54,13 @@ export type PresentedStory = {
   id: string;
   authorUserId: string;
   mediaType: StoryMediaType;
+  /** Videos: the optimized playback rendition (720p MP4), not the upload. */
   mediaUrl: string;
+  /**
+   * Videos only: the file as uploaded, for the client to fall back on while
+   * the rendition is still being generated. Null for photos.
+   */
+  originalMediaUrl: string | null;
   thumbnailUrl: string | null;
   durationSeconds: number | null;
   caption: string | null;
@@ -108,23 +117,9 @@ export class StoriesService {
       );
     }
 
-    const author = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { ...storyAuthorSelect, deletedAt: true },
-    });
-    if (!author || author.deletedAt) {
-      throw new NotFoundException('User not found');
-    }
-
+    const author = await this.loadAuthorOrThrow(userId);
     const now = new Date();
-    const activeCount = await this.prisma.userStory.count({
-      where: { userId, expiresAt: { gt: now } },
-    });
-    if (activeCount >= MAX_ACTIVE_STORIES_PER_USER) {
-      throw new BadRequestException(
-        'Story limit reached, try again once older stories expire',
-      );
-    }
+    await this.assertStoryQuota(userId, now);
 
     let mediaUrl: string;
     let mediaPublicId: string | null;
@@ -160,15 +155,183 @@ export class StoriesService {
       thumbnailUrl = upload.imageUrl;
     }
 
+    return this.finalizeStory({
+      author,
+      userId,
+      now,
+      mediaType,
+      mediaUrl,
+      mediaPublicId,
+      thumbnailUrl,
+      durationSeconds,
+      caption: dto.caption,
+    });
+  }
+
+  /**
+   * Signed parameters for a phone → Cloudinary upload. Account and quota
+   * are checked here so a user at the cap does not upload for nothing;
+   * they are checked again when the story is confirmed.
+   */
+  async createDirectUploadSignature(userId: string, mediaType: StoryMediaType) {
+    await this.loadAuthorOrThrow(userId);
+    await this.assertStoryQuota(userId, new Date());
+    return this.cloudinaryService.createDirectStoryUploadSignature(
+      userId,
+      mediaType === 'VIDEO' ? 'video' : 'image',
+    );
+  }
+
+  /**
+   * Confirms a story whose media the phone uploaded straight to Cloudinary.
+   * The asset must carry a public id issued to this user and the response
+   * signature only Cloudinary can produce; weight and duration are then
+   * read back from Cloudinary rather than trusted from the client (the
+   * client values only fill in when that lookup fails). A rejected asset
+   * is deleted so it does not linger in the folder.
+   */
+  async createStoryFromDirectUpload(
+    userId: string,
+    dto: CreateDirectStoryDto,
+  ): Promise<PresentedStory> {
+    const mediaType: StoryMediaType = dto.mediaType;
+    const resourceType = mediaType === 'VIDEO' ? 'video' : 'image';
+    const publicId = dto.publicId.trim();
+    if (
+      !this.cloudinaryService.isDirectStoryPublicIdOf(publicId, userId, resourceType) ||
+      !this.cloudinaryService.verifyUploadResponseSignature(
+        publicId,
+        dto.version,
+        dto.signature,
+      )
+    ) {
+      throw new BadRequestException('Story media not recognized');
+    }
+
+    const asset = { id: 'pending', mediaType, mediaUrl: '', mediaPublicId: publicId };
+    const rejectAsset = async (message: string) => {
+      await this.deleteAssetQuietly(asset);
+      return new BadRequestException(message);
+    };
+
+    const alreadyUsed = await this.prisma.userStory.findFirst({
+      where: { mediaPublicId: publicId },
+      select: { id: true },
+    });
+    if (alreadyUsed) {
+      throw new BadRequestException('Story media already published');
+    }
+
+    const author = await this.loadAuthorOrThrow(userId);
+    const now = new Date();
+    try {
+      await this.assertStoryQuota(userId, now);
+    } catch (error) {
+      await this.deleteAssetQuietly(asset);
+      throw error;
+    }
+
+    let metadata: Awaited<ReturnType<CloudinaryService['describeAsset']>> | null = null;
+    try {
+      metadata = await this.cloudinaryService.describeAsset(publicId, resourceType);
+    } catch (error) {
+      this.logger.warn(
+        `Could not read back story asset ${publicId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
+    if (metadata?.bytes != null && metadata.bytes > STORY_UPLOAD_MAX_BYTES) {
+      throw await rejectAsset(
+        `Story media is limited to ${Math.round(STORY_UPLOAD_MAX_BYTES / (1024 * 1024))} MB`,
+      );
+    }
+
+    const version = metadata?.version ?? dto.version;
+    let mediaUrl: string;
+    let thumbnailUrl: string;
+    let durationSeconds: number | null = null;
+    if (mediaType === 'VIDEO') {
+      durationSeconds = metadata?.durationSeconds ?? dto.durationSeconds ?? null;
+      if (
+        durationSeconds != null &&
+        durationSeconds >
+          STORY_VIDEO_MAX_SECONDS + STORY_VIDEO_DURATION_TOLERANCE_SECONDS
+      ) {
+        throw await rejectAsset(
+          `Story videos are limited to ${STORY_VIDEO_MAX_SECONDS} seconds`,
+        );
+      }
+      const urls = this.cloudinaryService.buildStoryVideoUrls(
+        publicId,
+        version,
+        metadata?.format ?? dto.format ?? null,
+      );
+      mediaUrl = urls.videoUrl;
+      thumbnailUrl = urls.thumbnailUrl;
+    } else {
+      mediaUrl = this.cloudinaryService.buildStoryImageUrl(publicId, version);
+      thumbnailUrl = mediaUrl;
+    }
+
+    return this.finalizeStory({
+      author,
+      userId,
+      now,
+      mediaType,
+      mediaUrl,
+      mediaPublicId: publicId,
+      thumbnailUrl,
+      durationSeconds,
+      caption: dto.caption,
+    });
+  }
+
+  private async loadAuthorOrThrow(userId: string) {
+    const author = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { ...storyAuthorSelect, deletedAt: true },
+    });
+    if (!author || author.deletedAt) {
+      throw new NotFoundException('User not found');
+    }
+    return author;
+  }
+
+  private async assertStoryQuota(userId: string, now: Date) {
+    const activeCount = await this.prisma.userStory.count({
+      where: { userId, expiresAt: { gt: now } },
+    });
+    if (activeCount >= MAX_ACTIVE_STORIES_PER_USER) {
+      throw new BadRequestException(
+        'Story limit reached, try again once older stories expire',
+      );
+    }
+  }
+
+  /** Saves the row, then notifies the audience (realtime + push). */
+  private async finalizeStory(input: {
+    author: StoryAuthor;
+    userId: string;
+    now: Date;
+    mediaType: StoryMediaType;
+    mediaUrl: string;
+    mediaPublicId: string | null;
+    thumbnailUrl: string | null;
+    durationSeconds: number | null;
+    caption: string | undefined;
+  }): Promise<PresentedStory> {
+    const { author, userId, now, mediaType, mediaUrl, thumbnailUrl } = input;
     const story = await this.prisma.userStory.create({
       data: {
         userId,
         mediaType,
         mediaUrl,
-        mediaPublicId,
+        mediaPublicId: input.mediaPublicId,
         thumbnailUrl,
-        durationSeconds,
-        caption: dto.caption?.trim() || null,
+        durationSeconds: input.durationSeconds,
+        caption: input.caption?.trim() || null,
         expiresAt: new Date(now.getTime() + STORY_LIFETIME_MS),
       },
     });
@@ -522,11 +685,25 @@ export class StoriesService {
     story: StoryRow,
     flags: { isOwner: boolean; isViewed: boolean; viewCount: number | null },
   ): PresentedStory {
+    // The row keeps the upload URL; the playback rendition is derived here
+    // so stories published before it existed are served optimized too.
+    const playbackUrl =
+      story.mediaType === 'VIDEO'
+        ? this.cloudinaryService.buildStoryVideoPlaybackUrl({
+            publicId: story.mediaPublicId,
+            publicUrl: story.mediaUrl,
+          })
+        : story.mediaUrl;
+
     return {
       id: story.id,
       authorUserId: story.userId,
       mediaType: story.mediaType,
-      mediaUrl: story.mediaUrl,
+      mediaUrl: playbackUrl,
+      originalMediaUrl:
+        story.mediaType === 'VIDEO' && playbackUrl !== story.mediaUrl
+          ? story.mediaUrl
+          : null,
       thumbnailUrl: story.thumbnailUrl,
       durationSeconds: story.durationSeconds,
       caption: story.caption,

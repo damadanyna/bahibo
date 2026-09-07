@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'api_config.dart';
@@ -29,8 +30,23 @@ class AppApiClient {
   static const int _maxRetries = 2;
   static const String _tag = 'AppApiClient';
 
+  /// Refresh ahead of time when the access token expires within this.
+  static const Duration _accessTokenExpiryMargin = Duration(seconds: 60);
+
+  /// Fires when the backend definitively rejected the refresh token
+  /// (logged out elsewhere, account removed, 30 days unused) and the local
+  /// session was cleared: the UI must send the user back to login. Never
+  /// fires for network trouble or server errors.
+  static final ValueNotifier<int> sessionInvalidated = ValueNotifier<int>(0);
+
+  /// One refresh at a time for the whole isolate. Every service owns its
+  /// own client, so a burst of 401s (access token expired, several screens
+  /// loading at once) used to start parallel refreshes with the same
+  /// rotating token: the first won, the others were told "invalid token"
+  /// and wiped the session, new tokens included.
+  static Future<bool>? _refreshSessionFuture;
+
   final SessionStorage _sessionStorage;
-  Future<bool>? _refreshSessionFuture;
 
   Future<dynamic> get(
     String path, {
@@ -182,12 +198,14 @@ class AppApiClient {
 
     final headers = <String, String>{'Content-Type': 'application/json'};
 
+    String? usedAccessToken;
     if (authenticated) {
       final token = await _sessionStorage.getAccessToken();
       if (token == null || token.isEmpty) {
         throw AppApiException('Session utilisateur introuvable');
       }
       headers['Authorization'] = 'Bearer $token';
+      usedAccessToken = token;
     }
 
     AppLogger.debug(_tag, '$method $uri');
@@ -251,7 +269,7 @@ class AppApiClient {
         authenticated &&
         retryOnUnauthorized &&
         path != '/auth/refresh') {
-      final refreshed = await _refreshSession();
+      final refreshed = await _recoverFromUnauthorized(usedAccessToken ?? '');
       if (refreshed) {
         return _request(
           method,
@@ -290,12 +308,14 @@ class AppApiClient {
   }) async {
     final headers = <String, String>{'Accept': '*/*'};
 
+    String? usedAccessToken;
     if (authenticated) {
       final token = await _sessionStorage.getAccessToken();
       if (token == null || token.isEmpty) {
         throw AppApiException('Session utilisateur introuvable');
       }
       headers['Authorization'] = 'Bearer $token';
+      usedAccessToken = token;
     }
 
     AppLogger.debug(_tag, 'RAW GET $uri');
@@ -335,7 +355,7 @@ class AppApiClient {
     AppLogger.debug(_tag, '${response.statusCode} RAW GET $uri');
 
     if (response.statusCode == 401 && authenticated && retryOnUnauthorized) {
-      final refreshed = await _refreshSession();
+      final refreshed = await _recoverFromUnauthorized(usedAccessToken ?? '');
       if (refreshed) {
         return _requestRaw(
           uri,
@@ -346,6 +366,59 @@ class AppApiClient {
     }
 
     return response;
+  }
+
+  /// Renews the access token ahead of time when it has expired or is about
+  /// to, so a cold start (or a socket reconnect) does not begin with a
+  /// burst of 401s. Best effort: silent on network trouble, and the session
+  /// is only cleared when the backend definitively rejects the refresh
+  /// token (see [_performRefreshSession]).
+  Future<void> refreshAccessTokenIfExpired() async {
+    final accessToken = await _sessionStorage.getAccessToken();
+    if (accessToken == null || accessToken.isEmpty) {
+      return;
+    }
+    final expiresAt = _jwtExpiry(accessToken);
+    if (expiresAt == null ||
+        expiresAt.isAfter(DateTime.now().add(_accessTokenExpiryMargin))) {
+      return;
+    }
+    await _refreshSession();
+  }
+
+  /// `exp` claim of a JWT, decoded locally (no signature check needed: it
+  /// only decides whether a refresh is worth trying).
+  static DateTime? _jwtExpiry(String token) {
+    final parts = token.split('.');
+    if (parts.length != 3) {
+      return null;
+    }
+    try {
+      final payload =
+          jsonDecode(
+                utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
+              )
+              as Map<String, dynamic>;
+      final exp = payload['exp'];
+      if (exp is! num) {
+        return null;
+      }
+      return DateTime.fromMillisecondsSinceEpoch(exp.toInt() * 1000);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// After a 401 on [usedAccessToken]: true when a retry is worth it, i.e.
+  /// the tokens were already rotated by another client or isolate (the
+  /// push background handler shares the same storage), or this one just
+  /// refreshed them.
+  Future<bool> _recoverFromUnauthorized(String usedAccessToken) async {
+    final current = await _sessionStorage.getAccessToken();
+    if (current != null && current.isNotEmpty && current != usedAccessToken) {
+      return true;
+    }
+    return _refreshSession();
   }
 
   Future<bool> _refreshSession() async {
@@ -364,6 +437,10 @@ class AppApiClient {
     }
   }
 
+  /// Only a 401/403 from `/auth/refresh` on a token nobody rotated
+  /// meanwhile ends the session. Everything else (offline, timeout, 5xx,
+  /// proxy error, malformed reply) is transient: the request fails, the
+  /// user stays logged in, like a messaging app.
   Future<bool> _performRefreshSession() async {
     final refreshToken = await _sessionStorage.getRefreshToken();
     if (refreshToken == null || refreshToken.isEmpty) {
@@ -393,14 +470,55 @@ class AppApiClient {
       return false;
     }
 
-    if (response.statusCode < 200 || response.statusCode >= 300) {
+    if (response.statusCode == 401 || response.statusCode == 403) {
+      if (await _refreshTokenRotatedSince(refreshToken)) {
+        // Someone else (another isolate) refreshed first: their tokens are
+        // in storage, the caller just has to retry with them.
+        return true;
+      }
+      AppLogger.warning(
+        _tag,
+        'Refresh token rejected (${response.statusCode}): session ended',
+      );
+      _logNetworkFailure(
+        'api_response_error',
+        method: 'POST',
+        path: '/auth/refresh',
+        reason: 'refresh_token_rejected',
+        statusCode: response.statusCode,
+      );
       await _invalidateSession();
       return false;
     }
 
-    final decoded = response.body.isEmpty
-        ? <String, dynamic>{}
-        : jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      AppLogger.warning(
+        _tag,
+        'Token refresh failed with HTTP ${response.statusCode}, keeping session',
+      );
+      _logNetworkFailure(
+        'api_response_error',
+        method: 'POST',
+        path: '/auth/refresh',
+        reason: 'server_error',
+        statusCode: response.statusCode,
+      );
+      return false;
+    }
+
+    Map<String, dynamic> decoded;
+    try {
+      decoded = response.body.isEmpty
+          ? <String, dynamic>{}
+          : jsonDecode(response.body) as Map<String, dynamic>;
+    } catch (e) {
+      AppLogger.warning(
+        _tag,
+        'Token refresh reply unreadable, keeping session',
+        e,
+      );
+      return false;
+    }
     final data = Map<String, dynamic>.from(
       (decoded['data'] as Map?) ?? const <String, dynamic>{},
     );
@@ -414,7 +532,10 @@ class AppApiClient {
         accessToken.isEmpty ||
         nextRefreshToken == null ||
         nextRefreshToken.isEmpty) {
-      await _invalidateSession();
+      AppLogger.warning(
+        _tag,
+        'Token refresh reply incomplete, keeping session',
+      );
       return false;
     }
 
@@ -429,9 +550,35 @@ class AppApiClient {
     return true;
   }
 
+  /// Whether storage holds a different refresh token than [refreshTokenUsed].
+  /// Looks twice with a short pause: a concurrent refresh from another
+  /// isolate may have won the rotation and still be writing its result.
+  Future<bool> _refreshTokenRotatedSince(String refreshTokenUsed) async {
+    for (var attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) {
+        await Future<void>.delayed(const Duration(milliseconds: 1500));
+      }
+      final stored = await _sessionStorage.getRefreshToken();
+      if (stored != null && stored.isNotEmpty && stored != refreshTokenUsed) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Idempotent: a second call on an already cleared session (another
+  /// request that got its 401 before the wipe) notifies nobody.
   Future<void> _invalidateSession() async {
     ChatRealtimeService.instance.disconnect();
     PresenceService.instance.reset();
+    final refreshToken = await _sessionStorage.getRefreshToken();
+    final accessToken = await _sessionStorage.getAccessToken();
+    final hadSession =
+        (refreshToken?.isNotEmpty ?? false) ||
+        (accessToken?.isNotEmpty ?? false);
     await _sessionStorage.clear();
+    if (hadSession) {
+      sessionInvalidated.value++;
+    }
   }
 }

@@ -236,7 +236,10 @@ abstract final class BanayLocalizationKeys {
       BanayHomeLocalizationKeys.storyVideoTooLong;
   static const homeStoryVideoPreviewFailed =
       BanayHomeLocalizationKeys.storyVideoPreviewFailed;
+  static const homeStoryVideoTooLarge =
+      BanayHomeLocalizationKeys.storyVideoTooLarge;
   static const homeStoryUploading = BanayHomeLocalizationKeys.storyUploading;
+  static const homeStoryFinalizing = BanayHomeLocalizationKeys.storyFinalizing;
   static const searchTitle = BanaySearchLocalizationKeys.searchTitle;
   static const searchHint = BanaySearchLocalizationKeys.searchHint;
   static const searchHideHistoryDialogTitle =
