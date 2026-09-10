@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:banay/component/app_network_image.dart';
 import 'package:banay/services/voice_call_service.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// Full-screen voice call, WhatsApp-style: peer at the centre, one status
 /// line, and the controls at the bottom. Entirely driven by
@@ -30,6 +31,11 @@ class _VoiceCallPageState extends State<VoiceCallPage>
   @override
   void initState() {
     super.initState();
+    // Full screen for the whole call: status and navigation bars hidden,
+    // a swipe from an edge shows them for a moment (sticky immersive).
+    unawaited(
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky),
+    );
     _service.session.addListener(_onSessionChanged);
     // Drives the mm:ss counter; cheap, one rebuild per second.
     _clock = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -44,6 +50,8 @@ class _VoiceCallPageState extends State<VoiceCallPage>
     _service.session.removeListener(_onSessionChanged);
     _clock?.cancel();
     _pulse.dispose();
+    // Back to the app's normal chrome (Flutter's default on Android).
+    unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
     super.dispose();
   }
 

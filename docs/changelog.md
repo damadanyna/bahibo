@@ -1083,3 +1083,136 @@ futurs diagnostics.
 - **Live déjà à l'écran** : `LiveWatchPage.isWatching()` ; une notification
   (push ou liste) pour le live déjà en cours de visionnage n'ouvre plus un
   second lecteur (`notification_navigation.dart`).
+
+### 12. Appel entrant : réponse par glissement vers le haut (façon Messenger)
+
+- **Demande** : répondre ou refuser en glissant, comme sur Messenger.
+- **Changement** (`voice_call_page.dart`, `_SlideUpCallButton`) : sur
+  l'écran d'appel entrant dans l'app, les deux boutons se glissent vers
+  le haut le long d'une piste ; trois chevrons pulsent au-dessus comme
+  indice et s'effacent pendant le geste ; l'action se déclenche aux trois
+  quarts de la course avec un retour haptique ; un bouton relâché avant
+  revient en place par ressort. Un simple appui ne répond plus, ce qui
+  évite les réponses accidentelles (poche, pouce posé).
+- **Hors périmètre** : l'écran natif Android affiché quand l'app est en
+  arrière-plan ou tuée (plugin `flutter_callkit_incoming`) garde ses
+  boutons par appui ; son interface n'est pas modifiable depuis Flutter.
+
+### 13. Appel vocal : tonalité de retour d'appel (« bip-bip ») et sonnerie in-app
+
+- **Demande** : un bip régulier côté appelant pendant que ça sonne chez
+  l'autre, comme sur Messenger.
+- **Dépendance** : `audioplayers` 6.7 (MIT) ajouté ; aucune autre
+  bibliothèque audio n'existait dans le projet.
+- **Sons** (`assets/sounds/`, déclarés dans `pubspec.yaml`) : générés par
+  un script Dart maison (aucun fichier tiers, aucune licence à suivre) :
+  `ringback.wav` (deux bips à 440 Hz, 0,6 s) et `ringtone.wav` (deux
+  phrases de cloche ascendantes puis pause, 3,1 s, jouée en boucle).
+- **Service** (`lib/services/call_tones.dart`) : `startRingback` rejoue le
+  bip-bip toutes les 4 s, routé comme la voix (écouteur, ou haut-parleur
+  si activé), sans prendre le focus audio pour ne pas perturber WebRTC ;
+  `startRingtone` en boucle sur le haut-parleur ; `stop`. Tout échec
+  (pas de périphérique audio) est ignoré : l'appel n'en dépend pas.
+- **Intégration** (`voice_call_service.dart`) : bip-bip dès que l'appel
+  sortant est créé, arrêté à la réponse ou à la fin ; sonnerie pour l'appel
+  entrant affiché dans l'app (l'écran natif Android/iOS a déjà la sienne),
+  arrêtée à l'acceptation, au refus ou à la fin.
+
+### 14. Sonnerie d'appel dans l'écran natif Android, vibration réelle selon le mode sonnerie
+
+- **Demande** : utiliser la sonnerie générée comme sonnerie d'appel, en
+  garder une copie dans « Objets 3D », et vibrer à l'appel entrant si le
+  téléphone l'autorise.
+- **Copies** : `C:\Users\Banay\3D Objects\banay_sonnerie_appel.wav` et
+  `banay_bip_appel_sortant.wav`.
+- **Écran natif Android** (`flutter_callkit_incoming`) :
+  `android/app/src/main/res/raw/banay_ringtone.wav` (même son que
+  `assets/sounds/ringtone.wav`), `ringtonePath: 'banay_ringtone'` dans
+  `incoming_call_native_ui.dart`. Le plugin la joue en boucle et vibre de
+  lui-même en suivant le mode sonnerie du téléphone. iOS garde la sonnerie
+  système (l'ajout d'un fichier au bundle demande Xcode).
+- **Appel entrant affiché dans l'app** (`voice_call_service.dart`) :
+  - `MainActivity.kt` expose le mode sonnerie Android (`banay/ringer` →
+    normal / vibrate / silent), lu par `lib/services/ringer_mode.dart` ;
+  - normal → sonnerie + vibration ; vibreur seul → vibration seule ;
+    silencieux → écran seul ; iOS / inconnu → comme normal (l'interrupteur
+    latéral iOS coupe le son de lui-même) ;
+  - vibration de type appel (900 ms, pause 1,1 s, en boucle) via le paquet
+    `vibration` 3.2 (MIT) quand l'appareil a un vibreur, sinon le tic
+    haptique d'avant ; arrêtée à l'acceptation, au refus ou à la fin.
+
+### 15. Sons d'appel fournis par l'équipe : retour d'appel en boucle, sonnerie mp3, son de fin d'appel
+
+- **Contexte** : les sons générés (entrée 13) ont été remplacés dans
+  `assets/sounds/` par des fichiers maison : `ringback.wav` (40 s),
+  `ringtone.mp3`, et un nouveau `rington_end_call.wav`. L'ancien
+  `ringtone.wav` référencé par le code n'existait plus → erreur de
+  synchronisation des assets au `flutter run`.
+- **Assets** : les deux WAV livrés en 24 bits / 48 kHz (5,7 Mo) sont
+  convertis en 16 bits / 24 kHz mono (1,9 Mo et 55 Ko) par un script Dart ;
+  les originaux sont gardés dans `assets/sounds/originals/`, hors du
+  bundle (seul le dossier `assets/sounds/` est déclaré). Le raw Android
+  `banay_ringtone.wav` est remplacé par `banay_ringtone.mp3` (même nom de
+  ressource, l'écran natif ne change pas).
+- **`call_tones.dart`** : `startRingback` joue `ringback.wav` en boucle (plus
+  de minuterie de 4 s : le fichier porte déjà sa cadence) ; `startRingtone`
+  joue `ringtone.mp3` en boucle ; nouveau `playEndCall` joue
+  `rington_end_call.wav` une fois, sur son propre lecteur pour ne pas être
+  coupé par l'arrêt des autres sons.
+- **`voice_call_service.dart`** : son de fin joué à chaque fin d'appel
+  (raccroché, refusé, sans réponse, annulé, perdu), sur la même sortie que
+  la voix.
+
+### 16. Sonnerie d'appel entrant en boucle garantie
+
+- **Dans l'app** (`call_tones.dart`) : en plus du mode boucle du lecteur,
+  un redémarrage manuel (`seek(0)` + `resume`) sur l'événement de fin, qui
+  n'est émis que si la plateforme ignore la boucle ; idem pour le retour
+  d'appel. Vibration avec intensités explicites (`[0, 255, 0]`) : l'amplitude
+  par défaut « -1 » du paquet est refusée par certains HAL (émulateur).
+- **Écran natif Android** : le plugin boucle la sonnerie à partir
+  d'Android 9 seulement ; `res/raw/banay_ringtone.mp3` est désormais le
+  mp3 répété six fois (≈ 49 s, 1,5 Mo) pour couvrir toute la fenêtre de
+  sonnerie de 45 s sur Android 6 à 8 aussi.
+- Vérifié sur l'émulateur par un appel réel de 25 s déclenché par l'API :
+  lecteur créé une seule fois, focus audio « sonnerie » pris, aucune
+  erreur audio.
+
+### 17. Sons d'appel saturés, et bannière d'appel entrant façon WhatsApp
+
+- **Saturation** : mesure des fichiers livrés — retour d'appel à 0 dBFS de
+  crête (21 120 échantillons écrêtés, RMS −8 dBFS), fin d'appel à −1,8 dBFS
+  de crête. Trop chaud pour un écouteur ou un petit haut-parleur.
+  Reconversion depuis les originaux avec −8 dB (retour d'appel → crête
+  −8 dBFS, RMS −16) et −6 dB (fin d'appel → crête −7,8 dBFS) ; volume de
+  lecture 0,8 (retour, fin) et 0,7 (sonnerie mp3, non retouchée) dans
+  `call_tones.dart`. L'écrêtage présent dans la source elle-même ne peut
+  pas être retiré ; le niveau, lui, ne fait plus forcer le haut-parleur.
+  Copies « Objets 3D » mises à jour.
+- **Bannière** (`lib/component/call/incoming_call_banner.dart`, nouveau ;
+  `voice_call_service.dart`) : un appel qui arrive pendant que l'app est
+  utilisée n'ouvre plus l'écran plein écran mais une carte en haut de
+  l'écran, par-dessus la page en cours (overlay racine) : avatar, nom,
+  « Appel vocal Banay · entrant », boutons rond Refuser / Répondre ; un
+  appui sur la carte ouvre l'écran complet (glissement). Sonnerie et
+  vibration inchangées. Répondre ouvre l'écran d'appel en cours ; refus,
+  annulation ou fin retirent la carte. Appel ouvert depuis une
+  notification (native Android, alerte iOS) : écran complet direct.
+
+### 18. Accueil d'appel : retour à l'interface d'origine
+
+- **Demande** : reprendre l'interface de réception d'appel du départ.
+- **Changement** : la bannière en haut d'écran (entrée 17) et la réponse
+  par glissement (entrée 12) sont retirées ; un appel entrant ouvre à
+  nouveau l'écran plein avec les boutons Refuser / Accepter par appui,
+  bouton Accepter légèrement pulsé. `incoming_call_banner.dart` supprimé,
+  `_SlideUpCallButton` retiré de `voice_call_page.dart`,
+  `voice_call_service.dart` sans overlay. Sonnerie, vibration, sons et
+  écran natif inchangés.
+
+### 19. Écran d'appel en plein écran
+
+- **Changement** (`voice_call_page.dart`) : barres d'état et de navigation
+  masquées pendant tout l'appel (`SystemUiMode.immersiveSticky`, un
+  glissement depuis un bord les fait réapparaître un instant) ; retour au
+  mode normal (`edgeToEdge`) à la fermeture de l'écran.

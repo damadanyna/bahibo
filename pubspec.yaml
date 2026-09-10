@@ -77,6 +77,8 @@ dependencies:
   wakelock_plus: ^1.5.2
   video_player: ^2.11.1
   flutter_callkit_incoming: ^3.1.5
+  audioplayers: ^6.7.1
+  vibration: ^3.2.1
 
 dev_dependencies:
   flutter_test:
@@ -99,6 +101,12 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # Call tones (see docs/changelog.md, 2026-09-10): ringback.wav (outgoing,
+  # looped), ringtone.mp3 (incoming), rington_end_call.wav (call over).
+  # Only this folder is bundled: assets/sounds/originals/ stays out.
+  assets:
+    - assets/sounds/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

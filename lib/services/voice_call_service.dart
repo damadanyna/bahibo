@@ -2,16 +2,19 @@ import 'dart:async';
 
 import 'package:banay/page/call/voice_call_page.dart';
 import 'package:banay/services/app_api_client.dart';
+import 'package:banay/services/call_tones.dart';
 import 'package:banay/services/calls_api_service.dart';
 import 'package:banay/services/chat_realtime_service.dart';
 import 'package:banay/services/incoming_call_native_ui.dart';
 import 'package:banay/services/push_notification_service.dart';
+import 'package:banay/services/ringer_mode.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:vibration/vibration.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 enum VoiceCallPhase { ringing, connecting, active, ended }
@@ -251,6 +254,13 @@ class VoiceCallService {
       ),
     );
     _startRingTimer();
+    // Ringback in the caller's ear until the other side answers (stopped
+    // by _markActive) or the call ends (_finish).
+    unawaited(
+      CallTones.instance.startRingback(
+        speakerOn: session.value?.isSpeakerOn ?? false,
+      ),
+    );
     try {
       await _connectRoom(
         data['url']?.toString() ?? '',
@@ -393,15 +403,15 @@ class VoiceCallService {
       isOutgoing: false,
       phase: VoiceCallPhase.ringing,
     );
-    _openPage();
     _startRingTimer();
     // Tell the caller the invitation reached this phone; the background
     // isolate does the same when it puts the native screen up first.
     unawaited(_quietly(_api.markRinging(callId)));
 
+    _openPage();
     if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
-      // On screen: our own page rings, with a vibration cue.
-      _startVibration();
+      // On screen: our own page rings and vibrates, as the phone allows.
+      unawaited(_startIncomingAlert(callId));
     } else if (showNativeUi) {
       // Backgrounded: the OS call UI rings (full screen, lock screen,
       // ringtone) unless the background isolate already put it up.
@@ -520,6 +530,7 @@ class VoiceCallService {
     }
 
     _stopVibration();
+    unawaited(CallTones.instance.stop());
     _cancelRingTimer();
     _openPage();
 
@@ -608,6 +619,7 @@ class VoiceCallService {
   void _markActive() {
     _cancelRingTimer();
     _stopVibration();
+    unawaited(CallTones.instance.stop());
     final current = session.value;
     _update(
       (s) => s.copyWith(
@@ -631,6 +643,8 @@ class VoiceCallService {
 
     _cancelRingTimer();
     _stopVibration();
+    unawaited(CallTones.instance.stop());
+    unawaited(CallTones.instance.playEndCall(speakerOn: current.isSpeakerOn));
     unawaited(_disconnectRoom());
     unawaited(WakelockPlus.disable());
     if (current.callId.isNotEmpty) {
@@ -811,8 +825,53 @@ class VoiceCallService {
     _ringTimer = null;
   }
 
-  void _startVibration() {
+  /// Ringtone and vibration for an incoming call shown in the app, exactly
+  /// as the phone is set: normal → both, vibrate → vibration only, silent →
+  /// nothing but the screen. Real ring-style vibration (long buzz, pause)
+  /// when the device has a vibrator, a haptic tick otherwise.
+  Future<void> _startIncomingAlert(String callId) async {
+    final mode = await currentRingerMode();
+    final current = session.value;
+    if (current == null ||
+        current.callId != callId ||
+        current.phase != VoiceCallPhase.ringing) {
+      return;
+    }
+    if (mode == RingerMode.silent) {
+      return;
+    }
+    if (mode != RingerMode.vibrate) {
+      unawaited(CallTones.instance.startRingtone());
+    }
+    await _startVibration();
+  }
+
+  Future<void> _startVibration() async {
     _stopVibration();
+    bool hasVibrator = false;
+    try {
+      hasVibrator = await Vibration.hasVibrator();
+    } catch (_) {
+      hasVibrator = false;
+    }
+    if (session.value?.phase != VoiceCallPhase.ringing) {
+      return;
+    }
+    if (hasVibrator) {
+      try {
+        // 0 ms wait, 900 ms buzz, 1100 ms pause, repeated from the start.
+        // Explicit intensities: the default "-1" amplitude is rejected by
+        // some vibrator HALs (seen on the Android emulator).
+        await Vibration.vibrate(
+          pattern: const [0, 900, 1100],
+          intensities: const [0, 255, 0],
+          repeat: 0,
+        );
+        return;
+      } catch (error) {
+        debugPrint('Ring vibration failed: $error');
+      }
+    }
     unawaited(HapticFeedback.vibrate());
     _vibrationTimer = Timer.periodic(_vibrationInterval, (_) {
       unawaited(HapticFeedback.vibrate());
@@ -822,6 +881,7 @@ class VoiceCallService {
   void _stopVibration() {
     _vibrationTimer?.cancel();
     _vibrationTimer = null;
+    unawaited(_quietly(Vibration.cancel()));
   }
 
   void _cancelCloseTimer() {

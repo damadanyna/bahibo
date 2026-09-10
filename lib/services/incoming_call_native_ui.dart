@@ -54,7 +54,10 @@ class IncomingCallNativeUi {
       android: const AndroidParams(
         isCustomNotification: true,
         isShowLogo: false,
-        ringtonePath: 'system_ringtone_default',
+        // android/app/src/main/res/raw/banay_ringtone.mp3, the same file
+        // as the in-app ringtone; the plugin loops it and vibrates on its
+        // own, following the phone's ringer mode.
+        ringtonePath: 'banay_ringtone',
         backgroundColor: _brandBackground,
         actionColor: _acceptGreen,
         textColor: '#FFFFFF',

@@ -3,6 +3,7 @@ package com.banay.app
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Intent
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
@@ -17,6 +18,9 @@ class MainActivity : FlutterActivity() {
 	private val channelName = "banay/notifications"
 	private val fileOpenerChannelName = "banay/file_opener"
 	private val batteryOptimizationChannelName = "banay/battery_optimization"
+	// Ringer mode (normal / vibrate / silent) so an incoming call in the app
+	// rings, vibrates only, or stays quiet exactly as the phone is set.
+	private val ringerChannelName = "banay/ringer"
 	private var pendingNotificationPayload: Map<String, String>? = null
 	private var methodChannel: MethodChannel? = null
 	private var fileOpenerChannel: MethodChannel? = null
@@ -100,6 +104,27 @@ class MainActivity : FlutterActivity() {
 					"openManufacturerAutostartSettings" -> result.success(openManufacturerAutostartSettings())
 					else -> result.notImplemented()
 				}
+			}
+		}
+
+		MethodChannel(
+			flutterEngine.dartExecutor.binaryMessenger,
+			ringerChannelName,
+		).setMethodCallHandler { call, result ->
+			when (call.method) {
+				"getRingerMode" -> {
+					val audioManager = getSystemService(AUDIO_SERVICE) as? AudioManager
+					result.success(
+						when (audioManager?.ringerMode) {
+							AudioManager.RINGER_MODE_SILENT -> "silent"
+							AudioManager.RINGER_MODE_VIBRATE -> "vibrate"
+							AudioManager.RINGER_MODE_NORMAL -> "normal"
+							else -> "unknown"
+						},
+					)
+				}
+
+				else -> result.notImplemented()
 			}
 		}
 
