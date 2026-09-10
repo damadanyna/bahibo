@@ -14,6 +14,7 @@ import 'package:banay/component/ui/chat_message_input.dart';
 import 'package:banay/formatter/price_formatter.dart';
 import 'package:banay/page/private_image_viewer.dart';
 import 'package:banay/services/app_api_client.dart';
+import 'package:banay/services/voice_call_service.dart';
 import 'package:banay/services/catalog_api_service.dart';
 import 'package:banay/services/chat/chat_session_controller.dart';
 import 'package:banay/services/chat/chat_session_state.dart';
@@ -868,6 +869,42 @@ class _ChatPageState extends State<ChatPage>
     }
 
     return _sellerRoleValue;
+  }
+
+  /// A call needs a conversation on the server (it names the other side)
+  /// and an unblocked pair.
+  bool get _canStartVoiceCall =>
+      (_conversationId?.trim().isNotEmpty ?? false) && !_conversationBlocked;
+
+  Future<void> _startVoiceCall() async {
+    final conversationId = _conversationId?.trim() ?? '';
+    if (conversationId.isEmpty) {
+      return;
+    }
+
+    final participant = _conversation?['participant'];
+    final participantMap = participant is Map
+        ? Map<String, dynamic>.from(participant)
+        : const <String, dynamic>{};
+    final peerName = participantMap['displayName']?.toString().trim() ?? '';
+    final peerAvatarUrl = participantMap['avatarUrl']?.toString().trim() ?? '';
+
+    try {
+      await VoiceCallService.instance.startCall(
+        conversationId: conversationId,
+        peerUserId: _participantUserId,
+        peerName: peerName.isNotEmpty ? peerName : widget.sellerName,
+        peerAvatarUrl: peerAvatarUrl.isNotEmpty
+            ? peerAvatarUrl
+            : widget.avatarUrl,
+      );
+    } on AppApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    }
   }
 
   String? get _participantUserId {
@@ -4109,6 +4146,7 @@ class _ChatPageState extends State<ChatPage>
                           },
                           onViewProfile: _openParticipantProfile,
                           onReport: _showReportParticipantDialog,
+                          onCall: _canStartVoiceCall ? _startVoiceCall : null,
                           selectionMode: isSelectionMode,
                           selectionCount: selectedCount,
                           onClearSelection: _clearSelectedMessages,
@@ -4369,6 +4407,9 @@ class _ChatHeader extends StatefulWidget {
   final VoidCallback onBackPressed;
   final VoidCallback onViewProfile;
   final VoidCallback onReport;
+
+  /// Voice call button; hidden when null (no conversation yet, blocked).
+  final VoidCallback? onCall;
   final bool selectionMode;
   final int selectionCount;
   final VoidCallback? onClearSelection;
@@ -4389,6 +4430,7 @@ class _ChatHeader extends StatefulWidget {
     required this.onBackPressed,
     required this.onViewProfile,
     required this.onReport,
+    this.onCall,
     this.selectionMode = false,
     this.selectionCount = 0,
     this.onClearSelection,
@@ -4592,6 +4634,17 @@ class _ChatHeaderState extends State<_ChatHeader> {
                   ],
                 ),
               ),
+              if (widget.onCall != null)
+                IconButton(
+                  onPressed: widget.onCall,
+                  tooltip: 'Appel vocal',
+                  icon: Icon(
+                    Icons.call_rounded,
+                    color: headerForeground.withValues(alpha: 0.94),
+                    size: 23,
+                  ),
+                  splashRadius: 20,
+                ),
               PopupMenuButton<_ChatHeaderMenuAction>(
                 color: widget.headerColor,
                 shape: RoundedRectangleBorder(
@@ -5150,6 +5203,156 @@ class _DeleteMessagesProgress {
   int get percent => (progress * 100).round().clamp(0, 100);
 }
 
+/// A call line the caller's app posted in the chat ("📞 Appel vocal · 2 min
+/// 05", "📞 Appel vocal manqué", "📞 Appel vocal refusé"), read from the
+/// viewer's side: the caller sees an outgoing call, the other side an
+/// incoming one, and a missed call is red only for the one who missed it.
+class _CallLine {
+  const _CallLine({
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.detail,
+  });
+
+  static const String _prefix = '📞 Appel vocal';
+  static const Color _green = Color(0xFF2FBF71);
+  static const Color _red = Color(0xFFE5484D);
+  static const Color _amber = Color(0xFFFFB020);
+
+  final IconData icon;
+  final Color color;
+  final String label;
+  final String detail;
+
+  static _CallLine? tryParse(String content, {required bool isMine}) {
+    if (!content.startsWith(_prefix)) {
+      return null;
+    }
+    final rest = content.substring(_prefix.length).trim();
+
+    if (rest.contains('manqué')) {
+      return isMine
+          ? const _CallLine(
+              icon: Icons.call_missed_outgoing_rounded,
+              color: _amber,
+              label: 'Appel vocal sortant',
+              detail: 'Pas de réponse',
+            )
+          : const _CallLine(
+              icon: Icons.call_missed_rounded,
+              color: _red,
+              label: 'Appel vocal manqué',
+              detail: 'Appel entrant',
+            );
+    }
+    if (rest.contains('refusé')) {
+      return isMine
+          ? const _CallLine(
+              icon: Icons.call_missed_outgoing_rounded,
+              color: _amber,
+              label: 'Appel vocal sortant',
+              detail: 'Refusé',
+            )
+          : const _CallLine(
+              icon: Icons.call_end_rounded,
+              color: _red,
+              label: 'Appel vocal refusé',
+              detail: 'Appel entrant',
+            );
+    }
+
+    final duration = (rest.startsWith('·') ? rest.substring(1) : rest).trim();
+    final detail = duration.isEmpty ? 'Terminé' : duration;
+    return isMine
+        ? _CallLine(
+            icon: Icons.call_made_rounded,
+            color: _green,
+            label: 'Appel vocal sortant',
+            detail: detail,
+          )
+        : _CallLine(
+            icon: Icons.call_received_rounded,
+            color: _green,
+            label: 'Appel vocal entrant',
+            detail: detail,
+          );
+  }
+}
+
+class _CallLineRow extends StatelessWidget {
+  const _CallLineRow({
+    required this.line,
+    required this.time,
+    required this.textColor,
+    required this.metaColor,
+  });
+
+  final _CallLine line;
+  final String time;
+  final Color textColor;
+  final Color metaColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.max,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: line.color.withValues(alpha: 0.16),
+          ),
+          child: Icon(line.icon, size: 20, color: line.color),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                line.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: textColor,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  height: 1.2,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                line.detail,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: metaColor,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          time,
+          style: TextStyle(
+            color: metaColor,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _ChatBubble extends StatelessWidget {
   final String message;
   final _ChatMessageKind kind;
@@ -5204,6 +5407,11 @@ class _ChatBubble extends StatelessWidget {
         ? const <String>[]
         : LinkPreviewService.extractUrls(normalizedMessage);
     final hasCaptionText = normalizedMessage.isNotEmpty;
+    // Call lines are plain text from the caller; each side reads them from
+    // its own point of view (see _CallLine).
+    final callLine = mediaItems.isEmpty && product == null && reply == null
+        ? _CallLine.tryParse(normalizedMessage, isMine: isMine)
+        : null;
     final deletedAccent = isMine
         ? const Color(0xFF2E8B57)
         : subtleText.withValues(alpha: 0.92);
@@ -5406,6 +5614,13 @@ class _ChatBubble extends StatelessWidget {
                       ),
                     ),
                   ],
+                )
+              else if (callLine != null)
+                _CallLineRow(
+                  line: callLine,
+                  time: time,
+                  textColor: textColor,
+                  metaColor: metaColor,
                 )
               else if (message.trim().isNotEmpty) ...[
                 AppLinkifiedText(

@@ -132,6 +132,24 @@ type StoriesRealtimePayload = {
   storyId: string;
 };
 
+type CallRealtimePayload = {
+  /** `call:ringing`: the callee's phone confirmed it is ringing. */
+  type: "call:incoming" | "call:ringing" | "call:accepted" | "call:ended";
+  callId: string;
+  conversationId: string;
+  callerUserId: string;
+  calleeUserId: string;
+  /** Filled on `call:incoming` so the callee can render the caller. */
+  caller?: {
+    id: string;
+    displayName: string;
+    avatarUrl: string | null;
+  };
+  /** Filled on `call:ended`. */
+  reason?: "ended" | "declined" | "missed" | "cancelled";
+  endedByUserId?: string | null;
+};
+
 type ProductRealtimePayload = {
   type: "product:updated";
   productId: string;
@@ -508,6 +526,18 @@ export class ConversationsRealtimeGateway
     const uniqueUserIds = [...new Set(userIds)];
     for (const userId of uniqueUserIds) {
       this.server.to(this.userRoom(userId)).emit("live:updated", payload);
+    }
+  }
+
+  /** Voice call signalling (ringing / accepted / ended) to both sides. */
+  emitCallEvent(userIds: string[], payload: CallRealtimePayload) {
+    if (!this.server) {
+      return;
+    }
+
+    const uniqueUserIds = [...new Set(userIds)];
+    for (const userId of uniqueUserIds) {
+      this.server.to(this.userRoom(userId)).emit("calls:updated", payload);
     }
   }
 

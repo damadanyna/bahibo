@@ -1,0 +1,35 @@
+# Banay — appels vocaux et lives auto-hébergés, coût zéro.
+#
+#   livekit  : SFU WebRTC (licence Apache-2.0, gratuit en auto-hébergement)
+#   coturn   : STUN/TURN (licence BSD-3-Clause, gratuit) pour les clients
+#              derrière un NAT strict (fréquent sur les réseaux mobiles
+#              malgaches : Telma, Orange, Airtel font du CGNAT).
+#
+# `network_mode: host` : les deux services écoutent directement sur les
+# ports du VPS, aucune plage UDP à traduire à travers le NAT de Docker.
+#
+# Mise en route : voir infra/livekit/README.md.
+services:
+  livekit:
+    # Épinglez le tag après le premier `docker compose pull`
+    # (docker image inspect livekit/livekit-server --format '{{.RepoTags}}').
+    image: livekit/livekit-server:latest
+    container_name: banay-livekit
+    restart: unless-stopped
+    network_mode: host
+    command: ["--config", "/etc/livekit.yaml"]
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+
+  coturn:
+    image: coturn/coturn:4
+    container_name: banay-coturn
+    restart: unless-stopped
+    network_mode: host
+    # coturn lit la clé privée Let's Encrypt (600, root) : il tourne en
+    # root à l'intérieur du conteneur, sans autre privilège sur l'hôte.
+    user: "0:0"
+    command: ["-c", "/etc/coturn/turnserver.conf"]
+    volumes:
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro

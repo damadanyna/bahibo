@@ -12,6 +12,7 @@ import { ProductsModule } from './modules/products/products.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { CallsModule } from './modules/calls/calls.module';
 import { CartModule } from './modules/cart/cart.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
@@ -53,6 +54,7 @@ import { StoriesModule } from './modules/stories/stories.module';
     OrdersModule,
     ShipmentsModule,
     StoriesModule,
+    CallsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: AuthThrottlerGuard }],
 })

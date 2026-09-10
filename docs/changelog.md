@@ -870,3 +870,216 @@ futurs diagnostics.
   cœurs pour qu'il voie l'engouement.
 - **Inchangé** : `LiveRoomChannel` (le champ `count` existait, borné à 50 à
   la réception).
+
+### 6. Appel vocal entre deux utilisateurs depuis la discussion (façon WhatsApp)
+
+- **Demande** : un appel vocal entre les deux participants d'une
+  discussion, lancé depuis la ChatPage.
+- **Architecture (rien de nouveau côté infra)** :
+  - *audio* : une salle LiveKit audio seule par appel (`call-<id>`), Opus
+    24 kb/s avec DTX (≈ 11 Mo/h), jeton limité au micro ;
+  - *signalisation* : la passerelle temps réel existante, nouvel événement
+    `calls:updated` (`call:incoming`, `call:accepted`, `call:ended`) ;
+  - *réveil du destinataire* : push FCM `incoming_call` (data-only sur
+    Android : l'app dessine elle-même une notification plein écran,
+    catégorie « appel », sonnerie, et la retire sur `call_cancelled` ;
+    alerte classique sur iOS) ;
+  - *historique* : une ligne « 📞 Appel vocal · 2 min 05 », « 📞 Appel vocal
+    manqué » ou « 📞 Appel vocal refusé » dans la discussion (message TEXT
+    envoyé par l'appelant, push uniquement pour l'appel manqué).
+- **Backend** :
+  - `prisma/schema.prisma` + migration `20260910_add_voice_calls` : enum
+    `VoiceCallStatus` (RINGING, ACCEPTED, DECLINED, MISSED, CANCELLED,
+    ENDED) et modèle `VoiceCall` (conversation, appelant, appelé, salle,
+    horodatages) ;
+  - `modules/livekit/` (nouveau) : `LivekitService` (URL + jeton) extrait de
+    `ProfilesService`, qui y délègue désormais ;
+  - `modules/calls/` (nouveau) : `POST /calls` (sonne l'autre participant,
+    409 si l'un des deux est déjà en appel), `POST /calls/:id/accept`,
+    `/decline`, `/end`, `GET /calls/:id`. Sonnerie bornée à 45 s côté
+    serveur (→ MISSED) ; lignes RINGING/ACCEPTED orphelines expirées
+    paresseusement (redémarrage serveur, app tuée) pour ne jamais bloquer
+    un utilisateur en « déjà en appel » ;
+  - `conversations-realtime.gateway.ts` : `emitCallEvent` ;
+  - `push-notifications.service.ts` : `sendIncomingCallNotification`,
+    `sendCallCancelledNotification`, helper `sendToUser` ;
+  - `conversations.service.ts` : `assertUsersCanInteract` rendu public
+    (blocage respecté pour les appels) ; `sendMessage` accepte
+    `{ skipPush }` pour les lignes système.
+- **App** :
+  - `services/calls_api_service.dart`, `services/voice_call_service.dart`
+    (nouveaux) : session unique (`ValueNotifier`), écoute du socket,
+    connexion LiveKit, micro / haut-parleur, minuterie de sonnerie 45 s,
+    vibration périodique côté appelé, dédoublonnage socket + push,
+    raccrochage automatique si l'autre disparaît de la salle ;
+  - `page/call/voice_call_page.dart` (nouveau) : écran plein écran (avatar
+    avec anneaux pulsés, nom, état ou durée, boutons Micro / Raccrocher /
+    Haut-parleur, ou Refuser / Accepter) ; retour bloqué pendant l'appel ;
+  - `chat_page.dart` : icône téléphone dans l'en-tête (masquée sans
+    conversation serveur ou si bloqué) → `VoiceCallService.startCall` ;
+  - `push_notification_service.dart` : canal Android « Appels Banay »
+    (importance max, usage sonnerie), notification plein écran depuis
+    l'isolat d'arrière-plan, routage `incoming_call` / `call_cancelled`,
+    ouverture de l'appel depuis la notification ;
+  - `chat_realtime_service.dart` : abonnement `calls:updated` ;
+  - `session_gate.dart` : `VoiceCallService.instance.bind()` après la
+    connexion du socket ;
+  - Android : permissions `USE_FULL_SCREEN_INTENT`, `VIBRATE`, activité
+    `showWhenLocked` / `turnScreenOn` ; iOS : mode arrière-plan `audio`,
+    texte micro mis à jour.
+- **Limites connues (v1)** :
+  - pas de sonnerie audio in-app (aucune lib audio dans le projet) : en
+    premier plan l'appelé vibre et voit l'écran ; en arrière-plan / app
+    tuée, la notification sonne avec le son des messages ;
+  - pas de CallKit / ConnectionService : sur iOS app tuée, l'appel arrive
+    en notification classique ; sur Android 14+, passer l'app en
+    arrière-plan pendant un appel peut couper le micro (service
+    d'avant-plan de type `microphone` non déclaré) ;
+  - un seul appel à la fois par utilisateur ; pas de vidéo.
+- **À déployer** : migration Prisma (`prisma migrate deploy`) puis backend.
+
+### 7. Appels vocaux : auto-hébergement (LiveKit + coturn), écran d'appel natif, qualité réseau
+
+- **Demande** : cahier des charges « coût zéro » (aucun service payant,
+  LiveKit auto-hébergé + coturn sur le VPS, tokens backend, signalisation
+  Socket.IO, FCM gratuit), écran natif CallKit / ConnectionService,
+  reconnexion, optimisation data pour Madagascar, documentation.
+- **Infra** (`infra/livekit/`, nouveau) : `docker-compose.yml`
+  (livekit-server Apache-2.0 + coturn BSD-3, `network_mode: host`),
+  `livekit.yaml` (signalisation sur 127.0.0.1:7880 derrière Nginx, média
+  7881/tcp + 50000-50200/udp, `turn_servers` udp 3478 + tls 5349),
+  `turnserver.conf` (long-term credentials, TLS Let's Encrypt, réseaux
+  internes refusés, relais 49160-49400/udp), `nginx-livekit.conf`
+  (wss + timeouts 1 h), `README.md` (UFW, certificats, déploiement).
+- **Backend** : jeton d'appel ramené à 15 min (le temps de rejoindre) ;
+  `.env.example` documente `LIVEKIT_*`. Rien d'autre : les modules
+  `calls` / `livekit` de l'entrée 6 sont déjà indépendants du fournisseur
+  (LiveKit Cloud → VPS = changer `LIVEKIT_URL` et les clés).
+- **App** :
+  - `flutter_callkit_incoming` 3.1.5 (MIT) ajouté ; wrapper
+    `lib/services/incoming_call_native_ui.dart` (afficher / retirer /
+    marquer connecté / appels actifs). Remplace la notification locale
+    plein écran de l'entrée 6 (méthodes et canal `banay_calls`
+    supprimés) ;
+  - `voice_call_service.dart` : appel entrant en arrière-plan → écran
+    natif (sonnerie système, écran verrouillé) ; écoute des événements
+    natifs (accepter, refuser, fin, timeout, mute iOS) ; reprise après
+    démarrage à froid via `activeCalls()` (appel accepté sur l'écran natif
+    alors que l'app était tuée) ; `adaptiveStream` / `dynacast` activés,
+    `AudioCaptureOptions` (écho, bruit, gain) explicites ; états
+    `isReconnecting` (`RoomReconnecting/Reconnected`) et `quality`
+    (`ParticipantConnectionQualityUpdatedEvent`) ;
+  - `voice_call_page.dart` : pastille de qualité (3 barres + libellé) en
+    appel, statut « Reconnexion… » ;
+  - `push_notification_service.dart` : isolat FCM → écran natif ;
+    `callkitBackgroundHandler` enregistré au démarrage pour qu'un refus sur
+    l'écran natif, app tuée, prévienne le serveur.
+- **Docs** : `docs/voice-calls.md` (tableau des services payants évités
+  et de leurs remplaçants avec licences, architecture, variables
+  d'environnement, optimisation Madagascar, consommation ≈ 10–12 Mo/h par
+  téléphone, test local, limites).
+- **Non couvert, documenté** : réveil iOS app tuée (PushKit + envoi APNs
+  direct, gratuit mais à câbler) ; déclaration Play Console des services
+  d'avant-plan `phoneCall` / `microphone` apportés par le plugin.
+
+### 8. Appel vocal : « Appel… » puis « Appel en cours… » quand le téléphone de l'autre sonne
+
+- **Demande** : comme WhatsApp, l'appelant ne doit voir « Appel en
+  cours… » que lorsque l'invitation a réellement atteint le téléphone de
+  l'autre ; avant (ou si l'autre est injoignable) il voit « Appel… ».
+- **Avant** : « Sonnerie… » s'affichait dès la réponse du serveur, même
+  téléphone éteint.
+- **Backend** : `POST /calls/:id/ringing` (appelé uniquement,
+  idempotent, ignoré si l'appel n'est plus en sonnerie) → événement
+  `call:ringing` à l'appelant. Aucune migration.
+- **App appelée** : accusé envoyé dès que l'appel entrant est affiché, par
+  le socket / le push au premier plan (`_handleIncoming`) comme depuis
+  l'isolat FCM quand l'app est en arrière-plan ou tuée (après affichage de
+  l'écran natif).
+- **App appelante** : `VoiceCallSession.peerReached` ; « Appel… » pendant
+  la création et tant que l'accusé n'est pas arrivé, « Appel en cours… »
+  ensuite. Un accusé qui arriverait avant le retour de la requête de
+  démarrage est conservé (`_earlyRingingAckCallId`) puis appliqué.
+- Sans accusé, l'appelant reste sur « Appel… » jusqu'à « Pas de réponse »
+  (45 s) : signe que l'autre n'est pas joignable.
+
+### 9. Live « pendu » quand le vendeur perd sa connexion : battement de cœur + balayage serveur
+
+- **Symptôme** : données épuisées, batterie vide ou app tuée pendant un
+  live → la pastille « en direct » restait visible pendant des jours et un
+  spectateur qui cliquait tombait sur une salle vide (écran noir).
+- **Cause** : la session n'était fermée que par l'appel « stop » de l'app
+  hôte, jamais envoyé dans ces cas ; aucune vérification côté serveur ni
+  borne de durée ; `getSellerLiveJoinInfo` délivrait un jeton tant que la
+  ligne existait.
+- **Backend** (`profiles.service.ts`, `profiles.controller.ts`,
+  `profiles-live.scheduler.ts` nouveau, `livekit.service.ts`) :
+  - `POST /profiles/me/live/heartbeat` : l'hôte ping toutes les 30 s
+    (`updatedAt` de la session sert d'horodatage, aucune migration) ; 404
+    si la session est déjà fermée ;
+  - `ProfilesLiveScheduler` (`@Interval` 30 s) → `expireStaleLiveSessions` :
+    toute session sans ping depuis 90 s est fermée et `live:updated`
+    (`isLive: false`) est émis au vendeur et à ses abonnés. Nettoie aussi
+    les lignes déjà bloquées en base ;
+  - `getSellerLiveJoinInfo` : refuse (404 « Ce live est terminé ») et
+    ferme la session si le ping est périmé, ou si LiveKit ne voit pas
+    l'hôte dans la salle une minute après le démarrage
+    (`LivekitService.listParticipantIdentities`, `RoomServiceClient`) ;
+  - `isLive` de la liste des boutiques suivies et l'entrée « En direct »
+    des notifications appliquent la même borne de 90 s ;
+  - `stopCurrentUserLive` et le balayage partagent `endLiveSession`.
+- **App hôte** (`live_preview_page.dart`) : minuterie de ping dès le
+  passage en direct ; sur 404 → état « Live interrompu » (diffusion
+  coupée, seul bouton « Fermer ») ; bandeau « Connexion perdue,
+  reconnexion en cours… » tant que LiveKit n'est pas reconnecté.
+- **App spectateur** (`live_watch_page.dart`) : 404 à la jointure ou
+  `live:updated isLive:false` pendant le visionnage → écran « Ce live est
+  terminé » au lieu d'une attente infinie.
+- **Délai** : un live mort disparaît au plus 2 min après le dernier ping.
+- **À déployer** : backend seulement (pas de migration).
+
+### 10. Appel vocal coupé automatiquement à 45 s côté appelant
+
+- **Symptôme** : appel accepté, audio des deux côtés, puis coupure à
+  45 s exactement après le lancement (deux appels en base : 45,1 s et
+  45,2 s, terminés par l'appelant).
+- **Diagnostic** : la minuterie de sonnerie de l'appelant (45 s → « Pas de
+  réponse ») n'était pas annulée : l'appelant ne traitait pas l'événement
+  socket `call:accepted`. Un test de bout en bout (socket authentifié +
+  API) montre que le serveur l'émet bien en < 1 s ; le défaut est côté
+  app. L'abonnement aux événements d'appel (`VoiceCallService.bind()`)
+  n'était créé qu'au démarrage de session : une app relancée à chaud
+  (hot reload) après l'ajout de cette ligne ne l'exécutait jamais. En
+  appelé, le téléphone recevait quand même l'appel via le push, d'où
+  l'asymétrie observée.
+- **Correctif** (`voice_call_service.dart`) :
+  - `bind()` est appelé par chaque point d'entrée (`startCall`,
+    `handleIncomingPush`, `openIncomingCall`) et reste idempotent (la
+    reprise des appels natifs ne tourne qu'une fois) ;
+  - filet indépendant du socket : `ParticipantConnectedEvent` LiveKit
+    (l'autre participant rejoint la salle) passe l'appel sortant en actif
+    et annule la minuterie, même si `call:accepted` n'arrive jamais.
+- **Note** : après un hot reload, redémarrer complètement l'app sur le
+  téléphone pour que le code de démarrage de session s'exécute.
+
+### 11. Appels : icônes entrant / sortant / manqué, notification « Appel manqué » unique, live sans doublon
+
+- **Lignes d'appel dans la discussion** (`chat_page.dart`, `_CallLine` +
+  `_CallLineRow`) : le texte posté par l'appelant (« 📞 Appel vocal · 2 min
+  05 », « … manqué », « … refusé ») est rendu selon le point de vue du
+  lecteur : sortant (flèche verte `call_made`) pour l'appelant, entrant
+  (`call_received`) pour l'autre ; manqué en rouge `call_missed` chez celui
+  qui l'a manqué, en ambre `call_missed_outgoing` « Pas de réponse » chez
+  l'appelant ; refusé en rouge `call_end` / ambre. Durée ou état en
+  sous-titre. Les anciens messages sont reconnus par leur préfixe, sans
+  migration.
+- **Notification d'appel manqué** : push dédié `missed_call` (« Appel
+  manqué — X a essayé de vous appeler ») envoyé à l'appelé seul, pour les
+  appels sans réponse ou annulés par l'appelant ; l'appui ouvre la
+  discussion (`push_notification_service.dart`, routage conversation). La
+  ligne de chat n'envoie plus de push (elle doublait), et la notification
+  d'appel manqué du plugin natif est désactivée (elle doublait aussi).
+  Appels terminés ou refusés : aucune notification.
+- **Live déjà à l'écran** : `LiveWatchPage.isWatching()` ; une notification
+  (push ou liste) pour le live déjà en cours de visionnage n'ouvre plus un
+  second lecteur (`notification_navigation.dart`).

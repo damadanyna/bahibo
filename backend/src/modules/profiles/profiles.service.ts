@@ -7,13 +7,13 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, ShopRequestStatus, UserRole } from '@prisma/client';
-import { AccessToken, TrackSource } from 'livekit-server-sdk';
 import { randomUUID } from 'node:crypto';
 
 import { computeDistanceInKm } from '../../utils/geo';
 import { resolveMadagascarProvince } from '../../utils/madagascar-provinces';
 import { CloudinaryService } from '../auth/cloudinary.service';
 import { ConversationsRealtimeGateway } from '../conversations/realtime/conversations-realtime.gateway';
+import { LivekitService } from '../livekit/livekit.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushNotificationsService } from '../push-notifications/push-notifications.service';
@@ -22,6 +22,20 @@ import { UpdateProfileDto, UpdateSellerProfileDto } from './dto/update-profile.d
 const DISPLAY_NAME_CHANGE_COOLDOWN_DAYS = 7;
 /** Same threshold as the mobile client's re-sync rule (150 m). */
 const LOCATION_HISTORY_MIN_MOVE_KM = 0.15;
+/**
+ * A live whose host app has not sent a heartbeat for this long is over,
+ * whatever the row says: data ran out, battery died, app killed. The host
+ * pings every 30 s (see LivePreviewPage), so three misses in a row.
+ */
+export const LIVE_HEARTBEAT_STALE_MS = 90_000;
+/** Give the host a minute to actually join the LiveKit room after start. */
+const LIVE_PRESENCE_GRACE_MS = 60_000;
+
+type LiveSessionOwner = {
+  id: string;
+  userId: string;
+  followers: { followerUserId: string }[];
+};
 /**
  * A host calling start again on a live opened less than this long ago is
  * resuming (reconnect, app relaunch), not starting: followers are not
@@ -45,6 +59,7 @@ export class ProfilesService {
     private readonly notificationsService: NotificationsService,
     private readonly pushNotificationsService: PushNotificationsService,
     private readonly configService: ConfigService,
+    private readonly livekitService: LivekitService,
   ) {}
 
   async getCurrentUserProfile(userId: string) {
@@ -523,6 +538,79 @@ export class ProfilesService {
       throw new NotFoundException('Seller profile not found');
     }
 
+    await this.endLiveSession(sellerProfile);
+
+    return {
+      sellerProfileId: sellerProfile.id,
+      isLive: false,
+    };
+  }
+
+  /**
+   * "Still broadcasting" ping from the host app. 404 once the session was
+   * closed (by stop, by the sweeper, or by a viewer's join check) so the
+   * app can show "Live interrompu" instead of streaming into the void.
+   */
+  async heartbeatCurrentUserLive(userId: string) {
+    const sellerProfile = await this.prisma.sellerProfile.findUnique({
+      where: { userId },
+      select: { id: true, liveSession: true },
+    });
+    if (!sellerProfile) {
+      throw new NotFoundException('Seller profile not found');
+    }
+
+    const liveSession = sellerProfile.liveSession;
+    if (!liveSession || liveSession.endedAt != null) {
+      throw new NotFoundException('Live session not found');
+    }
+
+    const touched = await this.prisma.sellerLiveSession.update({
+      where: { id: liveSession.id },
+      data: { updatedAt: new Date() },
+    });
+
+    return {
+      sellerProfileId: sellerProfile.id,
+      isLive: true,
+      startedAt: touched.startedAt.toISOString(),
+    };
+  }
+
+  /**
+   * Closes every live whose host stopped pinging (see
+   * LIVE_HEARTBEAT_STALE_MS) and tells the followers. Run by the scheduler
+   * every 30 s; also cleans rows stuck "live" from before heartbeats.
+   */
+  async expireStaleLiveSessions() {
+    const staleSessions = await this.prisma.sellerLiveSession.findMany({
+      where: {
+        endedAt: null,
+        updatedAt: { lt: new Date(Date.now() - LIVE_HEARTBEAT_STALE_MS) },
+      },
+      include: {
+        sellerProfile: {
+          select: {
+            id: true,
+            userId: true,
+            followers: { select: { followerUserId: true } },
+          },
+        },
+      },
+    });
+
+    for (const session of staleSessions) {
+      await this.endLiveSession(session.sellerProfile);
+      this.logger.log(
+        `Live of seller ${session.sellerProfile.id} closed: no heartbeat since ${session.updatedAt.toISOString()}`,
+      );
+    }
+
+    return staleSessions.length;
+  }
+
+  /** Single exit path for a live: row closed, seller + followers told. */
+  private async endLiveSession(sellerProfile: LiveSessionOwner) {
     await this.prisma.sellerLiveSession.updateMany({
       where: {
         sellerProfileId: sellerProfile.id,
@@ -535,7 +623,7 @@ export class ProfilesService {
 
     this.conversationsRealtimeGateway.emitLiveEvent(
       [
-        userId,
+        sellerProfile.userId,
         ...sellerProfile.followers.map((follower) => follower.followerUserId),
       ],
       {
@@ -547,11 +635,6 @@ export class ProfilesService {
         startedAt: null,
       },
     );
-
-    return {
-      sellerProfileId: sellerProfile.id,
-      isLive: false,
-    };
   }
 
   async getSellerLiveJoinInfo(currentUserId: string, sellerProfileId: string) {
@@ -560,6 +643,7 @@ export class ProfilesService {
       include: {
         user: true,
         liveSession: true,
+        followers: { select: { followerUserId: true } },
       },
     });
 
@@ -570,6 +654,25 @@ export class ProfilesService {
     const liveSession = sellerProfile.liveSession;
     if (!liveSession || liveSession.endedAt != null) {
       throw new NotFoundException('Live session not found');
+    }
+
+    // The row alone is not proof of a live: the host may have lost data
+    // minutes ago. Refuse (and close) when the heartbeat is stale, or when
+    // LiveKit says the host is not in the room once past the join grace.
+    const now = Date.now();
+    const heartbeatStale =
+      now - liveSession.updatedAt.getTime() > LIVE_HEARTBEAT_STALE_MS;
+    let hostAbsent = false;
+    if (!heartbeatStale && now - liveSession.startedAt.getTime() > LIVE_PRESENCE_GRACE_MS) {
+      const identities = await this.livekitService.listParticipantIdentities(
+        this.buildLiveRoomName(sellerProfile.id),
+      );
+      hostAbsent =
+        identities != null && !identities.includes(`seller-${sellerProfile.userId}`);
+    }
+    if (heartbeatStale || hostAbsent) {
+      await this.endLiveSession(sellerProfile);
+      throw new NotFoundException('Ce live est terminé');
     }
 
     // Lets the viewer screen render its Follow button in the right state
@@ -1104,7 +1207,12 @@ export class ProfilesService {
 
     return followingLinks.map((link) => {
       const liveSession = link.sellerProfile.liveSession;
-      const isLive = liveSession != null && liveSession.endedAt == null;
+      // Same staleness rule as the sweeper, so the badge never outlives the
+      // host's last heartbeat by more than a few seconds.
+      const isLive =
+        liveSession != null &&
+        liveSession.endedAt == null &&
+        Date.now() - liveSession.updatedAt.getTime() <= LIVE_HEARTBEAT_STALE_MS;
 
       return {
         id: link.sellerProfile.user.id,
@@ -1645,15 +1753,10 @@ export class ProfilesService {
   }
 
   private requireLivekitUrl() {
-    const livekitUrl = this.configService.get<string>('LIVEKIT_URL')?.trim() ?? '';
-    if (livekitUrl.length === 0) {
-      throw new BadRequestException('LIVEKIT_URL is not configured');
-    }
-
-    return livekitUrl;
+    return this.livekitService.requireUrl();
   }
 
-  private async buildLivekitToken(params: {
+  private buildLivekitToken(params: {
     roomName: string;
     identity: string;
     name: string;
@@ -1662,31 +1765,7 @@ export class ProfilesService {
     /** Data channel (live comments / likes). Defaults to `canPublish`. */
     canPublishData?: boolean;
   }) {
-    const apiKey = this.configService.get<string>('LIVEKIT_API_KEY')?.trim() ?? '';
-    const apiSecret = this.configService.get<string>('LIVEKIT_API_SECRET')?.trim() ?? '';
-
-    if (apiKey.length === 0 || apiSecret.length === 0) {
-      throw new BadRequestException('LiveKit credentials are not configured');
-    }
-
-    const token = new AccessToken(apiKey, apiSecret, {
-      identity: params.identity,
-      name: params.name,
-      ttl: '2h',
-    });
-
-    token.addGrant({
-      roomJoin: true,
-      room: params.roomName,
-      canPublish: params.canPublish,
-      canSubscribe: params.canSubscribe,
-      canPublishData: params.canPublishData ?? params.canPublish,
-      canPublishSources: params.canPublish
-        ? [TrackSource.CAMERA, TrackSource.MICROPHONE]
-        : undefined,
-    });
-
-    return token.toJwt();
+    return this.livekitService.buildToken(params);
   }
 
   private buildMetricUserSubtitle(params: {

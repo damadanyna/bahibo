@@ -7,7 +7,7 @@ import {
   type App,
   type ServiceAccount,
 } from "firebase-admin/app";
-import { getMessaging } from "firebase-admin/messaging";
+import { getMessaging, type MulticastMessage } from "firebase-admin/messaging";
 
 import { PrismaService } from "../prisma/prisma.service";
 import { RegisterDeviceTokenDto } from "../auth/dto/register-device-token.dto";
@@ -99,6 +99,22 @@ type SendLiveStartedNotificationArgs = {
   sellerDisplayName: string;
   sellerAvatarUrl?: string;
   liveTitle: string;
+};
+
+type SendIncomingCallNotificationArgs = {
+  recipientUserId: string;
+  callId: string;
+  conversationId: string;
+  callerDisplayName: string;
+  callerAvatarUrl?: string;
+};
+
+type SendMissedCallNotificationArgs = {
+  recipientUserId: string;
+  callId: string;
+  conversationId: string;
+  callerDisplayName: string;
+  callerAvatarUrl?: string;
 };
 
 /** A push fanned out to every follower of one shop (story, live). */
@@ -734,6 +750,157 @@ export class PushNotificationsService {
         },
       });
     }
+  }
+
+  /**
+   * Wakes the callee's phone. Android gets a data-only message so the app
+   * renders (and can dismiss) its own full-screen call notification; iOS
+   * gets a plain alert, opened into the call screen if still ringing.
+   */
+  async sendIncomingCallNotification(args: SendIncomingCallNotificationArgs) {
+    return this.sendToUser(args.recipientUserId, {
+      data: {
+        type: "incoming_call",
+        callId: args.callId,
+        conversationId: args.conversationId,
+        callerName: args.callerDisplayName,
+        callerAvatarUrl: args.callerAvatarUrl ?? "",
+      },
+      android: {
+        priority: "high",
+        // A call not delivered within the ring window is useless.
+        ttl: 45_000,
+      },
+      apns: {
+        headers: {
+          "apns-priority": "10",
+        },
+        payload: {
+          aps: {
+            alert: {
+              title: args.callerDisplayName,
+              body: "Appel vocal entrant",
+            },
+            sound: "default",
+            "thread-id": `call-${args.callId}`,
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * The callee never picked up, or the caller gave up first: one clear tile
+   * for the callee, opening the conversation (carries the same
+   * `conversationId` / `participant*` keys as a chat push).
+   */
+  async sendMissedCallNotification(args: SendMissedCallNotificationArgs) {
+    const groupKey = `missed-call-${args.callId}`;
+    return this.sendToUser(args.recipientUserId, {
+      notification: {
+        title: "Appel manqué",
+        body: `${args.callerDisplayName} a essayé de vous appeler.`,
+      },
+      data: {
+        type: "missed_call",
+        callId: args.callId,
+        conversationId: args.conversationId,
+        participantName: args.callerDisplayName,
+        participantRole: "",
+        participantAvatarUrl: args.callerAvatarUrl ?? "",
+      },
+      android: {
+        priority: "high",
+        notification: {
+          channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
+          sound: ANDROID_NOTIFICATION_SOUND,
+          clickAction: "FLUTTER_NOTIFICATION_CLICK",
+          tag: groupKey,
+        },
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: "default",
+            "thread-id": groupKey,
+          },
+        },
+      },
+    });
+  }
+
+  /** Silent: lets the callee's app take down its ringing notification. */
+  async sendCallCancelledNotification(args: {
+    recipientUserId: string;
+    callId: string;
+  }) {
+    return this.sendToUser(args.recipientUserId, {
+      data: {
+        type: "call_cancelled",
+        callId: args.callId,
+      },
+      android: {
+        priority: "high",
+        ttl: 60_000,
+      },
+      apns: {
+        headers: {
+          "apns-push-type": "background",
+          "apns-priority": "5",
+        },
+        payload: {
+          aps: {
+            "content-available": 1,
+          },
+        },
+      },
+    });
+  }
+
+  /** One user, every device; invalid tokens are pruned like elsewhere. */
+  private async sendToUser(
+    userId: string,
+    message: Omit<MulticastMessage, "tokens">,
+  ) {
+    const deviceTokens = await this.prisma.userDeviceToken.findMany({
+      where: { userId },
+      select: { token: true },
+    });
+
+    if (deviceTokens.length === 0) {
+      return false;
+    }
+
+    if (!this.firebaseApp) {
+      this.logger.warn(
+        `Skipping push for user ${userId} because Firebase Admin is not configured.`,
+      );
+      return false;
+    }
+
+    const response = await getMessaging(this.firebaseApp).sendEachForMulticast({
+      ...message,
+      tokens: deviceTokens.map((deviceToken) => deviceToken.token),
+    });
+
+    const invalidTokens = response.responses
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => {
+        const code = item.error?.code;
+        return (
+          code === "messaging/invalid-registration-token" ||
+          code === "messaging/registration-token-not-registered"
+        );
+      })
+      .map(({ index }) => deviceTokens[index].token);
+
+    if (invalidTokens.length > 0) {
+      await this.prisma.userDeviceToken.deleteMany({
+        where: { token: { in: invalidTokens } },
+      });
+    }
+
+    return response.successCount > 0;
   }
 
   /** Every follower of the shop gets one tile per seller (same tag). */

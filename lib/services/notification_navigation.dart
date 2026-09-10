@@ -17,6 +17,10 @@ Future<void> openLiveFromNotification(
   if (targetId.isEmpty) {
     return;
   }
+  // Already watching this very live: the notification has nothing to open.
+  if (LiveWatchPage.isWatching(targetId)) {
+    return;
+  }
 
   final name = sellerName.trim();
   await navigator.push(

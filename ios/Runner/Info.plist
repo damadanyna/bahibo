@@ -31,6 +31,7 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
+		<string>audio</string>
 	</array>
 	<key>AppGroupId</key>
 	<string>group.com.example.banay.shared</string>
@@ -50,7 +51,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Banay utilise la camera pour lancer un live video.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Banay utilise le microphone pour diffuser un live video.</string>
+	<string>Banay utilise le microphone pour les appels vocaux et les lives vidéo.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Banay utilise votre position pour afficher votre emplacement actuel sur votre profil.</string>
 	<key>UIApplicationSceneManifest</key>

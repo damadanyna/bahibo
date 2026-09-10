@@ -259,6 +259,16 @@ class CatalogApiService {
     return Map<String, dynamic>.from(data as Map);
   }
 
+  /// "Still broadcasting": sent every 30 s by the host screen. A 404 means
+  /// the server already closed the live (no heartbeat for too long).
+  Future<Map<String, dynamic>> heartbeatCurrentUserLive() async {
+    final data = await _client.post(
+      '/profiles/me/live/heartbeat',
+      authenticated: true,
+    );
+    return Map<String, dynamic>.from(data as Map);
+  }
+
   Future<Map<String, dynamic>> stopCurrentUserLive() async {
     final data = await _client.post(
       '/profiles/me/live/stop',

@@ -365,7 +365,7 @@ export class ConversationsService {
     };
   }
 
-  private async assertUsersCanInteract(
+  async assertUsersCanInteract(
     firstUserId: string,
     secondUserId: string,
   ) {
@@ -1208,6 +1208,10 @@ export class ConversationsService {
     conversationId: string,
     dto: CreateMessageDto,
     productSnapshot?: ConversationMessageProductSnapshot | null,
+    options?: {
+      /** System lines (e.g. a finished call) must not ping the recipient. */
+      skipPush?: boolean;
+    },
   ) {
     const content = dto.content.trim();
 
@@ -1317,18 +1321,19 @@ export class ConversationsService {
 
     const recipientConnected =
       this.conversationsRealtimeGateway.isUserConnected(recipientUserId);
-    const notificationDelivered =
-      await this.pushNotificationsService.sendChatMessageNotification({
-        recipientUserId,
-        conversationId: conversation.id,
-        senderDisplayName: sender.displayName,
-        senderAvatarUrl: sender.avatarUrl ?? undefined,
-        senderRoleLabel: this.resolveRoleLabel(sender),
-        recipientDisplayName: recipient.displayName,
-        content,
-        conversationKind: conversation.kind,
-        productId: conversation.productId ?? undefined,
-      });
+    const notificationDelivered = options?.skipPush
+      ? false
+      : await this.pushNotificationsService.sendChatMessageNotification({
+          recipientUserId,
+          conversationId: conversation.id,
+          senderDisplayName: sender.displayName,
+          senderAvatarUrl: sender.avatarUrl ?? undefined,
+          senderRoleLabel: this.resolveRoleLabel(sender),
+          recipientDisplayName: recipient.displayName,
+          content,
+          conversationKind: conversation.kind,
+          productId: conversation.productId ?? undefined,
+        });
 
     this.logger.debug(
       `[DELIVERY CHECK] recipientId=${recipientUserId} | ` +

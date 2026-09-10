@@ -1,0 +1,50 @@
+# LiveKit auto-hébergé pour Banay (appels vocaux + lives vendeurs).
+# Remplacez <DOMAINE>, <IP_PUBLIQUE>, et les deux secrets avant de lancer.
+
+# Signalisation HTTP / WebSocket. Reste sur l'interface locale : c'est
+# Nginx qui l'expose en wss://livekit.<DOMAINE> (TLS Let's Encrypt).
+port: 7880
+bind_addresses:
+  - "127.0.0.1"
+
+rtc:
+  # Média : UDP de préférence, TCP en secours quand l'UDP est bloqué.
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 50200
+  # Le VPS a son IP publique directement sur l'interface : LiveKit la
+  # découvre seul via STUN. Sinon, forcez-la avec node_ip.
+  use_external_ip: true
+  # node_ip: <IP_PUBLIQUE>
+
+  # coturn auto-hébergé, remis aux clients dans la réponse de connexion.
+  # Identifiants statiques : identiques à `user=` dans turnserver.conf.
+  turn_servers:
+    - host: turn.<DOMAINE>
+      port: 3478
+      protocol: udp
+      username: banay
+      credential: <MOT_DE_PASSE_TURN>
+    # TURN sur TLS 443-like (5349) : passe les pare-feux qui ne laissent
+    # sortir que du HTTPS.
+    - host: turn.<DOMAINE>
+      port: 5349
+      protocol: tls
+      username: banay
+      credential: <MOT_DE_PASSE_TURN>
+
+# Clé/secret d'API : reportés tels quels dans backend/.env
+# (LIVEKIT_API_KEY / LIVEKIT_API_SECRET). Secret : 32 caractères minimum,
+# ex. `openssl rand -base64 32`.
+keys:
+  APIbanay: <SECRET_LIVEKIT>
+
+room:
+  # Les salles sont créées par le premier participant (jeton signé par
+  # le backend) et fermées 60 s après le départ du dernier.
+  auto_create: true
+  empty_timeout: 60
+
+logging:
+  level: info
+  json: false

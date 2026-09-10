@@ -79,6 +79,17 @@ export class ProfilesController {
     };
   }
 
+  /** Every 30 s while the host broadcasts; 404 once the live is closed. */
+  @UseGuards(JwtAuthGuard)
+  @Post('me/live/heartbeat')
+  async heartbeatCurrentUserLive(@Req() req: { user: { userId: string } }) {
+    return {
+      success: true,
+      message: 'Live heartbeat recorded',
+      data: await this.profilesService.heartbeatCurrentUserLive(req.user.userId),
+    };
+  }
+
   @UseGuards(JwtAuthGuard)
   @Post('me/live/stop')
   async stopCurrentUserLive(@Req() req: { user: { userId: string } }) {

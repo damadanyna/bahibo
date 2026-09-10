@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:banay/component/live/live_overlay_widgets.dart';
 import 'package:banay/component/live/live_tap_hearts.dart';
 import 'package:banay/component/ui/dinamic_icon_input.dart';
+import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/catalog_api_service.dart';
+import 'package:banay/services/chat_realtime_service.dart';
 import 'package:banay/services/live/live_room_channel.dart';
 import 'package:banay/services/live/live_view_quality.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
@@ -27,6 +29,14 @@ class LiveWatchPage extends StatefulWidget {
   final String sellerProfileId;
   final String sellerName;
   final String sellerAvatarUrl;
+
+  /// Seller whose live is on screen right now, so a notification for that
+  /// same live does not stack a second player on top of the first.
+  static String? _watchingSellerProfileId;
+
+  static bool isWatching(String sellerProfileId) =>
+      _watchingSellerProfileId != null &&
+      _watchingSellerProfileId == sellerProfileId.trim();
 
   @override
   State<LiveWatchPage> createState() => _LiveWatchPageState();
@@ -58,6 +68,11 @@ class _LiveWatchPageState extends State<LiveWatchPage>
 
   bool _isConnecting = true;
   String? _errorMessage;
+
+  /// The server said the live is over (at join, or through `live:updated`
+  /// while watching): shown as a clear end, not as an error.
+  bool _liveEnded = false;
+  StreamSubscription<Map<String, dynamic>>? _liveEventsSubscription;
   String _title = 'En direct maintenant';
   late String _sellerName = widget.sellerName;
   late String _sellerAvatarUrl = widget.sellerAvatarUrl;
@@ -72,6 +87,7 @@ class _LiveWatchPageState extends State<LiveWatchPage>
   @override
   void initState() {
     super.initState();
+    LiveWatchPage._watchingSellerProfileId = widget.sellerProfileId.trim();
     // Watching is hands-off: keep the screen from dimming or locking.
     unawaited(WakelockPlus.enable());
     _livePulseController = AnimationController(
@@ -87,16 +103,48 @@ class _LiveWatchPageState extends State<LiveWatchPage>
       }
     });
     _bindConnectivity();
+    _liveEventsSubscription = ChatRealtimeService.instance.events.listen(
+      _handleLiveEvent,
+    );
     unawaited(_connectToLive());
+  }
+
+  /// The host went silent (data ran out, app killed): the server closes the
+  /// live and tells the followers. End the wait instead of showing "en
+  /// attente du flux" forever.
+  void _handleLiveEvent(Map<String, dynamic> event) {
+    if (event['type'] != 'live:updated' ||
+        event['sellerProfileId']?.toString() != widget.sellerProfileId ||
+        event['isLive'] != false) {
+      return;
+    }
+    _markLiveEnded();
+  }
+
+  void _markLiveEnded() {
+    if (!mounted || _liveEnded) {
+      return;
+    }
+    _livePulseController.stop();
+    unawaited(_room.disconnect());
+    setState(() {
+      _liveEnded = true;
+      _isConnecting = false;
+      _errorMessage = null;
+    });
   }
 
   @override
   void dispose() {
+    if (LiveWatchPage._watchingSellerProfileId == widget.sellerProfileId.trim()) {
+      LiveWatchPage._watchingSellerProfileId = null;
+    }
     unawaited(WakelockPlus.disable());
     _likeFlushTimer?.cancel();
     _flushPendingLikes();
     _commentController.dispose();
     _livePulseController.dispose();
+    unawaited(_liveEventsSubscription?.cancel());
     unawaited(_connectivitySubscription?.cancel());
     unawaited(_commentsSubscription?.cancel());
     unawaited(_likesSubscription?.cancel());
@@ -168,6 +216,19 @@ class _LiveWatchPageState extends State<LiveWatchPage>
           _errorMessage = null;
         });
       }
+    } on AppApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      // 404 = the server closed the live (host gone) or it never existed.
+      if (error.statusCode == 404) {
+        _markLiveEnded();
+        return;
+      }
+      setState(() {
+        _isConnecting = false;
+        _errorMessage = error.message;
+      });
     } catch (error) {
       if (mounted) {
         setState(() {
@@ -445,6 +506,14 @@ class _LiveWatchPageState extends State<LiveWatchPage>
   Widget _buildStateMessage() {
     if (_isConnecting) {
       return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_liveEnded) {
+      return _LiveWatchMessage(
+        icon: Icons.tv_off_rounded,
+        title: 'Ce live est terminé',
+        message: '$_sellerName ne diffuse plus pour le moment.',
+      );
     }
 
     if (_errorMessage != null) {

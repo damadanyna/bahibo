@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:banay/component/live/live_overlay_widgets.dart';
 import 'package:banay/component/live/live_tap_hearts.dart';
 import 'package:banay/component/ui/dinamic_icon_input.dart';
+import 'package:banay/services/app_api_client.dart';
+import 'package:banay/services/catalog_api_service.dart';
 import 'package:banay/services/live/live_room_channel.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart' hide ConnectionState;
@@ -65,6 +67,13 @@ class _LivePreviewPageState extends State<LivePreviewPage>
   StreamSubscription<int>? _likesSubscription;
   int _likeCount = 0;
   final LiveTapHeartsController _heartsController = LiveTapHeartsController();
+
+  // "Still broadcasting" pings: the server closes a live after 90 s without
+  // one, so a host whose data ran out does not stay "en direct" for days.
+  static const Duration _heartbeatInterval = Duration(seconds: 30);
+  final CatalogApiService _catalogApiService = CatalogApiService();
+  Timer? _heartbeatTimer;
+  bool _liveClosedByServer = false;
 
   bool _isConnecting = true;
   bool _isLive = false;
@@ -138,6 +147,7 @@ class _LivePreviewPageState extends State<LivePreviewPage>
   @override
   void dispose() {
     unawaited(WakelockPlus.disable());
+    _heartbeatTimer?.cancel();
     _commentController.dispose();
     _livePulseController.dispose();
     unawaited(_commentsSubscription?.cancel());
@@ -226,6 +236,7 @@ class _LivePreviewPageState extends State<LivePreviewPage>
       }
 
       unawaited(_startChannel());
+      _startHeartbeat();
       _livePulseController.repeat(reverse: true);
       setState(() {
         _isConnecting = false;
@@ -253,6 +264,49 @@ class _LivePreviewPageState extends State<LivePreviewPage>
     if (mounted) {
       setState(() {});
     }
+  }
+
+  void _startHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(
+      _heartbeatInterval,
+      (_) => unawaited(_sendHeartbeat()),
+    );
+  }
+
+  Future<void> _sendHeartbeat() async {
+    try {
+      await _catalogApiService.heartbeatCurrentUserLive();
+    } on AppApiException catch (error) {
+      // 404: the server already closed this live (heartbeats missed while
+      // offline, or a viewer found the room empty). Anything else is a
+      // passing network error: the next ping will tell.
+      if (error.statusCode == 404) {
+        _handleLiveClosedByServer();
+      }
+    } catch (_) {
+      // Offline right now; the server decides after three misses.
+    }
+  }
+
+  /// The live no longer exists server-side: stop streaming into a room
+  /// nobody can join any more and say so, with the exit as the only way out.
+  void _handleLiveClosedByServer() {
+    if (!mounted || _liveClosedByServer) {
+      return;
+    }
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+    _livePulseController.stop();
+    unawaited(_room.disconnect());
+    setState(() {
+      _liveClosedByServer = true;
+      _isLive = false;
+      _isConnecting = false;
+      _errorMessage =
+          'Live interrompu : la connexion a été perdue trop longtemps. '
+          'Relancez un live depuis l\'accueil.';
+    });
   }
 
   LocalVideoTrack? _localVideoTrack() {
@@ -609,6 +663,13 @@ class _LivePreviewPageState extends State<LivePreviewPage>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // LiveKit reconnects on its own after a cut; say so
+                    // instead of leaving a frozen preview unexplained.
+                    if (_isLive &&
+                        _room.connectionState != ConnectionState.connected) ...[
+                      _buildConnectionBanner(theme),
+                      const SizedBox(height: 10),
+                    ],
                     // Header: host identity + live state on the left, close
                     // on the right — mirrors what viewers see, from the host
                     // side.
@@ -666,17 +727,27 @@ class _LivePreviewPageState extends State<LivePreviewPage>
                       const SizedBox(height: 14),
                       SizedBox(
                         width: double.infinity,
-                        child: _buildCompactActionButton(
-                          label: _errorMessage == null
-                              ? 'Passer en direct'
-                              : 'Reessayer la connexion',
-                          icon: Icons.wifi_tethering_rounded,
-                          onTap: _isConnecting
-                              ? null
-                              : () => _connectAndPublish(),
-                          filled: true,
-                          theme: theme,
-                        ),
+                        child: _liveClosedByServer
+                            // Retrying would stream into a closed session:
+                            // a new live has to be started from the home.
+                            ? _buildCompactActionButton(
+                                label: 'Fermer',
+                                icon: Icons.close_rounded,
+                                onTap: () => Navigator.of(context).pop(true),
+                                filled: true,
+                                theme: theme,
+                              )
+                            : _buildCompactActionButton(
+                                label: _errorMessage == null
+                                    ? 'Passer en direct'
+                                    : 'Reessayer la connexion',
+                                icon: Icons.wifi_tethering_rounded,
+                                onTap: _isConnecting
+                                    ? null
+                                    : () => _connectAndPublish(),
+                                filled: true,
+                                theme: theme,
+                              ),
                       ),
                     ],
                   ],
@@ -830,6 +901,51 @@ class _LivePreviewPageState extends State<LivePreviewPage>
     return LiveCommentsFeed(
       comments: _isLive ? _liveComments : const <LiveCommentEntry>[],
       emptyText: 'Les commentaires apparaîtront ici dès que le live commence.',
+    );
+  }
+
+  Widget _buildConnectionBanner(ThemeData theme) {
+    final appColors = theme.appColors;
+    final isReconnecting =
+        _room.connectionState == ConnectionState.reconnecting;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: appColors.overlaySurface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: appColors.overlayBorder),
+      ),
+      child: Row(
+        children: [
+          if (isReconnecting)
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            Icon(
+              Icons.wifi_off_rounded,
+              size: 18,
+              color: appColors.liveIndicator,
+            ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              isReconnecting
+                  ? 'Connexion perdue, reconnexion en cours…'
+                  : 'Connexion perdue. Le live sera fermé sans reprise '
+                        'rapide.',
+              style: TextStyle(
+                color: appColors.heroForeground,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

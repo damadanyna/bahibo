@@ -9,10 +9,10 @@ import { NotificationEntity } from "./entities/notification.entity";
 
 const QA_LOG_EXPORT_PREFIX = "QA_LOG_EXPORT\n";
 /**
- * A live session still open after this long belongs to a host whose app
- * died without calling stop: it must not read as "en direct" for days.
+ * Same rule as ProfilesService: a live whose host has not sent a heartbeat
+ * for this long is over, whatever the row says.
  */
-const LIVE_NOTIFICATION_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+const LIVE_HEARTBEAT_STALE_MS = 90_000;
 
 type QaLogExportPayload = {
   version?: number;
@@ -147,16 +147,16 @@ export class NotificationsService {
       activeFollowedStories,
     );
 
-    // Followed shops live right now (started after the follow, and not so
-    // long ago that the session is obviously stale).
+    // Followed shops live right now (started after the follow, host still
+    // sending heartbeats).
     const activeFollowedLives =
       sellerFollows.length === 0
         ? []
         : await this.prisma.sellerLiveSession.findMany({
             where: {
               endedAt: null,
-              startedAt: {
-                gte: new Date(Date.now() - LIVE_NOTIFICATION_MAX_AGE_MS),
+              updatedAt: {
+                gte: new Date(Date.now() - LIVE_HEARTBEAT_STALE_MS),
               },
               OR: sellerFollows.map((sellerFollow) => ({
                 sellerProfileId: sellerFollow.sellerProfileId,

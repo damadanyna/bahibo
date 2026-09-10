@@ -9,14 +9,19 @@ import 'package:banay/services/api_config.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/app_event_log_service.dart';
 import 'package:banay/services/banay_tls_override.dart';
+import 'package:banay/services/calls_api_service.dart';
 import 'package:banay/services/conversations_api_service.dart';
+import 'package:banay/services/incoming_call_native_ui.dart';
 import 'package:banay/services/notification_navigation.dart';
 import 'package:banay/services/session_storage.dart';
+import 'package:banay/services/voice_call_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_callkit_incoming/entities/entities.dart';
+import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 @pragma('vm:entry-point')
@@ -46,6 +51,58 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
   if (type == 'chat_message' || type == 'chat_message_delivery_ping') {
     await PushNotificationService.acknowledgeChatMessageDeliveryInBackground();
+  }
+
+  // Voice calls arrive as data-only messages so this isolate can bring up
+  // the phone's own ringing call screen and take it down when the caller
+  // gives up — an OS-rendered notification could not be dismissed remotely.
+  if (type == 'incoming_call') {
+    final callId = message.data['callId']?.toString() ?? '';
+    await IncomingCallNativeUi.show(
+      callId: callId,
+      conversationId: message.data['conversationId']?.toString() ?? '',
+      callerName: message.data['callerName']?.toString() ?? '',
+      callerAvatarUrl: message.data['callerAvatarUrl']?.toString() ?? '',
+    );
+    // The phone rings: let the caller switch to "Appel en cours…".
+    if (callId.isNotEmpty) {
+      try {
+        await CallsApiService().markRinging(callId);
+      } catch (error) {
+        debugPrint('Ringing ack failed in background: $error');
+      }
+    }
+  } else if (type == 'call_cancelled') {
+    await IncomingCallNativeUi.dismiss(
+      message.data['callId']?.toString() ?? '',
+    );
+  }
+}
+
+/// Runs in its own isolate when the user acts on the native call screen
+/// while the app is killed: a decline must still reach the server so the
+/// caller stops ringing at once instead of waiting for the timeout.
+@pragma('vm:entry-point')
+Future<void> callkitBackgroundHandler(CallEvent event) async {
+  final callId = switch (event) {
+    CallEventActionCallDecline(:final callKitParams) =>
+      IncomingCallNativeUi.callIdOf(callKitParams),
+    CallEventActionCallTimeout(:final id) => id,
+    _ => '',
+  };
+  if (callId.isEmpty) {
+    return;
+  }
+
+  try {
+    // Same cold-isolate bootstrap as the FCM handler above.
+    await ApiConfig.initialize();
+    configureBanayTlsOverride(ApiConfig.baseUrl);
+    if (event is CallEventActionCallDecline) {
+      await CallsApiService().declineCall(callId);
+    }
+  } catch (error) {
+    debugPrint('Background call action failed: $error');
   }
 }
 
@@ -109,6 +166,7 @@ class PushNotificationService {
     await Firebase.initializeApp();
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
     await _initializeLocalNotifications();
+    await _registerCallkitBackgroundHandler();
     await _initializeNativeNotificationBridge();
     await _hydratePendingNavigationFromLocalLaunch();
 
@@ -164,6 +222,20 @@ class PushNotificationService {
         >();
     await androidPlugin?.deleteNotificationChannel('BANAY_messages');
     await androidPlugin?.createNotificationChannel(_messagesChannel);
+  }
+
+  /// Native call screen actions taken while the app is killed (decline).
+  static Future<void> _registerCallkitBackgroundHandler() async {
+    if (!isSupportedPlatform) {
+      return;
+    }
+    try {
+      await FlutterCallkitIncoming.onBackgroundMessage(
+        callkitBackgroundHandler,
+      );
+    } catch (error) {
+      debugPrint('Unable to register the call background handler: $error');
+    }
   }
 
   static Future<void> _initializeNativeNotificationBridge() async {
@@ -244,6 +316,19 @@ class PushNotificationService {
     // to the display logic below, or it shows up as a bogus "BANAY - Vous
     // avez recu un nouveau message" notification with nothing behind it.
     if (type == 'chat_message_delivery_ping') {
+      return;
+    }
+
+    // Calls have their own screen; the socket usually announces them first
+    // and the service ignores the duplicate.
+    if (type == 'incoming_call') {
+      VoiceCallService.instance.handleIncomingPush(message.data);
+      return;
+    }
+    if (type == 'call_cancelled') {
+      VoiceCallService.instance.handleCallCancelledPush(
+        message.data['callId']?.toString() ?? '',
+      );
       return;
     }
 
@@ -390,10 +475,13 @@ class PushNotificationService {
 
     final notificationType = pendingData['type']?.trim().toLowerCase() ?? '';
     final conversationId = pendingData['conversationId']?.trim();
+    // A missed call opens the conversation like a message would.
     final isConversationNotification =
         conversationId != null &&
         conversationId.isNotEmpty &&
-        (notificationType.isEmpty || notificationType == 'chat_message');
+        (notificationType.isEmpty ||
+            notificationType == 'chat_message' ||
+            notificationType == 'missed_call');
 
     if (isConversationNotification) {
       unawaited(_markConversationOpenedAsRead(conversationId));
@@ -529,6 +617,11 @@ class PushNotificationService {
           navigator,
           sellerProfileId: sellerProfileId,
         );
+      case 'incoming_call':
+        await VoiceCallService.instance.openIncomingCall(
+          data['callId']?.trim() ?? '',
+        );
+        return true;
       default:
         return false;
     }

@@ -49,6 +49,16 @@ enum ChatMessageKind {
   PRODUCT
 }
 
+/// Lifecycle of a voice call between the two participants of a conversation.
+enum VoiceCallStatus {
+  RINGING
+  ACCEPTED
+  DECLINED
+  MISSED
+  CANCELLED
+  ENDED
+}
+
 enum ProductCondition {
   OCCASION
   RECONDITIONNE
@@ -109,6 +119,8 @@ model User {
   boughtConversations             ChatConversation[]      @relation("ConversationBuyer")
   soldConversations               ChatConversation[]      @relation("ConversationSeller")
   chatMessages                    ChatMessage[]           @relation("MessageSender")
+  voiceCallsPlaced                VoiceCall[]             @relation("VoiceCallCaller")
+  voiceCallsReceived              VoiceCall[]             @relation("VoiceCallCallee")
   deviceTokens                    UserDeviceToken[]
   notificationReadStates          NotificationReadState[]
   feedbacks                       UserFeedback[]
@@ -514,9 +526,34 @@ model ChatConversation {
   seller        User                 @relation("ConversationSeller", fields: [sellerUserId], references: [id], onDelete: Cascade)
   product       Product?             @relation(fields: [productId], references: [id], onDelete: Cascade)
   messages      ChatMessage[]
+  voiceCalls    VoiceCall[]
 
   @@index([buyerUserId, lastMessageAt])
   @@index([sellerUserId, lastMessageAt])
+}
+
+/// One voice call (WhatsApp-style) between the two sides of a conversation.
+/// Media rides on a LiveKit room named after the call; the row is the
+/// signalling source of truth (ringing / accepted / ended) and feeds the
+/// "call" line posted in the chat afterwards.
+model VoiceCall {
+  id             String           @id @default(uuid())
+  conversationId String
+  callerUserId   String
+  calleeUserId   String
+  status         VoiceCallStatus  @default(RINGING)
+  roomName       String
+  createdAt      DateTime         @default(now())
+  answeredAt     DateTime?
+  endedAt        DateTime?
+  endedByUserId  String?
+  conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  caller         User             @relation("VoiceCallCaller", fields: [callerUserId], references: [id], onDelete: Cascade)
+  callee         User             @relation("VoiceCallCallee", fields: [calleeUserId], references: [id], onDelete: Cascade)
+
+  @@index([callerUserId, status, createdAt])
+  @@index([calleeUserId, status, createdAt])
+  @@index([conversationId, createdAt])
 }
 
 model ChatMessage {
