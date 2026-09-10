@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -21,6 +22,12 @@ import { UpdateProfileDto, UpdateSellerProfileDto } from './dto/update-profile.d
 const DISPLAY_NAME_CHANGE_COOLDOWN_DAYS = 7;
 /** Same threshold as the mobile client's re-sync rule (150 m). */
 const LOCATION_HISTORY_MIN_MOVE_KM = 0.15;
+/**
+ * A host calling start again on a live opened less than this long ago is
+ * resuming (reconnect, app relaunch), not starting: followers are not
+ * pushed a second time.
+ */
+const LIVE_RESTART_PUSH_GRACE_MS = 10 * 60 * 1000;
 import {
   presentPublicSellerProfile,
   presentPublicUserProfile,
@@ -29,6 +36,8 @@ import {
 
 @Injectable()
 export class ProfilesService {
+  private readonly logger = new Logger(ProfilesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly cloudinaryService: CloudinaryService,
@@ -399,6 +408,13 @@ export class ProfilesService {
             followerUserId: true,
           },
         },
+        user: {
+          select: {
+            displayName: true,
+            avatarUrl: true,
+          },
+        },
+        liveSession: true,
       },
     });
 
@@ -412,6 +428,13 @@ export class ProfilesService {
     if (title.length === 0) {
       throw new BadRequestException('Live title is required');
     }
+
+    const previousSession = sellerProfile.liveSession;
+    const isResumingRecentLive =
+      previousSession != null &&
+      previousSession.endedAt == null &&
+      Date.now() - previousSession.startedAt.getTime() <
+        LIVE_RESTART_PUSH_GRACE_MS;
 
     const liveSession = await this.prisma.sellerLiveSession.upsert({
       where: { sellerProfileId: sellerProfile.id },
@@ -443,6 +466,28 @@ export class ProfilesService {
         startedAt: liveSession.startedAt.toISOString(),
       },
     );
+
+    // Not awaited: the host is waiting to go on air, and the FCM fan-out to
+    // every follower must neither delay nor fail the start.
+    if (!isResumingRecentLive) {
+      const sellerDisplayName =
+        sellerProfile.studioName.trim() || sellerProfile.user.displayName;
+      void this.pushNotificationsService
+        .sendLiveStartedNotification({
+          sellerProfileId: sellerProfile.id,
+          sellerUserId: userId,
+          sellerDisplayName,
+          sellerAvatarUrl: sellerProfile.user.avatarUrl ?? undefined,
+          liveTitle: liveSession.title,
+        })
+        .catch((error: unknown) => {
+          this.logger.warn(
+            `Live push failed for seller ${sellerProfile.id}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        });
+    }
 
     return {
       sellerProfileId: sellerProfile.id,

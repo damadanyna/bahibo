@@ -1,19 +1,19 @@
 import 'dart:async';
 
 import 'package:banay/component/live/live_overlay_widgets.dart';
-import 'package:banay/component/profile_models.dart';
 import 'package:banay/component/ui/dinamic_icon_input.dart';
-import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/catalog_api_service.dart';
 import 'package:banay/services/live/live_room_channel.dart';
+import 'package:banay/services/live/live_view_quality.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter/services.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 /// Viewer side of a live: full-bleed video with the same overlay grammar as
-/// the host screen — host card top-left, follow + leave top-right, comments
+/// the host screen — host card top-left, leave top-right, comments
 /// bottom-left, comment input + like bottom row.
 class LiveWatchPage extends StatefulWidget {
   const LiveWatchPage({
@@ -34,24 +34,26 @@ class LiveWatchPage extends StatefulWidget {
 class _LiveWatchPageState extends State<LiveWatchPage>
     with SingleTickerProviderStateMixin {
   final CatalogApiService _catalogApiService = CatalogApiService();
-  // adaptiveStream is off on purpose: it reports the renderer size in
-  // logical pixels (~412x915 on a phone), so the SFU would serve the
-  // smallest layer covering that — 540p or 720p — and never the 1080p the
-  // host publishes. The top layer is requested explicitly below instead.
+  // adaptiveStream is off on purpose: it would pick the layer from the
+  // renderer's logical size alone and ignore the network. The layer is
+  // chosen here instead — TikTok-style — from the connection type (see
+  // [resolveLiveViewQuality]); the SFU still steps down on its own under
+  // congestion.
   final Room _room = Room(
     roomOptions: const RoomOptions(adaptiveStream: false, dynacast: true),
   );
   late final EventsListener<RoomEvent> _roomEvents = _room.createListener();
   final TextEditingController _commentController = TextEditingController();
   late final AnimationController _livePulseController;
+  final Connectivity _connectivity = Connectivity();
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  bool _isOnCellular = false;
 
   bool _isConnecting = true;
   String? _errorMessage;
   String _title = 'En direct maintenant';
   late String _sellerName = widget.sellerName;
   late String _sellerAvatarUrl = widget.sellerAvatarUrl;
-  bool _isFollowing = false;
-  bool _isFollowSubmitting = false;
   int _likeCount = 0;
   bool _likeBump = false;
   final List<LiveCommentEntry> _comments = <LiveCommentEntry>[];
@@ -70,13 +72,14 @@ class _LiveWatchPageState extends State<LiveWatchPage>
       duration: const Duration(milliseconds: 900),
     )..repeat(reverse: true);
     _room.addListener(_handleRoomChanged);
-    // Always ask the SFU for the highest simulcast layer; it still steps
-    // down on its own if this viewer's link cannot keep up.
+    // Each subscribed video track gets the layer matching the viewer's
+    // network; re-evaluated when the connection type changes.
     _roomEvents.on<TrackSubscribedEvent>((event) {
       if (event.publication.kind == TrackType.VIDEO) {
-        unawaited(event.publication.setVideoQuality(VideoQuality.HIGH));
+        _applyVideoQuality();
       }
     });
+    _bindConnectivity();
     unawaited(_connectToLive());
   }
 
@@ -85,6 +88,7 @@ class _LiveWatchPageState extends State<LiveWatchPage>
     unawaited(WakelockPlus.disable());
     _commentController.dispose();
     _livePulseController.dispose();
+    unawaited(_connectivitySubscription?.cancel());
     unawaited(_commentsSubscription?.cancel());
     unawaited(_likesSubscription?.cancel());
     unawaited(_channel?.dispose());
@@ -141,7 +145,6 @@ class _LiveWatchPageState extends State<LiveWatchPage>
       if (joinAvatarUrl.isNotEmpty) {
         _sellerAvatarUrl = joinAvatarUrl;
       }
-      _isFollowing = joinInfo['isFollowing'] == true;
 
       await _room.connect(
         joinInfo['url']?.toString() ?? '',
@@ -171,6 +174,38 @@ class _LiveWatchPageState extends State<LiveWatchPage>
     }
   }
 
+  /// Tracks Wi-Fi ⇄ mobile data switches so the automatic mode follows the
+  /// viewer mid-live instead of freezing on the layer chosen at join time.
+  void _bindConnectivity() {
+    unawaited(
+      _connectivity.checkConnectivity().then(_handleConnectivityChange),
+    );
+    _connectivitySubscription = _connectivity.onConnectivityChanged.listen(
+      _handleConnectivityChange,
+    );
+  }
+
+  void _handleConnectivityChange(List<ConnectivityResult> results) {
+    final isOnCellular = isCellularOnly(results);
+    if (!mounted || isOnCellular == _isOnCellular) {
+      return;
+    }
+    setState(() => _isOnCellular = isOnCellular);
+    _applyVideoQuality();
+  }
+
+  /// Asks the SFU for the simulcast layer matching the current network
+  /// on every subscribed video track. Cheap and idempotent: the SDK skips
+  /// the signal when the quality is unchanged.
+  void _applyVideoQuality() {
+    final quality = resolveLiveViewQuality(isOnCellular: _isOnCellular);
+    for (final participant in _room.remoteParticipants.values) {
+      for (final publication in participant.videoTrackPublications) {
+        unawaited(publication.setVideoQuality(quality));
+      }
+    }
+  }
+
   VideoTrack? _remoteVideoTrack() {
     for (final participant in _room.remoteParticipants.values) {
       for (final publication in participant.videoTrackPublications) {
@@ -189,46 +224,6 @@ class _LiveWatchPageState extends State<LiveWatchPage>
   int? get _viewerCount => _room.connectionState == ConnectionState.connected
       ? _room.remoteParticipants.length
       : null;
-
-  Future<void> _toggleFollow() async {
-    final sellerProfileId = widget.sellerProfileId.trim();
-    if (sellerProfileId.isEmpty || _isFollowSubmitting) {
-      return;
-    }
-
-    setState(() => _isFollowSubmitting = true);
-
-    try {
-      final data = _isFollowing
-          ? await _catalogApiService.unfollowSeller(sellerProfileId)
-          : await _catalogApiService.followSeller(sellerProfileId);
-      final nextProfile = buildSellerProfileFromApi(data);
-      if (!mounted) {
-        return;
-      }
-      setState(() => _isFollowing = nextProfile.isFollowing);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _isFollowing
-                ? 'Vous suivez maintenant $_sellerName.'
-                : 'Vous ne suivez plus $_sellerName.',
-          ),
-        ),
-      );
-    } on AppApiException catch (error) {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
-    } finally {
-      if (mounted) {
-        setState(() => _isFollowSubmitting = false);
-      }
-    }
-  }
 
   void _handleLike() {
     unawaited(HapticFeedback.lightImpact());
@@ -249,6 +244,10 @@ class _LiveWatchPageState extends State<LiveWatchPage>
     if (text.trim().isEmpty || channel == null) {
       return;
     }
+
+    // Clear right away, before the send round-trip, so the field is empty
+    // on every send path (keyboard action and send icon alike).
+    _commentController.clear();
 
     // Own messages are not echoed back by the room: append what was sent.
     final entry = await channel.sendComment(text);
@@ -299,8 +298,6 @@ class _LiveWatchPageState extends State<LiveWatchPage>
                           pulse: _livePulseController,
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      _buildFollowButton(theme),
                       const SizedBox(width: 10),
                       LiveRoundButton(
                         icon: Icons.close_rounded,
@@ -360,46 +357,6 @@ class _LiveWatchPageState extends State<LiveWatchPage>
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildFollowButton(ThemeData theme) {
-    if (widget.sellerProfileId.trim().isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    final appColors = theme.appColors;
-    final shape = const StadiumBorder();
-    const padding = EdgeInsets.symmetric(horizontal: 16);
-
-    return SizedBox(
-      height: 46,
-      child: _isFollowing
-          ? OutlinedButton.icon(
-              onPressed: _isFollowSubmitting ? null : _toggleFollow,
-              icon: const Icon(Icons.check_rounded, size: 18),
-              label: const Text('Abonné'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: appColors.heroForeground,
-                backgroundColor: appColors.overlaySurface,
-                side: BorderSide(color: appColors.overlayBorder),
-                shape: shape,
-                padding: padding,
-                textStyle: const TextStyle(fontWeight: FontWeight.w800),
-              ),
-            )
-          : FilledButton.icon(
-              onPressed: _isFollowSubmitting ? null : _toggleFollow,
-              icon: const Icon(Icons.add_rounded, size: 18),
-              label: const Text('Suivre'),
-              style: FilledButton.styleFrom(
-                backgroundColor: theme.colorScheme.primary,
-                foregroundColor: theme.colorScheme.onPrimary,
-                shape: shape,
-                padding: padding,
-                textStyle: const TextStyle(fontWeight: FontWeight.w800),
-              ),
-            ),
     );
   }
 

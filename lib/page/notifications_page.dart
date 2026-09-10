@@ -8,14 +8,13 @@ import 'package:banay/component/profile_models.dart';
 import 'package:banay/component/user_list_page.dart';
 import 'package:banay/localization/banay_localizations.dart';
 import 'package:banay/page/productDetail.dart';
-import 'package:banay/page/story/story_viewer_page.dart';
 import 'package:banay/component/theme_menu_button.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/app_auth_service.dart';
 import 'package:banay/services/catalog_api_service.dart';
 import 'package:banay/services/chat_realtime_service.dart';
+import 'package:banay/services/notification_navigation.dart';
 import 'package:banay/services/notifications_api_service.dart';
-import 'package:banay/services/stories_api_service.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
 
@@ -545,48 +544,37 @@ class _NotificationsPageState extends State<NotificationsPage> {
       case 'story_published':
         await _openStoryNotification(context, notification);
         return;
+      case 'live_started':
+        await openLiveFromNotification(
+          Navigator.of(context),
+          sellerProfileId: notification['sellerProfileId'] as String? ?? '',
+          sellerName: notification['channel'] as String? ?? '',
+          sellerAvatarUrl: notification['avatarUrl'] as String? ?? '',
+        );
+        return;
       default:
         await _openProductNotification(context, notification);
         return;
     }
   }
 
-  /// Opens the story player on the shop's group; the feed is refetched so
-  /// a story that expired since the notification simply reads as gone.
+  /// Opens the story player on the shop's group; a story that expired since
+  /// the notification simply reads as gone.
   Future<void> _openStoryNotification(
     BuildContext context,
     Map<String, dynamic> notification,
   ) async {
-    final sellerProfileId = (notification['sellerProfileId'] as String? ?? '')
-        .trim();
-
-    List<StoryGroup> groups = const [];
-    try {
-      groups = await StoriesApiService().fetchStoryFeed();
-    } catch (_) {
-      groups = const [];
-    }
-    if (!context.mounted) {
-      return;
-    }
-
-    final groupIndex = groups.indexWhere(
-      (group) => group.authorSellerProfileId == sellerProfileId,
+    final opened = await openStoryFromNotification(
+      Navigator.of(context),
+      sellerProfileId: notification['sellerProfileId'] as String? ?? '',
     );
-    if (groupIndex < 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.tr(BanayLocalizationKeys.homeStoryUnavailable)),
-        ),
-      );
+    if (opened || !context.mounted) {
       return;
     }
 
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (_) =>
-            StoryViewerPage(groups: groups, initialGroupIndex: groupIndex),
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(context.tr(BanayLocalizationKeys.homeStoryUnavailable)),
       ),
     );
   }
@@ -963,6 +951,11 @@ class _NotificationTile extends StatelessWidget {
         return const _NotificationVisual(
           icon: Icons.auto_awesome_motion_rounded,
           label: 'Nouvelle story',
+        );
+      case 'live_started':
+        return const _NotificationVisual(
+          icon: Icons.sensors_rounded,
+          label: 'En direct',
         );
       default:
         return const _NotificationVisual(

@@ -8,6 +8,11 @@ import { CreateUserEventLogDto } from "./dto/create-user-event-log.dto";
 import { NotificationEntity } from "./entities/notification.entity";
 
 const QA_LOG_EXPORT_PREFIX = "QA_LOG_EXPORT\n";
+/**
+ * A live session still open after this long belongs to a host whose app
+ * died without calling stop: it must not read as "en direct" for days.
+ */
+const LIVE_NOTIFICATION_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 
 type QaLogExportPayload = {
   version?: number;
@@ -141,6 +146,37 @@ export class NotificationsService {
     const storyNotifications = this.buildStoryNotifications(
       activeFollowedStories,
     );
+
+    // Followed shops live right now (started after the follow, and not so
+    // long ago that the session is obviously stale).
+    const activeFollowedLives =
+      sellerFollows.length === 0
+        ? []
+        : await this.prisma.sellerLiveSession.findMany({
+            where: {
+              endedAt: null,
+              startedAt: {
+                gte: new Date(Date.now() - LIVE_NOTIFICATION_MAX_AGE_MS),
+              },
+              OR: sellerFollows.map((sellerFollow) => ({
+                sellerProfileId: sellerFollow.sellerProfileId,
+                startedAt: {
+                  gte: sellerFollow.createdAt,
+                },
+              })),
+            },
+            include: {
+              sellerProfile: {
+                include: {
+                  user: true,
+                },
+              },
+            },
+            orderBy: {
+              startedAt: "desc",
+            },
+          });
+    const liveNotifications = this.buildLiveNotifications(activeFollowedLives);
 
     const latestProducts =
       sellerFollows.length === 0
@@ -323,6 +359,7 @@ export class NotificationsService {
         userId,
         [
           ...shopRequestApprovalNotifications,
+          ...liveNotifications,
           ...storyNotifications,
           ...followerCommentNotifications,
           ...productUpdateNotifications,
@@ -472,6 +509,7 @@ export class NotificationsService {
       userId,
       [
         ...shopRequestApprovalNotifications,
+        ...liveNotifications,
         ...storyNotifications,
         ...sellerFollowNotifications,
         ...productCommentNotifications,
@@ -1230,6 +1268,45 @@ export class NotificationsService {
         actors,
       },
     ];
+  }
+
+  /**
+   * One entry per live in progress; the id carries `startedAt` so a shop's
+   * next live shows up unread again even if this one was marked read.
+   */
+  private buildLiveNotifications(
+    sessions: Prisma.SellerLiveSessionGetPayload<{
+      include: { sellerProfile: { include: { user: true } } };
+    }>[],
+  ): NotificationEntity[] {
+    return sessions.map((session) => {
+      const sellerProfile = session.sellerProfile;
+      const sellerName =
+        sellerProfile.studioName.trim() || sellerProfile.user.displayName;
+      const liveTitle = session.title.trim();
+
+      return {
+        id: `notif-live-${session.id}-${session.startedAt.getTime()}`,
+        type: "live_started",
+        title: "En direct",
+        body:
+          liveTitle.length > 0
+            ? `${sellerName} est en direct : ${liveTitle}`
+            : `${sellerName} est en direct maintenant.`,
+        isRead: false,
+        createdAt: session.startedAt.toISOString(),
+        sellerProfile: {
+          id: sellerProfile.id,
+          studioName: sellerProfile.studioName,
+        },
+        seller: {
+          id: sellerProfile.id,
+          name: sellerName,
+          avatarUrl: sellerProfile.user.avatarUrl ?? "",
+        },
+        product: null,
+      } satisfies NotificationEntity;
+    });
   }
 
   /**

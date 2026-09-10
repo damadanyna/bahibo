@@ -699,3 +699,143 @@ futurs diagnostics.
   la rotation (accepter un jeton tout juste utilisé pendant ~60 s, colonne
   `usedAt` à ajouter) pour couvrir l'app tuée par l'OS entre la réponse du
   refresh et sa sauvegarde locale.
+
+### 5. Publication Play Store 1.4.0+10
+
+- `pubspec.yaml` : `1.3.0+9` → `1.4.0+10` (bump mineur : nouveautés stories
+  vidéo, upload direct, session hors ligne ; `versionCode` 10).
+- `docs/play-store-release.md` : valeur de version mise à jour.
+- Bundle généré avec `flutter clean` / `flutter pub get` /
+  `flutter build appbundle --release`, signé avec le keystore d'upload de
+  `android/key.properties` (`keystores/upload-keystore.jks`). Sortie :
+  `build/app/outputs/bundle/release/app-release.aab`.
+- Préflight : `flutter analyze` ne remonte que des lints de style
+  pré-existants et une erreur dans `test/widget_test.dart` (gabarit par
+  défaut jamais adapté à `appLanguageProvider`, hors du bundle).
+- **Backend à déployer avant diffusion** : routes `POST /stories/direct-signature`
+  et `POST /stories/direct` (l'app retombe sur l'ancien chemin si elles
+  manquent, mais la « finalisation » redevient longue).
+
+## 2026-09-10
+
+### 1. Live : profil « TikTok » (720p H.264, qualité automatique, économie de données)
+
+- **Demande** : aligner le live sur TikTok Live pour la résolution hôte, le
+  codec, la qualité spectateur adaptative, un mode économie de données et
+  une consommation HD de l'ordre de 0,4 à 0,8 Go/h (contre ~1,6 Go/h en
+  1080p, entrée 8 du 2026-09-06).
+- **Changement hôte** (`lib/page/live/live_preview_page.dart`) :
+  - capture `h720_169` à 30 i/s (au lieu de 1080p) ;
+  - codec `h264` explicite (le SDK publiait en VP8 par défaut) : encodage
+    matériel sur tous les téléphones, donc trois couches simulcast sans
+    surchauffe ; le SDK retombe seul sur un codec activé côté serveur si
+    H.264 manque ;
+  - 1,5 Mb/s max (au lieu de 3,5), échelle simulcast 360p (450 kb/s) +
+    180p (160 kb/s) ; `maintainResolution` conservé. Débit montant requis :
+    ~2 Mb/s au lieu de ~4,5.
+- **Changement spectateur** (`lib/page/live/live_watch_page.dart`,
+  `lib/services/live/live_view_quality.dart` nouveau) :
+  - `LiveViewQuality` : `auto` (Wi-Fi → couche HIGH 720p, données mobiles
+    seules → MEDIUM 360p), `hd` (HIGH), `dataSaver` (LOW 180p) ; choix
+    persistant (`shared_preferences`, clé `banay_live_view_quality`) ;
+  - détection réseau via `connectivity_plus` (déjà dans l'app), réévaluée
+    en cours de live : un passage Wi-Fi → 4G rebascule en 360p en mode auto ;
+  - nouveau bouton rond « Qualité de la vidéo » en haut à droite (icône
+    économie quand la couche servie est réduite) → feuille Automatique / HD /
+    Économie de données avec la consommation estimée par heure ;
+  - `adaptiveStream` reste désactivé : c'est la préférence + le réseau qui
+    fixent la couche demandée, le SFU descend toujours seul sous congestion.
+- **Test** : `test/services/live/live_view_quality_test.dart` (résolution
+  des couches, persistance du nom, détection « mobile seul »).
+- **Coût data estimé** : HD 720p ≈ 0,7 Go/h ; SD 360p ≈ 0,2 Go/h ; Éco 180p
+  < 0,1 Go/h (audio 48 kb/s compris ≈ 0,02 Go/h).
+- **Non aligné, volontairement** :
+  - *encodage des variantes côté serveur* : LiveKit Cloud est un SFU sans
+    transcodage ; l'équivalent WebRTC est le simulcast, désormais bon marché
+    grâce au H.264 matériel. Une vraie chaîne « serveur » (LiveKit Egress →
+    HLS multi-rendus + lecteur vidéo dans l'app) est un chantier séparé ;
+  - *latence 3 à 10 s* : le WebRTC actuel reste sous la seconde, ce qui est
+    un avantage pour un live de vente ; l'augmenter n'est pas un réglage
+    disponible et n'apporterait rien sans la chaîne HLS ci-dessus.
+
+### 2. Live : priorité à la fluidité (dégradation équilibrée, 360p à 30 i/s)
+
+- **Question** : « est-ce que ça rend le live fluide ? » → oui pour l'hôte
+  (encodeur matériel, lien montant divisé par deux) et pour le spectateur en
+  4G (démarrage en 360p), mais deux réglages tiraient encore vers la
+  saccade.
+- **Changement** (`lib/page/live/live_preview_page.dart`) :
+  - `DegradationPreference.maintainResolution` → `balanced` : sous
+    congestion, WebRTC baisse un peu la résolution et un peu la cadence au
+    lieu de sacrifier uniquement la cadence (image nette mais hachée) ;
+  - couche simulcast 360p redéfinie en `VideoParameters` explicite à
+    30 i/s / 500 kb/s (préréglage SDK : 20 i/s / 450 kb/s), pour que le
+    spectateur en données mobiles ait la même fluidité qu'en Wi-Fi ;
+    ~10 % de données en plus sur cette couche (~0,25 Go/h).
+- La couche 180p (mode Économie) reste à 15 i/s : elle vise les liens trop
+  faibles pour mieux.
+
+### 3. Live spectateur : boutons « Abonné » et « Qualité » retirés, saisie vidée à chaque envoi
+
+- **Symptôme** : sur un téléphone étroit, la rangée du haut débordait de
+  24 px à droite (carte hôte + Abonné + Qualité + Quitter). Après un envoi
+  par l'icône « envoyer », le texte restait dans le champ.
+- **Changement UI** (`lib/page/live/live_watch_page.dart`) : suppression des
+  boutons Suivre / Abonné et Qualité, de la feuille de choix et du suivi
+  vendeur depuis le live. La qualité reste automatique et invisible :
+  Wi-Fi → 720p, données mobiles seules → 360p, réévaluée en cours de live.
+  `lib/services/live/live_view_quality.dart` réduit à
+  `resolveLiveViewQuality` + `isCellularOnly` ; la préférence persistante
+  (`banay_live_view_quality`) est retirée, test ajusté.
+- **Cause du champ non vidé** : `DynamicIconInput` ne vide le champ
+  (`autoClearOnSubmit`) que sur le chemin `onSubmitted` (touche Envoyer du
+  clavier), et seulement après la fin de l'envoi ; l'icône « envoyer »
+  appelle `_submitComment` directement, sans vider.
+- **Correctif** : `_submitComment` vide le contrôleur dès la validation du
+  texte, avant l'aller-retour réseau, sur les deux pages (spectateur et
+  hôte `live_preview_page.dart`, qui avait le même défaut).
+
+### 4. Abonnés notifiés d'un live ou d'une story, avec ouverture directe
+
+- **Demande** : les abonnés d'un vendeur reçoivent une notification quand il
+  lance un live ou publie une story ; l'appui ouvre directement le live ou
+  la story.
+- **État avant** : la story avait déjà un push (`story_published`) et une
+  entrée dans la liste, mais l'appui sur le push ouvrait la liste des
+  notifications, pas la story. Le live n'avait ni push ni entrée : seuls
+  l'événement temps réel `live:updated` et la pastille LIVE de l'accueil.
+- **Backend** :
+  - `push-notifications.service.ts` — nouveau
+    `sendLiveStartedNotification` (`type: live_started`, tag
+    `live-<sellerProfileId>` : un redémarrage remplace la tuile). Le
+    fan-out aux abonnés (liens de suivi → jetons → envoi → purge des jetons
+    invalides) est extrait dans `sendToShopFollowers`, partagé avec la story
+    (comportement inchangé, message de log légèrement reformulé) ;
+  - `profiles.service.ts` `startCurrentUserLive` — envoi du push après
+    l'événement temps réel, **non attendu** (l'hôte ne doit pas patienter
+    sur FCM, un échec est loggé et ne casse pas le démarrage). Garde
+    anti-doublon : pas de push si la session précédente est encore ouverte
+    et a démarré il y a moins de 10 min (reconnexion / relance de l'app) ;
+  - `notifications.service.ts` — entrée `live_started` (« En direct »,
+    « <boutique> est en direct : <titre> ») pour chaque boutique suivie en
+    live, bornée à 12 h (une session jamais fermée ne doit pas rester
+    « en direct » des jours) ; id `notif-live-<session>-<startedAt>` pour
+    que le prochain live revienne non lu.
+- **App** :
+  - `lib/services/notification_navigation.dart` (nouveau) —
+    `openLiveFromNotification` (ouvre `LiveWatchPage`) et
+    `openStoryFromNotification` (recharge le fil, ouvre `StoryViewerPage`
+    sur la boutique, `false` si la story a expiré) ; partagés par le push
+    et la liste in-app pour atterrir au même endroit ;
+  - `push_notification_service.dart` — à l'appui d'un push `live_started`
+    ou `story_published`, ouverture directe via ces helpers ; les autres
+    types (ou une story expirée) retombent sur la liste comme avant. Les
+    notifications affichées en premier plan réutilisent un id par boutique
+    pour les stories / lives (miroir du `tag` backend) ;
+  - `notifications_page.dart` — cas `live_started` (visuel « En direct »,
+    appui → live) ; `_openStoryNotification` délègue au helper (duplication
+    supprimée, imports story retirés).
+- **Comportement si le live est déjà fini** : `LiveWatchPage` affiche
+  « Impossible de rejoindre le live » (le backend répond
+  `Live session not found`).
+- **À déployer** : backend (aucune migration).

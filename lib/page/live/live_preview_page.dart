@@ -72,28 +72,42 @@ class _LivePreviewPageState extends State<LivePreviewPage>
   CameraPosition _cameraPosition = CameraPosition.front;
   String? _errorMessage;
 
-  // Full HD capture (1920x1080, portrait 1080x1920 on a phone). The viewer
-  // page requests the top layer explicitly, so this is what good links get.
+  // TikTok-style mobile profile: 720p capture (1280x720, portrait 720x1280
+  // on a phone). Above that, the host's phone and uplink pay more than the
+  // viewer's screen can show, and every viewer's data bill doubles.
   CameraCaptureOptions get _cameraCaptureOptions => CameraCaptureOptions(
     cameraPosition: _cameraPosition,
-    params: VideoParametersPresets.h1080_169,
+    params: VideoParametersPresets.h720_169,
     maxFrameRate: 30,
   );
 
   static const VideoPublishOptions _videoPublishOptions = VideoPublishOptions(
-    // 3.5 Mb/s at 1080p: enough for sharp product close-ups, above the SDK's
-    // 3 Mb/s preset. Needs ~4 Mb/s of stable uplink with the ladder below.
-    videoEncoding: VideoEncoding(maxBitrate: 3500 * 1000, maxFramerate: 30),
-    // Two fallback layers only (540p / 216p): a third one would add a full
-    // 720p encode on the host's phone for little visible gain.
+    // H.264 instead of the SDK's VP8 default: hardware-encoded on every
+    // phone with a camera, so three simulcast layers no longer cook a
+    // mid-range device, and the picture is sharper at the same bitrate. The
+    // SDK falls back to a codec the server enables if H.264 is unavailable.
+    videoCodec: 'h264',
+    // 1.5 Mb/s at 720p / 30 fps: middle of the range TikTok Live uses for
+    // 720p; ~0.7 GB per hour for an HD viewer, ~2 Mb/s uplink with the
+    // ladder below.
+    videoEncoding: VideoEncoding(maxBitrate: 1500 * 1000, maxFramerate: 30),
+    // 360p is what the viewer page picks on mobile data: kept at 30 fps
+    // (the SDK preset stops at 20) so a 4G viewer gets the same motion as a
+    // Wi-Fi one, for ~10% more data (500 kb/s vs 450). 180p (160 kb/s,
+    // 15 fps) is the data-saver mode. Both are also what the SFU serves on
+    // its own when a viewer's link cannot keep up.
     simulcast: true,
     videoSimulcastLayers: [
-      VideoParametersPresets.h540_169,
-      VideoParametersPresets.h216_169,
+      VideoParameters(
+        dimensions: VideoDimensionsPresets.h360_169,
+        encoding: VideoEncoding(maxBitrate: 500 * 1000, maxFramerate: 30),
+      ),
+      VideoParametersPresets.h180_169,
     ],
-    // Under congestion, keep the image sharp and lower the frame rate — a
-    // shopping live is about seeing the product, not smooth motion.
-    degradationPreference: DegradationPreference.maintainResolution,
+    // Under congestion, give up a little sharpness and a little frame rate
+    // rather than letting the picture stutter: a live that freezes loses
+    // viewers faster than one that softens for a few seconds.
+    degradationPreference: DegradationPreference.balanced,
   );
 
   @override
@@ -411,6 +425,10 @@ class _LivePreviewPageState extends State<LivePreviewPage>
     if (text.trim().isEmpty || channel == null) {
       return;
     }
+
+    // Clear right away, before the send round-trip, so the field is empty
+    // on every send path (keyboard action and send icon alike).
+    _commentController.clear();
 
     // Own messages are not echoed back by the room: append what was sent.
     final entry = await channel.sendComment(text);

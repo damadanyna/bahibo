@@ -10,6 +10,7 @@ import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/app_event_log_service.dart';
 import 'package:banay/services/banay_tls_override.dart';
 import 'package:banay/services/conversations_api_service.dart';
+import 'package:banay/services/notification_navigation.dart';
 import 'package:banay/services/session_storage.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -258,14 +259,15 @@ class PushNotificationService {
         message.data['body']?.toString() ??
         'Vous avez recu un nouveau message.';
 
-    // Reuse the same notification id for every message of a given
-    // conversation so a new message replaces the previous tile instead of
-    // stacking a separate one (mirrors the `tag`/`thread-id` grouping the
-    // backend sets on the OS-rendered background notification).
-    final conversationId = message.data['conversationId']?.trim();
-    final notificationId = conversationId != null && conversationId.isNotEmpty
-        ? conversationId.hashCode
-        : message.messageId?.hashCode ?? DateTime.now().millisecondsSinceEpoch;
+    // Reuse the same notification id for every message of a conversation,
+    // and for every story / live of a shop, so a new one replaces the
+    // previous tile instead of stacking (mirrors the `tag`/`thread-id`
+    // grouping the backend sets on the OS-rendered background notification).
+    final groupKey = _foregroundGroupKey(message.data);
+    final notificationId =
+        groupKey?.hashCode ??
+        message.messageId?.hashCode ??
+        DateTime.now().millisecondsSinceEpoch;
 
     await _localNotifications.show(
       notificationId,
@@ -285,6 +287,22 @@ class PushNotificationService {
       ),
       payload: message.data.isEmpty ? null : jsonEncode(message.data),
     );
+  }
+
+  static String? _foregroundGroupKey(Map<String, dynamic> data) {
+    final conversationId = data['conversationId']?.toString().trim() ?? '';
+    if (conversationId.isNotEmpty) {
+      return conversationId;
+    }
+
+    final type = data['type']?.toString().trim().toLowerCase() ?? '';
+    final sellerProfileId = data['sellerProfileId']?.toString().trim() ?? '';
+    if (sellerProfileId.isNotEmpty &&
+        (type == 'story_published' || type == 'live_started')) {
+      return '$type-$sellerProfileId';
+    }
+
+    return null;
   }
 
   static void setVisibleConversation(String? conversationId) {
@@ -388,31 +406,32 @@ class PushNotificationService {
     }
 
     if (!isConversationNotification) {
-      if (shellState != null) {
-        _isNavigatingFromNotification = true;
-        _pendingNotificationData = null;
+      _isNavigatingFromNotification = true;
+      _pendingNotificationData = null;
 
-        try {
-          await shellState.openNotificationsFromNotification();
-        } finally {
-          _isNavigatingFromNotification = false;
+      try {
+        // A live or a story opens directly; anything else, or a story gone
+        // since the tap, lands on the notifications list as before.
+        final openedTarget =
+            navigator != null &&
+            await _openNotificationTarget(
+              navigator,
+              notificationType,
+              pendingData,
+            );
+        if (!openedTarget) {
+          if (shellState != null) {
+            await shellState.openNotificationsFromNotification();
+          } else if (navigator != null) {
+            await navigator.push(
+              MaterialPageRoute(
+                builder: (_) => const NotificationsPage(notifications: []),
+              ),
+            );
+          }
         }
-        return;
-      }
-
-      if (navigator != null) {
-        _isNavigatingFromNotification = true;
-        _pendingNotificationData = null;
-
-        try {
-          await navigator.push(
-            MaterialPageRoute(
-              builder: (_) => const NotificationsPage(notifications: []),
-            ),
-          );
-        } finally {
-          _isNavigatingFromNotification = false;
-        }
+      } finally {
+        _isNavigatingFromNotification = false;
       }
       return;
     }
@@ -483,6 +502,35 @@ class PushNotificationService {
       );
     } finally {
       _isNavigatingFromNotification = false;
+    }
+  }
+
+  /// `true` when the notification has its own destination and it opened.
+  static Future<bool> _openNotificationTarget(
+    NavigatorState navigator,
+    String notificationType,
+    Map<String, String> data,
+  ) async {
+    final sellerProfileId = data['sellerProfileId']?.trim() ?? '';
+    switch (notificationType) {
+      case 'live_started':
+        if (sellerProfileId.isEmpty) {
+          return false;
+        }
+        await openLiveFromNotification(
+          navigator,
+          sellerProfileId: sellerProfileId,
+          sellerName: data['sellerName'] ?? '',
+          sellerAvatarUrl: data['sellerAvatarUrl'] ?? '',
+        );
+        return true;
+      case 'story_published':
+        return openStoryFromNotification(
+          navigator,
+          sellerProfileId: sellerProfileId,
+        );
+      default:
+        return false;
     }
   }
 

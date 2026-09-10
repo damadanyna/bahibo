@@ -93,6 +93,26 @@ type SendStoryPublishedNotificationArgs = {
   storyImageUrl?: string;
 };
 
+type SendLiveStartedNotificationArgs = {
+  sellerProfileId: string;
+  sellerUserId: string;
+  sellerDisplayName: string;
+  sellerAvatarUrl?: string;
+  liveTitle: string;
+};
+
+/** A push fanned out to every follower of one shop (story, live). */
+type ShopFollowersPushArgs = {
+  sellerProfileId: string;
+  sellerUserId: string;
+  /** Same tag => the OS replaces the shop's previous tile of this kind. */
+  groupKey: string;
+  /** Names the event in the log line when Firebase Admin is not configured. */
+  subject: string;
+  notification: { title: string; body: string };
+  data: Record<string, string>;
+};
+
 @Injectable()
 export class PushNotificationsService {
   private readonly logger = new Logger(PushNotificationsService.name);
@@ -720,6 +740,58 @@ export class PushNotificationsService {
   async sendStoryPublishedNotification(
     args: SendStoryPublishedNotificationArgs,
   ) {
+    // Several stories posted in a row by the same shop replace each other
+    // instead of stacking (same mechanism as chat conversations).
+    await this.sendToShopFollowers({
+      sellerProfileId: args.sellerProfileId,
+      sellerUserId: args.sellerUserId,
+      groupKey: `story-${args.sellerProfileId}`,
+      subject: `story ${args.storyId}`,
+      notification: {
+        title: args.sellerDisplayName,
+        body: "a publié une nouvelle story.",
+      },
+      data: {
+        type: "story_published",
+        sellerProfileId: args.sellerProfileId,
+        sellerUserId: args.sellerUserId,
+        sellerName: args.sellerDisplayName,
+        sellerAvatarUrl: args.sellerAvatarUrl ?? "",
+        storyId: args.storyId,
+        storyImageUrl: args.storyImageUrl ?? "",
+      },
+    });
+  }
+
+  /** Followers learn the shop went live; the tap opens the live directly. */
+  async sendLiveStartedNotification(args: SendLiveStartedNotificationArgs) {
+    const liveTitle = args.liveTitle.trim();
+
+    await this.sendToShopFollowers({
+      sellerProfileId: args.sellerProfileId,
+      sellerUserId: args.sellerUserId,
+      // A host who stops and restarts replaces the tile instead of stacking.
+      groupKey: `live-${args.sellerProfileId}`,
+      subject: `live of shop ${args.sellerProfileId}`,
+      notification: {
+        title: args.sellerDisplayName,
+        body:
+          liveTitle.length > 0
+            ? `est en direct : ${liveTitle}`
+            : "est en direct maintenant.",
+      },
+      data: {
+        type: "live_started",
+        sellerProfileId: args.sellerProfileId,
+        sellerUserId: args.sellerUserId,
+        sellerName: args.sellerDisplayName,
+        sellerAvatarUrl: args.sellerAvatarUrl ?? "",
+        liveTitle,
+      },
+    });
+  }
+
+  private async sendToShopFollowers(args: ShopFollowersPushArgs) {
     const followerLinks = await this.prisma.sellerFollow.findMany({
       where: {
         sellerProfileId: args.sellerProfileId,
@@ -757,44 +829,29 @@ export class PushNotificationsService {
 
     if (!this.firebaseApp) {
       this.logger.warn(
-        `Skipping story notification for ${args.storyId} because Firebase Admin is not configured.`,
+        `Skipping follower notification for ${args.subject} because Firebase Admin is not configured.`,
       );
       return;
     }
 
-    // Several stories posted in a row by the same shop replace each other
-    // instead of stacking (same mechanism as chat conversations).
-    const groupKey = `story-${args.sellerProfileId}`;
-
     const response = await getMessaging(this.firebaseApp).sendEachForMulticast({
       tokens: deviceTokens.map((deviceToken) => deviceToken.token),
-      notification: {
-        title: args.sellerDisplayName,
-        body: "a publié une nouvelle story.",
-      },
-      data: {
-        type: "story_published",
-        sellerProfileId: args.sellerProfileId,
-        sellerUserId: args.sellerUserId,
-        sellerName: args.sellerDisplayName,
-        sellerAvatarUrl: args.sellerAvatarUrl ?? "",
-        storyId: args.storyId,
-        storyImageUrl: args.storyImageUrl ?? "",
-      },
+      notification: args.notification,
+      data: args.data,
       android: {
         priority: "high",
         notification: {
           channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
           sound: ANDROID_NOTIFICATION_SOUND,
           clickAction: "FLUTTER_NOTIFICATION_CLICK",
-          tag: groupKey,
+          tag: args.groupKey,
         },
       },
       apns: {
         payload: {
           aps: {
             sound: "default",
-            "thread-id": groupKey,
+            "thread-id": args.groupKey,
           },
         },
       },
