@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:banay/component/live/live_overlay_widgets.dart';
+import 'package:banay/component/live/live_tap_hearts.dart';
 import 'package:banay/component/ui/dinamic_icon_input.dart';
 import 'package:banay/services/catalog_api_service.dart';
 import 'package:banay/services/live/live_room_channel.dart';
@@ -45,6 +46,12 @@ class _LiveWatchPageState extends State<LiveWatchPage>
   late final EventsListener<RoomEvent> _roomEvents = _room.createListener();
   final TextEditingController _commentController = TextEditingController();
   late final AnimationController _livePulseController;
+  final LiveTapHeartsController _heartsController = LiveTapHeartsController();
+  // Taps are counted locally at once and sent in batches: a burst of taps
+  // becomes one packet every few hundred ms instead of one per tap.
+  static const Duration _likeFlushInterval = Duration(milliseconds: 350);
+  int _pendingLikes = 0;
+  Timer? _likeFlushTimer;
   final Connectivity _connectivity = Connectivity();
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   bool _isOnCellular = false;
@@ -86,6 +93,8 @@ class _LiveWatchPageState extends State<LiveWatchPage>
   @override
   void dispose() {
     unawaited(WakelockPlus.disable());
+    _likeFlushTimer?.cancel();
+    _flushPendingLikes();
     _commentController.dispose();
     _livePulseController.dispose();
     unawaited(_connectivitySubscription?.cancel());
@@ -112,6 +121,7 @@ class _LiveWatchPageState extends State<LiveWatchPage>
     _likesSubscription = channel.likes.listen((count) {
       if (mounted) {
         setState(() => _likeCount += count);
+        _heartsController.celebrate(count);
       }
     });
     await channel.start();
@@ -225,18 +235,40 @@ class _LiveWatchPageState extends State<LiveWatchPage>
       ? _room.remoteParticipants.length
       : null;
 
+  /// Like button: same as a tap on the video, with the heart rising from
+  /// the button's corner.
   void _handleLike() {
-    unawaited(HapticFeedback.lightImpact());
-    unawaited(_channel?.sendLike() ?? Future<void>.value());
-    setState(() {
-      _likeCount += 1;
-      _likeBump = true;
-    });
+    _registerLike();
+    _heartsController.celebrate(1);
+    setState(() => _likeBump = true);
     Future<void>.delayed(const Duration(milliseconds: 180), () {
       if (mounted) {
         setState(() => _likeBump = false);
       }
     });
+  }
+
+  /// TikTok-style tap on the video: a heart blooms under the finger.
+  void _handleTapLike(Offset position) {
+    _registerLike();
+    _heartsController.burstAt(position);
+  }
+
+  void _registerLike() {
+    unawaited(HapticFeedback.selectionClick());
+    setState(() => _likeCount += 1);
+    _pendingLikes += 1;
+    _likeFlushTimer ??= Timer(_likeFlushInterval, _flushPendingLikes);
+  }
+
+  void _flushPendingLikes() {
+    _likeFlushTimer = null;
+    final count = _pendingLikes;
+    _pendingLikes = 0;
+    if (count <= 0) {
+      return;
+    }
+    unawaited(_channel?.sendLike(count: count) ?? Future<void>.value());
   }
 
   Future<void> _submitComment(String text) async {
@@ -278,6 +310,14 @@ class _LiveWatchPageState extends State<LiveWatchPage>
                   ),
           ),
           const Positioned.fill(child: LiveOverlayScrim()),
+          // Above the scrim so hearts glow over the dark gradient, below the
+          // controls so buttons and the comment feed keep their taps.
+          Positioned.fill(
+            child: LiveTapHeartsLayer(
+              controller: _heartsController,
+              onTap: isStreaming ? _handleTapLike : null,
+            ),
+          ),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),

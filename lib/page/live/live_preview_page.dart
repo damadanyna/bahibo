@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:banay/component/live/live_overlay_widgets.dart';
+import 'package:banay/component/live/live_tap_hearts.dart';
 import 'package:banay/component/ui/dinamic_icon_input.dart';
 import 'package:banay/services/live/live_room_channel.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
@@ -63,6 +64,7 @@ class _LivePreviewPageState extends State<LivePreviewPage>
   StreamSubscription<LiveCommentEntry>? _commentsSubscription;
   StreamSubscription<int>? _likesSubscription;
   int _likeCount = 0;
+  final LiveTapHeartsController _heartsController = LiveTapHeartsController();
 
   bool _isConnecting = true;
   bool _isLive = false;
@@ -166,6 +168,7 @@ class _LivePreviewPageState extends State<LivePreviewPage>
     _likesSubscription = channel.likes.listen((count) {
       if (mounted) {
         setState(() => _likeCount += count);
+        _heartsController.celebrate(count);
       }
     });
     await channel.start();
@@ -556,6 +559,11 @@ class _LivePreviewPageState extends State<LivePreviewPage>
                     ),
             ),
             const Positioned.fill(child: LiveOverlayScrim()),
+            // The host does not tap to like: this layer only shows the
+            // viewers' hearts rising from the corner.
+            Positioned.fill(
+              child: LiveTapHeartsLayer(controller: _heartsController),
+            ),
             if (_isLive && _isPaused)
               Positioned.fill(
                 child: IgnorePointer(

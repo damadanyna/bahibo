@@ -839,3 +839,34 @@ futurs diagnostics.
   « Impossible de rejoindre le live » (le backend répond
   `Live session not found`).
 - **À déployer** : backend (aucune migration).
+
+### 5. Live : « tapoter pour aimer » façon TikTok, cœurs flottants
+
+- **Demande** : le système de tapotement de TikTok dans l'interface du live,
+  avec une interface soignée.
+- **Composant** (`lib/component/live/live_tap_hearts.dart`, nouveau) :
+  `LiveTapHeartsLayer` + `LiveTapHeartsController`. Couche plein écran
+  placée au-dessus du voile et sous les contrôles. Tous les cœurs sont
+  dessinés dans un seul `CustomPaint` piloté par un `Ticker` (arrêté quand
+  il n'y a plus de cœur) : des dizaines de cœurs simultanés coûtent un seul
+  repaint par image. Chaque cœur : apparition avec léger rebond, montée
+  avec balancement et inclinaison, rétrécissement et fondu en fin de vie ;
+  rendu « verre » (ombre douce, dégradé deux tons, reflet). Palette :
+  rouge live, couleur primaire du thème, rose, orange, violet, jaune.
+  - `burstAt(position)` : un grand cœur + deux satellites et un anneau qui
+    s'élargit sous le doigt (tap) ;
+  - `celebrate(count)` : vague de cœurs (max 6, décalés de 110 ms) qui
+    montent depuis le coin du bouton J'aime, pour les likes reçus du salon.
+- **Spectateur** (`live_watch_page.dart`) : un tap n'importe où sur la vidéo
+  (hors boutons et fil de commentaires) compte un like, vibre légèrement et
+  fait éclore un cœur à l'endroit du tap. Le bouton J'aime fait la même
+  chose avec un cœur qui part du coin. Les likes sont comptés localement
+  tout de suite et **envoyés par lots** toutes les 350 ms
+  (`sendLike(count:)`) au lieu d'un paquet par tap ; le reliquat est envoyé
+  à la fermeture. Les likes des autres spectateurs déclenchent la vague de
+  cœurs. Désactivé tant que le flux n'est pas affiché.
+- **Hôte** (`live_preview_page.dart`) : même couche, transparente aux
+  touches (l'hôte ne s'auto-like pas) ; les likes reçus font monter les
+  cœurs pour qu'il voie l'engouement.
+- **Inchangé** : `LiveRoomChannel` (le champ `count` existait, borné à 50 à
+  la réception).
