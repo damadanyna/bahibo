@@ -148,6 +148,12 @@ type CallRealtimePayload = {
   /** Filled on `call:ended`. */
   reason?: "ended" | "declined" | "missed" | "cancelled";
   endedByUserId?: string | null;
+  /**
+   * `call:incoming` only: the callee's LiveKit credentials, so the phone
+   * joins the room while it rings and answering only unmutes.
+   */
+  url?: string;
+  token?: string;
 };
 
 type ProductRealtimePayload = {

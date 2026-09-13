@@ -10,8 +10,11 @@ bind_addresses:
 rtc:
   # Média : UDP de préférence, TCP en secours quand l'UDP est bloqué.
   tcp_port: 7881
-  port_range_start: 50000
-  port_range_end: 50200
+  # Un seul port UDP multiplexé pour tout le média. L'ancienne plage
+  # 50000-50200 coûtait deux ports par participant, soit ~100 participants
+  # en tout (lives + appels) : un live à 100 spectateurs saturait le
+  # serveur et bloquait les appels. Ouvrir 7882/udp dans UFW (README).
+  udp_port: 7882
   # Le VPS a son IP publique directement sur l'interface : LiveKit la
   # découvre seul via STUN. Sinon, forcez-la avec node_ip.
   use_external_ip: true
@@ -38,6 +41,13 @@ rtc:
 # ex. `openssl rand -base64 32`.
 keys:
   APIbanay: <SECRET_LIVEKIT>
+
+audio:
+  # Redondance audio (RED) fabriquée par le SFU vers chaque récepteur quand
+  # l'émetteur envoie de l'Opus simple : chaque paquet porte aussi la trame
+  # précédente, une perte isolée est réparée sans retransmission. Coût :
+  # débit audio doublé (≈ 60 kb/s par sens en appel).
+  active_red_encoding: true
 
 room:
   # Les salles sont créées par le premier participant (jeton signé par

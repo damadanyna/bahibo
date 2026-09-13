@@ -2,10 +2,13 @@ import 'dart:async';
 
 import 'package:banay/component/live/live_overlay_widgets.dart';
 import 'package:banay/component/live/live_tap_hearts.dart';
+import 'package:banay/component/live/live_viewers_sheet.dart';
 import 'package:banay/component/ui/dinamic_icon_input.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/catalog_api_service.dart';
+import 'package:banay/services/live/live_connect_options.dart';
 import 'package:banay/services/live/live_room_channel.dart';
+import 'package:banay/services/live/live_viewers.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:livekit_client/livekit_client.dart';
@@ -64,6 +67,7 @@ class _LivePreviewPageState extends State<LivePreviewPage>
   late final AnimationController _livePulseController;
   LiveRoomChannel? _channel;
   StreamSubscription<LiveCommentEntry>? _commentsSubscription;
+  EventsListener<RoomEvent>? _roomEvents;
   StreamSubscription<int>? _likesSubscription;
   int _likeCount = 0;
   final LiveTapHeartsController _heartsController = LiveTapHeartsController();
@@ -83,12 +87,13 @@ class _LivePreviewPageState extends State<LivePreviewPage>
   CameraPosition _cameraPosition = CameraPosition.front;
   String? _errorMessage;
 
-  // TikTok-style mobile profile: 720p capture (1280x720, portrait 720x1280
-  // on a phone). Above that, the host's phone and uplink pay more than the
-  // viewer's screen can show, and every viewer's data bill doubles.
+  // 1080p capture (1920x1080, portrait 1080x1920 on a phone): maps 1:1 on
+  // a full-HD viewer screen in portrait, where 720p was scaled up 1.5× and
+  // looked soft. A front camera that stops at 720p falls back to its best
+  // format; the layers below are derived from what the camera gives.
   CameraCaptureOptions get _cameraCaptureOptions => CameraCaptureOptions(
     cameraPosition: _cameraPosition,
-    params: VideoParametersPresets.h720_169,
+    params: VideoParametersPresets.h1080_169,
     maxFrameRate: 30,
   );
 
@@ -98,27 +103,60 @@ class _LivePreviewPageState extends State<LivePreviewPage>
     // mid-range device, and the picture is sharper at the same bitrate. The
     // SDK falls back to a codec the server enables if H.264 is unavailable.
     videoCodec: 'h264',
-    // 1.5 Mb/s at 720p / 30 fps: middle of the range TikTok Live uses for
-    // 720p; ~0.7 GB per hour for an HD viewer, ~2 Mb/s uplink with the
-    // ladder below.
-    videoEncoding: VideoEncoding(maxBitrate: 1500 * 1000, maxFramerate: 30),
-    // 360p is what the viewer page picks on mobile data: kept at 30 fps
-    // (the SDK preset stops at 20) so a 4G viewer gets the same motion as a
-    // Wi-Fi one, for ~10% more data (500 kb/s vs 450). 180p (160 kb/s,
-    // 15 fps) is the data-saver mode. Both are also what the SFU serves on
-    // its own when a viewer's link cannot keep up.
+    // 2.5 Mb/s at 1080p / 30 fps (~1.1 GB per hour for a viewer who gets
+    // it; TikTok Live's 1080p sits at 2.5–4 Mb/s). Only a ceiling: the
+    // encoder follows the uplink estimate below it, and under bitrate
+    // pressure the balanced degradation below scales the source down
+    // (1080p → 720p → 540p) rather than sending blocky full-size frames.
+    videoEncoding: VideoEncoding(maxBitrate: 2500 * 1000, maxFramerate: 30),
+    // Three layers so 1080p is a bonus, never a tax. libwebrtc switches a
+    // layer on only once the uplink estimate covers every lower layer's
+    // target plus that layer's built-in floor (600 kb/s at 720p, 800 kb/s
+    // at 1080p): 720p needs ~1.05 Mb/s of uplink, 1080p ~2.5 Mb/s. A 4G
+    // host therefore keeps serving 720p at up to 1.2 Mb/s, as before; a
+    // host on Wi-Fi or fibre serves 1080p. dynacast pauses the layers no
+    // viewer is on, so the phone rarely encodes all three at once.
+    // 360p is what the SFU serves when a viewer's link cannot keep up
+    // (viewers ask for the top layer on every network); 30 fps (the SDK
+    // preset stops at 20) so a stepped-down viewer keeps the same motion.
+    // Below ~400 kb/s of downlink the SFU pauses video rather than serving
+    // a 180p thumbnail.
     simulcast: true,
     videoSimulcastLayers: [
       VideoParameters(
         dimensions: VideoDimensionsPresets.h360_169,
-        encoding: VideoEncoding(maxBitrate: 500 * 1000, maxFramerate: 30),
+        encoding: VideoEncoding(maxBitrate: 400 * 1000, maxFramerate: 30),
       ),
-      VideoParametersPresets.h180_169,
+      VideoParameters(
+        dimensions: VideoDimensionsPresets.h720_169,
+        encoding: VideoEncoding(maxBitrate: 1200 * 1000, maxFramerate: 30),
+      ),
     ],
     // Under congestion, give up a little sharpness and a little frame rate
     // rather than letting the picture stutter: a live that freezes loses
     // viewers faster than one that softens for a few seconds.
     degradationPreference: DegradationPreference.balanced,
+  );
+
+  // Opus at 64 kb/s, sent continuously. The SDK default (48 kb/s with DTX)
+  // is a call profile: DTX stops sending during pauses and the viewer's
+  // decoder fills them with comfort noise, so the shop's room tone switches
+  // on and off with every sentence — the "phone call" feel. 64 kb/s mono is
+  // transparent for voice and leaves room for music playing in the shop.
+  // ~30 MB per hour more than the default for a viewer.
+  //
+  // Capture stays on the SDK's call profile (echo cancellation, noise
+  // suppression, gain control): flutter_webrtc opens one audio device for
+  // the whole process, shared with voice calls, and only a global
+  // "bypass voice processing" flag at app start changes it — which would
+  // also strip echo cancellation from calls. The high-pass filter is the
+  // one per-track addition: it cuts the rumble of a hand-held phone.
+  static const AudioPublishOptions _audioPublishOptions = AudioPublishOptions(
+    dtx: false,
+    audioBitrate: 64 * 1000,
+  );
+  static const AudioCaptureOptions _audioCaptureOptions = AudioCaptureOptions(
+    highPassFilter: true,
   );
 
   @override
@@ -133,8 +171,31 @@ class _LivePreviewPageState extends State<LivePreviewPage>
         dynacast: true,
         defaultCameraCaptureOptions: _cameraCaptureOptions,
         defaultVideoPublishOptions: _videoPublishOptions,
+        defaultAudioCaptureOptions: _audioCaptureOptions,
+        defaultAudioPublishOptions: _audioPublishOptions,
       ),
     );
+    // "X a rejoint le live" in the host's feed, from the room's own
+    // participant events (viewers only: the identity filter is in
+    // liveJoinCommentFor).
+    _roomEvents = _room.createListener()
+      ..on<ParticipantConnectedEvent>((event) {
+        final entry = liveJoinCommentFor(event.participant);
+        if (entry != null) {
+          _appendComment(entry);
+        }
+      })
+      ..on<ParticipantDisconnectedEvent>((event) {
+        // Only while connected: ending the live would otherwise announce
+        // every viewer leaving at once.
+        if (_room.connectionState != ConnectionState.connected) {
+          return;
+        }
+        final entry = liveLeaveCommentFor(event.participant);
+        if (entry != null) {
+          _appendComment(entry);
+        }
+      });
     _commentController = TextEditingController();
     _livePulseController = AnimationController(
       vsync: this,
@@ -153,6 +214,7 @@ class _LivePreviewPageState extends State<LivePreviewPage>
     unawaited(_commentsSubscription?.cancel());
     unawaited(_likesSubscription?.cancel());
     unawaited(_channel?.dispose());
+    unawaited(_roomEvents?.dispose());
     _room.removeListener(_handleRoomChanged);
     unawaited(_room.disconnect());
     _room.dispose();
@@ -222,7 +284,11 @@ class _LivePreviewPageState extends State<LivePreviewPage>
       }
 
       if (_room.connectionState != ConnectionState.connected) {
-        await _room.connect(widget.liveUrl, widget.liveToken);
+        await _room.connect(
+          widget.liveUrl,
+          widget.liveToken,
+          connectOptions: liveConnectOptions,
+        );
       }
 
       await _room.localParticipant?.setCameraEnabled(
@@ -809,6 +875,9 @@ class _LivePreviewPageState extends State<LivePreviewPage>
       viewerCount: _isLive ? _room.remoteParticipants.length : null,
       likeCount: _isLive ? _likeCount : null,
       pulse: _livePulseController,
+      onViewersTap: _isLive
+          ? () => showLiveViewersSheet(context, room: _room)
+          : null,
     );
   }
 

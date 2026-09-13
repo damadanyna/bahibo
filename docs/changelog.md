@@ -1263,3 +1263,349 @@ futurs diagnostics.
 - Console Play : créer une version avec le nouvel AAB dans chaque
   sous-ensemble concerné, déployer à 100 %, puis vérifier dans l'explorateur
   de collections que le code 11 apparaît « Inactif ».
+
+## 2026-09-13
+
+### 1. Live spectateur : 720p demandé sur tous les réseaux (image pixellisée en 4G)
+
+- **Symptôme** : après validation Play, test en 4G (Samsung S21 / S22
+  Ultra) : image du live « pleine de pixels » et saccadée, alors que
+  TikTok Live est net et fluide sur le même réseau.
+- **Cause (pixellisation)** : depuis l'entrée 1 du 2026-09-10, le spectateur
+  en données mobiles seules demandait la couche MEDIUM (360p, 500 kb/s),
+  quelle que soit la qualité réelle de sa 4G. Étirée en plein écran
+  (`VideoViewFit.cover`) sur un téléphone 1080×2400, une image 360×640 est
+  agrandie 3 fois : c'est le rendu observé. TikTok ne plafonne pas selon le
+  type de réseau, il suit le débit mesuré.
+- **Correctif** (`lib/page/live/live_watch_page.dart`) :
+  `setVideoQuality(VideoQuality.HIGH)` sur chaque piste vidéo souscrite,
+  Wi-Fi ou données mobiles ; le SFU mesure de toute façon le lien descendant
+  de chaque spectateur et ne sert 360p / 180p que si le lien ne suit
+  vraiment pas. Détection `connectivity_plus` (Wi-Fi ⇄ mobile) retirée de
+  la page ; `lib/services/live/live_view_quality.dart` et son test
+  supprimés (ils ne renvoyaient plus qu'une constante). `adaptiveStream`
+  reste désactivé (entrée 8 du 2026-09-06 : taille logique du lecteur).
+- **Coût data** : spectateur 4G ≈ 0,7 Go/h (720p à 1,5 Mb/s) au lieu de
+  ≈ 0,25 Go/h ; choix validé par l'utilisateur.
+- **Saccades, non couvertes par ce correctif** : elles viennent du lien
+  montant de l'hôte (3 couches simulcast ≈ 2,2 Mb/s à tenir ; dès qu'il
+  fléchit, WebRTC coupe la couche 720p pour tous les spectateurs) et de
+  l'absence de tampon en WebRTC (< 1 s de latence : chaque rafale de pertes
+  4G devient un gel, là où TikTok masque avec 3 à 10 s de tampon). Un S21 /
+  S22 Ultra (Exynos ou Snapdragon) encode H.264 en matériel : l'encodeur
+  n'est pas en cause sur ces appareils. Pistes : couche haute à 1,2 Mb/s et
+  retrait de la couche 180p côté hôte ; à terme, chaîne serveur (Egress →
+  HLS + lecteur avec tampon) déjà notée dans l'entrée 1 du 2026-09-10.
+- **Rappel** : sur Android, libwebrtc n'a pas d'encodeur H.264 logiciel et
+  n'active le H.264 matériel que sur puces Qualcomm / Exynos ; un hôte
+  MediaTek / Unisoc retombe en VP8 logiciel (3 couches 720p / 30 i/s sur
+  CPU), ce qui contredit « encodage matériel sur tous les téléphones » de
+  l'entrée 1 du 2026-09-10.
+
+### 2. Live : tampon de lecture côté spectateur (playout delay) et hôte allégé
+
+- **Demande** : plus de micro-coupures d'image et de son, comportement
+  « comme TikTok ».
+- **Ce que fait TikTok** : l'hôte envoie un seul flux, le serveur fabrique
+  les rendus, le spectateur lit en HLS/FLV avec 3 à 10 s de tampon qui
+  absorbent gigue et pertes. Le live Banay est en WebRTC : lecture dès
+  réception (< 1 s), donc chaque rafale de pertes 4G se voit. L'équivalent
+  LiveKit d'un tampon est le *playout delay* de salle, appliqué ici.
+- **Backend** (`backend/src/modules/livekit/livekit.service.ts`,
+  `profiles.service.ts`) : `ensureLiveRoom` crée la salle
+  `seller-live-<id>` via `RoomServiceClient.createRoom` avec
+  `minPlayoutDelay: 1000`, `maxPlayoutDelay: 3000` et `syncStreams: true`
+  avant l'événement `live:updated` et le jeton de l'hôte (sinon le premier
+  spectateur l'aurait auto-créée avec les réglages temps réel). Idempotent
+  (salle existante renvoyée telle quelle), non bloquant (échec = avertissement
+  et lecture temps réel). Les salles d'appel vocal ne passent pas par là.
+  `listParticipantIdentities` réutilise le nouveau `roomServiceClient()`.
+- **Effet spectateur** : le téléphone garde au moins 1 s de vidéo avant
+  affichage (extension RTP `playout-delay`, honorée par libwebrtc
+  Android / iOS), jusqu'à 3 s sous forte gigue ; l'audio est aligné sur la
+  vidéo par `syncStreams`. Latence hôte → spectateur ≈ 1,2 à 1,5 s (TikTok :
+  3 à 10 s) ; les commentaires et likes (canal de données) ne sont pas
+  retardés. La redondance audio (`red`) et le FEC Opus étaient déjà actifs
+  par défaut dans le SDK Flutter.
+- **Hôte** (`lib/page/live/live_preview_page.dart`) : couche 720p ramenée
+  de 1,5 à 1,2 Mb/s (échelle totale ≈ 1,9 Mb/s au lieu de ≈ 2,2) pour laisser
+  de la marge au lien montant 4G : sous l'estimation de débit, WebRTC coupe
+  la couche 720p pour tous les spectateurs. HD ≈ 0,55 Go/h côté spectateur.
+- **Limite** : le lien montant de l'hôte reste la borne, comme sur TikTok.
+  La parité complète (rendus fabriqués côté serveur, tampon de plusieurs
+  secondes) demande la chaîne Egress → HLS + lecteur avec tampon (entrée 1
+  du 2026-09-10).
+- **Backend à déployer avant diffusion** : sans lui, l'app fonctionne mais
+  la salle reste en lecture temps réel. Réglage à ajuster dans
+  `LIVE_MIN_PLAYOUT_DELAY_MS` / `LIVE_MAX_PLAYOUT_DELAY_MS` si l'essai
+  terrain montre un décalage son/image au démarrage (libwebrtc rattrape
+  l'audio par pas de 80 ms/s : ≈ 12 s pour 1 s de tampon).
+
+### 3. Live : hôte en 4G faible et nombre de spectateurs (VPS Hostinger)
+
+- **Demande** : améliorer « fluidité, hôte en 4G faible » et « nombre de
+  spectateurs » sans changer d'architecture (LiveKit auto-hébergé sur le
+  VPS Hostinger, coût zéro).
+- **Hôte, échelle à deux couches** (`lib/page/live/live_preview_page.dart`) :
+  720p 1,2 Mb/s + 360p 400 kb/s à 30 i/s, couche 180p retirée. Cause du
+  gain : libwebrtc n'active la couche 720p que si l'estimation du lien
+  montant couvre la cible de chaque couche inférieure plus le plancher
+  intégré du 720p (600 kb/s). Avec 180p + 360p à 500 kb/s il fallait
+  ≈ 1,3 Mb/s de lien montant ; un hôte 4G faible restait sous ce seuil et
+  tous les spectateurs voyaient du 360p. Avec 360p à 400 kb/s le seuil
+  tombe à ≈ 1,05 Mb/s (maintien à 1,0). Contrepartie : sous ≈ 400 kb/s de
+  lien descendant, le SFU met la vidéo en pause au lieu de servir une
+  vignette 180p.
+- **Serveur, port UDP unique** (`infra/livekit/livekit.yaml`,
+  `infra/livekit/README.md`) : `udp_port: 7882` remplace la plage
+  `50000-50200`. Selon la doc LiveKit, une plage coûte deux ports par
+  participant : 201 ports = ~100 participants au total, lives et appels
+  confondus ; un live suivi saturait le serveur et bloquait les appels. Le
+  port unique lève cette limite ; il reste le débit réel du port Hostinger
+  (≈ 1,3 Mb/s par spectateur HD) et le trafic mensuel. README : règle UFW
+  `7882/udp`, procédure de migration pour l'installation existante.
+- **Vérifié dans la doc LiveKit** : `room.playout_delay` existe aussi en
+  réglage serveur mais s'appliquerait aux appels ; on garde la création par
+  salle via l'API (entrée 2), qui a priorité sur les valeurs par défaut.
+  `pli_throttle`, `packet_buffer_size_video`, `congestion_control` restent
+  aux valeurs par défaut, adaptées.
+- **Non fait, en attente d'accord** : indicateur de qualité réseau affiché
+  à l'hôte (changement d'interface). Chaîne Egress → HLS + CDN (entrée 2,
+  niveau 3) non lancée : latence de 3 à 8 s à valider d'abord.
+- **À déployer** : VPS (`livekit.yaml` + UFW + redémarrage du conteneur),
+  backend (entrée 2), puis nouvelle version de l'app.
+
+### 4. Live : image figée toutes les ~3 s après l'entrée 2 (délai de lecture)
+
+- **Symptôme** (test local, backend de dev sur LiveKit Cloud) : qualité
+  d'image correcte mais gel court et régulier, toutes les 3 s environ.
+- **Cause** : le délai de lecture était donné comme plage (1000 à 3000 ms).
+  Dans `pkg/sfu/playoutdelay.go` de LiveKit, le SFU recalcule le délai à
+  chaque rapport RTCP du spectateur (cible = gigue × 10, + 2 ms par point de
+  NACK au-delà de 60 %), le déplace d'au plus 80 ms par seconde à
+  l'intérieur de la plage et renvoie l'extension RTP à chaque changement.
+  Côté téléphone, libwebrtc applique le nouveau plancher sans lissage
+  (`current_delay_.Clamped(min, max)` dans `VCMTiming`) : chaque hausse
+  fige l'image de la différence, chaque baisse fait un saut. Sur un
+  spectateur 4G dont la gigue fluctue, le délai oscillait en permanence.
+  Sur Wi-Fi (gigue × 10 < 1000 ms) il restait au minimum : pas de symptôme.
+- **Correctif** (`backend/src/modules/livekit/livekit.service.ts`) : une
+  seule valeur, envoyée comme `minPlayoutDelay` et `maxPlayoutDelay`
+  (bornes égales = extension envoyée une fois, jamais modifiée). Défaut
+  800 ms : couvre les rafales de gigue 4G et une retransmission (aller-retour
+  ≈ 250 ms), audio réaligné en ≈ 10 s au lieu de 12. Variable
+  `LIVE_PLAYOUT_DELAY_MS` (backend/.env, documentée dans `.env.example`) :
+  `0` désactive le tampon, plafond 10 000. `syncStreams` conservé.
+- **Pour retester** : arrêter le live, attendre 30 s (la salle LiveKit
+  survit ≈ 20 s au départ du dernier participant et garde ses réglages ;
+  `createRoom` ne modifie pas une salle existante), relancer le backend
+  puis le live. Si le gel persiste avec `LIVE_PLAYOUT_DELAY_MS=0`, la cause
+  n'est pas le tampon : regarder le lien montant de l'hôte (bascule de la
+  couche 720p autour de 1,0 Mb/s, entrée 3).
+- **Écarté** : aucun minuteur de 3 s côté app (battement de cœur hôte à
+  30 s, envoi des likes à 350 ms).
+
+### 5. Live : « MediaConnectException: Timed out waiting for PeerConnection to connect »
+
+- **Symptôme** (test local, après l'entrée 4) : erreur du SDK LiveKit à la
+  connexion.
+- **Ce que dit l'erreur** : `Engine.connect` du SDK Flutter a bien obtenu
+  la réponse `join` (URL et jeton corrects, serveur joignable en WSS) mais
+  la connexion média principale (ICE, TURN si nécessaire, DTLS) n'a pas
+  atteint l'état connecté dans les 10 s par défaut. Ce n'est pas un rejet
+  de la salle ni du jeton : c'est le chemin UDP/TCP du média.
+- **Écarté par lecture du code serveur LiveKit** : `min == max` pour le
+  délai de lecture est accepté sans erreur (`pkg/sfu/playoutdelay.go`) ;
+  le délai n'ajoute qu'une extension d'en-tête RTP à la négociation vidéo
+  (`pkg/rtc/transport.go`) ; `sync_streams` n'a d'effet particulier que
+  pour Firefox (`pkg/rtc/participant.go`). Aucun n'intervient dans ICE.
+- **Causes probables, à vérifier dans l'ordre** :
+  1. Backend de dev pointé sur le VPS avec le nouveau `livekit.yaml`
+     (entrée 3) sans `sudo ufw allow 7882/udp` : UDP bloqué, repli TCP 7881
+     seul. Vérifier `ss -lun | grep 7882` et `ufw status`.
+  2. LiveKit local en Docker : `--node-ip` doit être l'IP LAN actuelle du PC
+     (elle change, voir l'entrée « Dev login LAN IP » de la mémoire) et les
+     ports UDP du serveur doivent être publiés.
+  3. Réseau du téléphone : UDP et TCP média bloqués (Wi-Fi d'entreprise,
+     certains APN) ou 4G trop lente pour boucler ICE + DTLS en 10 s.
+- **Isolation** : `LIVE_PLAYOUT_DELAY_MS=0` court-circuite entièrement
+  `createRoom` ; si l'erreur persiste ainsi, la salle n'est pas en cause.
+- **Robustesse** (`lib/services/live/live_connect_options.dart`, nouveau ;
+  `live_watch_page.dart`, `live_preview_page.dart`) : délais `connection`
+  et `peerConnection` du SDK portés de 10 à 20 s pour les deux pages live
+  (les appels gardent les valeurs par défaut). Couvre une 4G lente, pas un
+  port bloqué.
+
+### 6. Live : couche haute en 1080p (netteté)
+
+- **Demande** : plus de résolution et de netteté.
+- **Changement** (`lib/page/live/live_preview_page.dart`) : capture 1080p
+  (1920×1080, soit 1080×1920 en portrait, 1:1 sur un écran full-HD là où
+  le 720p était agrandi 1,5 fois), échelle simulcast à trois couches :
+  1080p 2,5 Mb/s, 720p 1,2 Mb/s, 360p 400 kb/s, toutes à 30 i/s.
+- **Pourquoi trois couches** : libwebrtc n'active une couche que si le lien
+  montant couvre les cibles des couches inférieures plus le plancher de la
+  couche (600 kb/s en 720p, 800 kb/s en 1080p). Seuils : 720p ≈ 1,05 Mb/s
+  (inchangé), 1080p ≈ 2,5 Mb/s. Un hôte 4G continue donc à servir du 720p
+  comme avant ; un hôte en Wi-Fi ou fibre sert du 1080p. `dynacast` met en
+  pause les couches sans spectateur. Sous contrainte de débit, la
+  dégradation `balanced` réduit la résolution source (1080p → 720p → 540p)
+  plutôt que d'envoyer du 1080p en blocs.
+- **Coût** : spectateur en 1080p ≈ 1,1 Go/h (720p ≈ 0,55 Go/h). VPS :
+  jusqu'à ≈ 2,6 Mb/s par spectateur (README mis à jour). Encodage hôte :
+  trois sessions H.264 matérielles (1080p + 720p + 360p) au pire ; sans
+  H.264 matériel (MediaTek / Unisoc, repli VP8 logiciel) le 1080p est
+  hors de portée, voir le rappel de l'entrée 1.
+- **Caméra frontale limitée à 720p** : le SDK prend le meilleur format
+  disponible, les couches inférieures en découlent.
+- `live_watch_page.dart` : commentaire de `_applyVideoQuality` mis à jour,
+  aucun changement de comportement (couche HIGH déjà demandée).
+
+### 7. Live : son jugé « un peu de mauvaise qualité »
+
+- **Vérifié dans le SDK LiveKit 2.5.4 et flutter_webrtc 1.2.1** :
+  - `Room.connect` appelle `NativeAudioManagement.start()`, qui met Android
+    en profil « communication » (`MODE_IN_COMMUNICATION`, usage
+    `VOICE_COMMUNICATION`) pour tout participant, hôte ou spectateur. C'est
+    le chemin audio des appels : capture par la source micro « voix »,
+    anti-écho et réduction de bruit matériels (Android ≥ 10), sortie avec
+    le traitement « VoIP » du constructeur. D'où le rendu « téléphone ».
+  - Ce profil n'est pas modifiable en cours de session
+    (`Helper.setAndroidAudioConfiguration` : « must be set before initiating
+    a WebRTC session »), et les attributs de lecture sont fixés à la
+    création de l'unique module audio du processus, partagé avec les appels
+    vocaux. Le seul interrupteur, `bypassVoiceProcessing` au démarrage de
+    l'app (source `MIC`, sans anti-écho, mode média), est global : les
+    appels en haut-parleur auraient de l'écho. Non appliqué.
+  - Publication par défaut : Opus 48 kb/s avec DTX (silence non transmis,
+    bruit de confort côté récepteur) : l'ambiance de la boutique s'allume
+    et s'éteint à chaque phrase.
+- **Changement** (`lib/page/live/live_preview_page.dart`) :
+  `defaultAudioPublishOptions` = Opus 64 kb/s sans DTX (flux continu,
+  ≈ 30 Mo/h de plus par spectateur) ; `defaultAudioCaptureOptions` =
+  filtre passe-haut activé (ronflement du téléphone tenu en main). Le
+  reste de la capture (anti-écho, réduction de bruit, gain automatique)
+  inchangé. Les appels vocaux gardent leurs propres options (24 kb/s, DTX).
+- **Effet du tampon de lecture sur le son** : avec `syncStreams`, le
+  téléphone du spectateur rattrape le retard vidéo en étirant l'audio par
+  pas de 80 ms/s (NetEq) : ≈ 10 s de voix légèrement « tirée » au début de
+  chaque visionnage pour 800 ms. La version plage 1000-3000 de l'entrée 2
+  faisait osciller ce retard en permanence, donc étirement continu : c'est
+  probablement une part de ce qui a été entendu. Comparer avec
+  `LIVE_PLAYOUT_DELAY_MS=0` pour trancher.
+- **Pistes plus lourdes, sur décision** : `bypassVoiceProcessing` global si
+  les appels passent au second plan ; ou un correctif natif dans
+  flutter_webrtc pour changer de profil audio par session.
+
+### 8. Appels vocaux : établissement lent et voix qui se coupe
+
+- **Symptôme** : plusieurs secondes entre « décrocher » et le son ; voix
+  coupée par moments selon le réseau ; loin du ressenti WhatsApp.
+- **Causes (établissement)** :
+  1. `AppApiClient` utilisait `http.get` / `http.post` de haut niveau : un
+     client neuf, donc une poignée de main TCP + TLS, à chaque requête.
+     Depuis Madagascar vers le VPS : 0,5 à 1 s par requête, et un appel en
+     enchaîne trois (`start`, `ringing`, `accept`). Toute l'app en pâtissait.
+  2. L'appelé ne rejoignait la salle LiveKit qu'après avoir décroché, et
+     après l'aller-retour `POST /calls/:id/accept` qui lui donnait le jeton :
+     HTTP + signalisation WSS + ICE + DTLS ≈ 3 à 5 s après le tap. WhatsApp
+     établit le chemin média pendant la sonnerie.
+- **Causes (coupures)** : DTX vidait le tampon de gigue du récepteur à
+  chaque silence, les premières syllabes suivantes sautaient sur 4G ; pas
+  de redondance audio : `livekit_client` 2.5.4 copie `AudioPublishOptions.red`
+  tel quel dans `disable_red` du protocole, donc la valeur par défaut
+  `true` **désactivait** RED.
+- **Correctifs** :
+  - `lib/services/app_api_client.dart` : un `IOClient` partagé (keep-alive
+    60 s, sous les 75 s de Nginx) pour toutes les requêtes.
+  - Backend (`calls.service.ts`, `push-notifications.service.ts`,
+    `conversations-realtime.gateway.ts`) : le jeton LiveKit de l'appelé part
+    avec `call:incoming` (socket + push) et avec `GET /calls/:id` tant que
+    l'appel sonne ; `accept` le renvoie toujours, en secours.
+  - `lib/services/voice_call_service.dart` : `_preconnectIncoming` rejoint
+    la salle pendant la sonnerie, micro non publié et `autoSubscribe: false`
+    (sinon l'appelé entendrait le micro de l'appelant avant de décrocher,
+    et la piste audio distante ferait passer Android en mode « appel » et
+    prendrait le focus audio de la sonnerie) ; `accept()` s'abonne au micro
+    de l'appelant (`_subscribeRemoteAudio`, plus `TrackPublishedEvent` pour
+    les publications tardives), puis lance
+    `POST accept` et l'activation du micro en parallèle (repli : connexion
+    avec le jeton de l'invitation, puis celui de la réponse) ; côté
+    appelant, la bascule « actif » de secours passe de
+    `ParticipantConnectedEvent` à `TrackSubscribedEvent`, sinon l'entrée
+    anticipée de l'appelé compterait comme une réponse. Audio : `dtx: false`,
+    `red: false` (= RED activé, voir ci-dessus), 24 kb/s inchangé.
+  - `infra/livekit/livekit.yaml` : `audio.active_red_encoding: true`, le SFU
+    fabrique la redondance vers chaque récepteur si l'émetteur ne l'envoie
+    pas.
+- **Coût data** : ≈ 30 Mo/h par sens (≈ 60 Mo/h par téléphone), l'ordre de
+  WhatsApp, contre ≈ 10 à 12 avant ; `docs/voice-calls.md` mis à jour, avec
+  le retour arrière en deux drapeaux.
+- **Non couvert** : la latence bouche-à-oreille (≈ 0,6 à 0,8 s via le VPS en
+  Europe) et les rafales de pertes 4G longues ; WhatsApp relaie en région ou
+  en pair-à-pair, hors de portée avec un SFU seul.
+- **À déployer** : backend, VPS (`livekit.yaml` + redémarrage), nouvelle
+  version de l'app. Compatibilité : une app ancienne ignore `url` / `token`
+  dans l'invitation et garde l'ancien chemin.
+
+### 9. Live : liste des spectateurs et accès à leur profil
+
+- **Demande** : voir qui regarde le live (liste) et ouvrir le profil d'un
+  spectateur, côté hôte comme côté spectateur.
+- **Source des données** : la salle LiveKit elle-même, aucun nouvel
+  endpoint. Le backend met désormais le nom d'affichage dans le `name` du
+  jeton spectateur et `{userId, avatarUrl}` dans ses `metadata`
+  (`profiles.service.ts` → `getSellerLiveJoinInfo`, `livekit.service.ts`
+  → `buildToken({ metadata })`). L'identité reste `viewer-<userId>-<ms>`,
+  unique par connexion. Les anciens jetons (`name: viewer-<id>`) donnent
+  « Spectateur » sans avatar jusqu'au redéploiement du backend.
+- **App** :
+  - `lib/services/live/live_viewers.dart` (nouveau) : `liveViewersOf(room)`
+    lit les participants `viewer-*` (métadonnées, repli sur l'identité),
+    une entrée par utilisateur même connecté depuis deux téléphones, soi
+    en premier puis par nom ; l'hôte n'est jamais listé.
+  - `lib/component/live/live_viewers_sheet.dart` (nouveau) : feuille
+    « Spectateurs » avec compteur, rafraîchie à chaque entrée / sortie
+    (`ListenableBuilder` sur la salle), ligne = avatar, nom, « Vous »,
+    chevron ; tap → profil public.
+  - `lib/component/open_user_profile.dart` (nouveau) :
+    `pushUserProfileById` (page vendeur si le compte est vendeur avec
+    boutique, page utilisateur sinon, spinner pendant le chargement, état
+    d'erreur). Remplace la copie qui vivait dans `app_comments_sheet.dart` ;
+    `main_home_panel.dart` garde sa variante (toujours page utilisateur).
+  - `LiveHostCard` : nouveau `onViewersTap`, l'œil + compteur devient
+    tapable (zone de touche élargie) ; branché dans `live_watch_page.dart`
+    et `live_preview_page.dart` quand le direct est en cours.
+- **Hors périmètre** : pas d'historique des spectateurs partis, pas de
+  notification d'arrivée dans le flux de commentaires.
+
+### 10. Live : fil de commentaires plus haut et défilant, arrivées annoncées
+
+- **Demande** : pouvoir faire défiler les commentaires, et voir passer un
+  message quand quelqu'un entre dans le live.
+- **Constat** : le fil (`LiveCommentsFeed`) était déjà une liste défilante,
+  mais enfermée dans une boîte fixe de 192 px : trois ou quatre lignes
+  visibles, d'où l'impression d'un fil figé.
+- **Changement** (`lib/component/live/live_overlay_widgets.dart`) : le fil
+  prend la hauteur de ses lignes jusqu'à 42 % de l'écran (`maxHeightFactor`,
+  façon TikTok), puis défile, le plus récent en bas. En dessous de ce
+  plafond il ne réserve que la hauteur utile : les taps sur la vidéo
+  au-dessus du dernier commentaire continuent d'envoyer des cœurs. Sous
+  le clavier il se réduit avec son parent (`LayoutBuilder`). Même widget
+  côté hôte et côté spectateur.
+- **Arrivées** : `LiveCommentEntry.isSystem` (nouveau champ, `false` par
+  défaut, sérialisé mais jamais envoyé) rendu en ligne discrète « Nom a
+  rejoint le live » avec petit avatar (`_buildSystemRow`).
+  `liveJoinCommentFor(participant)` dans `lib/services/live/live_viewers.dart`
+  construit la ligne à partir du nom et de l'avatar du jeton (entrée 9) ;
+  l'hôte n'est jamais annoncé. Branché sur `ParticipantConnectedEvent`
+  dans `live_watch_page.dart` (écouteur existant) et `live_preview_page.dart`
+  (nouvel `EventsListener`, libéré dans `dispose`). Chaque téléphone
+  fabrique la ligne localement : rien ne passe par le canal de données, et
+  un spectateur ne voit que les arrivées postérieures à la sienne.
+- **Départs et fondu** (même jour, sur demande) : « Nom a quitté le live »
+  sur `ParticipantDisconnectedEvent` (`liveLeaveCommentFor`), ignoré quand
+  la salle n'est plus connectée, sinon la fin du live annoncerait tout le
+  monde d'un coup ; fondu de 32 px en haut du fil (`ShaderMask`, `dstIn`)
+  pour que les lignes anciennes se dissolvent dans la vidéo au lieu d'être
+  coupées.

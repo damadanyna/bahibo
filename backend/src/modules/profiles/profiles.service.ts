@@ -467,6 +467,12 @@ export class ProfilesService {
       },
     });
 
+    // The room must carry the live playout profile (viewer-side buffer)
+    // before followers are told to join: the first joiner would otherwise
+    // auto-create it with the real-time defaults.
+    const liveRoomName = this.buildLiveRoomName(sellerProfile.id);
+    await this.livekitService.ensureLiveRoom(liveRoomName);
+
     this.conversationsRealtimeGateway.emitLiveEvent(
       [
         userId,
@@ -506,10 +512,10 @@ export class ProfilesService {
 
     return {
       sellerProfileId: sellerProfile.id,
-      roomName: this.buildLiveRoomName(sellerProfile.id),
+      roomName: liveRoomName,
       url: this.requireLivekitUrl(),
       token: await this.buildLivekitToken({
-        roomName: this.buildLiveRoomName(sellerProfile.id),
+        roomName: liveRoomName,
         identity: `seller-${userId}`,
         name: sellerProfile.studioName,
         canPublish: true,
@@ -687,6 +693,14 @@ export class ProfilesService {
       select: { id: true },
     });
 
+    // Name and avatar ride in the token so every participant can list who
+    // is watching (viewers sheet) without asking the API. The identity stays
+    // unique per join: the same user may watch from two phones.
+    const viewer = await this.prisma.user.findUnique({
+      where: { id: currentUserId },
+      select: { displayName: true, avatarUrl: true },
+    });
+
     return {
       sellerProfileId: sellerProfile.id,
       isFollowing: followLink != null,
@@ -695,7 +709,11 @@ export class ProfilesService {
       token: await this.buildLivekitToken({
         roomName: this.buildLiveRoomName(sellerProfile.id),
         identity: `viewer-${currentUserId}-${Date.now()}`,
-        name: `viewer-${currentUserId}`,
+        name: viewer?.displayName?.trim() || 'Spectateur',
+        metadata: JSON.stringify({
+          userId: currentUserId,
+          avatarUrl: viewer?.avatarUrl ?? '',
+        }),
         canPublish: false,
         canSubscribe: true,
         // Viewers never publish media, but they do send comments and likes.
@@ -1764,6 +1782,8 @@ export class ProfilesService {
     canSubscribe: boolean;
     /** Data channel (live comments / likes). Defaults to `canPublish`. */
     canPublishData?: boolean;
+    /** Opaque participant metadata (viewer's `{userId, avatarUrl}`). */
+    metadata?: string;
   }) {
     return this.livekitService.buildToken(params);
   }

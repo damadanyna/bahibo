@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 
 import 'api_config.dart';
 import 'app_event_log_service.dart';
@@ -29,6 +30,20 @@ class AppApiClient {
   static const Duration _requestTimeout = Duration(seconds: 20);
   static const int _maxRetries = 2;
   static const String _tag = 'AppApiClient';
+
+  /// One HTTP client for the whole isolate, so requests reuse the TCP + TLS
+  /// connection instead of opening a new one each time. The top-level
+  /// `http.get` / `http.post` helpers create and close a client per call:
+  /// from Madagascar to the VPS that is 2 to 3 extra round trips (0.5 to
+  /// 1 s) on every request, which is what made a voice call take a few
+  /// seconds to set up (start, ringing ack, accept) and every screen a
+  /// little slower. The idle timeout stays under Nginx's default 75 s so
+  /// the client drops a connection before the server does.
+  static final http.Client _httpClient = IOClient(
+    HttpClient()
+      ..idleTimeout = const Duration(seconds: 60)
+      ..connectionTimeout = const Duration(seconds: 15),
+  );
 
   /// Refresh ahead of time when the access token expires within this.
   static const Duration _accessTokenExpiryMargin = Duration(seconds: 60);
@@ -214,18 +229,18 @@ class AppApiClient {
 
     try {
       final Future<http.Response> call = switch (method) {
-        'GET' => http.get(uri, headers: headers),
-        'POST' => http.post(
+        'GET' => _httpClient.get(uri, headers: headers),
+        'POST' => _httpClient.post(
           uri,
           headers: headers,
           body: jsonEncode(body ?? <String, dynamic>{}),
         ),
-        'PATCH' => http.patch(
+        'PATCH' => _httpClient.patch(
           uri,
           headers: headers,
           body: jsonEncode(body ?? <String, dynamic>{}),
         ),
-        'DELETE' => http.delete(uri, headers: headers),
+        'DELETE' => _httpClient.delete(uri, headers: headers),
         _ => throw AppApiException('Methode HTTP non supportee'),
       };
       response = await call.timeout(_requestTimeout);
@@ -322,7 +337,9 @@ class AppApiClient {
 
     late final http.Response response;
     try {
-      response = await http.get(uri, headers: headers).timeout(_requestTimeout);
+      response = await _httpClient
+          .get(uri, headers: headers)
+          .timeout(_requestTimeout);
     } on SocketException catch (e) {
       AppLogger.warning(_tag, 'Network unreachable for raw GET $uri', e);
       _logNetworkFailure(

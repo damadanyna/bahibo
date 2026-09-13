@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:banay/component/app_network_image.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
 import 'package:flutter/material.dart';
@@ -16,6 +18,7 @@ class LiveCommentEntry {
     this.avatarUrl = '',
     this.isHost = false,
     this.userId = '',
+    this.isSystem = false,
   });
 
   final String id;
@@ -24,6 +27,10 @@ class LiveCommentEntry {
   final String avatarUrl;
   final bool isHost;
   final String userId;
+
+  /// Not something the author typed: "a rejoint le live" and the like,
+  /// rendered quietly. Generated locally from room events, never sent.
+  final bool isSystem;
 
   String get initials {
     final parts = author
@@ -48,6 +55,7 @@ class LiveCommentEntry {
     'avatarUrl': avatarUrl,
     'isHost': isHost,
     'userId': userId,
+    'isSystem': isSystem,
   };
 
   /// Null when the payload carries no usable message.
@@ -65,6 +73,7 @@ class LiveCommentEntry {
       avatarUrl: json['avatarUrl']?.toString() ?? '',
       isHost: json['isHost'] == true,
       userId: json['userId']?.toString() ?? '',
+      isSystem: json['isSystem'] == true,
     );
   }
 }
@@ -203,6 +212,7 @@ class LiveHostCard extends StatelessWidget {
     this.avatarUrl,
     this.viewerCount,
     this.likeCount,
+    this.onViewersTap,
   });
 
   final String name;
@@ -212,6 +222,9 @@ class LiveHostCard extends StatelessWidget {
 
   /// Null renders "--" (not connected yet).
   final int? viewerCount;
+
+  /// Tap on the eye + count: opens the list of who is watching.
+  final VoidCallback? onViewersTap;
 
   /// Hearts received during this live; hidden when null.
   final int? likeCount;
@@ -254,16 +267,33 @@ class LiveHostCard extends StatelessWidget {
                 const SizedBox(height: 3),
                 Row(
                   children: [
-                    Icon(Icons.visibility_rounded, size: 14, color: mutedColor),
-                    const SizedBox(width: 4),
-                    Text(
-                      viewerCount == null
-                          ? '--'
-                          : formatLiveCount(viewerCount!),
-                      style: TextStyle(
-                        color: mutedColor,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: onViewersTap,
+                      child: Padding(
+                        // A little extra hit area around a 12 px label.
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.visibility_rounded,
+                              size: 14,
+                              color: mutedColor,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              viewerCount == null
+                                  ? '--'
+                                  : formatLiveCount(viewerCount!),
+                              style: TextStyle(
+                                color: mutedColor,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                     if (likeCount != null) ...[
@@ -411,45 +441,78 @@ class LiveCommentsFeed extends StatelessWidget {
     super.key,
     required this.comments,
     required this.emptyText,
-    this.height = 192,
+    this.maxHeightFactor = 0.42,
   });
 
   final List<LiveCommentEntry> comments;
   final String emptyText;
-  final double height;
+
+  /// Share of the screen height the feed may grow to, TikTok-style (the
+  /// lower part of the screen, never over the host card). Below that it
+  /// only takes the height its rows need, so taps above the last comment
+  /// still reach the video, and it shrinks further when the parent does
+  /// (keyboard up). Past it, the list scrolls, newest at the bottom.
+  final double maxHeightFactor;
+
+  /// Height of the fade at the top edge: older lines dissolve into the
+  /// video instead of being cut mid-row.
+  static const double _topFadeHeight = 32;
 
   @override
   Widget build(BuildContext context) {
     final appColors = Theme.of(context).appColors;
+    final screenHeight = MediaQuery.sizeOf(context).height;
 
-    return SizedBox(
-      height: height,
-      child: comments.isEmpty
-          ? Align(
-              alignment: Alignment.bottomLeft,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
-                child: Text(
-                  emptyText,
-                  style: TextStyle(
-                    color: appColors.heroForegroundMuted.withValues(
-                      alpha: 0.86,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxHeight = math.min(
+          screenHeight * maxHeightFactor,
+          constraints.maxHeight.isFinite
+              ? constraints.maxHeight
+              : double.infinity,
+        );
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: comments.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
+                  child: Text(
+                    emptyText,
+                    style: TextStyle(
+                      color: appColors.heroForegroundMuted.withValues(
+                        alpha: 0.86,
+                      ),
+                      height: 1.35,
+                      fontWeight: FontWeight.w500,
                     ),
-                    height: 1.35,
-                    fontWeight: FontWeight.w500,
+                  ),
+                )
+              : ShaderMask(
+                  shaderCallback: (bounds) {
+                    final fade = bounds.height <= 0
+                        ? 1.0
+                        : (_topFadeHeight / bounds.height).clamp(0.0, 1.0);
+                    return LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: const [Colors.transparent, Colors.black],
+                      stops: [0.0, fade],
+                    ).createShader(bounds);
+                  },
+                  blendMode: BlendMode.dstIn,
+                  child: ListView.separated(
+                    reverse: true,
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
+                    physics: const BouncingScrollPhysics(),
+                    itemCount: comments.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) =>
+                        _LiveCommentTile(comment: comments[index]),
                   ),
                 ),
-              ),
-            )
-          : ListView.separated(
-              reverse: true,
-              padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
-              physics: const BouncingScrollPhysics(),
-              itemCount: comments.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 10),
-              itemBuilder: (context, index) =>
-                  _LiveCommentTile(comment: comments[index]),
-            ),
+        );
+      },
     );
   }
 }
@@ -464,6 +527,10 @@ class _LiveCommentTile extends StatelessWidget {
     final appColors = Theme.of(context).appColors;
 
     final primary = Theme.of(context).colorScheme.primary;
+
+    if (comment.isSystem) {
+      return _buildSystemRow(appColors);
+    }
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -548,6 +615,58 @@ class _LiveCommentTile extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// "Name a rejoint le live": one quiet line with a small avatar, so
+  /// arrivals are seen without competing with what people say.
+  Widget _buildSystemRow(AppThemeColors appColors) {
+    final muted = appColors.heroForegroundMuted.withValues(alpha: 0.9);
+    final avatarUrl = comment.avatarUrl.trim();
+
+    return Row(
+      children: [
+        if (avatarUrl.isNotEmpty)
+          AppCircleNetworkAvatar(
+            imageUrl: avatarUrl,
+            radius: 11,
+            showPresenceBadge: false,
+          )
+        else
+          CircleAvatar(
+            radius: 11,
+            backgroundColor: appColors.heroSurface,
+            child: Text(
+              comment.initials,
+              style: TextStyle(
+                color: appColors.heroForeground,
+                fontSize: 8,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: comment.author,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                TextSpan(text: ' ${comment.message}'),
+              ],
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: muted,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
       ],

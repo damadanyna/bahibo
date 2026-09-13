@@ -126,6 +126,13 @@ export class CallsService implements OnModuleDestroy {
       include: callInclude,
     });
 
+    // The callee's credentials travel with the invitation: the phone joins
+    // the room while it rings, and answering only unmutes (no HTTP round
+    // trip, no ICE/DTLS wait after the tap). Room-scoped, microphone only,
+    // 15 min — the same token `acceptCall` hands out, just earlier.
+    const livekitUrl = this.livekitService.requireUrl();
+    const calleeToken = await this.buildParticipantToken(call, callee);
+
     this.conversationsRealtimeGateway.emitCallEvent([callee.id], {
       type: 'call:incoming',
       callId: call.id,
@@ -137,6 +144,8 @@ export class CallsService implements OnModuleDestroy {
         displayName: caller.displayName,
         avatarUrl: caller.avatarUrl,
       },
+      url: livekitUrl,
+      token: calleeToken,
     });
 
     // The caller is already listening for the answer: the push must neither
@@ -148,6 +157,8 @@ export class CallsService implements OnModuleDestroy {
         conversationId: call.conversationId,
         callerDisplayName: caller.displayName,
         callerAvatarUrl: caller.avatarUrl ?? undefined,
+        livekitUrl,
+        livekitToken: calleeToken,
       })
       .catch((error: unknown) => {
         this.logger.warn(
@@ -161,7 +172,7 @@ export class CallsService implements OnModuleDestroy {
 
     return {
       ...this.presentCall(call),
-      url: this.livekitService.requireUrl(),
+      url: livekitUrl,
       token: await this.buildParticipantToken(call, caller),
     };
   }
@@ -271,6 +282,17 @@ export class CallsService implements OnModuleDestroy {
       return this.presentCall(
         await this.closeCall(call, VoiceCallStatus.MISSED, 'missed', null),
       );
+    }
+
+    // Callee rebuilding a ringing call after a cold start (answered on the
+    // OS call screen while the app was killed): hand over the credentials
+    // so the room join runs alongside the accept request.
+    if (call.status === VoiceCallStatus.RINGING && call.calleeUserId === userId) {
+      return {
+        ...this.presentCall(call),
+        url: this.livekitService.requireUrl(),
+        token: await this.buildParticipantToken(call, call.callee),
+      };
     }
 
     return this.presentCall(call);

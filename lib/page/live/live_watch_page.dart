@@ -2,14 +2,15 @@ import 'dart:async';
 
 import 'package:banay/component/live/live_overlay_widgets.dart';
 import 'package:banay/component/live/live_tap_hearts.dart';
+import 'package:banay/component/live/live_viewers_sheet.dart';
 import 'package:banay/component/ui/dinamic_icon_input.dart';
 import 'package:banay/services/app_api_client.dart';
 import 'package:banay/services/catalog_api_service.dart';
 import 'package:banay/services/chat_realtime_service.dart';
+import 'package:banay/services/live/live_connect_options.dart';
 import 'package:banay/services/live/live_room_channel.dart';
-import 'package:banay/services/live/live_view_quality.dart';
+import 'package:banay/services/live/live_viewers.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter/services.dart';
 import 'package:livekit_client/livekit_client.dart';
@@ -46,10 +47,10 @@ class _LiveWatchPageState extends State<LiveWatchPage>
     with SingleTickerProviderStateMixin {
   final CatalogApiService _catalogApiService = CatalogApiService();
   // adaptiveStream is off on purpose: it would pick the layer from the
-  // renderer's logical size alone and ignore the network. The layer is
-  // chosen here instead — TikTok-style — from the connection type (see
-  // [resolveLiveViewQuality]); the SFU still steps down on its own under
-  // congestion.
+  // renderer's logical size (~412×915 on a phone) and never ask for better
+  // than what covers it. The top layer is requested explicitly instead (see
+  // [_applyVideoQuality]); the SFU steps down on its own when the viewer's
+  // link cannot keep up, whatever the network type.
   final Room _room = Room(
     roomOptions: const RoomOptions(adaptiveStream: false, dynacast: true),
   );
@@ -62,9 +63,6 @@ class _LiveWatchPageState extends State<LiveWatchPage>
   static const Duration _likeFlushInterval = Duration(milliseconds: 350);
   int _pendingLikes = 0;
   Timer? _likeFlushTimer;
-  final Connectivity _connectivity = Connectivity();
-  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
-  bool _isOnCellular = false;
 
   bool _isConnecting = true;
   String? _errorMessage;
@@ -95,14 +93,31 @@ class _LiveWatchPageState extends State<LiveWatchPage>
       duration: const Duration(milliseconds: 900),
     )..repeat(reverse: true);
     _room.addListener(_handleRoomChanged);
-    // Each subscribed video track gets the layer matching the viewer's
-    // network; re-evaluated when the connection type changes.
+    // Each subscribed video track is asked for the top layer straight away.
     _roomEvents.on<TrackSubscribedEvent>((event) {
       if (event.publication.kind == TrackType.VIDEO) {
         _applyVideoQuality();
       }
     });
-    _bindConnectivity();
+    // "X a rejoint le live" in the feed, TikTok-style: local only, every
+    // phone derives it from the room's own participant events.
+    _roomEvents.on<ParticipantConnectedEvent>((event) {
+      final entry = liveJoinCommentFor(event.participant);
+      if (entry != null) {
+        _appendComment(entry);
+      }
+    });
+    _roomEvents.on<ParticipantDisconnectedEvent>((event) {
+      // Only while connected: tearing the room down (live over, leaving)
+      // would otherwise announce everyone at once.
+      if (_room.connectionState != ConnectionState.connected) {
+        return;
+      }
+      final entry = liveLeaveCommentFor(event.participant);
+      if (entry != null) {
+        _appendComment(entry);
+      }
+    });
     _liveEventsSubscription = ChatRealtimeService.instance.events.listen(
       _handleLiveEvent,
     );
@@ -145,7 +160,6 @@ class _LiveWatchPageState extends State<LiveWatchPage>
     _commentController.dispose();
     _livePulseController.dispose();
     unawaited(_liveEventsSubscription?.cancel());
-    unawaited(_connectivitySubscription?.cancel());
     unawaited(_commentsSubscription?.cancel());
     unawaited(_likesSubscription?.cancel());
     unawaited(_channel?.dispose());
@@ -207,6 +221,7 @@ class _LiveWatchPageState extends State<LiveWatchPage>
       await _room.connect(
         joinInfo['url']?.toString() ?? '',
         joinInfo['token']?.toString() ?? '',
+        connectOptions: liveConnectOptions,
       );
       unawaited(_startChannel());
 
@@ -245,34 +260,16 @@ class _LiveWatchPageState extends State<LiveWatchPage>
     }
   }
 
-  /// Tracks Wi-Fi ⇄ mobile data switches so the automatic mode follows the
-  /// viewer mid-live instead of freezing on the layer chosen at join time.
-  void _bindConnectivity() {
-    unawaited(
-      _connectivity.checkConnectivity().then(_handleConnectivityChange),
-    );
-    _connectivitySubscription = _connectivity.onConnectivityChanged.listen(
-      _handleConnectivityChange,
-    );
-  }
-
-  void _handleConnectivityChange(List<ConnectivityResult> results) {
-    final isOnCellular = isCellularOnly(results);
-    if (!mounted || isOnCellular == _isOnCellular) {
-      return;
-    }
-    setState(() => _isOnCellular = isOnCellular);
-    _applyVideoQuality();
-  }
-
-  /// Asks the SFU for the simulcast layer matching the current network
-  /// on every subscribed video track. Cheap and idempotent: the SDK skips
-  /// the signal when the quality is unchanged.
+  /// Asks the SFU for the host's top simulcast layer (1080p when the
+  /// host's uplink allows it, 720p otherwise) on every
+  /// subscribed video track, on any network. Capping mobile-data viewers at
+  /// 360p made the picture visibly pixelated on a full-screen phone even on
+  /// a good 4G link; the SFU already measures each viewer's downlink and
+  /// serves a lower layer only when the link really cannot keep up.
   void _applyVideoQuality() {
-    final quality = resolveLiveViewQuality(isOnCellular: _isOnCellular);
     for (final participant in _room.remoteParticipants.values) {
       for (final publication in participant.videoTrackPublications) {
-        unawaited(publication.setVideoQuality(quality));
+        unawaited(publication.setVideoQuality(VideoQuality.HIGH));
       }
     }
   }
@@ -397,6 +394,9 @@ class _LiveWatchPageState extends State<LiveWatchPage>
                           viewerCount: _viewerCount,
                           likeCount: isStreaming ? _likeCount : null,
                           pulse: _livePulseController,
+                          onViewersTap: isStreaming
+                              ? () => showLiveViewersSheet(context, room: _room)
+                              : null,
                         ),
                       ),
                       const SizedBox(width: 10),

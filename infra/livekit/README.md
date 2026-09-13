@@ -20,7 +20,7 @@ Le détail fonctionnel (backend, app, bande passante, tests) est dans
 |---|---|---|
 | 443 | tcp | Nginx → signalisation LiveKit (wss) |
 | 7881 | tcp | Média LiveKit en TCP (secours quand l'UDP est bloqué) |
-| 50000:50200 | udp | Média LiveKit (UDP, le cas normal) |
+| 7882 | udp | Média LiveKit (UDP, le cas normal : un seul port multiplexé) |
 | 3478 | tcp + udp | STUN / TURN (coturn) |
 | 5349 | tcp | TURN sur TLS (passe les pare-feux « HTTPS seulement ») |
 | 49160:49400 | udp | Relais coturn |
@@ -28,7 +28,7 @@ Le détail fonctionnel (backend, app, bande passante, tests) est dans
 ```bash
 sudo ufw allow 443/tcp
 sudo ufw allow 7881/tcp
-sudo ufw allow 50000:50200/udp
+sudo ufw allow 7882/udp
 sudo ufw allow 3478
 sudo ufw allow 5349/tcp
 sudo ufw allow 49160:49400/udp
@@ -37,6 +37,19 @@ sudo ufw status numbered
 
 Le port 7880 (signalisation en clair) reste sur `127.0.0.1` : ne pas
 l'ouvrir.
+
+**Installation existante (avant le 2026-09-13)** : le média passait par la
+plage `50000:50200/udp`, soit deux ports par participant et ~100
+participants au total, lives et appels confondus. Pour passer au port
+unique :
+
+```bash
+sudo ufw allow 7882/udp
+# copier le nouveau livekit.yaml, puis
+docker compose restart livekit
+sudo ufw status numbered      # repérer la règle 50000:50200/udp
+sudo ufw delete <numéro>      # une fois LiveKit redémarré sans erreur
+```
 
 ## Déploiement pas à pas
 
@@ -104,9 +117,13 @@ l'ouvrir.
 ## Notes
 
 - **Lives inclus** : `LIVEKIT_URL` est partagé avec les lives vendeurs.
-  En auto-hébergement, chaque spectateur HD consomme ≈ 1,5 Mb/s de sortie
-  du VPS : 50 spectateurs ≈ 75 Mb/s. Surveiller le trafic mensuel inclus
-  dans l'offre Hostinger.
+  En auto-hébergement, chaque spectateur consomme jusqu'à ≈ 2,6 Mb/s de
+  sortie du VPS en 1080p (hôte bien connecté) et ≈ 1,3 Mb/s en 720p :
+  50 spectateurs ≈ 65 à 130 Mb/s, 200 ≈ 260 à 520 Mb/s. La limite est le
+  débit réel du port Hostinger et le trafic mensuel
+  inclus, plus le nombre de ports depuis le passage à `udp_port`.
+  Les salles de live sont créées par le backend avec un délai de lecture
+  (`playout_delay`) qui ne s'applique pas aux appels.
 - **Alternative sans coturn** : LiveKit embarque son propre serveur TURN
   (section `turn:` de `livekit.yaml`, identifiants par session). coturn
   est retenu ici parce qu'il est imposé et plus souple (STUN partagé,

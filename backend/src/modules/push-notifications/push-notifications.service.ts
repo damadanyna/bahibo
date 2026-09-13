@@ -107,6 +107,9 @@ type SendIncomingCallNotificationArgs = {
   conversationId: string;
   callerDisplayName: string;
   callerAvatarUrl?: string;
+  /** Callee's LiveKit credentials: joins while ringing, no round trip on answer. */
+  livekitUrl?: string;
+  livekitToken?: string;
 };
 
 type SendMissedCallNotificationArgs = {
@@ -765,6 +768,9 @@ export class PushNotificationsService {
         conversationId: args.conversationId,
         callerName: args.callerDisplayName,
         callerAvatarUrl: args.callerAvatarUrl ?? "",
+        ...(args.livekitUrl && args.livekitToken
+          ? { url: args.livekitUrl, token: args.livekitToken }
+          : {}),
       },
       android: {
         priority: "high",

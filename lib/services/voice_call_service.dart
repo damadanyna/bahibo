@@ -8,7 +8,7 @@ import 'package:banay/services/chat_realtime_service.dart';
 import 'package:banay/services/incoming_call_native_ui.dart';
 import 'package:banay/services/push_notification_service.dart';
 import 'package:banay/services/ringer_mode.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter/services.dart';
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
@@ -155,6 +155,17 @@ class VoiceCallService {
   /// call id (the callee can be faster than our own HTTP round-trip).
   String? _earlyRingingAckCallId;
 
+  /// LiveKit credentials of the ringing incoming call, delivered with the
+  /// invitation (socket event, push, or `GET /calls/:id` after a cold start)
+  /// so the phone joins the room while it rings; see [_preconnectIncoming].
+  String? _incomingUrl;
+  String? _incomingToken;
+  Future<void>? _preconnectFuture;
+
+  /// Pre-connected room, call still ringing: the caller's microphone must
+  /// not be subscribed yet. Cleared on answer.
+  bool _holdRemoteAudio = false;
+
   bool _bound = false;
 
   /// Idempotent; called once the user is signed in and the socket is up,
@@ -285,6 +296,8 @@ class VoiceCallService {
       conversationId: data['conversationId']?.toString() ?? '',
       callerName: data['callerName']?.toString() ?? '',
       callerAvatarUrl: data['callerAvatarUrl']?.toString() ?? '',
+      url: data['url']?.toString(),
+      token: data['token']?.toString(),
     );
   }
 
@@ -325,6 +338,8 @@ class VoiceCallService {
         callerUserId: callerMap['id']?.toString(),
         callerName: callerMap['displayName']?.toString() ?? '',
         callerAvatarUrl: callerMap['avatarUrl']?.toString() ?? '',
+        url: data['url']?.toString(),
+        token: data['token']?.toString(),
         // The native UI is already up (that is how we got here).
         showNativeUi: false,
       );
@@ -353,6 +368,8 @@ class VoiceCallService {
           callerUserId: callerMap['id']?.toString(),
           callerName: callerMap['displayName']?.toString() ?? '',
           callerAvatarUrl: callerMap['avatarUrl']?.toString() ?? '',
+          url: event['url']?.toString(),
+          token: event['token']?.toString(),
         );
       case 'call:ringing':
         if (current != null && current.isOutgoing && !current.isEnded) {
@@ -381,6 +398,8 @@ class VoiceCallService {
     required String callerName,
     required String callerAvatarUrl,
     String? callerUserId,
+    String? url,
+    String? token,
     bool showNativeUi = true,
   }) {
     // The socket, the push and the native UI all announce the same call.
@@ -407,6 +426,9 @@ class VoiceCallService {
     // Tell the caller the invitation reached this phone; the background
     // isolate does the same when it puts the native screen up first.
     unawaited(_quietly(_api.markRinging(callId)));
+    _incomingUrl = url;
+    _incomingToken = token;
+    unawaited(_preconnectIncoming(callId));
 
     _openPage();
     if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
@@ -542,11 +564,50 @@ class VoiceCallService {
 
     _update((s) => s.copyWith(phase: VoiceCallPhase.connecting));
     try {
-      final data = await _api.acceptCall(current.callId);
-      await _connectRoom(
-        data['url']?.toString() ?? '',
-        data['token']?.toString() ?? '',
+      // The server's answer and the media path run side by side: the
+      // accept request must still succeed (the caller may have given up),
+      // but nothing waits for it that does not have to.
+      Object? acceptError;
+      Map<String, dynamic>? acceptData;
+      final acceptFuture = _api
+          .acceptCall(current.callId)
+          .then<void>((data) {
+            acceptData = data;
+          })
+          .catchError((Object error) {
+            acceptError = error;
+          });
+
+      // Best case: the room was joined while ringing and only the
+      // microphone is missing. Otherwise join with the credentials that
+      // came with the invitation or, last resort, with the answer's.
+      await _preconnectFuture;
+      if (!_isRoomConnected) {
+        var url = _incomingUrl ?? '';
+        var token = _incomingToken ?? '';
+        if (url.isEmpty || token.isEmpty) {
+          await acceptFuture;
+          if (acceptError != null) {
+            throw acceptError!;
+          }
+          url = acceptData?['url']?.toString() ?? '';
+          token = acceptData?['token']?.toString() ?? '';
+        }
+        await _connectRoom(url, token, publishMicrophone: false);
+      }
+      if (session.value?.callId != current.callId || !isInCall) {
+        // Ended while connecting: caller gave up, or the user hung up.
+        return;
+      }
+      _holdRemoteAudio = false;
+      await _subscribeRemoteAudio();
+      await _room?.localParticipant?.setMicrophoneEnabled(
+        !(session.value?.isMuted ?? false),
       );
+      await acceptFuture;
+      if (acceptError != null) {
+        throw acceptError!;
+      }
       _markActive();
     } on AppApiException catch (error) {
       _finish(VoiceCallEndReason.failed, message: error.message);
@@ -646,6 +707,10 @@ class VoiceCallService {
     unawaited(CallTones.instance.stop());
     unawaited(CallTones.instance.playEndCall(speakerOn: current.isSpeakerOn));
     unawaited(_disconnectRoom());
+    _incomingUrl = null;
+    _incomingToken = null;
+    _preconnectFuture = null;
+    _holdRemoteAudio = false;
     unawaited(WakelockPlus.disable());
     if (current.callId.isNotEmpty) {
       unawaited(IncomingCallNativeUi.dismiss(current.callId));
@@ -672,15 +737,27 @@ class VoiceCallService {
     _ => VoiceCallEndReason.ended,
   };
 
-  Future<void> _connectRoom(String url, String token) async {
+  Future<void> _connectRoom(
+    String url,
+    String token, {
+    bool publishMicrophone = true,
+    bool autoSubscribe = true,
+  }) async {
     if (url.isEmpty || token.isEmpty) {
       throw StateError('Missing LiveKit credentials for the call');
     }
     await _disconnectRoom();
 
-    // Audio only, tuned for Malagasy mobile links: Opus at 24 kb/s with DTX
-    // (nothing sent during silence), echo cancellation and noise
-    // suppression on. About 10 MB per hour of talk.
+    // Audio only. Opus at 24 kb/s, sent continuously: DTX (nothing during
+    // silence) halved the data but let the receiver's jitter buffer drain
+    // between sentences, so on a jittery 4G link the first syllables after
+    // a pause were the ones cut. WhatsApp streams continuously too.
+    // `red: false` is deliberate: livekit_client 2.5.4 copies the flag
+    // straight into the protocol's `disable_red`, so `false` is what turns
+    // redundant audio (RED, each packet carrying the previous frame too)
+    // on; it repairs isolated losses without a retransmission round trip.
+    // Echo cancellation, noise suppression and gain control on. About
+    // 30 MB per hour of talk per direction with RED (10 before).
     final room = Room(
       roomOptions: const RoomOptions(
         adaptiveStream: true,
@@ -691,17 +768,21 @@ class VoiceCallService {
           autoGainControl: true,
         ),
         defaultAudioPublishOptions: AudioPublishOptions(
-          dtx: true,
+          dtx: false,
+          red: false,
           audioBitrate: AudioPreset.speech,
         ),
       ),
     );
     _room = room;
     _roomEvents = room.createListener()
-      ..on<ParticipantConnectedEvent>((_) {
-        // The other side is in the room: the call is live even if the
-        // socket's `call:accepted` never arrived (socket down or late).
+      ..on<TrackSubscribedEvent>((_) {
+        // The other side's microphone is flowing: the call is live even if
+        // the socket's `call:accepted` never arrived (socket down or late).
         // Without this, the ring timer would cut a perfectly good call.
+        // Not ParticipantConnected: the callee now joins the room while the
+        // phone still rings (see _preconnectIncoming) and only publishes
+        // the microphone on answer.
         final current = session.value;
         if (identical(_room, room) &&
             current != null &&
@@ -739,12 +820,30 @@ class VoiceCallService {
         if (identical(_room, room) && isInCall) {
           _finish(VoiceCallEndReason.disconnected);
         }
+      })
+      ..on<TrackPublishedEvent>((event) {
+        // Rooms joined with autoSubscribe off pull audio by hand once the
+        // call is answered (see _subscribeRemoteAudio for the join-time
+        // publications).
+        if (identical(_room, room) && !autoSubscribe && !_holdRemoteAudio) {
+          unawaited(_quietlySubscribe(event.publication));
+        }
       });
 
-    await room.connect(url, token);
-    await room.localParticipant?.setMicrophoneEnabled(
-      !(session.value?.isMuted ?? false),
+    await room.connect(
+      url,
+      token,
+      connectOptions: ConnectOptions(autoSubscribe: autoSubscribe),
     );
+    if (!identical(_room, room)) {
+      // Torn down while connecting: the call ended meanwhile.
+      return;
+    }
+    if (publishMicrophone) {
+      await room.localParticipant?.setMicrophoneEnabled(
+        !(session.value?.isMuted ?? false),
+      );
+    }
     try {
       await Hardware.instance.setSpeakerphoneOn(
         session.value?.isSpeakerOn ?? false,
@@ -761,6 +860,70 @@ class VoiceCallService {
     ConnectionQuality.lost => VoiceCallQuality.lost,
     ConnectionQuality.unknown => VoiceCallQuality.unknown,
   };
+
+  bool get _isRoomConnected =>
+      _room?.connectionState == ConnectionState.connected;
+
+  /// Joins the LiveKit room while the phone rings, microphone unpublished,
+  /// so the media path (signalling, ICE, DTLS, TURN when the operator's NAT
+  /// needs it: 2 to 4 s on 4G) is already up when the user answers and
+  /// [accept] only has to unmute. WhatsApp does the same, which is why its
+  /// calls carry sound the moment they are picked up. Best effort: on
+  /// failure [accept] connects from scratch. The room goes away with the
+  /// session (declined, missed, cancelled) through [_finish].
+  Future<void> _preconnectIncoming(String callId) {
+    final url = _incomingUrl ?? '';
+    final token = _incomingToken ?? '';
+    if (url.isEmpty || token.isEmpty) {
+      return Future<void>.value();
+    }
+    // autoSubscribe off: the callee must not hear the caller's microphone
+    // before answering, and a remote audio track would switch Android into
+    // call audio mode and take audio focus from the ringtone.
+    _holdRemoteAudio = true;
+    final future =
+        _connectRoom(
+          url,
+          token,
+          publishMicrophone: false,
+          autoSubscribe: false,
+        ).then<void>((_) {
+          if (session.value?.callId != callId || !isInCall) {
+            // Ended before the join completed, when _finish had no room to
+            // drop yet.
+            unawaited(_disconnectRoom());
+          }
+        })
+        .catchError((Object error) {
+          debugPrint('Voice call pre-connect failed: $error');
+        });
+    _preconnectFuture = future;
+    return future;
+  }
+
+  /// Pre-connected rooms join with autoSubscribe off: pull the caller's
+  /// microphone now that the call is answered.
+  Future<void> _subscribeRemoteAudio() async {
+    final room = _room;
+    if (room == null) {
+      return;
+    }
+    for (final participant in room.remoteParticipants.values) {
+      for (final publication in participant.audioTrackPublications) {
+        if (!publication.subscribed) {
+          await _quietlySubscribe(publication);
+        }
+      }
+    }
+  }
+
+  Future<void> _quietlySubscribe(RemoteTrackPublication publication) async {
+    try {
+      await publication.subscribe();
+    } catch (error) {
+      debugPrint('Voice call subscribe failed: $error');
+    }
+  }
 
   Future<void> _disconnectRoom() async {
     final room = _room;

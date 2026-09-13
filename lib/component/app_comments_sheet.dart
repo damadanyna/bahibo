@@ -7,8 +7,8 @@ import 'package:banay/component/app_link_preview_card.dart';
 import 'package:banay/component/app_linkified_text.dart';
 import 'package:banay/component/app_message_composer.dart';
 import 'package:banay/component/app_network_image.dart';
+import 'package:banay/component/open_user_profile.dart';
 import 'package:banay/component/profile_models.dart';
-import 'package:banay/component/seller_profile_page.dart';
 import 'package:banay/component/user_profile_page.dart';
 import 'package:banay/services/catalog_api_service.dart';
 import 'package:banay/services/link_preview_service.dart';
@@ -232,30 +232,7 @@ class _AppCommentsSheetContentState extends State<_AppCommentsSheetContent> {
       return;
     }
 
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => FutureBuilder<Map<String, dynamic>>(
-          future: _catalogApiService.fetchUserProfile(authorId),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) {
-              return Scaffold(
-                backgroundColor: Theme.of(context).appColors.backgroundBase,
-                body: const Center(child: CircularProgressIndicator()),
-              );
-            }
-            final data = snapshot.data!;
-            final profile = buildPublicUserProfileFromApi(data);
-            final role =
-                (data['role'] as String?)?.trim().toUpperCase() ?? '';
-            if (role == 'SELLER' &&
-                (profile.sellerProfileId?.isNotEmpty == true)) {
-              return SellerProfilePage(profile: profile);
-            }
-            return UserProfilePage(profile: profile);
-          },
-        ),
-      ),
-    );
+    pushUserProfileById(context, authorId, api: _catalogApiService);
   }
 
   void _openCommentAttachmentSheet() {
