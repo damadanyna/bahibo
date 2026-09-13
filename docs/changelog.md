@@ -1609,3 +1609,58 @@ futurs diagnostics.
   monde d'un coup ; fondu de 32 px en haut du fil (`ShaderMask`, `dstIn`)
   pour que les lignes anciennes se dissolvent dans la vidéo au lieu d'être
   coupées.
+
+### 11. Accueil : fil trié par la ville de l'utilisateur, puis par date
+
+- **Demande** : d'abord les publications de la ville où se trouve
+  l'utilisateur, puis les plus récentes.
+- **Avant** : le backend prenait les 240 produits les plus récents, les
+  classait en mémoire (ville exacte → mélange stable quotidien ; sinon par
+  distance ; sinon par date) et découpait la page. Deux écarts avec la
+  demande : les produits de la ville étaient mélangés, pas triés par date,
+  et un produit plus ancien que le 240e n'apparaissait jamais, même de la
+  bonne ville. L'app re-triait ensuite chaque page (vendeurs suivis puis
+  certifiés en tête), ce qui brouillait l'ordre serveur.
+- **Backend** (`products.service.ts`, `findAll`) : « même ville » =
+  `sellerProfile.city` égal à la localité de l'utilisateur (première partie
+  du libellé, insensible à la casse) **ou** position du vendeur dans un
+  carré de 25 km autour de celle de l'utilisateur (`SAME_CITY_RADIUS_KM`).
+  Deux seaux paginés en SQL, tous deux par `createdAt desc` puis `id` :
+  la page parcourt le seau « ville » puis enchaîne sur le reste, sans
+  plafond de candidats. Le complément est écrit clause par clause (un `NOT`
+  sur des colonnes nulles aurait fait disparaître les vendeurs sans ville
+  ni position). Supprimés : `rankProductsByLocation`,
+  `isExactLocationMatch`, `computeStableShuffleScore`, tri par distance.
+- **App** (`main_home_panel.dart`) : plus de re-tri local ;
+  `_productRankScore` et `_isSellerCertified` retirés. Le badge « suivi »
+  (`_isFollowedSeller`) reste affiché.
+- **Sans localisation** (ni libellé ni position) : simple ordre par date.
+- **À déployer** : backend ; l'app recompilée pour l'ordre exact des pages.
+
+### 12. Version 1.6.0+13
+
+- `pubspec.yaml` : `1.5.1+12` → `1.6.0+13` (bump mineur : nouveautés
+  live et appels ; `versionCode` 13, le 12 étant déjà envoyé sur Play).
+- **Contenu de la version** (entrées 1 à 11 de ce jour) : live en 1080p
+  avec tampon de lecture et hôte allégé, liste des spectateurs avec accès
+  au profil, fil de commentaires plus haut et défilant avec arrivées et
+  départs annoncés, son du live en flux continu ; appels vocaux plus
+  rapides à établir (pré-connexion pendant la sonnerie, client HTTP
+  persistant) et voix sans coupures (flux continu, redondance audio) ;
+  fil d'accueil trié par la ville de l'utilisateur puis par date.
+- `docs/play-store-release.md` : valeur de version mise à jour.
+- **Préflight** : `flutter analyze` sans erreur dans `lib/` (deux
+  avertissements préexistants d'éléments inutilisés dans le panneau
+  compte) ; `test/widget_test.dart`, test « compteur » du modèle Flutter
+  jamais adapté et qui ne compilait plus, supprimé : `flutter test`
+  repasse au vert.
+- **Avant diffusion, dans cet ordre** : VPS (`infra/livekit/livekit.yaml`
+  : port UDP 7882 ouvert dans UFW, redondance audio, redémarrage du
+  conteneur), backend (jeton spectateur avec nom et avatar, jeton appelé
+  avec l'invitation, délai de lecture des salles de live, tri du fil),
+  puis l'AAB. Une app 1.5.x reste compatible avec le nouveau backend.
+- **Texte « Nouveautés » Play Console** :
+  « Lives en HD avec image plus nette et plus stable, liste des personnes
+  qui regardent, commentaires qui défilent. Appels vocaux plus rapides à
+  connecter et sans coupures. Fil d'accueil trié par votre ville, puis
+  par nouveauté. »

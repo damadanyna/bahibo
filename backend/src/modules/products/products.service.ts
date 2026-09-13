@@ -5,7 +5,6 @@ import {
 } from "@nestjs/common";
 import { Prisma, WarrantyDurationUnit } from "@prisma/client";
 
-import { computeDistanceInKm } from "../../utils/geo";
 import { CloudinaryService } from "../auth/cloudinary.service";
 import { ConversationsRealtimeGateway } from "../conversations/realtime/conversations-realtime.gateway";
 import { NotificationsService } from "../notifications/notifications.service";
@@ -71,18 +70,19 @@ type SerializedProductComment = {
 };
 
 type ProductLocationContext = {
-  normalizedLocationLabel: string;
+  /** The viewer's locality: first comma part of their label, lower-cased; "" when unusable. */
+  cityToken: string;
   locationLatitude: number | null;
   locationLongitude: number | null;
-  locationTokens: string[];
 };
 
-type RankedProductCandidate = {
-  product: ProductWithRelations;
-  exactLocationMatch: boolean;
-  distanceInKm: number | null;
-  shuffleScore: number;
-};
+/**
+ * "Same city" radius for the home feed when both the viewer and the seller
+ * have a position: a square this wide around the viewer. Antananarivo is
+ * about 20 km across.
+ */
+const SAME_CITY_RADIUS_KM = 25;
+const KM_PER_DEGREE_LATITUDE = 111;
 
 @Injectable()
 export class ProductsService {
@@ -129,26 +129,14 @@ export class ProductsService {
     return value;
   }
 
-  private computeDistanceInKm(
-    firstLatitude: number,
-    firstLongitude: number,
-    secondLatitude: number,
-    secondLongitude: number,
-  ) {
-    return computeDistanceInKm(
-      firstLatitude,
-      firstLongitude,
-      secondLatitude,
-      secondLongitude,
-    );
-  }
-
   private buildLocationContext(params: {
     userLocationLabel?: string;
     userLocationLatitude?: number;
     userLocationLongitude?: number;
   }) {
-    const normalizedLocationLabel = this.normalizeText(
+    // The app sends "locality, district, region, country" from the GPS fix,
+    // or the city picked by hand: the first part is the city either way.
+    const [cityToken = ""] = this.extractLocationTokens(
       params.userLocationLabel,
     );
     const locationLatitude = this.toNullableNumber(params.userLocationLatitude);
@@ -157,144 +145,88 @@ export class ProductsService {
     );
 
     if (
-      normalizedLocationLabel === "" &&
-      locationLatitude == null &&
-      locationLongitude == null
+      cityToken === "" &&
+      (locationLatitude == null || locationLongitude == null)
     ) {
       return null;
     }
 
     return {
-      normalizedLocationLabel,
+      cityToken,
       locationLatitude,
       locationLongitude,
-      locationTokens: this.extractLocationTokens(params.userLocationLabel),
     } as ProductLocationContext;
   }
 
-  private computeStableShuffleScore(productId: string) {
-    const daySeed = new Date().toISOString().slice(0, 10);
-    const input = `${daySeed}:${productId}`;
-    let hash = 0;
-    for (let index = 0; index < input.length; index += 1) {
-      hash = (hash * 31 + input.charCodeAt(index)) >>> 0;
-    }
-    return hash;
-  }
+  /**
+   * "Same city" for the home feed: the seller's declared city equals the
+   * viewer's locality (case-insensitive), or the seller's last known
+   * position lies within SAME_CITY_RADIUS_KM of the viewer's. `miss` is the
+   * exact complement, spelled out clause by clause: a plain `NOT` over the
+   * nullable city and position columns would drop sellers who have neither
+   * from both buckets.
+   */
+  private buildSameCityFilters(context: ProductLocationContext) {
+    const match: Prisma.ProductWhereInput[] = [];
+    const miss: Prisma.ProductWhereInput[] = [];
 
-  private isExactLocationMatch(
-    product: ProductWithRelations,
-    context: ProductLocationContext,
-  ) {
-    const normalizedSellerCity = this.normalizeText(product.sellerProfile.city);
-    const normalizedSellerLocationLabel = this.normalizeText(
-      this.joinNonEmpty([
-        product.sellerProfile.city,
-        product.sellerProfile.country,
-        product.sellerProfile.user.locationLabel,
-      ]),
-    );
-
-    if (
-      normalizedSellerCity !== "" &&
-      (context.locationTokens.includes(normalizedSellerCity) ||
-        context.normalizedLocationLabel.includes(normalizedSellerCity))
-    ) {
-      return true;
-    }
-
-    if (
-      context.normalizedLocationLabel !== "" &&
-      normalizedSellerLocationLabel !== "" &&
-      (normalizedSellerLocationLabel === context.normalizedLocationLabel ||
-        normalizedSellerLocationLabel.includes(
-          context.normalizedLocationLabel,
-        ) ||
-        context.normalizedLocationLabel.includes(normalizedSellerLocationLabel))
-    ) {
-      return true;
+    if (context.cityToken !== "") {
+      match.push({
+        sellerProfile: {
+          city: { equals: context.cityToken, mode: "insensitive" },
+        },
+      });
+      miss.push({
+        OR: [
+          { sellerProfile: { city: null } },
+          {
+            sellerProfile: {
+              city: { not: context.cityToken, mode: "insensitive" },
+            },
+          },
+        ],
+      });
     }
 
-    return false;
-  }
+    if (context.locationLatitude != null && context.locationLongitude != null) {
+      const latitudeDelta = SAME_CITY_RADIUS_KM / KM_PER_DEGREE_LATITUDE;
+      const longitudeDelta =
+        SAME_CITY_RADIUS_KM /
+        (KM_PER_DEGREE_LATITUDE *
+          Math.max(Math.cos((context.locationLatitude * Math.PI) / 180), 0.2));
+      const minLatitude = context.locationLatitude - latitudeDelta;
+      const maxLatitude = context.locationLatitude + latitudeDelta;
+      const minLongitude = context.locationLongitude - longitudeDelta;
+      const maxLongitude = context.locationLongitude + longitudeDelta;
 
-  private rankProductsByLocation(
-    items: ProductWithRelations[],
-    context: ProductLocationContext,
-  ) {
-    const rankedCandidates = items.map((product) => {
-      const locationLatitude = this.toNullableNumber(
-        product.sellerProfile.user.locationLatitude,
-      );
-      const locationLongitude = this.toNullableNumber(
-        product.sellerProfile.user.locationLongitude,
-      );
-      const exactLocationMatch = this.isExactLocationMatch(product, context);
-      const distanceInKm =
-        context.locationLatitude != null &&
-        context.locationLongitude != null &&
-        locationLatitude != null &&
-        locationLongitude != null
-          ? this.computeDistanceInKm(
-              context.locationLatitude,
-              context.locationLongitude,
-              locationLatitude,
-              locationLongitude,
-            )
-          : null;
+      match.push({
+        sellerProfile: {
+          user: {
+            locationLatitude: { gte: minLatitude, lte: maxLatitude },
+            locationLongitude: { gte: minLongitude, lte: maxLongitude },
+          },
+        },
+      });
+      miss.push({
+        OR: [
+          { sellerProfile: { user: { locationLatitude: null } } },
+          { sellerProfile: { user: { locationLongitude: null } } },
+          { sellerProfile: { user: { locationLatitude: { lt: minLatitude } } } },
+          { sellerProfile: { user: { locationLatitude: { gt: maxLatitude } } } },
+          { sellerProfile: { user: { locationLongitude: { lt: minLongitude } } } },
+          { sellerProfile: { user: { locationLongitude: { gt: maxLongitude } } } },
+        ],
+      });
+    }
 
-      return {
-        product,
-        exactLocationMatch,
-        distanceInKm,
-        shuffleScore: this.computeStableShuffleScore(product.id),
-      } as RankedProductCandidate;
-    });
+    if (match.length === 0) {
+      return null;
+    }
 
-    const hasExactMatches = rankedCandidates.some(
-      (candidate) => candidate.exactLocationMatch,
-    );
-
-    return rankedCandidates.sort((left, right) => {
-      const leftBucket = left.exactLocationMatch
-        ? 0
-        : !hasExactMatches && left.distanceInKm != null
-          ? 1
-          : hasExactMatches && left.distanceInKm != null
-            ? 2
-            : 3;
-      const rightBucket = right.exactLocationMatch
-        ? 0
-        : !hasExactMatches && right.distanceInKm != null
-          ? 1
-          : hasExactMatches && right.distanceInKm != null
-            ? 2
-            : 3;
-
-      if (leftBucket !== rightBucket) {
-        return leftBucket - rightBucket;
-      }
-
-      if (leftBucket === 1 || leftBucket === 2) {
-        const leftDistance = left.distanceInKm ?? Number.POSITIVE_INFINITY;
-        const rightDistance = right.distanceInKm ?? Number.POSITIVE_INFINITY;
-        if (leftDistance !== rightDistance) {
-          return leftDistance - rightDistance;
-        }
-      }
-
-      if (leftBucket === 0) {
-        return left.shuffleScore - right.shuffleScore;
-      }
-
-      const createdAtComparison =
-        right.product.createdAt.getTime() - left.product.createdAt.getTime();
-      if (createdAtComparison !== 0) {
-        return createdAtComparison;
-      }
-
-      return left.shuffleScore - right.shuffleScore;
-    });
+    return {
+      match: { OR: match } as Prisma.ProductWhereInput,
+      miss: { AND: miss } as Prisma.ProductWhereInput,
+    };
   }
 
   /**
@@ -1057,10 +989,9 @@ export class ProductsService {
       : 10;
     const skip = Number.isFinite(params.skip) ? Math.max(params.skip, 0) : 0;
     const locationContext = this.buildLocationContext(params);
-    const locationCandidateTake = Math.min(
-      Math.max(skip + limit * 4, limit * 2, 80),
-      240,
-    );
+    const sameCity = locationContext
+      ? this.buildSameCityFilters(locationContext)
+      : null;
 
     const where = {
       isAvailable: true,
@@ -1097,37 +1028,61 @@ export class ProductsService {
       },
     };
 
-    const [items, total] = locationContext
-      ? await Promise.all([
-          this.prisma.product.findMany({
-            ...productQuery,
-            orderBy: {
-              createdAt: "desc",
-            },
-            take: locationCandidateTake,
-          }),
-          this.prisma.product.count({ where }),
-        ])
-      : await Promise.all([
-          this.prisma.product.findMany({
-            ...productQuery,
-            orderBy: {
-              createdAt: "desc",
-            },
-            take: limit,
-            skip,
-          }),
-          this.prisma.product.count({ where }),
-        ]);
+    // Newest first; the id breaks the (rare) tie so pages never overlap.
+    const orderBy = [{ createdAt: "desc" as const }, { id: "asc" as const }];
 
-    const pagedItems = locationContext
-      ? this.rankProductsByLocation(items, locationContext)
-          .slice(skip, skip + limit)
-          .map((candidate) => candidate.product)
-      : items;
+    let items: ProductWithRelations[];
+    let total: number;
+    if (sameCity) {
+      // The viewer's city first, then everyone else, newest first inside
+      // each bucket. Pages run through the city bucket and continue into
+      // the rest, both paginated in SQL, so a small town's older listings
+      // still come first and the feed reaches the whole catalogue.
+      const sameCityWhere: Prisma.ProductWhereInput = {
+        AND: [where, sameCity.match],
+      };
+      const othersWhere: Prisma.ProductWhereInput = {
+        AND: [where, sameCity.miss],
+      };
+      const [sameCityTotal, allTotal] = await Promise.all([
+        this.prisma.product.count({ where: sameCityWhere }),
+        this.prisma.product.count({ where }),
+      ]);
+      total = allTotal;
+      items =
+        skip < sameCityTotal
+          ? await this.prisma.product.findMany({
+              ...productQuery,
+              where: sameCityWhere,
+              orderBy,
+              skip,
+              take: limit,
+            })
+          : [];
+      if (items.length < limit) {
+        const others = await this.prisma.product.findMany({
+          ...productQuery,
+          where: othersWhere,
+          orderBy,
+          skip: Math.max(skip - sameCityTotal, 0),
+          take: limit - items.length,
+        });
+        items = [...items, ...others];
+      }
+    } else {
+      [items, total] = await Promise.all([
+        this.prisma.product.findMany({
+          ...productQuery,
+          orderBy,
+          take: limit,
+          skip,
+        }),
+        this.prisma.product.count({ where }),
+      ]);
+    }
 
     return {
-      products: pagedItems.map((product) => this.toEntity(product)),
+      products: items.map((product) => this.toEntity(product)),
       total,
       limit,
       skip,

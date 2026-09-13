@@ -74,26 +74,6 @@ class _MainHomePanelState extends State<MainHomePanel>
     return value is bool ? value : true;
   }
 
-  bool _isSellerCertified(Map<String, dynamic> product) {
-    final rawSeller = product['seller'];
-    final seller = rawSeller is Map
-        ? Map<String, dynamic>.from(rawSeller)
-        : const <String, dynamic>{};
-    final candidates = <Object?>[
-      seller['isSellerCertified'],
-      seller['isCertified'],
-      seller['isVerified'],
-      product['isSellerCertified'],
-      product['sellerCertified'],
-    ];
-    for (final c in candidates) {
-      if (c is bool && c) return true;
-      final s = c?.toString().trim().toLowerCase() ?? '';
-      if (s == 'true' || s == '1' || s == 'yes') return true;
-    }
-    return false;
-  }
-
   bool _isFollowedSeller(Map<String, dynamic> product) {
     final rawSeller = product['seller'];
     final seller = rawSeller is Map
@@ -109,12 +89,6 @@ class _MainHomePanelState extends State<MainHomePanel>
           p['userId']?.toString().trim() == sellerId ||
           p['id']?.toString().trim() == sellerId,
     );
-  }
-
-  // Score: followed+certified=3, followed=2, certified=1, other=0
-  int _productRankScore(Map<String, dynamic> product) {
-    return (_isFollowedSeller(product) ? 2 : 0) +
-        (_isSellerCertified(product) ? 1 : 0);
   }
 
   @override
@@ -376,10 +350,10 @@ class _MainHomePanelState extends State<MainHomePanel>
               .whereType<Map>()
               .map((item) => Map<String, dynamic>.from(item))
               .where(_isProductAvailable)
-              .toList()
-            ..sort(
-              (a, b) => _productRankScore(b).compareTo(_productRankScore(a)),
-            );
+              .toList();
+      // Order is the server's: the viewer's city first, newest first inside
+      // each bucket (ProductsService.findAll). Re-sorting a page here would
+      // scramble it.
 
       if (!mounted) return;
 
