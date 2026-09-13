@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 <uses-permission android:name="android.permission.INTERNET"/>
 <uses-permission android:name="android.permission.CAMERA"/>
 <uses-permission android:name="android.permission.RECORD_AUDIO"/>
@@ -8,9 +9,18 @@
 <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
 <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-<!-- Incoming voice calls: ringing tile over the lock screen + vibration. -->
-<uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
+<!-- Incoming voice calls: vibration for the ringing tile. -->
+<!-- Play policy (2026-09-11): USE_FULL_SCREEN_INTENT is reserved for apps
+     whose core purpose is calling or alarms; Google rejected it for Banay
+     (versionCode 11). The call plugin declares it, so strip it from the
+     merged manifest: the ringing tile becomes a heads-up notification. -->
+<uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" tools:node="remove"/>
 <uses-permission android:name="android.permission.VIBRATE"/>
+<!-- The call plugin declares the camera foreground-service type for video
+     calls; Banay only does audio calls and never starts the service with
+     that type, so keep the permission out of the merged manifest (and out
+     of the Play Console declaration). -->
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" tools:node="remove"/>
 <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
 <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>

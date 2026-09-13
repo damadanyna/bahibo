@@ -2,9 +2,15 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 
-/// The phone's own incoming-call surface: a full-screen, ringing call UI on
-/// Android (ConnectionService-style, over the lock screen) and CallKit on
-/// iOS, through `flutter_callkit_incoming` (MIT, free).
+/// The phone's own incoming-call surface: on Android a ringing heads-up
+/// notification (Accept / Decline; tapping it opens the plugin's call screen,
+/// shown over the lock screen), on iOS CallKit, through
+/// `flutter_callkit_incoming` (MIT, free).
+///
+/// Android never takes over the whole screen on its own: Google Play refused
+/// `USE_FULL_SCREEN_INTENT` for Banay (policy notice, 2026-09-11), so the
+/// permission is stripped from the manifest and the OS ignores the plugin's
+/// full-screen intent.
 ///
 /// Also usable from the FCM background isolate, which is how a killed app
 /// still rings: the OS shows this UI, and accepting launches the app.
@@ -63,6 +69,8 @@ class IncomingCallNativeUi {
         textColor: '#FFFFFF',
         incomingCallNotificationChannelName: 'Appels entrants',
         missedCallNotificationChannelName: 'Appels manqués',
+        // Only affects the plugin's call screen once the user taps the
+        // tile: it may show over the lock screen (no full-screen intent).
         isShowFullLockedScreen: true,
         isImportant: true,
         isShowCallID: false,

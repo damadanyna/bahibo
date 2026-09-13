@@ -1216,3 +1216,50 @@ futurs diagnostics.
   masquées pendant tout l'appel (`SystemUiMode.immersiveSticky`, un
   glissement depuis un bord les fait réapparaître un instant) ; retour au
   mode normal (`edgeToEdge`) à la fermeture de l'écran.
+
+### 20. Version 1.5.0+11
+
+- `pubspec.yaml` : `1.4.0+10` → `1.5.0+11` (bump mineur : appels vocaux,
+  écran natif d'appel, sons, vies fermées automatiquement, notifications
+  live/story/appel manqué ; `versionCode` 11).
+- `docs/play-store-release.md` : valeur de version mise à jour.
+- **Avant diffusion** : backend déployé avec la migration
+  `20260910_add_voice_calls` et `LIVEKIT_URL` pointant sur le serveur
+  retenu ; à la première publication, la console Play demandera la
+  déclaration des services d'avant-plan `phoneCall` / `microphone`
+  (plugin d'appel).
+
+### 21. Play Console : déclaration des services d'avant-plan
+
+- `AndroidManifest.xml` : `FOREGROUND_SERVICE_CAMERA` retiré du manifeste
+  fusionné (`tools:node="remove"`). Le plugin d'appel ne l'ajoute au
+  service qu'en appel vidéo (`isVideo`), jamais pour les appels audio de
+  Banay ; la console Play ne demandera plus de justification caméra.
+- Réponses au formulaire : Micro → « Entrée audio en arrière-plan »
+  (appels vocaux) ; Appel téléphonique → « VoIP, API de
+  télécommunications » ; Messagerie à distance → « Autre » (connexion
+  temps réel maintenue pour la réception des messages, option « Connexion
+  renforcée » activée par l'utilisateur).
+
+### 22. Play Console : refus de `USE_FULL_SCREEN_INTENT` (1.5.1+12)
+
+- Avis Google (2026-09-11) : « L'utilisation de l'autorisation n'est pas
+  directement liée à l'objectif principal de l'appli » ; retrait exigé de
+  tous les codes de version (sous-ensembles de test et production).
+- `AndroidManifest.xml` : `USE_FULL_SCREEN_INTENT` retiré du manifeste
+  fusionné (`tools:node="remove"`) ; la permission venait à la fois du
+  plugin `flutter_callkit_incoming` et de notre propre déclaration.
+- Conséquence UX Android : l'appel entrant arrive comme notification
+  « heads-up » (sonnerie, vibration, Accepter / Refuser) au lieu de prendre
+  tout l'écran ; toucher la notification ouvre l'écran d'appel du plugin,
+  y compris sur l'écran verrouillé (`isShowFullLockedScreen` inchangé, il ne
+  dépend pas de la permission). Écran éteint : l'allumage automatique n'est
+  plus garanti, il dépend de l'OEM.
+- `lib/services/incoming_call_native_ui.dart` : commentaires mis à jour,
+  aucun changement de comportement côté Dart (l'appli n'appelait pas
+  `requestFullIntentPermission`).
+- `pubspec.yaml` : `1.5.0+11` → `1.5.1+12` ; le versionCode 11 est celui
+  signalé et doit passer en « Non inclus » dans la nouvelle version Play.
+- Console Play : créer une version avec le nouvel AAB dans chaque
+  sous-ensemble concerné, déployer à 100 %, puis vérifier dans l'explorateur
+  de collections que le code 11 apparaît « Inactif ».
