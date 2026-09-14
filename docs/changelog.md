@@ -1664,3 +1664,125 @@ futurs diagnostics.
   qui regardent, commentaires qui défilent. Appels vocaux plus rapides à
   connecter et sans coupures. Fil d'accueil trié par votre ville, puis
   par nouveauté. »
+
+### 13. Production : LiveKit Cloud, pas le VPS
+
+- **Constat pendant le déploiement** : sur le VPS, `backend/.env` pointe sur
+  `wss://bahibo-zs2ptdrd.livekit.cloud`, Docker n'est pas installé et UFW
+  n'ouvre que SSH, 80 et 443. La pile `infra/livekit` (LiveKit + coturn)
+  n'a jamais été lancée : lives et appels passent par LiveKit Cloud.
+- **Conséquences sur les entrées de ce jour** : les modifications de
+  `infra/livekit/livekit.yaml` (entrée 3 : `udp_port`, entrée 8 :
+  `active_red_encoding`) sont sans effet tant que l'auto-hébergement n'est
+  pas réel ; le plafond d'une centaine de participants (entrée 3) n'existe
+  pas sur Cloud, qui choisit aussi le point de présence le plus proche de
+  chaque téléphone. Le délai de lecture des salles de live (entrée 2) passe
+  par l'API `createRoom` et s'applique tel quel sur Cloud. À surveiller à
+  la place : la consommation facturée au-delà du palier gratuit (tableau de
+  bord LiveKit Cloud).
+- `infra/livekit/README.md` : avertissement en tête. La règle UFW
+  `7882/udp` ajoutée par erreur est à retirer (`ufw delete allow 7882/udp`).
+- **Déploiement effectif de la 1.6.0+13** : backend seul (`git pull`,
+  `npm install`, `prisma migrate deploy`, `prisma:generate`, `npm run
+  build`, redémarrage), puis l'AAB.
+
+## 2026-09-14
+
+### 1. Live : image toujours « pas nette » après le passage en 1080p (hôte en 4G)
+
+- **Symptôme** : test S21 / S22 Ultra, hôte et spectateur en 4G : image pas
+  nette malgré la capture 1080p de l'entrée 6 du 2026-09-13. Demande : « la
+  meilleure qualité possible, 4K voire 8K selon la connexion ».
+- **À vérifier d'abord (état périmé)** : l'APK de debug présent dans
+  `build/app/outputs/flutter-apk/` date du 13/09 à 20 h 31 (1.5.1+12) et ne
+  contient pas le passage en 1080p (commit `edddeb7`, 22 h 22) ; seul l'AAB
+  1.6.0 de 23 h 01 le contient. Si les téléphones tournent encore ce debug,
+  le test portait sur l'ancienne échelle 720p. Contrôler la version dans
+  Paramètres > Applications > Banay.
+- **Cause principale** (lue dans libwebrtc m137,
+  `modules/video_coding/utility/simulcast_rate_allocator.cc` et
+  `video/config/encoder_stream_factory.cc`) : en simulcast, l'allocateur
+  sert d'abord les cibles des couches basses et ne donne à la couche haute
+  que le reste. Avec [360p 400 kb/s, 720p 1,2 Mb/s, 1080p 2,5 Mb/s], la
+  1080p s'allume dès 2,4 Mb/s de lien montant mais reçoit « lien − 1,6 »,
+  soit 0,8 à 1,4 Mb/s sur une 4G à 2,4–3 Mb/s (0,014 bit par pixel) ; le
+  SFU l'envoie telle quelle au spectateur (qualité HIGH) : une 1080p
+  affamée, pire que la 720p qu'elle remplaçait. Elle n'a ses 2,5 Mb/s
+  qu'au-delà de 4,1 Mb/s de lien montant. En simulcast, le réducteur de
+  résolution piloté par le QP est désactivé (`SimulcastEncoderAdapter`
+  renvoie `ScalingSettings::kOff`) : une couche affamée ne se réduit jamais
+  d'elle-même, et `balanced` ne réagit qu'à la surcharge CPU. Repères 4G
+  Madagascar (nPerf 2024, débit montant moyen) : Airtel 3,7 Mb/s (2,3 en
+  heure de pointe), Telma 6,9, Orange 11,9 ; 51 à 59 % des mesures sous
+  5 Mb/s.
+- **Causes secondaires vérifiées** : débit par pixel trop bas sur toutes
+  les couches (1080p à 2,5 Mb/s = 0,04 bit/pixel ; repère 0,1 ; préréglage
+  SDK 3,0 Mb/s ; TikTok LIVE Studio 3,5–4,5) ; profil H.264 Constrained
+  Baseline imposé par le SDK (`engine.dart` préfère `42e01f`, et libwebrtc
+  Android ne propose le profil High que pour des encodeurs nommés
+  `OMX.Exynos.`, jamais pour les noms Codec2 des Android 11+) : non
+  modifiable depuis Dart ; rendu spectateur : une 1080p portrait est
+  agrandie 1,25× sur un écran 1080×2400 (1,6× sur 1440×3088), bords rognés
+  par `cover` : la mention « 1:1 » de l'entrée 6 du 2026-09-13 était fausse.
+- **Correction du « rappel » de l'entrée 1 du 2026-09-13** : sur Android 10
+  et plus, libwebrtc prend l'encodeur H.264 matériel de n'importe quel
+  constructeur (`HardwareVideoEncoderFactory` teste
+  `isHardwareAccelerated()`) ; la liste blanche Qualcomm / Exynos ne vaut
+  que pour Android 9 et antérieur. Un hôte MediaTek / Unisoc récent encode
+  donc bien en H.264 matériel. Reste vrai : libwebrtc n'embarque aucun
+  encodeur H.264 logiciel.
+- **4K / 8K, écarté** : la table de débits libwebrtc plafonne tout ce qui
+  dépasse 1080p sur la ligne 1080p (plancher 800 kb/s) : une couche 2160p
+  s'allumerait au même seuil de 2,4 Mb/s et serait encodée à 1,4 Mb/s (de la
+  4K en bouillie), et n'atteindrait ses 8 Mb/s qu'au-delà de 9,6 Mb/s de
+  lien montant stable, alors que le sondage initial de débit est plafonné à
+  5 Mb/s ; trois encodeurs dont un 4K sur chemin CPU (LiveKit ne négocie pas
+  l'extension `video-orientation`, donc rotation I420 et mises à l'échelle
+  logicielles) ; 3,6 Go/h par spectateur ; et l'écran du S21 fait 1080 px de
+  large : aucun gain visible. 8K : hors de portée d'un téléphone en WebRTC.
+  TikTok Live n'offre pas de 4K (LIVE Studio plafonne à 1080p et recommande
+  720p, l'app mobile émet en 720p) ; sa netteté en 4G vient d'une source
+  modeste bien alimentée, transcodée côté serveur, avec 3 à 5 s de tampon.
+- **Changement** (`lib/page/live/live_preview_page.dart`) :
+  - échelle à deux couches : 540p 700 kb/s + 1080p 4 Mb/s, 30 i/s. Seuil
+    d'allumage de la 1080p : 1,5 Mb/s de lien montant (au lieu de 2,4 ;
+    1,66 pour se rallumer après une baisse, hystérésis ×1,2 sur le plancher,
+    contre 2,56 avant) ; elle reçoit « lien − 0,7 » : 1,8 Mb/s à 2,5 de
+    lien, 3,3 à 4, plafond 4 Mb/s pour un hôte en Wi‑Fi, fibre ou 5G. Deux
+    encodeurs matériels au lieu de trois. Le spectateur dont le lien
+    descendant ne suit pas reçoit la 540p (agrandie 2,5×, contre 3,75× pour
+    l'ancienne 360p) ;
+  - `backupVideoCodec` désactivé : tous les téléphones décodent le H.264,
+    et la piste VP8 de secours aurait lancé un second encodage simulcast
+    (trois couches VP8, préréglages SDK) sur l'hôte au premier abonné
+    réclamant VP8 ;
+  - journal de diagnostic **en debug uniquement**, toutes les 6 s :
+    `live uplink <total> kb/s, rtt <ms>, <encodeur>: q 540x960 30fps
+    690 kb/s - | h 1080x1920 30fps 1450 kb/s bandwidth`. À lire pendant le
+    prochain test 4G : `h` absent ou à quelques centaines de kb/s = lien
+    montant insuffisant ; `bandwidth` = limité par le réseau ; `cpu` =
+    téléphone en surcharge ; nom de l'encodeur (`c2.exynos…`, `c2.qti…`) =
+    encodage matériel ;
+  - commentaires réalignés sur ce que fait vraiment libwebrtc (l'ancien
+    texte attribuait à `balanced` une baisse de résolution sous pression de
+    débit, inexacte en simulcast) ;
+  - **caméra arrière par défaut** (accord utilisateur) : un live montre la
+    boutique et les articles, et le capteur principal est plus grand et
+    moins bruité que le capteur selfie (le bruit consomme des bits que la
+    1080p n'a pas en 4G). Le bouton de bascule reste.
+- **Coût data** : spectateur en 1080p jusqu'à ≈ 1,8 Go/h (4 Mb/s) contre
+  ≈ 1,1 ; en 540p ≈ 0,3 Go/h. Facturation LiveKit Cloud au Go descendant en
+  proportion.
+- **Non fait, sur décision** : `maintainResolution` à la place de
+  `balanced` (net mais saccadé sous surcharge CPU) ; chaîne serveur
+  (Ingress WHIP/RTMP avec transcodage, ou Egress HLS) : seule façon de
+  découpler les rendus spectateur du lien montant de l'hôte. Contraintes
+  relevées sur LiveKit Cloud (tarifs du 2026-09-14) : plan Build gratuit =
+  2 ingress simultanés et 60 min de transcodage par mois, donc 2 lives à la
+  fois au maximum ; plan Ship 50 $/mois = 100 ingress simultanés, 600 min
+  incluses puis 0,02 $/min vidéo (≈ 1,2 $ par heure de live) ; latence
+  supplémentaire de l'ordre de 1 à 3 s ; et l'app hôte doit publier en WHIP
+  (flutter_webrtc n'a pas de client WHIP, à écrire sur `RTCPeerConnection`).
+- **Test** : hôte et spectateur sur la même 4G qu'avant, puis hôte en
+  Wi‑Fi ; comparer le journal debug et la netteté. Version à reconstruire :
+  l'AAB 1.6.0+13 porte encore l'échelle à trois couches.

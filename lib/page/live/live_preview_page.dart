@@ -10,6 +10,7 @@ import 'package:banay/services/live/live_connect_options.dart';
 import 'package:banay/services/live/live_room_channel.dart';
 import 'package:banay/services/live/live_viewers.dart';
 import 'package:banay/theme/app_theme_extensions.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:livekit_client/livekit_client.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -79,18 +80,33 @@ class _LivePreviewPageState extends State<LivePreviewPage>
   Timer? _heartbeatTimer;
   bool _liveClosedByServer = false;
 
+  // Debug builds only: one console line every few seconds with what the
+  // uplink really carries per layer, so a "not sharp" report reads as
+  // "h 1080x1920 at 1.4 Mb/s, bandwidth-limited" instead of a guess. The
+  // SDK already polls sender stats every 2 s; this only listens.
+  EventsListener<TrackEvent>? _senderStatsEvents;
+  LocalVideoTrack? _senderStatsTrack;
+  DateTime? _senderStatsLoggedAt;
+  static const Duration _senderStatsLogInterval = Duration(seconds: 6);
+
   bool _isConnecting = true;
   bool _isLive = false;
   bool _isPaused = false;
   bool _isMuted = false;
   bool _isCameraEnabled = true;
-  CameraPosition _cameraPosition = CameraPosition.front;
+  // Rear camera first: a live shows the shop and the goods, and the main
+  // sensor is larger and less noisy than the selfie one (noise costs bits
+  // that the 1080p layer does not have on 4G). The switch button remains.
+  CameraPosition _cameraPosition = CameraPosition.back;
   String? _errorMessage;
 
-  // 1080p capture (1920x1080, portrait 1080x1920 on a phone): maps 1:1 on
-  // a full-HD viewer screen in portrait, where 720p was scaled up 1.5× and
-  // looked soft. A front camera that stops at 720p falls back to its best
-  // format; the layers below are derived from what the camera gives.
+  // 1080p capture (1920x1080, sent as 1080x1920 in portrait). The viewer
+  // draws it full-screen with VideoViewFit.cover: a 1.25x upscale with the
+  // sides cropped on a 1080x2400 panel, 1.6x on 1440x3088. More pixels than
+  // this would not be visible on these screens; what decides sharpness is
+  // the bitrate the uplink leaves to this layer (see _videoPublishOptions).
+  // A front camera that stops at 720p falls back to its best format; the
+  // layer below is derived from what the camera gives.
   CameraCaptureOptions get _cameraCaptureOptions => CameraCaptureOptions(
     cameraPosition: _cameraPosition,
     params: VideoParametersPresets.h1080_169,
@@ -98,43 +114,45 @@ class _LivePreviewPageState extends State<LivePreviewPage>
   );
 
   static const VideoPublishOptions _videoPublishOptions = VideoPublishOptions(
-    // H.264 instead of the SDK's VP8 default: hardware-encoded on every
-    // phone with a camera, so three simulcast layers no longer cook a
-    // mid-range device, and the picture is sharper at the same bitrate. The
-    // SDK falls back to a codec the server enables if H.264 is unavailable.
+    // H.264: MediaCodec hardware encoding on any Android 10+ chip (older
+    // Android: Qualcomm / Exynos only); libwebrtc ships no software H.264
+    // encoder. The SDK negotiates Constrained Baseline; High profile is not
+    // reachable from Dart.
     videoCodec: 'h264',
-    // 2.5 Mb/s at 1080p / 30 fps (~1.1 GB per hour for a viewer who gets
-    // it; TikTok Live's 1080p sits at 2.5–4 Mb/s). Only a ceiling: the
-    // encoder follows the uplink estimate below it, and under bitrate
-    // pressure the balanced degradation below scales the source down
-    // (1080p → 720p → 540p) rather than sending blocky full-size frames.
-    videoEncoding: VideoEncoding(maxBitrate: 2500 * 1000, maxFramerate: 30),
-    // Three layers so 1080p is a bonus, never a tax. libwebrtc switches a
-    // layer on only once the uplink estimate covers every lower layer's
-    // target plus that layer's built-in floor (600 kb/s at 720p, 800 kb/s
-    // at 1080p): 720p needs ~1.05 Mb/s of uplink, 1080p ~2.5 Mb/s. A 4G
-    // host therefore keeps serving 720p at up to 1.2 Mb/s, as before; a
-    // host on Wi-Fi or fibre serves 1080p. dynacast pauses the layers no
-    // viewer is on, so the phone rarely encodes all three at once.
-    // 360p is what the SFU serves when a viewer's link cannot keep up
-    // (viewers ask for the top layer on every network); 30 fps (the SDK
-    // preset stops at 20) so a stepped-down viewer keeps the same motion.
-    // Below ~400 kb/s of downlink the SFU pauses video rather than serving
-    // a 180p thumbnail.
+    // Ceiling of the 1080p layer, reached by a host on Wi-Fi, fibre or 5G
+    // (~1.8 GB per hour for a viewer who gets it). On 4G the encoder
+    // follows the uplink estimate below it. 4 Mb/s is the 1080p range of
+    // TikTok LIVE Studio and of LiveKit's own egress preset; 2.5 Mb/s
+    // (0.04 bit per pixel) was visibly soft even when fully fed.
+    videoEncoding: VideoEncoding(maxBitrate: 4000 * 1000, maxFramerate: 30),
+    // Two layers, not three. libwebrtc's simulcast allocator serves the
+    // lower layers' targets first and gives the top layer only what is
+    // left. With 360p 400 kb/s + 720p 1.2 Mb/s below it, the 1080p layer
+    // switched on at 2.4 Mb/s of uplink but was encoded at uplink minus
+    // 1.6 Mb/s: 0.8 to 1.4 Mb/s on a 2.4 to 3 Mb/s 4G link, and the SFU
+    // forwarded that starved 1080p to every viewer, worse than the 720p it
+    // replaced. The QP quality scaler is off in simulcast, so a starved
+    // layer never downsizes itself. With a single 540p layer at 700 kb/s
+    // the 1080p layer switches on at 1.5 Mb/s (1.66 when it comes back
+    // after a dip) and gets uplink minus 0.7 Mb/s: 1.8 Mb/s at 2.5, 3.3 at
+    // 4; the phone runs two encoders instead of three. 540p is what the
+    // SFU serves when it measures that a viewer's downlink cannot carry the
+    // 1080p layer (2.5x on a 1080-wide screen); 30 fps so the step down
+    // keeps the same motion.
     simulcast: true,
     videoSimulcastLayers: [
       VideoParameters(
-        dimensions: VideoDimensionsPresets.h360_169,
-        encoding: VideoEncoding(maxBitrate: 400 * 1000, maxFramerate: 30),
-      ),
-      VideoParameters(
-        dimensions: VideoDimensionsPresets.h720_169,
-        encoding: VideoEncoding(maxBitrate: 1200 * 1000, maxFramerate: 30),
+        dimensions: VideoDimensionsPresets.h540_169,
+        encoding: VideoEncoding(maxBitrate: 700 * 1000, maxFramerate: 30),
       ),
     ],
-    // Under congestion, give up a little sharpness and a little frame rate
-    // rather than letting the picture stutter: a live that freezes loses
-    // viewers faster than one that softens for a few seconds.
+    // No VP8 backup track: every phone decodes H.264, and the backup would
+    // start a second 1080p simulcast encode on the host the moment one
+    // subscriber declined H.264, doubling the uplink and CPU cost.
+    backupVideoCodec: BackupVideoCodec(enabled: false),
+    // In simulcast this only answers CPU overuse (a bandwidth shortfall is
+    // handled by pausing the top layer): balanced shrinks the source, and
+    // with it both layers, rather than only dropping frames.
     degradationPreference: DegradationPreference.balanced,
   );
 
@@ -215,6 +233,7 @@ class _LivePreviewPageState extends State<LivePreviewPage>
     unawaited(_likesSubscription?.cancel());
     unawaited(_channel?.dispose());
     unawaited(_roomEvents?.dispose());
+    unawaited(_senderStatsEvents?.dispose());
     _room.removeListener(_handleRoomChanged);
     unawaited(_room.disconnect());
     _room.dispose();
@@ -301,6 +320,7 @@ class _LivePreviewPageState extends State<LivePreviewPage>
         return;
       }
 
+      _attachSenderStatsLog();
       unawaited(_startChannel());
       _startHeartbeat();
       _livePulseController.repeat(reverse: true);
@@ -391,6 +411,54 @@ class _LivePreviewPageState extends State<LivePreviewPage>
     return null;
   }
 
+  void _attachSenderStatsLog() {
+    if (!kDebugMode) {
+      return;
+    }
+    // Camera switch, pause and toggle restart the capture inside the same
+    // track object; only a track that ended (camera taken by another app)
+    // gets replaced by the SDK, and the listener then follows the new one.
+    final track = _localVideoTrack();
+    if (track == null || identical(track, _senderStatsTrack)) {
+      return;
+    }
+    unawaited(_senderStatsEvents?.dispose());
+    _senderStatsTrack = track;
+    _senderStatsEvents = track.createListener()
+      ..on<VideoSenderStatsEvent>(_logSenderStats);
+  }
+
+  void _logSenderStats(VideoSenderStatsEvent event) {
+    final now = DateTime.now();
+    final loggedAt = _senderStatsLoggedAt;
+    if (loggedAt != null &&
+        now.difference(loggedAt) < _senderStatsLogInterval) {
+      return;
+    }
+    _senderStatsLoggedAt = now;
+
+    String? encoder;
+    num? roundTripTime;
+    final layers = <String>[];
+    for (final entry in event.stats.entries) {
+      final stats = entry.value;
+      encoder ??= stats.encoderImplementation;
+      roundTripTime ??= stats.roundTripTime;
+      final kbps = ((event.bitrateForLayers[entry.key] ?? 0) / 1000).round();
+      layers.add(
+        '${entry.key} ${stats.frameWidth?.toInt() ?? 0}x'
+        '${stats.frameHeight?.toInt() ?? 0} '
+        '${stats.framesPerSecond?.round() ?? 0}fps $kbps kb/s '
+        '${stats.qualityLimitationReason ?? '-'}',
+      );
+    }
+    final rttMs = roundTripTime == null ? '-' : (roundTripTime * 1000).round();
+    debugPrint(
+      'live uplink ${(event.currentBitrate / 1000).round()} kb/s, '
+      'rtt $rttMs ms, ${encoder ?? '?'}: ${layers.join(' | ')}',
+    );
+  }
+
   Future<void> _switchCamera() async {
     final localTrack = _localVideoTrack();
     if (localTrack == null) {
@@ -422,6 +490,7 @@ class _LivePreviewPageState extends State<LivePreviewPage>
       return;
     }
 
+    _attachSenderStatsLog();
     if (nextPaused) {
       _livePulseController.stop();
     } else {
@@ -478,6 +547,7 @@ class _LivePreviewPageState extends State<LivePreviewPage>
       return;
     }
 
+    _attachSenderStatsLog();
     setState(() {
       _isCameraEnabled = nextValue;
       if (nextValue) {

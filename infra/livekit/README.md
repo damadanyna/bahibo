@@ -1,5 +1,12 @@
 # LiveKit + coturn auto-hébergés (VPS Banay)
 
+> **Non déployé (constat du 2026-09-13).** La production utilise LiveKit
+> Cloud (`LIVEKIT_URL=wss://bahibo-zs2ptdrd.livekit.cloud` dans le `.env`
+> du backend sur le VPS) ; Docker n'est pas installé sur le VPS et aucun
+> port média n'y est ouvert. Ce dossier reste la marche à suivre si
+> l'auto-hébergement devient nécessaire ; `livekit.yaml` n'a aucun effet
+> tant qu'il n'est pas lancé.
+
 Tout ce qu'il faut pour faire tourner les appels vocaux et les lives sans
 aucun service payant : LiveKit (SFU, Apache-2.0) et coturn (STUN/TURN,
 BSD-3-Clause) sur le VPS Ubuntu, derrière Nginx et Let's Encrypt.
