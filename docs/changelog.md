@@ -1786,3 +1786,22 @@ futurs diagnostics.
 - **Test** : hôte et spectateur sur la même 4G qu'avant, puis hôte en
   Wi‑Fi ; comparer le journal debug et la netteté. Version à reconstruire :
   l'AAB 1.6.0+13 porte encore l'échelle à trois couches.
+
+### 2. Version 1.6.1+14
+
+- `pubspec.yaml` : `1.6.0+13` → `1.6.1+14` (correctif : qualité du live ;
+  `versionCode` 14, le 13 étant déjà envoyé sur Play).
+- **Contenu de la version** (entrée 1 de ce jour) : live en 1080p mieux
+  alimentée (échelle à deux couches 540p + 1080p, plafond 4 Mb/s), piste
+  VP8 de secours retirée, caméra arrière par défaut, journal de diagnostic
+  du lien montant en debug. Aucun changement backend : une app 1.6.0 reste
+  compatible, le backend déployé le 2026-09-13 suffit.
+- `docs/play-store-release.md` : valeur de version mise à jour.
+- **Préflight** : `flutter analyze` sans erreur dans `lib/` (les deux
+  avertissements préexistants du panneau compte demeurent) ; `flutter pub
+  get` puis `flutter build appbundle --release` (build incrémental, sans
+  `flutter clean` ; `flutter test` non relancé) →
+  `build/app/outputs/bundle/release/app-release.aab`, 71,3 Mo, 14/09 16 h 35.
+- **Texte « Nouveautés » Play Console** :
+  « Lives plus nets : l'image HD reçoit désormais tout le débit disponible,
+  et la caméra arrière est utilisée par défaut pour montrer la boutique. »
