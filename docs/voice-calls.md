@@ -97,6 +97,7 @@ certificats, Nginx, `docker compose up -d`, puis migration Prisma
 | Annulation d'écho, réduction de bruit, gain automatique | `AudioCaptureOptions` | mains libres utilisable, voix stable |
 | Reconnexion automatique | LiveKit client + événements `RoomReconnecting/Reconnected` | statut « Reconnexion… » sans couper l'appel |
 | Qualité de connexion affichée | `ParticipantConnectionQualityUpdatedEvent` → pastille « Bonne connexion / Réseau faible / Connexion perdue » | l'utilisateur comprend d'où vient la coupure |
+| Alerte « connexion instable » (2026-09-18) | `VoiceCallSession.isConnectionUnstable` : mauvaise qualité, lien toujours établi : voix reçue dégradée (mesure toutes les 2 s : ≥ 10 % de paquets perdus ou ≥ 100 ms de gigue, 2 fenêtres pour lever, 3 pour retirer, non imputée au correspondant), ou qualité **de ce téléphone** jugée `poor` / `lost` par le SFU ; la reconnexion en est le cas extrême → pastille « Connexion instable », conseil « Déplacez-vous vers un endroit où le réseau est meilleur. » et double bip dans l'oreille toutes les 5 s (`CallTones.playUnstableConnection`, `assets/sounds/unstable_connection.wav`) | téléphone contre l'oreille, l'écran n'est pas vu : le bip dit que le réseau flanche et que bouger peut aider. Un réseau faible côté correspondant ne bipe pas (rien à faire de ce côté) |
 | TURN sur UDP 3478 et TLS 5349 | coturn | passe les CGNAT des opérateurs mobiles et les pare-feux « HTTPS seulement » |
 
 Dégradation : Opus réduit lui-même son débit sous perte de paquets ; en
@@ -142,8 +143,15 @@ Le relais TURN n'ajoute pas de trafic au-delà : le SFU relaie déjà tout.
 
 - **Android** : le push data-only réveille l'app en arrière-plan, qui
   affiche l'écran d'appel natif (plein écran, sonnerie système, au-dessus
-  de l'écran de verrouillage). Accepter lance l'app et l'appel ; refuser
-  prévient le serveur depuis l'isolat d'arrière-plan. Les OEM agressifs
+  de l'écran de verrouillage). Accepter lance l'app et l'appel ; accepter
+  comme refuser préviennent le serveur tout de suite depuis l'isolat
+  d'actions du plugin (`callkitBackgroundHandler`, enregistré par le handler
+  FCM lui-même depuis le 2026-09-18, car un processus réveillé par un push
+  ne l'a pas encore). L'app, une fois démarrée, ne fait que confirmer :
+  `POST /calls/:id/accept` est idempotent pour l'appelé, et `GET /calls/:id`
+  lui remet `url` / `token` que l'appel sonne ou soit déjà accepté. Sans
+  cela, un décroché tardif perdait la course contre le minuteur de 45 s
+  pendant le démarrage à froid (5 à 12 s en 4G). Les OEM agressifs
   (ColorOS, MIUI…) peuvent bloquer ce réveil : le dispositif
   « optimisation de batterie » déjà présent dans l'app s'applique.
 - **iOS, app au premier plan ou en arrière-plan** : CallKit via le même

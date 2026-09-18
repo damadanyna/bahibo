@@ -64,6 +64,18 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       callerName: message.data['callerName']?.toString() ?? '',
       callerAvatarUrl: message.data['callerAvatarUrl']?.toString() ?? '',
     );
+    // A process woken by this push has no call-action isolate yet (the
+    // plugin only starts it on registration, normally done by the app's
+    // own start-up): without it, Accept / Decline on the native UI reach
+    // nobody until the app has cold-started. After the UI so the phone
+    // rings first; idempotent when the isolate already runs.
+    try {
+      await FlutterCallkitIncoming.onBackgroundMessage(
+        callkitBackgroundHandler,
+      );
+    } catch (error) {
+      debugPrint('Call action isolate not started in background: $error');
+    }
     // The phone rings: let the caller switch to "Appel en cours…".
     if (callId.isNotEmpty) {
       try {
@@ -81,10 +93,15 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 /// Runs in its own isolate when the user acts on the native call screen
 /// while the app is killed: a decline must still reach the server so the
-/// caller stops ringing at once instead of waiting for the timeout.
+/// caller stops ringing at once instead of waiting for the timeout, and an
+/// accept must get there before the server's ring timeout does — the app
+/// itself needs a cold start (5 to 12 s on 4G) before it could say so, and
+/// then only confirms (`POST /calls/:id/accept` is idempotent).
 @pragma('vm:entry-point')
 Future<void> callkitBackgroundHandler(CallEvent event) async {
   final callId = switch (event) {
+    CallEventActionCallAccept(:final callKitParams) =>
+      IncomingCallNativeUi.callIdOf(callKitParams),
     CallEventActionCallDecline(:final callKitParams) =>
       IncomingCallNativeUi.callIdOf(callKitParams),
     CallEventActionCallTimeout(:final id) => id,
@@ -98,7 +115,9 @@ Future<void> callkitBackgroundHandler(CallEvent event) async {
     // Same cold-isolate bootstrap as the FCM handler above.
     await ApiConfig.initialize();
     configureBanayTlsOverride(ApiConfig.baseUrl);
-    if (event is CallEventActionCallDecline) {
+    if (event is CallEventActionCallAccept) {
+      await CallsApiService().acceptCall(callId);
+    } else if (event is CallEventActionCallDecline) {
       await CallsApiService().declineCall(callId);
     }
   } catch (error) {

@@ -271,6 +271,13 @@ export class PushNotificationsService {
    * the recipient's device can flip pending messages to "delivered" the
    * moment it's reachable — see ConversationsApiService.pingDelivery on the
    * client and POST /conversations/delivery-ping on this server.
+   *
+   * Normal priority on purpose: FCM downgrades an app whose high-priority
+   * messages never end in a visible notification, and the next victim would
+   * be the data-only `incoming_call` push (45 s TTL: late means lost). The
+   * chat push sent just before already woke the phone, so this one still
+   * lands right behind it; in Doze it waits for the next window, which only
+   * delays the "delivered" tick.
    */
   private async sendChatMessageDeliveryPing(tokens: string[]) {
     if (tokens.length === 0 || !this.firebaseApp) {
@@ -284,7 +291,7 @@ export class PushNotificationsService {
           type: "chat_message_delivery_ping",
         },
         android: {
-          priority: "high",
+          priority: "normal",
         },
         apns: {
           headers: {

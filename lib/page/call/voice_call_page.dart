@@ -149,6 +149,10 @@ class _VoiceCallPageState extends State<VoiceCallPage>
                         const SizedBox(height: 14),
                         _QualityPill(session: session),
                       ],
+                      if (session.isConnectionUnstable) ...[
+                        const SizedBox(height: 12),
+                        const _UnstableConnectionHint(),
+                      ],
                       const Spacer(),
                       _buildControls(session),
                       const SizedBox(height: 36),
@@ -346,6 +350,8 @@ class _VoiceCallPageState extends State<VoiceCallPage>
 
 /// Link quality of the other side, as the SFU sees it: three bars and a
 /// word, so a choppy call reads as "their network" rather than "the app".
+/// This phone's own weak link takes over the pill, with the advice of
+/// [_UnstableConnectionHint] right below.
 class _QualityPill extends StatelessWidget {
   const _QualityPill({required this.session});
 
@@ -354,9 +360,9 @@ class _QualityPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (label, bars, color) = switch (session.quality) {
-      _ when session.isReconnecting => (
+      _ when session.isConnectionUnstable => (
         'Connexion instable',
-        0,
+        session.isReconnecting ? 0 : 1,
         const Color(0xFFFFB020),
       ),
       VoiceCallQuality.excellent => ('Bonne connexion', 3, Colors.white),
@@ -403,6 +409,44 @@ class _QualityPill extends StatelessWidget {
               color: color.withValues(alpha: 0.95),
               fontSize: 12,
               fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What the user can do about their own unstable link; the service beeps in
+/// the ear at the same time (`VoiceCallSession.isConnectionUnstable`).
+class _UnstableConnectionHint extends StatelessWidget {
+  const _UnstableConnectionHint();
+
+  static const Color _amber = Color(0xFFFFB020);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 40),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(
+            Icons.wifi_tethering_error_rounded,
+            size: 18,
+            color: _amber,
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              'Déplacez-vous vers un endroit où le réseau est meilleur.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: _amber.withValues(alpha: 0.95),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                height: 1.3,
+              ),
             ),
           ),
         ],

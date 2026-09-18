@@ -51,6 +51,8 @@ class VoiceCallSession {
     this.isSpeakerOn = false,
     this.isReconnecting = false,
     this.quality = VoiceCallQuality.unknown,
+    this.localQuality = VoiceCallQuality.unknown,
+    this.isLinkDegraded = false,
     this.peerReached = false,
   });
 
@@ -74,11 +76,30 @@ class VoiceCallSession {
   final bool isReconnecting;
   final VoiceCallQuality quality;
 
+  /// This phone's own link, as the SFU sees it ([quality] is the peer's).
+  final VoiceCallQuality localQuality;
+
+  /// Measured here on the received voice: packets lost or jitter high
+  /// enough to be heard (choppy, words dropping), the link still being up.
+  final bool isLinkDegraded;
+
   /// Outgoing only: the other phone confirmed the invitation reached it
   /// and rings ("Appel…" → "Appel en cours…").
   final bool peerReached;
 
   bool get isEnded => phase == VoiceCallPhase.ended;
+
+  /// Poor call quality on the user's own side, so moving can fix it: drives
+  /// the on-screen hint and the beep in the ear. Bad quality first of all
+  /// (measured, or rated so by the SFU) with the link still up; an outright
+  /// reconnection is only its extreme case. A weak link on the peer's side
+  /// only shows in the quality pill.
+  bool get isConnectionUnstable =>
+      phase == VoiceCallPhase.active &&
+      (isLinkDegraded ||
+          localQuality == VoiceCallQuality.poor ||
+          localQuality == VoiceCallQuality.lost ||
+          isReconnecting);
 
   Duration get elapsed {
     final startedAt = connectedAt;
@@ -98,6 +119,8 @@ class VoiceCallSession {
     bool? isSpeakerOn,
     bool? isReconnecting,
     VoiceCallQuality? quality,
+    VoiceCallQuality? localQuality,
+    bool? isLinkDegraded,
     bool? peerReached,
   }) {
     return VoiceCallSession(
@@ -115,6 +138,8 @@ class VoiceCallSession {
       isSpeakerOn: isSpeakerOn ?? this.isSpeakerOn,
       isReconnecting: isReconnecting ?? this.isReconnecting,
       quality: quality ?? this.quality,
+      localQuality: localQuality ?? this.localQuality,
+      isLinkDegraded: isLinkDegraded ?? this.isLinkDegraded,
       peerReached: peerReached ?? this.peerReached,
     );
   }
@@ -128,13 +153,34 @@ class VoiceCallSession {
 /// One session at a time; [session] drives `VoiceCallPage`, which is pushed
 /// on the root navigator whenever a call starts or rings.
 class VoiceCallService {
-  VoiceCallService._();
+  VoiceCallService._() {
+    // Every path that changes the session (quality updates, reconnects,
+    // end of call) goes through here: one place keeps the beep in step.
+    session.addListener(_syncUnstableAlert);
+  }
 
   static final VoiceCallService instance = VoiceCallService._();
 
   static const Duration _ringTimeout = IncomingCallNativeUi.ringWindow;
   static const Duration _endedScreenDelay = Duration(milliseconds: 1600);
   static const Duration _vibrationInterval = Duration(milliseconds: 1500);
+
+  /// Beep cadence while the link stays unstable, and the floor between two
+  /// beeps when the quality flaps around the threshold (each flap re-enters
+  /// the unstable state, which would otherwise beep at once every time).
+  static const Duration _unstableBeepInterval = Duration(seconds: 5);
+  static const Duration _unstableBeepMinGap = Duration(seconds: 4);
+
+  /// A 2 s window of received audio counts as degraded from 10 % of lost
+  /// packets (RED repairs isolated losses, not the bursts behind such a
+  /// rate: words drop out) or 100 ms of jitter (a healthy 4G link stays
+  /// under 40 ms; beyond, the jitter buffer stretches and cuts the voice).
+  static const double _degradedLossRatio = 0.10;
+  static const double _degradedJitterMs = 100;
+
+  /// See [_sendAccept]: 3 × 6 s stays under the HTTP client's own 20 s.
+  static const int _acceptAttempts = 3;
+  static const Duration _acceptAttemptTimeout = Duration(seconds: 6);
 
   final ValueNotifier<VoiceCallSession?> session =
       ValueNotifier<VoiceCallSession?>(null);
@@ -147,6 +193,15 @@ class VoiceCallService {
   Timer? _ringTimer;
   Timer? _vibrationTimer;
   Timer? _closeTimer;
+  Timer? _unstableBeepTimer;
+  DateTime? _lastUnstableBeepAt;
+
+  /// Received-audio monitoring, see [_watchReceivedAudio].
+  EventsListener<TrackEvent>? _receivedAudioEvents;
+  num? _lastPacketsLost;
+  num? _lastPacketsReceived;
+  int _degradedWindows = 0;
+  int _cleanWindows = 0;
   bool _pageOpen = false;
   bool _abortPendingStart = false;
   String? _lastIncomingCallId;
@@ -314,7 +369,11 @@ class VoiceCallService {
 
   /// Tap on an iOS alert, or a native call to pick up after a cold start:
   /// shows the call if it still rings, otherwise takes the tile down.
-  Future<void> openIncomingCall(String callId) async {
+  /// [answered]: picked up on the OS call screen, [accept] follows at once;
+  /// the server may already hold the call as accepted (the background
+  /// isolate said so while the app was starting, see
+  /// `callkitBackgroundHandler`).
+  Future<void> openIncomingCall(String callId, {bool answered = false}) async {
     bind();
     final current = session.value;
     if (current != null && current.callId == callId && !current.isEnded) {
@@ -324,7 +383,8 @@ class VoiceCallService {
 
     try {
       final data = await _api.fetchCall(callId);
-      if (data['status']?.toString() != 'RINGING') {
+      final status = data['status']?.toString();
+      if (status != 'RINGING' && !(answered && status == 'ACCEPTED')) {
         await IncomingCallNativeUi.dismiss(callId);
         return;
       }
@@ -342,6 +402,7 @@ class VoiceCallService {
         token: data['token']?.toString(),
         // The native UI is already up (that is how we got here).
         showNativeUi: false,
+        answered: answered,
       );
     } catch (error) {
       debugPrint('Unable to open incoming call $callId: $error');
@@ -380,7 +441,13 @@ class VoiceCallService {
           }
         }
       case 'call:accepted':
-        if (current != null && current.callId == callId && current.isOutgoing) {
+        // Not twice: the other side's microphone may have marked the call
+        // live already, and a second pass would restart the timer.
+        if (current != null &&
+            current.callId == callId &&
+            current.isOutgoing &&
+            current.phase != VoiceCallPhase.active &&
+            !current.isEnded) {
           _markActive();
         }
       case 'call:ended':
@@ -401,6 +468,7 @@ class VoiceCallService {
     String? url,
     String? token,
     bool showNativeUi = true,
+    bool answered = false,
   }) {
     // The socket, the push and the native UI all announce the same call.
     if (callId.isEmpty || _lastIncomingCallId == callId) {
@@ -431,6 +499,11 @@ class VoiceCallService {
     unawaited(_preconnectIncoming(callId));
 
     _openPage();
+    if (answered) {
+      // Picked up on the OS call screen: [accept] follows at once, and a
+      // ringtone started now would only be stopped once the call is live.
+      return;
+    }
     if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
       // On screen: our own page rings and vibrates, as the phone allows.
       unawaited(_startIncomingAlert(callId));
@@ -515,7 +588,7 @@ class VoiceCallService {
     }
     final current = session.value;
     if (current == null || current.callId != callId || current.isEnded) {
-      await openIncomingCall(callId);
+      await openIncomingCall(callId, answered: true);
     }
     final rebuilt = session.value;
     if (rebuilt != null &&
@@ -558,7 +631,9 @@ class VoiceCallService {
 
     if (!await _ensureMicrophonePermission()) {
       _finish(VoiceCallEndReason.noPermission);
-      unawaited(_quietly(_api.declineCall(current.callId)));
+      // `end`, not `decline`: declines a ringing call all the same, and
+      // also closes one the background isolate already accepted.
+      unawaited(_quietly(_api.endCall(current.callId)));
       return;
     }
 
@@ -569,8 +644,7 @@ class VoiceCallService {
       // but nothing waits for it that does not have to.
       Object? acceptError;
       Map<String, dynamic>? acceptData;
-      final acceptFuture = _api
-          .acceptCall(current.callId)
+      final acceptFuture = _sendAccept(current.callId)
           .then<void>((data) {
             acceptData = data;
           })
@@ -611,10 +685,39 @@ class VoiceCallService {
       _markActive();
     } on AppApiException catch (error) {
       _finish(VoiceCallEndReason.failed, message: error.message);
+      // The server may hold the call as accepted (answer sent, then the
+      // media path failed): without this the caller waits in silence.
+      unawaited(_quietly(_api.endCall(current.callId)));
     } catch (error) {
       debugPrint('Voice call accept failed: $error');
       _finish(VoiceCallEndReason.failed);
+      unawaited(_quietly(_api.endCall(current.callId)));
     }
+  }
+
+  /// `POST /calls/:id/accept`, retried while only the network is in the
+  /// way: the request is idempotent, and on 4G a pooled connection gone
+  /// stale can hang one attempt for the whole HTTP timeout — long enough
+  /// for the server to declare a call missed whose sound already flows. An
+  /// answer from the server (the caller gave up) is final.
+  Future<Map<String, dynamic>> _sendAccept(String callId) async {
+    AppApiException? lastError;
+    for (var attempt = 0; attempt < _acceptAttempts; attempt++) {
+      if (attempt > 0 && (session.value?.callId != callId || !isInCall)) {
+        break;
+      }
+      try {
+        return await _api.acceptCall(callId).timeout(_acceptAttemptTimeout);
+      } on AppApiException catch (error) {
+        if (error.statusCode != null) {
+          rethrow;
+        }
+        lastError = error;
+      } on TimeoutException {
+        lastError = AppApiException('Impossible de joindre le serveur BANAY');
+      }
+    }
+    throw lastError ?? AppApiException("Cet appel n'est plus disponible.");
   }
 
   Future<void> decline() async {
@@ -776,7 +879,10 @@ class VoiceCallService {
     );
     _room = room;
     _roomEvents = room.createListener()
-      ..on<TrackSubscribedEvent>((_) {
+      ..on<TrackSubscribedEvent>((event) {
+        if (identical(_room, room)) {
+          _watchReceivedAudio(event.track);
+        }
         // The other side's microphone is flowing: the call is live even if
         // the socket's `call:accepted` never arrived (socket down or late).
         // Without this, the ring timer would cut a perfectly good call.
@@ -810,10 +916,16 @@ class VoiceCallService {
         }
       })
       ..on<ParticipantConnectionQualityUpdatedEvent>((event) {
-        if (identical(_room, room) && event.participant is RemoteParticipant) {
-          _update(
-            (s) => s.copyWith(quality: _mapQuality(event.connectionQuality)),
-          );
+        if (!identical(_room, room)) {
+          return;
+        }
+        final quality = _mapQuality(event.connectionQuality);
+        if (event.participant is RemoteParticipant) {
+          _update((s) => s.copyWith(quality: quality));
+        } else {
+          // Our own link: a weak one is the user's to fix (see
+          // VoiceCallSession.isConnectionUnstable).
+          _update((s) => s.copyWith(localQuality: quality));
         }
       })
       ..on<RoomDisconnectedEvent>((_) {
@@ -925,11 +1037,89 @@ class VoiceCallService {
     }
   }
 
+  /// Measures what the user actually hears. The SFU's own verdict
+  /// ([VoiceCallSession.localQuality]) is slow and lenient: a voice already
+  /// choppy can still be rated "good". livekit's stats monitor reports the
+  /// received microphone every 2 s; [_onReceivedAudioStats] turns it into
+  /// [VoiceCallSession.isLinkDegraded].
+  void _watchReceivedAudio(Track track) {
+    if (track is! RemoteAudioTrack) {
+      return;
+    }
+    unawaited(_receivedAudioEvents?.dispose());
+    _lastPacketsLost = null;
+    _lastPacketsReceived = null;
+    _degradedWindows = 0;
+    _cleanWindows = 0;
+    _receivedAudioEvents = track.createListener()
+      ..on<AudioReceiverStatsEvent>(_onReceivedAudioStats);
+  }
+
+  void _onReceivedAudioStats(AudioReceiverStatsEvent event) {
+    final lost = event.stats.packetsLost;
+    final received = event.stats.packetsReceived;
+    final previousLost = _lastPacketsLost;
+    final previousReceived = _lastPacketsReceived;
+    _lastPacketsLost = lost;
+    _lastPacketsReceived = received;
+    final current = session.value;
+    if (current == null ||
+        lost == null ||
+        received == null ||
+        previousLost == null ||
+        previousReceived == null) {
+      return;
+    }
+
+    // Counters are cumulative: judge the last window only.
+    final windowLost = lost - previousLost;
+    final windowTotal = windowLost + (received - previousReceived);
+    // Nothing sent our way (peer muted): counts as a clean window, or an
+    // alert raised just before would beep for as long as the mute lasts. A
+    // link that died for good shows up as a reconnection instead.
+    final hasTraffic = windowTotal > 0;
+    final lossRatio = hasTraffic ? windowLost / windowTotal : 0.0;
+    final jitterMs = hasTraffic ? (event.stats.jitter ?? 0) * 1000 : 0.0;
+    // The SFU forwards the peer's losses as they are: when it rates the
+    // peer's own link as weak, the trouble is theirs, and moving would not
+    // help (the quality pill says "Réseau faible").
+    final peerIsWeak =
+        current.quality == VoiceCallQuality.poor ||
+        current.quality == VoiceCallQuality.lost;
+    final degraded =
+        !peerIsWeak &&
+        (lossRatio >= _degradedLossRatio || jitterMs >= _degradedJitterMs);
+
+    // Two bad windows to raise the alert, three clean ones to drop it: a
+    // single burst does not beep, a link on the edge does not flap.
+    if (degraded) {
+      _degradedWindows++;
+      _cleanWindows = 0;
+    } else {
+      _cleanWindows++;
+      _degradedWindows = 0;
+    }
+    if (!current.isLinkDegraded && _degradedWindows >= 2) {
+      // The figures to read before touching the thresholds.
+      debugPrint(
+        'Voice call link degraded: '
+        'loss ${(100 * lossRatio).toStringAsFixed(1)} %, '
+        'jitter ${jitterMs.round()} ms',
+      );
+      _update((s) => s.copyWith(isLinkDegraded: true));
+    } else if (current.isLinkDegraded && _cleanWindows >= 3) {
+      debugPrint('Voice call link recovered');
+      _update((s) => s.copyWith(isLinkDegraded: false));
+    }
+  }
+
   Future<void> _disconnectRoom() async {
     final room = _room;
     final events = _roomEvents;
     _room = null;
     _roomEvents = null;
+    unawaited(_receivedAudioEvents?.dispose());
+    _receivedAudioEvents = null;
     if (events != null) {
       await events.dispose();
     }
@@ -1050,6 +1240,43 @@ class VoiceCallService {
   void _cancelCloseTimer() {
     _closeTimer?.cancel();
     _closeTimer = null;
+  }
+
+  /// Session listener: beeps in the ear for as long as this phone's own
+  /// link is unstable (the phone is against the ear, the hint on the call
+  /// screen goes unseen), and falls silent the moment it recovers or the
+  /// call ends.
+  void _syncUnstableAlert() {
+    final unstable = session.value?.isConnectionUnstable ?? false;
+    if (!unstable) {
+      _unstableBeepTimer?.cancel();
+      _unstableBeepTimer = null;
+      return;
+    }
+    if (_unstableBeepTimer != null) {
+      return;
+    }
+    _beepUnstable();
+    _unstableBeepTimer = Timer.periodic(
+      _unstableBeepInterval,
+      (_) => _beepUnstable(),
+    );
+  }
+
+  void _beepUnstable() {
+    final current = session.value;
+    if (current == null || !current.isConnectionUnstable) {
+      return;
+    }
+    final now = DateTime.now();
+    final last = _lastUnstableBeepAt;
+    if (last != null && now.difference(last) < _unstableBeepMinGap) {
+      return;
+    }
+    _lastUnstableBeepAt = now;
+    unawaited(
+      CallTones.instance.playUnstableConnection(speakerOn: current.isSpeakerOn),
+    );
   }
 
   void _update(VoiceCallSession Function(VoiceCallSession) change) {

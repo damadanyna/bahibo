@@ -9,7 +9,8 @@ import 'package:flutter/foundation.dart';
 /// - `ringtone.mp3`: the incoming ringtone while the in-app call screen
 ///   rings, looped (the native Android screen plays the same file from
 ///   `res/raw/banay_ringtone.mp3`);
-/// - `rington_end_call.wav`: played once when a call ends.
+/// - `rington_end_call.wav`: played once when a call ends;
+/// - `unstable_connection.wav`: double beep while the link is unstable.
 ///
 /// All are configured to live next to the WebRTC audio session rather
 /// than fight it: no audio-focus grab on the call route (earpiece unless
@@ -78,21 +79,30 @@ class CallTones {
     await _quietly(player.play(AssetSource('sounds/ringtone.mp3')));
   }
 
-  /// One-shot "call over" cue on the call route. Uses its own player so a
-  /// [stop] issued at the same moment does not cut it short.
-  Future<void> playEndCall({required bool speakerOn}) async {
+  /// One-shot "call over" cue on the call route.
+  Future<void> playEndCall({required bool speakerOn}) =>
+      _playOnce('sounds/rington_end_call.wav', speakerOn: speakerOn);
+
+  /// Short double beep in the ear while the call's own link is unstable:
+  /// the phone is against the ear, the on-screen hint alone goes unseen.
+  Future<void> playUnstableConnection({required bool speakerOn}) =>
+      _playOnce('sounds/unstable_connection.wav', speakerOn: speakerOn);
+
+  /// One-shot cue on the call route. Uses its own player so a [stop] issued
+  /// at the same moment does not cut it short.
+  Future<void> _playOnce(String asset, {required bool speakerOn}) async {
     AudioPlayer player;
     try {
       player = AudioPlayer();
       await player.setAudioContext(_callRouteContext(speakerOn: speakerOn));
       await player.setReleaseMode(ReleaseMode.release);
     } catch (error) {
-      debugPrint('End-call tone unavailable: $error');
+      debugPrint('Call cue $asset unavailable: $error');
       return;
     }
     player.onPlayerComplete.listen((_) => unawaited(_quietly(player.dispose())));
     await _quietly(player.setVolume(0.8));
-    await _quietly(player.play(AssetSource('sounds/rington_end_call.wav')));
+    await _quietly(player.play(AssetSource(asset)));
   }
 
   Future<void> stop() async {

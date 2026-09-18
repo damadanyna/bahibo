@@ -204,6 +204,16 @@ export class CallsService implements OnModuleDestroy {
     if (call.calleeUserId !== userId) {
       throw new ForbiddenException('Only the callee can accept a call');
     }
+    // Idempotent: the phone answers from the OS call screen first (app
+    // still cold-starting, see callkitBackgroundHandler in the app), then
+    // the app confirms; a retry after a lost response lands here too.
+    if (call.status === VoiceCallStatus.ACCEPTED) {
+      return {
+        ...this.presentCall(call),
+        url: this.livekitService.requireUrl(),
+        token: await this.buildParticipantToken(call, call.callee),
+      };
+    }
     if (call.status !== VoiceCallStatus.RINGING) {
       throw new ConflictException("Cet appel n'est plus disponible.");
     }
@@ -286,8 +296,13 @@ export class CallsService implements OnModuleDestroy {
 
     // Callee rebuilding a ringing call after a cold start (answered on the
     // OS call screen while the app was killed): hand over the credentials
-    // so the room join runs alongside the accept request.
-    if (call.status === VoiceCallStatus.RINGING && call.calleeUserId === userId) {
+    // so the room join runs alongside the accept request. Already ACCEPTED
+    // when the background isolate got its accept in before the app was up.
+    if (
+      (call.status === VoiceCallStatus.RINGING ||
+        call.status === VoiceCallStatus.ACCEPTED) &&
+      call.calleeUserId === userId
+    ) {
       return {
         ...this.presentCall(call),
         url: this.livekitService.requireUrl(),

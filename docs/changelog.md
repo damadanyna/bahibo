@@ -1805,3 +1805,110 @@ futurs diagnostics.
 - **Texte « Nouveautés » Play Console** :
   « Lives plus nets : l'image HD reçoit désormais tout le débit disponible,
   et la caméra arrière est utilisée par défaut pour montrer la boutique. »
+
+## 2026-09-18
+
+### 1. Appels vocaux : l'appel ne sonne pas toujours, ou échoue au décrochage
+
+- **Symptôme** (tests entre amis, Android) : parfois le téléphone appelé ne
+  sonne pas ; parfois, après avoir décroché, l'appel « ne passe pas ».
+- **Causes** :
+  1. `chat_message_delivery_ping` (push data-only envoyé après chaque
+     message de chat) partait en priorité **haute** sans jamais produire de
+     notification visible. FCM rétrograde alors l'app en priorité normale,
+     et la victime suivante est le push `incoming_call`, lui aussi data-only,
+     dont le TTL est de 45 s : en veille (Doze), livré trop tard = jeté.
+  2. App tuée, « Accepter » sur la notification native : le serveur
+     n'apprenait l'acceptation qu'après le démarrage complet de l'app (moteur
+     Flutter, session, socket, `GET /calls/:id` : 5 à 12 s en 4G). Décroché
+     tard dans la fenêtre de 45 s, le minuteur serveur passait l'appel en
+     `MISSED` avant, et `accept` répondait 409. De plus l'isolat d'actions du
+     plugin (`callkitBackgroundHandler`) n'est démarré que par
+     `registerBackgroundHandler`, appelé au démarrage de l'app : dans un
+     processus réveillé par FCM il n'existait pas, donc même le refus depuis
+     l'app tuée n'atteignait pas le serveur.
+  3. `accept()` coupait l'appel au premier échec réseau de
+     `POST /calls/:id/accept` (non rejoué car non idempotent), même quand le
+     son passait déjà. Et quand l'appelé échouait après l'acceptation
+     (LiveKit injoignable, micro refusé), rien ne le disait au serveur :
+     l'appelant restait « en appel » dans le silence.
+- **Correctif** :
+  - `backend/.../push-notifications.service.ts` : ping de distribution en
+    priorité `normal` (le push de chat qui le précède a déjà réveillé le
+    téléphone ; en Doze, seule la coche « distribué » est retardée).
+  - `backend/.../calls.service.ts` : `acceptCall` idempotent pour l'appelé
+    (appel déjà `ACCEPTED` → 200 avec `url` / `token`, sans ré-émettre
+    `call:accepted`) ; `getCall` remet aussi `url` / `token` à l'appelé quand
+    l'appel est déjà `ACCEPTED`. Changements additifs : une app 1.6.1 se
+    comporte comme avant.
+  - `lib/services/push_notification_service.dart` : le handler FCM
+    d'arrière-plan enregistre `callkitBackgroundHandler` juste après avoir
+    affiché l'écran d'appel (idempotent) ; ce handler envoie désormais
+    `accept` dès l'appui sur « Accepter », comme il le faisait pour le refus.
+  - `lib/services/voice_call_service.dart` : `openIncomingCall(answered:
+    true)` reconstruit aussi un appel déjà `ACCEPTED` et ne relance plus la
+    sonnerie in-app (elle pouvait démarrer après `accept()`) ; `_sendAccept`
+    rejoue l'acceptation jusqu'à 3 fois (6 s par essai) sur erreur réseau
+    seulement, une réponse du serveur restant définitive ; tout échec de
+    `accept()` envoie `POST /calls/:id/end` ; un `call:accepted` tardif ne
+    remet plus le chronomètre à zéro.
+- **Déploiement** : backend **avant** l'app (une nouvelle app face à
+  l'ancien backend recevrait 409 sur la confirmation d'acceptation).
+- **Connu, non traité ici** : entre l'acceptation anticipée et la fin du
+  démarrage à froid, l'appelant voit l'appel « actif » quelques secondes sans
+  son. Restent aussi ouverts : pas de service d'avant-plan pour l'appelant ni
+  pour le décroché in-app, pas de capteur de proximité, appel manqué visible
+  seulement par push + ligne de chat, ligne `ACCEPTED` orpheline (6 h).
+- **Vérification** : `flutter analyze` (2 fichiers) et `tsc --noEmit` sans
+  erreur. **Non testé sur appareil** : à valider app tuée / en fond / au
+  premier plan, décroché tôt et tard (> 35 s), refus app tuée, coupure réseau
+  au moment de décrocher.
+
+### 2. Appels vocaux : bip et conseil quand la connexion devient instable
+
+- **Demande** : pendant un appel, prévenir l'utilisateur que sa connexion
+  est instable, par un bip et un texte.
+- **Avant** : seule la pastille changeait (« Connexion instable » pendant
+  une reconnexion LiveKit), et elle ne suivait que la qualité du
+  **correspondant**. Téléphone contre l'oreille, rien n'était perçu.
+- **Ajout** :
+  - `lib/services/voice_call_service.dart` : le déclencheur est la
+    **mauvaise qualité, lien toujours établi** (voix hachée, mots qui
+    sautent), pas la coupure. Deux sources : (a) `isLinkDegraded`, mesuré
+    sur la voix reçue avec le moniteur de stats de livekit
+    (`AudioReceiverStatsEvent`, toutes les 2 s) : fenêtre dégradée dès 10 %
+    de paquets perdus ou 100 ms de gigue ; 2 fenêtres dégradées pour lever
+    l'alerte, 3 fenêtres saines pour la retirer (une rafale isolée ne bipe
+    pas, un lien limite n'oscille pas) ; une fenêtre sans trafic
+    (correspondant en sourdine) compte comme saine ; si le SFU juge le lien
+    du **correspondant** faible, la dégradation lui est attribuée et rien
+    n'est levé ici. (b) `localQuality`, verdict du SFU sur ce téléphone
+    (`poor` / `lost` ; l'événement `ParticipantConnectionQualityUpdatedEvent`
+    du participant local était ignoré), plus lent et plus indulgent que la
+    mesure. `isConnectionUnstable` = appel actif et ((a) ou (b) ou
+    reconnexion en cours, cas extrême déjà signalé « Connexion instable »
+    auparavant). Chaque bascule écrit en debug « Voice call link degraded:
+    loss x %, jitter y ms » : à lire avant de toucher aux seuils
+    (`_degradedLossRatio`, `_degradedJitterMs`). Un écouteur unique sur `session`
+    (`_syncUnstableAlert`) joue le bip à l'entrée dans l'état instable puis
+    toutes les 5 s, avec un plancher de 4 s entre deux bips quand la qualité
+    oscille, et se tait dès le retour à la normale ou la fin de l'appel.
+  - `lib/services/call_tones.dart` : `playUnstableConnection` ; la lecture
+    ponctuelle est factorisée dans `_playOnce` (partagée avec
+    `playEndCall`), sur la route de l'appel (écouteur ou haut-parleur), sans
+    prise de focus audio.
+  - `assets/sounds/unstable_connection.wav` : double bip 440 Hz, 0,45 s,
+    −14 dBFS (généré, libre de droits). Le dossier `assets/sounds/` est déjà
+    déclaré dans `pubspec.yaml`.
+  - `lib/page/call/voice_call_page.dart` : pastille « Connexion instable »
+    (ambre) dans cet état, et dessous le conseil « Déplacez-vous vers un
+    endroit où le réseau est meilleur. ».
+- **Choix** : un réseau faible côté correspondant ne bipe pas et n'affiche
+  pas le conseil (l'utilisateur n'y peut rien) ; la pastille continue de
+  l'indiquer (« Réseau faible »).
+- **Vérification** : `flutter analyze` sans erreur sur les 4 fichiers.
+  **Non testé sur appareil** : appeler depuis une zone de réseau faible
+  (1 à 2 barres, en mouvement, ou Wi‑Fi en limite de portée) sans couper la
+  connexion ; vérifier le bip dans l'écouteur puis en haut-parleur, son
+  arrêt environ 6 s après le retour d'un bon réseau, et la ligne debug pour
+  juger les seuils.
