@@ -1912,3 +1912,53 @@ futurs diagnostics.
   connexion ; vérifier le bip dans l'écouteur puis en haut-parleur, son
   arrêt environ 6 s après le retour d'un bon réseau, et la ligne debug pour
   juger les seuils.
+
+### 3. Visionneuse d'images produit : description repliée (« Voir plus »)
+
+- **Demande** : au-delà de 25 caractères, replier la description avec
+  « … » comme sur Facebook, et l'afficher en entier au clic (voir plus /
+  voir moins).
+- **Avant** : la carte d'information avait déjà un état déplié au clic
+  (`_isDescriptionExpanded`, remis à zéro à chaque changement de produit),
+  mais il ne touchait que le titre et le fond : la description s'affichait
+  toujours en entier, quelle que soit sa longueur.
+- **Correctif** : `lib/page/image_viewer_page.dart` —
+  `_ImageViewerOverlay._buildDescription` : jusqu'à 25 caractères, texte
+  inchangé ; au-delà, les 25 premiers caractères (comptés en graphèmes, un
+  emoji n'est jamais coupé ; sauts de ligne aplatis) suivis de « … Voir
+  plus », et déplié, le texte entier suivi de « Voir moins ». Le clic reste
+  celui de la carte (`onDescriptionTap`, inchangé). La carte dépliée est
+  plafonnée à 45 % de la hauteur d'écran et défile à l'intérieur : une très
+  longue description ne passe plus sous la barre du haut.
+- **Vérification** : `flutter analyze` sans erreur. Non testé sur appareil.
+
+## 2026-09-22
+
+### 1. Version 1.6.2+15
+
+- `pubspec.yaml` : `1.6.1+14` → `1.6.2+15` (correctifs : appels vocaux ;
+  `versionCode` 15, le 14 étant déjà envoyé sur Play).
+- **Contenu de la version** (entrées du 2026-09-18) : appel qui sonne plus
+  sûrement (ping de distribution en priorité normale, acceptation envoyée
+  dès l'appui sur « Accepter » depuis l'app tuée, acceptation rejouée sur
+  erreur réseau), bip et conseil quand la connexion devient instable pendant
+  un appel, description repliée « Voir plus » dans la visionneuse d'images
+  produit.
+- **Backend requis** : déployer le backend du 2026-09-18 (`calls.service.ts`
+  : `acceptCall` idempotent, `push-notifications.service.ts`) **avant** de
+  diffuser cette build, sinon la confirmation d'acceptation reçoit 409.
+- `docs/play-store-release.md` : valeur de version mise à jour.
+- **Préflight** : `flutter analyze lib` sans erreur (les deux avertissements
+  préexistants du panneau compte demeurent) ; `flutter pub get` puis
+  `flutter build appbundle --release` (build incrémental, sans
+  `flutter clean` ; `flutter test` non relancé) →
+  `build/app/outputs/bundle/release/app-release.aab`, 71,3 Mo, 22/09 13 h 54
+  (Gradle 294 s).
+- **Texte « Nouveautés » Play Console** :
+  « Appels plus fiables : le téléphone sonne plus sûrement et le décrochage
+  passe même en cas de réseau lent. Un bip vous prévient si la connexion
+  devient instable pendant un appel. Descriptions longues repliées dans la
+  visionneuse photo. »
+- **Rappel** : les correctifs d'appel n'ont pas encore été validés sur
+  appareil (voir l'entrée 1 du 2026-09-18) ; passer par la track interne
+  avant la production.

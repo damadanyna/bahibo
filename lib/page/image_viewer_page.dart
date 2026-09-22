@@ -693,6 +693,9 @@ class _ZoomableViewerState extends State<_ZoomableViewer> {
 }
 
 class _ImageViewerOverlay extends StatelessWidget {
+  /// Longer descriptions are folded behind "Voir plus".
+  static const int _descriptionPreviewLength = 25;
+
   final ImageViewerOverlayData overlay;
   final String indexLabel;
   final String commentCountLabel;
@@ -765,38 +768,39 @@ class _ImageViewerOverlay extends StatelessWidget {
                     borderRadius: BorderRadius.circular(22),
                     border: Border.all(color: appColors.overlayBorder),
                   ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (showTitle)
-                        Text(
-                          title ?? '',
-                          maxLines: isDescriptionExpanded ? null : 2,
-                          overflow: isDescriptionExpanded
-                              ? TextOverflow.visible
-                              : TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.primary,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            height: 1.18,
-                          ),
-                        ),
-                      if (showTitle && showDescription)
-                        const SizedBox(height: 8),
-                      if (showDescription)
-                        Text(
-                          description ?? '',
-                          maxLines: null,
-                          overflow: TextOverflow.visible,
-                          style: TextStyle(
-                            color: appColors.heroForegroundMuted,
-                            fontSize: 13.5,
-                            height: 1.35,
-                          ),
-                        ),
-                    ],
+                  // An unfolded description can be pages long: the card
+                  // stops at part of the screen and scrolls inside, instead
+                  // of growing over the top bar.
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.sizeOf(context).height * 0.45,
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (showTitle)
+                            Text(
+                              title ?? '',
+                              maxLines: isDescriptionExpanded ? null : 2,
+                              overflow: isDescriptionExpanded
+                                  ? TextOverflow.visible
+                                  : TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.primary,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                height: 1.18,
+                              ),
+                            ),
+                          if (showTitle && showDescription)
+                            const SizedBox(height: 8),
+                          if (showDescription)
+                            _buildDescription(context, description ?? ''),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -853,6 +857,51 @@ class _ImageViewerOverlay extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+
+  /// Facebook-style: past [_descriptionPreviewLength] characters only the
+  /// start shows, followed by "… Voir plus"; a tap on the card (see
+  /// [onDescriptionTap]) unfolds it, with "Voir moins" to fold it back.
+  Widget _buildDescription(BuildContext context, String description) {
+    final appColors = Theme.of(context).appColors;
+    final style = TextStyle(
+      color: appColors.heroForegroundMuted,
+      fontSize: 13.5,
+      height: 1.35,
+    );
+    // Counted in user-perceived characters, so an emoji is never cut in two.
+    final characters = description.characters;
+    if (characters.length <= _descriptionPreviewLength) {
+      return Text(description, style: style);
+    }
+
+    final toggleStyle = TextStyle(
+      color: appColors.heroForeground,
+      fontWeight: FontWeight.w800,
+    );
+    if (isDescriptionExpanded) {
+      return Text.rich(
+        TextSpan(
+          text: description,
+          children: [TextSpan(text: '  Voir moins', style: toggleStyle)],
+        ),
+        style: style,
+      );
+    }
+
+    // One line: a line break inside the preview would waste it.
+    final preview = characters
+        .take(_descriptionPreviewLength)
+        .toString()
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trimRight();
+    return Text.rich(
+      TextSpan(
+        text: '$preview… ',
+        children: [TextSpan(text: 'Voir plus', style: toggleStyle)],
+      ),
+      style: style,
     );
   }
 
