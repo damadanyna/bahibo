@@ -1,0 +1,26 @@
+name: banay_call_screen
+description: >-
+  Opens flutter_callkit_incoming's own Android call screen directly, for
+  phones where the user allowed Banay to draw over other apps. Google Play
+  refused USE_FULL_SCREEN_INTENT (2026-09-11), so the plugin's ringing
+  notification can no longer take the screen on its own.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.11.1
+  flutter: ">=3.3.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # The Kotlin side reuses this plugin's Data and CallkitIncomingActivity;
+  # Flutter's Gradle plugin wires the Android project dependency from here.
+  flutter_callkit_incoming: ^3.1.5
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.banay.call_screen
+        pluginClass: BanayCallScreenPlugin

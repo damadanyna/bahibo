@@ -143,6 +143,10 @@ abstract final class BanayLocalizationKeys {
   static const navigationAccount =
       BanayCommonLocalizationKeys.navigationAccount;
   static const backAgainToExit = BanayCommonLocalizationKeys.backAgainToExit;
+  static const callScreenPermissionTitle =
+      BanayCommonLocalizationKeys.callScreenPermissionTitle;
+  static const callScreenPermissionMessage =
+      BanayCommonLocalizationKeys.callScreenPermissionMessage;
   static const homeDefaultStoreName =
       BanayHomeLocalizationKeys.defaultStoreName;
   static const homeLiveUnavailable = BanayHomeLocalizationKeys.liveUnavailable;

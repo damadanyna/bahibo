@@ -9,6 +9,7 @@ import 'package:banay/services/api_config.dart';
 import 'package:banay/services/feature_flags_service.dart';
 import 'package:banay/services/banay_tls_override.dart';
 import 'package:banay/services/battery_optimization_service.dart';
+import 'package:banay/services/call_screen_permission_service.dart';
 import 'package:banay/services/chat_realtime_service.dart';
 import 'package:banay/services/location_permission_service.dart';
 import 'package:banay/services/location_requirement_gate.dart';
@@ -214,6 +215,22 @@ class _AppLifecycleBootstrapState extends State<_AppLifecycleBootstrap>
     await _locationGate.enforce();
     await _syncCurrentUserLocationOnLaunch();
     await _showBatteryOptimizationPromptIfNeeded();
+    await _showCallScreenPromptIfNeeded();
+  }
+
+  /// Signed-in users only: calls are what the permission is for, and a
+  /// prompt about incoming calls before the phone number screen would make
+  /// no sense. Not marked as shown until then, so it comes on the next
+  /// launch after signing in.
+  Future<void> _showCallScreenPromptIfNeeded() async {
+    if (!await _sessionStorage.hasValidSession()) {
+      return;
+    }
+    final navigatorContext = PushNotificationService.navigatorKey.currentContext;
+    if (navigatorContext == null || !navigatorContext.mounted) {
+      return;
+    }
+    await CallScreenPermissionService.showPromptIfNeeded(navigatorContext);
   }
 
   Future<void> _showBatteryOptimizationPromptIfNeeded() async {

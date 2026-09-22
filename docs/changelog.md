@@ -1962,3 +1962,126 @@ futurs diagnostics.
 - **Rappel** : les correctifs d'appel n'ont pas encore été validés sur
   appareil (voir l'entrée 1 du 2026-09-18) ; passer par la track interne
   avant la production.
+- Envoyée sur Play le jour même ; les tests d'appel faits dessus ont donné
+  les entrées 2 à 4, publiées en `1.6.3+16` (entrée 5).
+
+### 2. Appelé : ça sonne et vibre, mais aucun appel entrant ne s'affiche
+
+- **Symptôme** (test entre deux téléphones) : le téléphone appelé sonne et
+  vibre, rien ne s'affiche ; l'appelant ne peut pas être décroché.
+- **Cause** : conséquence directe du retrait de `USE_FULL_SCREEN_INTENT`
+  exigé par Google (entrée 22 du 2026-09-13). Le plugin pose bien sa
+  notification avec `setFullScreenIntent`, mais sans la permission Android
+  l'ignore : `CallkitIncomingActivity`, la seule surface qui **allume
+  l'écran**, n'est jamais lancée d'elle-même. Écran éteint → le téléphone
+  sonne dans le noir ; écran allumé → seulement une bannière heads-up (fine
+  bande sur Samsung en style « Bref »). Le cas « app au premier plan »
+  (notre propre page) n'est pas concerné.
+- **Correctif**, sans réintroduire la permission refusée :
+  - `packages/banay_call_screen` (plugin Flutter local, Android) : une
+    méthode `show(params)` reconstruit le `Bundle` du plugin
+    (`Data(map).toBundle()`) et lance `CallkitIncomingActivity` nous-mêmes.
+    Android 10+ n'autorise ce lancement depuis l'arrière-plan **que** si
+    l'utilisateur a accordé « Afficher par-dessus d'autres applis »
+    (`SYSTEM_ALERT_WINDOW`, déclaré dans le manifeste du plugin local).
+    Plugin plutôt que canal dans `MainActivity` : il doit exister dans
+    l'isolat FCM, celui qui fait sonner une app tuée. La notification reste
+    posée telle quelle (`activeCalls`, reprise à froid, boutons inchangés) ;
+    Accepter / Refuser sur l'écran rejoignent les mêmes broadcasts du
+    plugin, et `clearIncomingNotification` (fin, refus, timeout) ferme aussi
+    l'écran. Compilé contre `project(':flutter_callkit_incoming')`, câblé
+    automatiquement par Flutter (`PluginHandler.configurePluginDependencies`)
+    depuis la dépendance du `pubspec.yaml` du plugin.
+  - `lib/services/incoming_call_native_ui.dart` : après
+    `showCallkitIncoming`, sur Android, `_bringToScreen` tente l'écran plein
+    écran ; sinon `FlutterForegroundTask.wakeUpScreen()` (déjà en dépendance,
+    1 s de `SCREEN_BRIGHT_WAKE_LOCK | ACQUIRE_CAUSES_WAKEUP`) allume l'écran
+    de verrouillage, où la notification Accepter / Refuser est visible.
+  - `lib/services/call_screen_permission_service.dart` : demande unique
+    (clé `call_screen_overlay_prompt_shown_v1`), précédée d'un court
+    dialogue (titre / message dans les 7 langues,
+    `callScreenPermissionTitle` / `callScreenPermissionMessage` ; boutons
+    « Plus tard » / « Autoriser » existants), car le système n'offre qu'une
+    page de réglages nue. `Permission.systemAlertWindow.request()` ouvre
+    cette page et rend la main au retour.
+  - `lib/main.dart` : `_showCallScreenPromptIfNeeded` après l'invite
+    batterie, seulement avec une session valide (sinon reporté au lancement
+    suivant la connexion).
+- **Limites** : sur MIUI / ColorOS, un réglage OEM séparé (« fenêtres
+  contextuelles en arrière-plan ») peut encore bloquer le lancement ; la
+  notification et le réveil d'écran restent. Le dialogue n'est proposé
+  qu'une fois : l'utilisateur qui a choisi « Plus tard » devra activer
+  l'autorisation lui-même dans les réglages de l'app.
+- **Vérification** : `flutter analyze` sans erreur ; AAB construit (entrée
+  5). **Non testé sur appareil** : à valider écran éteint / verrouillé /
+  allumé, app tuée et en fond, avec et sans l'autorisation ; vérifier que
+  l'écran se ferme quand l'appelant raccroche et que le décroché depuis
+  l'écran ouvre bien l'app en appel.
+
+### 3. Appelant : l'écran reste allumé contre l'oreille
+
+- **Symptôme** : pendant l'appel, l'écran ne s'éteint pas près de
+  l'oreille ; la joue appuie sur les boutons (haut-parleur, raccrocher).
+- **Cause** : aucune gestion du capteur de proximité ; au contraire
+  `WakelockPlus.enable()` (`_markActive`) force l'écran allumé. Point noté
+  « ouvert » dans l'audit du 2026-09-18.
+- **Correctif** : dépendance `proximity_sensor` (^1.4.0).
+  `lib/services/voice_call_service.dart` — écouteur de session
+  `_syncProximity` : voulu quand l'appel n'est pas terminé, **pas en
+  haut-parleur**, et (sortant, dès l'appui sur « appeler » : l'appelant
+  écoute la tonalité) ou (entrant, à partir du décroché : pendant la
+  sonnerie on regarde l'écran). Android : `setProximityScreenOff(true)`
+  **avant** d'écouter le flux (le plugin acquiert alors
+  `PROXIMITY_SCREEN_OFF_WAKE_LOCK`, celui du composeur du téléphone ; il
+  l'emporte sur le keep-screen-on de `wakelock_plus`), libéré à
+  l'annulation de l'abonnement ; iOS : l'écoute active
+  `isProximityMonitoringEnabled`, l'OS fait le reste. Sans capteur, le flux
+  émet une erreur journalisée et l'écran reste allumé. Bascule
+  haut-parleur ↔ écouteur : le verrou est relâché puis repris.
+- **Vérification** : `flutter analyze` sans erreur. **Non testé sur
+  appareil** : écran noir contre l'oreille, retour à l'écran quand on
+  l'éloigne, pas d'extinction en haut-parleur, écran rallumé à la fin.
+
+### 4. Mise à jour Play jamais proposée sans redémarrage à froid
+
+- **Symptôme** : après publication, l'app installée ne propose pas la mise
+  à jour.
+- **Causes possibles**, dans l'ordre à vérifier : (1) vérification faite
+  uniquement au montage du shell, jamais au retour depuis l'arrière-plan ;
+  un processus Android vit des jours sans démarrage à froid. (2) Version
+  pas encore visible pour ce compte (test interne → testeurs seulement ;
+  propagation Play de plusieurs heures). (3) Flux « flexible » (priorité
+  Play < 4) : boîte Play puis snackbar, au plus une fois par 12 h. (4) App
+  installée par USB / APK : `InAppUpdate.checkForUpdate()` lève une erreur
+  avalée par le `catch` (installée depuis Play sur les téléphones de test,
+  d'après l'utilisateur).
+- **Correctif (1)** : `lib/component/main_navigation_shell.dart` —
+  `WidgetsBindingObserver`, `checkForUpdate` aussi sur `resumed` ;
+  `lib/services/app_update_service.dart` — au plus une vérification Play
+  par 15 min (`_checkInterval`), la limite de 12 h entre deux invites
+  demeure.
+
+### 5. Version 1.6.3+16
+
+- `pubspec.yaml` : `1.6.2+15` → `1.6.3+16` (correctifs : appels ;
+  `versionCode` 16, le 15 étant déjà sur Play). Contenu : entrées 2 à 4 de
+  ce jour. Aucun changement backend depuis le 2026-09-18.
+- `docs/play-store-release.md` : valeur de version mise à jour.
+- **Nouveau plugin local** `packages/banay_call_screen` (voir entrée 2) et
+  nouvelle dépendance `proximity_sensor`. Nouvelle permission dans le
+  manifeste fusionné : `SYSTEM_ALERT_WINDOW` (accès spécial accordé par
+  l'utilisateur ; pas de formulaire de déclaration Play à ce jour).
+- **Préflight** : `flutter analyze lib packages/banay_call_screen/lib` sans
+  erreur (les deux avertissements préexistants du panneau compte demeurent) ;
+  `flutter pub get` puis `flutter build appbundle --release` (incrémental,
+  sans `flutter clean` ; `flutter test` non relancé) →
+  `build/app/outputs/bundle/release/app-release.aab`, 71,3 Mo, 22/09 15 h 44
+  (Gradle 345 s). Manifeste fusionné vérifié : `SYSTEM_ALERT_WINDOW` présent,
+  `USE_FULL_SCREEN_INTENT` toujours absent ; `GeneratedPluginRegistrant`
+  enregistre `BanayCallScreenPlugin` et `ProximitySensorPlugin` (donc aussi
+  dans l'isolat FCM).
+- **Texte « Nouveautés » Play Console** :
+  « Appels plus fiables : le téléphone sonne plus sûrement, l'écran s'allume
+  à l'arrivée d'un appel et le décrochage passe même en cas de réseau lent.
+  L'écran s'éteint près de l'oreille pendant l'appel, et un bip vous
+  prévient si la connexion devient instable. »

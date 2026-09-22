@@ -10,4 +10,6 @@ abstract final class BanayCommonLocalizationKeys {
   static const navigationMessages = 'navigation_messages';
   static const navigationAccount = 'navigation_account';
   static const backAgainToExit = 'back_again_to_exit';
+  static const callScreenPermissionTitle = 'call_screen_permission_title';
+  static const callScreenPermissionMessage = 'call_screen_permission_message';
 }

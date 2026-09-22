@@ -15,6 +15,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 ///   snackbar offers to restart. Prompted at most once per [_promptInterval]
 ///   so it never nags.
 ///
+/// Checked when the shell mounts and again whenever the app comes back to
+/// the foreground (an Android process can live for days without a cold
+/// start), at most once per [_checkInterval].
+///
 /// Android + Play Store installs only; every other case is a silent no-op.
 class AppUpdateService {
   AppUpdateService._();
@@ -23,9 +27,11 @@ class AppUpdateService {
 
   static const String _lastPromptKey = 'app_update_last_prompt_at';
   static const Duration _promptInterval = Duration(hours: 12);
+  static const Duration _checkInterval = Duration(minutes: 15);
   static const int _forcedPriorityThreshold = 4;
 
   bool _checking = false;
+  DateTime? _lastCheckAt;
 
   Future<void> checkForUpdate(BuildContext context) async {
     if (kIsWeb ||
@@ -34,6 +40,12 @@ class AppUpdateService {
         _checking) {
       return;
     }
+    final lastCheck = _lastCheckAt;
+    if (lastCheck != null &&
+        DateTime.now().difference(lastCheck) < _checkInterval) {
+      return;
+    }
+    _lastCheckAt = DateTime.now();
     _checking = true;
     try {
       final info = await InAppUpdate.checkForUpdate();

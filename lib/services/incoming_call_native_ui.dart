@@ -1,16 +1,19 @@
+import 'package:banay_call_screen/banay_call_screen.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 /// The phone's own incoming-call surface: on Android a ringing heads-up
 /// notification (Accept / Decline; tapping it opens the plugin's call screen,
 /// shown over the lock screen), on iOS CallKit, through
 /// `flutter_callkit_incoming` (MIT, free).
 ///
-/// Android never takes over the whole screen on its own: Google Play refused
-/// `USE_FULL_SCREEN_INTENT` for Banay (policy notice, 2026-09-11), so the
-/// permission is stripped from the manifest and the OS ignores the plugin's
-/// full-screen intent.
+/// Android does not take over the whole screen on its own: Google Play
+/// refused `USE_FULL_SCREEN_INTENT` for Banay (policy notice, 2026-09-11),
+/// so the permission is stripped from the manifest and the OS ignores the
+/// plugin's full-screen intent. See [_bringToScreen] for what is done
+/// instead.
 ///
 /// Also usable from the FCM background isolate, which is how a killed app
 /// still rings: the OS shows this UI, and accepting launches the app.
@@ -97,6 +100,28 @@ class IncomingCallNativeUi {
       await FlutterCallkitIncoming.showCallkitIncoming(params);
     } catch (error) {
       debugPrint('Native incoming call UI failed: $error');
+      return;
+    }
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      await _bringToScreen(params);
+    }
+  }
+
+  /// Android, once the notification rings: without a full-screen intent the
+  /// OS no longer turns the screen on for it, so a phone in a pocket rang in
+  /// the dark. With "Display over other apps" granted (see
+  /// `CallScreenPermissionService`), the plugin's own call screen is opened,
+  /// which lights the screen and shows over the lock screen. Otherwise the
+  /// screen is at least woken for a moment, so the lock screen shows the
+  /// notification and its buttons.
+  static Future<void> _bringToScreen(CallKitParams params) async {
+    if (await BanayCallScreen.show(params)) {
+      return;
+    }
+    try {
+      FlutterForegroundTask.wakeUpScreen();
+    } catch (error) {
+      debugPrint('Screen wake-up failed: $error');
     }
   }
 

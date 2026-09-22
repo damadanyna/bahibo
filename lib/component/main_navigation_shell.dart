@@ -42,7 +42,8 @@ class BANAYNavigationShell extends StatefulWidget {
   State<BANAYNavigationShell> createState() => MainNavigationShellState();
 }
 
-class MainNavigationShellState extends State<BANAYNavigationShell> {
+class MainNavigationShellState extends State<BANAYNavigationShell>
+    with WidgetsBindingObserver {
   final AppAuthService _authService = AppAuthService();
   static const Duration _exitConfirmationWindow = Duration(seconds: 2);
 
@@ -62,6 +63,7 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
     _loadAccountPanelKind();
     _bindRealtimeProfileUpdates();
     AppApiClient.sessionInvalidated.addListener(_onSessionInvalidated);
+    WidgetsBinding.instance.addObserver(this);
     // Consume any notification that fired while the shell was not yet mounted
     // (cold-start: app killed → notification tap → session gate resolves → shell builds).
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -75,9 +77,19 @@ class MainNavigationShellState extends State<BANAYNavigationShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     AppApiClient.sessionInvalidated.removeListener(_onSessionInvalidated);
     _profileEventsSubscription?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // A Play Store update published while the app sat in the background
+    // is only noticed by checking again (the service throttles this).
+    if (state == AppLifecycleState.resumed && mounted) {
+      unawaited(AppUpdateService.instance.checkForUpdate(context));
+    }
   }
 
   /// The backend definitively rejected our refresh token (logged out

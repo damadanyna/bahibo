@@ -14,6 +14,10 @@ const Map<String, Map<String, String>> banayCommonLocalizedValues = {
     BanayCommonLocalizationKeys.navigationAccount: 'Kaonty',
     BanayCommonLocalizationKeys.backAgainToExit:
         'Miverena indray mandeha raha hivoaka',
+    BanayCommonLocalizationKeys.callScreenPermissionTitle: 'Antso miditra',
+    BanayCommonLocalizationKeys.callScreenPermissionMessage:
+        'Mba hisehoan\'ny antso miditra na dia mihidy aza ny finday, avelao '
+        'i Banay hiseho eo ambonin\'ny rindranasa hafa.',
   },
   'en': {
     BanayCommonLocalizationKeys.continueAction: 'Continue',
@@ -27,6 +31,10 @@ const Map<String, Map<String, String>> banayCommonLocalizedValues = {
     BanayCommonLocalizationKeys.navigationMessages: 'Messages',
     BanayCommonLocalizationKeys.navigationAccount: 'Account',
     BanayCommonLocalizationKeys.backAgainToExit: 'Press back again to exit',
+    BanayCommonLocalizationKeys.callScreenPermissionTitle: 'Incoming calls',
+    BanayCommonLocalizationKeys.callScreenPermissionMessage:
+        'To show incoming calls even when the phone is locked, allow Banay '
+        'to display over other apps.',
   },
   'fr': {
     BanayCommonLocalizationKeys.continueAction: 'Continuer',
@@ -41,6 +49,11 @@ const Map<String, Map<String, String>> banayCommonLocalizedValues = {
     BanayCommonLocalizationKeys.navigationAccount: 'Compte',
     BanayCommonLocalizationKeys.backAgainToExit:
         'Retourne une fois pour quitter',
+    BanayCommonLocalizationKeys.callScreenPermissionTitle: 'Appels entrants',
+    BanayCommonLocalizationKeys.callScreenPermissionMessage:
+        'Pour afficher les appels entrants même quand le téléphone est '
+        'verrouillé, autorisez Banay à s\'afficher par-dessus les autres '
+        'applications.',
   },
   'zh': {
     BanayCommonLocalizationKeys.continueAction: '继续',
@@ -54,6 +67,9 @@ const Map<String, Map<String, String>> banayCommonLocalizedValues = {
     BanayCommonLocalizationKeys.navigationMessages: '消息',
     BanayCommonLocalizationKeys.navigationAccount: '账户',
     BanayCommonLocalizationKeys.backAgainToExit: '再按一次返回即可退出',
+    BanayCommonLocalizationKeys.callScreenPermissionTitle: '来电',
+    BanayCommonLocalizationKeys.callScreenPermissionMessage:
+        '为了在手机锁定时也能显示来电，请允许 Banay 显示在其他应用上层。',
   },
   'hi': {
     BanayCommonLocalizationKeys.continueAction: 'जारी रखें',
@@ -68,6 +84,10 @@ const Map<String, Map<String, String>> banayCommonLocalizedValues = {
     BanayCommonLocalizationKeys.navigationAccount: 'खाता',
     BanayCommonLocalizationKeys.backAgainToExit:
         'बाहर निकलने के लिए फिर से बैक दबाएं',
+    BanayCommonLocalizationKeys.callScreenPermissionTitle: 'इनकमिंग कॉल',
+    BanayCommonLocalizationKeys.callScreenPermissionMessage:
+        'फ़ोन लॉक होने पर भी इनकमिंग कॉल दिखाने के लिए, Banay को अन्य ऐप्स '
+        'के ऊपर दिखाने की अनुमति दें।',
   },
   'es': {
     BanayCommonLocalizationKeys.continueAction: 'Continuar',
@@ -82,6 +102,10 @@ const Map<String, Map<String, String>> banayCommonLocalizedValues = {
     BanayCommonLocalizationKeys.navigationAccount: 'Cuenta',
     BanayCommonLocalizationKeys.backAgainToExit:
         'Pulsa atras otra vez para salir',
+    BanayCommonLocalizationKeys.callScreenPermissionTitle: 'Llamadas entrantes',
+    BanayCommonLocalizationKeys.callScreenPermissionMessage:
+        'Para mostrar las llamadas entrantes incluso con el teléfono '
+        'bloqueado, permite que Banay se muestre sobre otras aplicaciones.',
   },
   'ar': {
     BanayCommonLocalizationKeys.continueAction: 'متابعة',
@@ -95,5 +119,9 @@ const Map<String, Map<String, String>> banayCommonLocalizedValues = {
     BanayCommonLocalizationKeys.navigationMessages: 'الرسائل',
     BanayCommonLocalizationKeys.navigationAccount: 'الحساب',
     BanayCommonLocalizationKeys.backAgainToExit: 'اضغط رجوع مرة اخرى للخروج',
+    BanayCommonLocalizationKeys.callScreenPermissionTitle: 'المكالمات الواردة',
+    BanayCommonLocalizationKeys.callScreenPermissionMessage:
+        'لعرض المكالمات الواردة حتى عندما يكون الهاتف مقفلا، اسمح لـ Banay '
+        'بالظهور فوق التطبيقات الأخرى.',
   },
 };

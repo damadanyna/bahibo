@@ -1,0 +1,37 @@
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+}
+
+group = "com.banay.call_screen"
+version = "0.1.0"
+
+android {
+    namespace "com.banay.call_screen"
+    compileSdk = 35
+
+    defaultConfig {
+        minSdk = 23
+    }
+
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
+}
+
+dependencies {
+    // Compiled against the plugin whose call screen is opened (Data,
+    // CallkitIncomingActivity). Flutter's Gradle plugin adds the same
+    // project as `implementation` from pubspec.yaml; this keeps the intent
+    // explicit and the build working should that wiring change.
+    compileOnly project(':flutter_callkit_incoming')
+}

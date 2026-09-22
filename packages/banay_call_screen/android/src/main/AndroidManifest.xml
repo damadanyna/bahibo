@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Only read (Settings.canDrawOverlays); the user grants it from the
+         system page opened by the app. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+</manifest>

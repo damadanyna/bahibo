@@ -14,6 +14,7 @@ import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:proximity_sensor/proximity_sensor.dart';
 import 'package:vibration/vibration.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -155,8 +156,10 @@ class VoiceCallSession {
 class VoiceCallService {
   VoiceCallService._() {
     // Every path that changes the session (quality updates, reconnects,
-    // end of call) goes through here: one place keeps the beep in step.
+    // end of call) goes through here: one place keeps the beep and the
+    // proximity sensor in step.
     session.addListener(_syncUnstableAlert);
+    session.addListener(_syncProximity);
   }
 
   static final VoiceCallService instance = VoiceCallService._();
@@ -195,6 +198,11 @@ class VoiceCallService {
   Timer? _closeTimer;
   Timer? _unstableBeepTimer;
   DateTime? _lastUnstableBeepAt;
+
+  /// Screen-off-against-the-ear state, see [_syncProximity]: the flag is the
+  /// intent, the subscription what is actually held.
+  bool _proximityOn = false;
+  StreamSubscription<int>? _proximitySubscription;
 
   /// Received-audio monitoring, see [_watchReceivedAudio].
   EventsListener<TrackEvent>? _receivedAudioEvents;
@@ -1276,6 +1284,52 @@ class VoiceCallService {
     _lastUnstableBeepAt = now;
     unawaited(
       CallTones.instance.playUnstableConnection(speakerOn: current.isSpeakerOn),
+    );
+  }
+
+  /// Session listener: the screen goes dark against the ear, as with the
+  /// phone's own dialer, from the moment the caller listens to the ringback
+  /// (or the callee picks up) until the call ends. Not on speaker: the
+  /// phone is then held away from the face and a hand over the sensor
+  /// would only blank the screen. Android holds the proximity wake lock
+  /// while the sensor stream is listened to (the flag must be set before
+  /// listening); on iOS listening turns proximity monitoring on and the OS
+  /// does the rest. The [WakelockPlus] keep-awake does not get in the way:
+  /// the proximity lock wins, exactly as in a dialer.
+  void _syncProximity() {
+    final current = session.value;
+    final wanted =
+        current != null &&
+        !current.isEnded &&
+        !current.isSpeakerOn &&
+        (current.isOutgoing || current.phase != VoiceCallPhase.ringing);
+    if (wanted == _proximityOn) {
+      return;
+    }
+    _proximityOn = wanted;
+    if (wanted) {
+      unawaited(_startProximity());
+      return;
+    }
+    unawaited(_proximitySubscription?.cancel());
+    _proximitySubscription = null;
+    unawaited(_quietly(ProximitySensor.setProximityScreenOff(false)));
+  }
+
+  Future<void> _startProximity() async {
+    try {
+      await ProximitySensor.setProximityScreenOff(true);
+    } catch (error) {
+      debugPrint('Proximity screen-off unavailable: $error');
+    }
+    // Turned off again (speaker, end of call) while the flag was being set.
+    if (!_proximityOn || _proximitySubscription != null) {
+      return;
+    }
+    _proximitySubscription = ProximitySensor.events.listen(
+      (_) {},
+      // No proximity sensor on this device: the screen simply stays on.
+      onError: (Object error) => debugPrint('Proximity sensor: $error'),
     );
   }
 

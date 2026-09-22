@@ -142,8 +142,17 @@ Le relais TURN n'ajoute pas de trafic au-delà : le SFU relaie déjà tout.
 ## App fermée : ce qui marche, ce qui reste à faire
 
 - **Android** : le push data-only réveille l'app en arrière-plan, qui
-  affiche l'écran d'appel natif (plein écran, sonnerie système, au-dessus
-  de l'écran de verrouillage). Accepter lance l'app et l'appel ; accepter
+  affiche la notification d'appel du plugin (sonnerie, vibration, Accepter /
+  Refuser). Google Play ayant refusé `USE_FULL_SCREEN_INTENT` (2026-09-11),
+  l'OS n'allume plus l'écran de lui-même ; depuis le 2026-09-22 l'app s'en
+  charge : si l'utilisateur a accordé « Afficher par-dessus d'autres applis »
+  (demande unique au lancement, `CallScreenPermissionService`), le plugin
+  local `packages/banay_call_screen` ouvre l'écran d'appel plein écran du
+  plugin (allumage, par-dessus le verrouillage) ; sinon l'écran est réveillé
+  une seconde (`FlutterForegroundTask.wakeUpScreen`) pour que la
+  notification soit visible sur l'écran de verrouillage. Les deux boutons de
+  l'écran rejoignent les mêmes actions que ceux de la notification, qui
+  reste affichée. Accepter lance l'app et l'appel ; accepter
   comme refuser préviennent le serveur tout de suite depuis l'isolat
   d'actions du plugin (`callkitBackgroundHandler`, enregistré par le handler
   FCM lui-même depuis le 2026-09-18, car un processus réveillé par un push
