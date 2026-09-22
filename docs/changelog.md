@@ -2076,7 +2076,8 @@ futurs diagnostics.
   `flutter pub get` puis `flutter build appbundle --release` (incrémental,
   sans `flutter clean` ; `flutter test` non relancé) →
   `build/app/outputs/bundle/release/app-release.aab`, 71,3 Mo, 22/09 15 h 44
-  (Gradle 345 s). Manifeste fusionné vérifié : `SYSTEM_ALERT_WINDOW` présent,
+  encore en 1.6.2+15, reconstruit en 1.6.3+16 (heure ci-dessous, complétée
+  après le build). Manifeste fusionné vérifié : `SYSTEM_ALERT_WINDOW` présent,
   `USE_FULL_SCREEN_INTENT` toujours absent ; `GeneratedPluginRegistrant`
   enregistre `BanayCallScreenPlugin` et `ProximitySensorPlugin` (donc aussi
   dans l'isolat FCM).
