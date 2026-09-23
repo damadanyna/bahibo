@@ -2061,11 +2061,13 @@ futurs diagnostics.
   par 15 min (`_checkInterval`), la limite de 12 h entre deux invites
   demeure.
 
-### 5. Version 1.6.3+16
+### 5. Version 1.6.3+17
 
-- `pubspec.yaml` : `1.6.2+15` → `1.6.3+16` (correctifs : appels ;
-  `versionCode` 16, le 15 étant déjà sur Play). Contenu : entrées 2 à 4 de
-  ce jour. Aucun changement backend depuis le 2026-09-18.
+- `pubspec.yaml` : `1.6.2+15` → `1.6.3+16` (correctifs : appels), puis
+  `1.6.3+17` : la Play Console a refusé l'AAB de 19 h 25 (« Le code de
+  version 16 a déjà été utilisé »), un envoi antérieur ayant déjà consommé
+  le code 16. Contenu : entrées 2 à 4 de ce jour. Aucun changement backend
+  depuis le 2026-09-18.
 - `docs/play-store-release.md` : valeur de version mise à jour.
 - **Nouveau plugin local** `packages/banay_call_screen` (voir entrée 2) et
   nouvelle dépendance `proximity_sensor`. Nouvelle permission dans le
@@ -2076,8 +2078,10 @@ futurs diagnostics.
   `flutter pub get` puis `flutter build appbundle --release` (incrémental,
   sans `flutter clean` ; `flutter test` non relancé) →
   `build/app/outputs/bundle/release/app-release.aab`, 71,3 Mo, 22/09 15 h 44
-  encore en 1.6.2+15, reconstruit en 1.6.3+16 (heure ci-dessous, complétée
-  après le build). Manifeste fusionné vérifié : `SYSTEM_ALERT_WINDOW` présent,
+  encore en 1.6.2+15 ; reconstruit en 1.6.3+16 le 22/09 à 17 h 18 (build
+  complet après nettoyage, ≈ 27 min de Gradle), 70,4 Mo, version 1.6.3
+  confirmée dans le manifeste du bundle. Manifeste fusionné vérifié :
+  `SYSTEM_ALERT_WINDOW` présent,
   `USE_FULL_SCREEN_INTENT` toujours absent ; `GeneratedPluginRegistrant`
   enregistre `BanayCallScreenPlugin` et `ProximitySensorPlugin` (donc aussi
   dans l'isolat FCM).
